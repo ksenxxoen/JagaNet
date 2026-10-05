@@ -10,6 +10,11 @@ pluginManagement {
     }
 }
 
+plugins {
+    // Downloads JDK 21 for the build if this machine has a different Java version.
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+
 dependencyResolutionManagement {
     repositories {
         google()

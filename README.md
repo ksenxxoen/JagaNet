@@ -13,17 +13,28 @@ A VPN app for iPhone and Android with one shared backend, written in Kotlin end 
 Default protocol: **AmneziaWG** (WireGuard with DPI obfuscation). Protocols are plug-ins, see
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#protocols).
 
-## Run everything locally (no setup)
+## Try it: one command
 
-```sh
-./gradlew :server:sim          # backend + embedded PostgreSQL + simulated VPN node + demo data
-./gradlew :composeApp:run      # the app in a phone-sized desktop window (simulated tunnel)
-```
+You need **Java 17+** ([Temurin 21](https://adoptium.net) recommended). For Android, also
+[Android Studio](https://developer.android.com/studio) with one emulator created in Device Manager
+(or a phone connected over USB with USB debugging on).
 
+| | macOS / Linux | Windows |
+|---|---|---|
+| Backend + app in a desktop window | `./run.sh` | `.\run.ps1` |
+| Backend + app on Android | `./run.sh android` | `.\run.ps1 android` |
+| Backend only | `./run.sh server` | `.\run.ps1 server` |
+
+The backend runs in simulation mode: embedded database, a simulated VPN server and demo accounts.
 Sign in as `alex@example.com` (Pro), `sam@example.com` (Free) or `owner@jaganet.dev` (owner
-dashboard). In simulation the sign-in code is shown in the app and printed by the server.
+dashboard); the 6-digit code is shown in the app. Ctrl+C stops everything. The first run downloads
+Gradle and dependencies, so it takes a few minutes.
 
-`./gradlew :composeApp:screenshots` renders every screen against the running simulation into
+In debug builds the Android app uses a simulated tunnel, so Connect works against the simulation
+without touching the device's network. Use `-Pjaganet.simulatedTunnel=false` when testing against
+a real VPN server.
+
+`./gradlew :composeApp:screenshots` renders every screen against a running backend into
 `composeApp/build/screenshots/`.
 
 ## Tests and builds

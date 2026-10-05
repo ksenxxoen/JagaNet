@@ -12,6 +12,7 @@ import android.util.Base64
 import dev.jaganet.api.Platform
 import dev.jaganet.app.platform.AppPlatform
 import dev.jaganet.app.platform.SecureStore
+import dev.jaganet.app.tunnel.SimulatedEngine
 import dev.jaganet.app.tunnel.TunnelEngine
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -69,6 +70,7 @@ class AndroidPlatform private constructor(
     private val context: Context,
     override val apiUrl: String,
     backends: BackendFactory,
+    simulatedTunnel: Boolean,
 ) : AppPlatform {
     /** Set by the visible activity: shows the VPN consent dialog, returns whether it was granted. */
     var vpnConsent: (suspend () -> Boolean)? = null
@@ -76,7 +78,7 @@ class AndroidPlatform private constructor(
     override val kind = Platform.ANDROID
     override val deviceName: String = Build.MODEL ?: "Android"
     override val store: SecureStore = KeystoreStore(context)
-    override val tunnel: TunnelEngine = run {
+    override val tunnel: TunnelEngine = if (simulatedTunnel) SimulatedEngine() else run {
         lateinit var engine: AndroidTunnelEngine
         engine = AndroidTunnelEngine(context, backends(context, store) { up -> engine.onBackendState(up) }) { vpnConsent?.invoke() ?: false }
         engine
@@ -100,8 +102,8 @@ class AndroidPlatform private constructor(
     companion object {
         @Volatile private var instance: AndroidPlatform? = null
         /** One per process, so the tunnel outlives activity recreation. */
-        fun get(context: Context, apiUrl: String, backends: BackendFactory) = instance ?: synchronized(this) {
-            instance ?: AndroidPlatform(context.applicationContext, apiUrl, backends).also { instance = it }
+        fun get(context: Context, apiUrl: String, backends: BackendFactory, simulatedTunnel: Boolean = false) = instance ?: synchronized(this) {
+            instance ?: AndroidPlatform(context.applicationContext, apiUrl, backends, simulatedTunnel).also { instance = it }
         }
     }
 }

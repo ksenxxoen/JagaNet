@@ -15,6 +15,17 @@ android {
         // Emulator → host machine (the simulation server). Override: -Pjaganet.apiUrl=https://api.example.com
         buildConfigField("String", "API_URL", "\"${providers.gradleProperty("jaganet.apiUrl").getOrElse("http://10.0.2.2:4000")}\"")
     }
+    buildTypes {
+        // Debug talks to the local simulation, whose VPN node doesn't exist on the network:
+        // use the simulated tunnel so Connect doesn't cut the emulator's internet.
+        // Real tunnel in debug: -Pjaganet.simulatedTunnel=false
+        debug {
+            buildConfigField("boolean", "SIMULATED_TUNNEL", providers.gradleProperty("jaganet.simulatedTunnel").getOrElse("true"))
+        }
+        release {
+            buildConfigField("boolean", "SIMULATED_TUNNEL", "false")
+        }
+    }
     buildFeatures { buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
