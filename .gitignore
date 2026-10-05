@@ -1,0 +1,31 @@
+# Gradle / IDE
+.gradle/
+build/
+.kotlin/
+local.properties
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Xcode
+iosApp/*.xcodeproj/
+iosApp/build/
+xcuserdata/
+DerivedData/
+*.xcworkspace/
+!iosApp/*.xcworkspace/contents.xcworkspacedata
+
+# Simulation data
+.sim-data/
+
+# Secrets
+.env
+*.jks
+*.keystore
+*.p8
+*.p12
+
+.DS_Store
+node_modules/
