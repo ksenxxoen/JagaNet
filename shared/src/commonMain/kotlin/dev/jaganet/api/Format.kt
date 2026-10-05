@@ -42,6 +42,9 @@ object Format {
         return "${p(s / 3600)}:${p(s % 3600 / 60)}:${p(s % 60)}"
     }
 
+    /** epoch ms -> "HH:mm:ss" (UTC) */
+    fun clockOfDay(epochMs: Long): String = clock((epochMs / 1000) % 86_400)
+
     @OptIn(ExperimentalTime::class)
     fun ago(iso: String?, nowMs: Long): String {
         if (iso == null) return "never"
