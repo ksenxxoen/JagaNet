@@ -1,0 +1,15 @@
+# PostgreSQL for the JagaNet server. The server itself runs on the VPN host (it programs awg/wg).
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jaganet
+      POSTGRES_USER: jaganet
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:

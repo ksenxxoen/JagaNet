@@ -1,0 +1,20 @@
+# /etc/systemd/system/jaganet.service
+[Unit]
+Description=JagaNet control plane
+After=network-online.target awg-quick@awg0.service
+Wants=network-online.target
+
+[Service]
+User=jaganet
+EnvironmentFile=/etc/jaganet/env
+ExecStart=/opt/jaganet/bin/server
+Restart=on-failure
+# Needed to add/remove peers with awg/wg.
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
