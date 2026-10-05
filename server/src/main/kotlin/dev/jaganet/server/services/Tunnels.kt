@@ -27,8 +27,14 @@ private val ONLINE = Duration.ofMinutes(3)
 fun Row.node(protocol: String) = ServerNode(str("id"), str("name"), json("protocols")[protocol] as? JsonObject ?: JsonObject(emptyMap()))
 
 class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
-    /** Protocols a node offers AND this control plane has a driver for. */
-    private fun usable(server: Row) = server.json("protocols").keys.filter { ctx.drivers[it] != null }
+    /**
+     * Protocols a node offers AND this control plane has a driver for, in preference
+     * order (the PROTOCOLS setting). jsonb does not keep key order, so never rely on it.
+     */
+    private fun usable(server: Row): List<String> {
+        val offered = server.json("protocols").keys
+        return ctx.drivers.ids().filter { it in offered }
+    }
 
     private fun driver(protocol: String): ProtocolDriver =
         ctx.drivers[protocol] ?: throw AppError(400, ErrorCode.UNSUPPORTED_PROTOCOL, "Protocol \"$protocol\" is not available")

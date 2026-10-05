@@ -126,7 +126,10 @@ private fun DeviceRow(d: Device, now: Long, expanded: Boolean, onMore: () -> Uni
             T(d.name, TS.Body, FontWeight.SemiBold, maxLines = 1)
             // As in the draft: address · last contact. The protocol shows when the row is opened.
             val seen = if (d.tunnelAddress == null) "no tunnel yet" else "seen ${Format.ago(d.lastSeenAt, now)}"
-            T(listOfNotNull(d.tunnelAddress, seen).joinToString(" · "), TS.Caption, color = C.muted, mono = true, modifier = Modifier.padding(top = 2.dp), maxLines = 1)
+            Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                d.tunnelAddress?.let { T(it, TS.Caption, color = C.muted, mono = true, maxLines = 1) }
+                T(seen, TS.Caption, color = C.muted, maxLines = 1)
+            }
             if (expanded && d.protocol != null) T("Protocol: ${ProtocolInfo.label(d.protocol!!)}", TS.Caption, color = C.muted, modifier = Modifier.padding(top = 2.dp))
         }
         when {

@@ -29,13 +29,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        val platform = AndroidPlatform.get(this, BuildConfig.API_URL)
+        val platform = AndroidPlatform.get(this, BuildConfig.API_URL, Backends::create)
         platform.vpnConsent = ::requestVpnConsent
         setContent { App(platform) }
     }
 
     override fun onDestroy() {
-        AndroidPlatform.get(this, BuildConfig.API_URL).vpnConsent = null
+        AndroidPlatform.get(this, BuildConfig.API_URL, Backends::create).vpnConsent = null
         super.onDestroy()
     }
 }

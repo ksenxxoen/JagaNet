@@ -20,4 +20,11 @@ class FormatTest {
         val p = WireGuard.ServerParams("k", "h:1", listOf("0.0.0.0/0"), 25)
         assertEquals(p, Protocols.decode<WireGuard.ServerParams>(Protocols.encode(p)))
     }
+    @Test fun amneziaQuickConfig() {
+        val p = AmneziaWG.ServerParams("S=", "h:1", listOf("0.0.0.0/0"), 25, mapOf("Jc" to "5", "S1" to "86", "H1" to "100-200"))
+        val conf = AmneziaWG.quickConfig("P=", "10.8.0.2/32", listOf("1.1.1.1"), 1280, p)
+        assertEquals(true, conf.contains("MTU = 1280\nS1 = 86\nH1 = 100-200\nJc = 5\n"))
+        assertEquals(true, conf.contains("[Peer]\nPublicKey = S=\nEndpoint = h:1"))
+        assertFailsWith<IllegalArgumentException> { AmneziaWG.ServerParams("S=", "h", emptyList(), 0, mapOf("Bogus" to "1")) }
+    }
 }

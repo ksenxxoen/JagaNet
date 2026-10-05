@@ -1,0 +1,5 @@
+// Fill in before building on a Mac. See docs/MOBILE.md.
+TEAM_ID =
+BUNDLE_ID = dev.jaganet.app
+// Simulation server on this Mac; the iOS Simulator reaches it on localhost.
+API_URL = http:/$()/localhost:4000

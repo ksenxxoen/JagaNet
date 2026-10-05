@@ -47,7 +47,8 @@ class Harness(val b: ApplicationTestBuilder) {
             ctx.db.run {
                 it.exec(
                     "INSERT INTO servers (id, name, city, country_code, subnet, protocols, max_peers) VALUES ('n1','Node 1','Testville','DE','10.8.0.0/29',?,5)",
-                    Jsonb("""{"wireguard":{"endpoint":"n1:51820","publicKey":"${key(99)}"},"jaga-custom":{"endpoint":"n1:443"}}"""),
+                    Jsonb("""{"wireguard":{"endpoint":"n1:51820","publicKey":"${key(99)}"},"jaga-custom":{"endpoint":"n1:443"},
+                        "amneziawg":{"endpoint":"n1:51821","publicKey":"${key(98)}","obfuscation":{"Jc":"5","S1":"86","H1":"1000-2000"}}}"""),
                 )
             }
         }

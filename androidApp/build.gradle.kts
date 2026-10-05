@@ -24,7 +24,29 @@ android {
 
 kotlin { jvmToolchain(21) }
 
+/*
+ * Tunnel backends. AmneziaWG (the default protocol) comes from amneziawg-android,
+ * which is not on Maven: scripts/build-amneziawg-android.sh builds it into
+ * third_party/amneziawg/. It also serves plain WireGuard. Without it the APK falls
+ * back to wireguard-android (WireGuard only); -Pjaganet.amneziawg=false forces that.
+ * Release builds: -Pjaganet.requireAmneziaWG=true.
+ */
+val awgAar = rootProject.file("third_party/amneziawg/amneziawg-tunnel.aar")
+val useAwg = awgAar.exists() && providers.gradleProperty("jaganet.amneziawg").orNull != "false"
+if (!useAwg && providers.gradleProperty("jaganet.requireAmneziaWG").orNull == "true") {
+    throw GradleException("AmneziaWG library missing: run scripts/build-amneziawg-android.sh")
+}
+if (!useAwg) logger.warn("JagaNet: building without AmneziaWG (WireGuard only). Run scripts/build-amneziawg-android.sh to include it.")
+android.sourceSets.getByName("main").kotlin.directories.add(if (useAwg) "src/amneziawg/kotlin" else "src/wireguard/kotlin")
+
 dependencies {
     implementation(projects.composeApp)
     implementation(libs.androidx.activity.compose)
+    if (useAwg) {
+        implementation(files(awgAar))
+        implementation(libs.androidx.annotation)
+        implementation(libs.androidx.collection)
+    } else {
+        implementation(libs.wireguard.tunnel)
+    }
 }

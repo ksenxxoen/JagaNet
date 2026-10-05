@@ -40,4 +40,11 @@ tasks.register<JavaExec>("sim") {
     workingDir = rootDir
 }
 
+/** Prints a fresh AmneziaWG obfuscation profile for a new node. */
+tasks.register<JavaExec>("awgParams") {
+    group = "application"
+    mainClass.set("dev.jaganet.server.protocols.AwgParamsKt")
+    classpath = sourceSets["main"].runtimeClasspath
+}
+
 tasks.test { useJUnitPlatform() }

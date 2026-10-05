@@ -1,0 +1,74 @@
+# XcodeGen spec (https://github.com/yonaskolb/XcodeGen): `brew install xcodegen && cd iosApp && xcodegen`
+# generates iosApp.xcodeproj. The project file itself is not committed.
+name: iosApp
+options:
+  bundleIdPrefix: dev.jaganet
+  deploymentTarget:
+    iOS: "16.0"
+configFiles:
+  Debug: Configuration/Config.xcconfig
+  Release: Configuration/Config.xcconfig
+packages:
+  # AmneziaWG fork of WireGuardKit. Serves both WireGuard and AmneziaWG
+  # (AmneziaWG without obfuscation values is plain WireGuard).
+  WireGuardKit:
+    url: https://github.com/amnezia-vpn/amneziawg-apple
+    branch: master
+settings:
+  base:
+    DEVELOPMENT_TEAM: $(TEAM_ID)
+    SWIFT_VERSION: "5.9"
+targets:
+  iosApp:
+    type: application
+    platform: iOS
+    sources: [iosApp, Shared]
+    info:
+      path: iosApp/Info.plist
+      properties:
+        CFBundleDisplayName: JagaNet
+        JagaNetApiUrl: $(API_URL)
+        JagaNetAccessGroup: $(AppIdentifierPrefix)$(BUNDLE_ID).shared
+        UILaunchScreen: {}
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true # simulation server only
+    entitlements:
+      path: iosApp/iosApp.entitlements
+      properties:
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+        keychain-access-groups: [$(AppIdentifierPrefix)$(BUNDLE_ID).shared]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID)
+        FRAMEWORK_SEARCH_PATHS: $(SRCROOT)/../composeApp/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
+        OTHER_LDFLAGS: [-framework, ComposeApp]
+    preBuildScripts:
+      - name: Build Kotlin framework
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
+        basedOnDependencyAnalysis: false
+    dependencies:
+      - target: PacketTunnel
+  PacketTunnel:
+    type: app-extension
+    platform: iOS
+    sources: [PacketTunnel, Shared]
+    info:
+      path: PacketTunnel/Info.plist
+      properties:
+        CFBundleDisplayName: JagaNet Tunnel
+        JagaNetAccessGroup: $(AppIdentifierPrefix)$(BUNDLE_ID).shared
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.networkextension.packet-tunnel
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PacketTunnelProvider
+    entitlements:
+      path: PacketTunnel/PacketTunnel.entitlements
+      properties:
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+        keychain-access-groups: [$(AppIdentifierPrefix)$(BUNDLE_ID).shared]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID).PacketTunnel
+    dependencies:
+      - package: WireGuardKit

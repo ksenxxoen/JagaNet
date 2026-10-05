@@ -210,7 +210,7 @@ private fun Connected(s: AppState, sessionBytes: Long) {
 
 @Composable
 private fun SpeedTile(label: String, icon: Ic?, value: String, unit: String, modifier: Modifier, mono: Boolean = true) {
-    Column(modifier.fillMaxHeight().background(Color.White, RoundedCornerShape(R.tile)).border(1.dp, C.line, RoundedCornerShape(R.tile)).padding(12.dp)) {
+    Column(modifier.fillMaxHeight().heightIn(min = 88.dp).background(Color.White, RoundedCornerShape(R.tile)).border(1.dp, C.line, RoundedCornerShape(R.tile)).padding(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (icon != null) Icon(icon, C.muted, 14.dp, 2f)
             T(label, TS.Caption, color = C.muted)

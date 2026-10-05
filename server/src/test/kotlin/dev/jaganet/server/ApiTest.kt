@@ -1,5 +1,6 @@
 package dev.jaganet.server
 
+import dev.jaganet.api.AmneziaWG
 import dev.jaganet.api.AppleVerifyReq
 import dev.jaganet.api.ConnectionEventReq
 import dev.jaganet.api.ConnectionEventType
@@ -14,6 +15,8 @@ import dev.jaganet.api.Protocols
 import dev.jaganet.api.StatsPeriod
 import dev.jaganet.api.TunnelProvisionReq
 import dev.jaganet.api.WireGuard
+import dev.jaganet.server.protocols.AmneziaWgDriver
+import dev.jaganet.server.protocols.AwgParams
 import dev.jaganet.server.protocols.SimulatedDriver
 import dev.jaganet.server.protocols.WireGuardDriver
 import dev.jaganet.server.services.Ipam
@@ -87,7 +90,17 @@ class TunnelTest {
         assertTrue("token" in c.params)
         assertEquals("jaga-custom", a.api.devices().devices[0].protocol)
         assertEquals("UNSUPPORTED_PROTOCOL", code { a.api.provisionTunnel(TunnelProvisionReq("nope-proto")) })
-        assertEquals(listOf("wireguard", "jaga-custom"), a.api.servers().servers[0].protocols)
+        assertEquals(listOf("amneziawg", "wireguard", "jaga-custom"), a.api.servers().servers[0].protocols)
+    }
+
+    @Test fun `provisions AmneziaWG with the node's obfuscation profile`() = harness {
+        val a = signIn("awg@example.com")
+        val cfg = a.api.provisionTunnel(TunnelProvisionReq(Protocols.AMNEZIAWG, clientParams = Protocols.encode(WireGuard.ClientParams(key(7)))))
+        val p = Protocols.decode<AmneziaWG.ServerParams>(cfg.params)
+        assertEquals(key(98), p.serverPublicKey)
+        assertEquals(mapOf("Jc" to "5", "S1" to "86", "H1" to "1000-2000"), p.obfuscation)
+        // Same device keeps its address when it falls back to plain WireGuard.
+        assertEquals(cfg.address, a.api.provisionTunnel(wg(7)).address)
     }
 
     @Test fun `enforces the device limit per plan and frees it when a device is removed`() = harness {
@@ -188,14 +201,37 @@ class UnitTest {
         assertEquals(Instant.ofEpochSecond(1760000000), c.lastSeenAt)
     }
 
+    @Test fun `amneziawg driver uses awg and returns the obfuscation profile`() = kotlinx.coroutines.runBlocking {
+        val calls = mutableListOf<List<String>>()
+        val d = AmneziaWgDriver { calls += it; "" }
+        val profile = AwgParams.generate()
+        val settings = Protocols.json.parseToJsonElement(
+            """{"endpoint":"h:2","publicKey":"${key(9)}","interface":"awg0","obfuscation":${Protocols.json.encodeToString(kotlinx.serialization.serializer<Map<String, String>>(), profile)}}""",
+        ) as JsonObject
+        val added = d.addPeer(dev.jaganet.server.protocols.ServerNode("n", "n", settings), "dev", "10.8.0.9", Protocols.encode(WireGuard.ClientParams(key(2))))
+        assertEquals(listOf("awg", "set", "awg0", "peer", key(2), "allowed-ips", "10.8.0.9/32"), calls[0])
+        assertEquals(profile, Protocols.decode<AmneziaWG.ServerParams>(added.params).obfuscation)
+    }
+
+    @Test fun `generated AmneziaWG profiles follow the spec's constraints`() = repeat(200) {
+        val p = AwgParams.generate()
+        val (s1, s2) = p["S1"]!!.toInt() to p["S2"]!!.toInt()
+        assertTrue(s1 >= 12 && s2 >= 12 && s1 + 56 != s2)
+        assertTrue(p["Jmin"]!!.toInt() <= p["Jmax"]!!.toInt() && p["Jmax"]!!.toInt() < 1280)
+        val ranges = (1..4).map { p["H$it"]!!.split('-').map(String::toLong) }
+        ranges.forEach { (lo, hi) -> assertTrue(lo in 5..hi && hi <= 0xFFFFFFFFL) }
+        ranges.sortedBy { it[0] }.zipWithNext().forEach { (a, b) -> assertTrue(a[1] < b[0], "H ranges overlap: $ranges") }
+        assertTrue(p.keys.all { it in AmneziaWG.KEYS })
+    }
+
     @Test fun `wireguard driver issues the right wg commands`() = kotlinx.coroutines.runBlocking {
         val calls = mutableListOf<List<String>>()
         val d = WireGuardDriver { calls += it; "" }
         val node = dev.jaganet.server.protocols.ServerNode("n", "n", Protocols.encode(mapOf("endpoint" to "h:1", "publicKey" to key(9))))
         val added = d.addPeer(node, "dev", "10.8.0.7", Protocols.encode(WireGuard.ClientParams(key(1))))
         d.removePeer(node, added.peerKey)
-        assertEquals(listOf("set", "wg0", "peer", key(1), "allowed-ips", "10.8.0.7/32"), calls[0])
-        assertEquals(listOf("set", "wg0", "peer", key(1), "remove"), calls[1])
+        assertEquals(listOf("wg", "set", "wg0", "peer", key(1), "allowed-ips", "10.8.0.7/32"), calls[0])
+        assertEquals(listOf("wg", "set", "wg0", "peer", key(1), "remove"), calls[1])
         assertEquals("h:1", added.params["endpoint"]!!.jsonPrimitive.content)
     }
 }

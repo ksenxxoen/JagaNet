@@ -22,7 +22,7 @@ import kotlin.time.Clock
 /** Behaves like a native engine without touching the network: for the desktop simulator and previews. */
 class SimulatedEngine(private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() }) : TunnelEngine {
     override val simulated = true
-    override val protocols = listOf(Protocols.WIREGUARD, "jaga-custom")
+    override val protocols = listOf(Protocols.AMNEZIAWG, Protocols.WIREGUARD, "jaga-custom")
     override val status = MutableStateFlow(EngineStatus())
     override val logs = MutableSharedFlow<LogLine>(replay = 200, extraBufferCapacity = 64)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -35,7 +35,7 @@ class SimulatedEngine(private val now: () -> Long = { Clock.System.now().toEpoch
     override suspend fun requestPermission() = true
 
     override suspend fun clientParams(protocol: String): JsonObject = when (protocol) {
-        Protocols.WIREGUARD -> JsonObject(mapOf("publicKey" to JsonPrimitive(fakePublicKey)))
+        Protocols.AMNEZIAWG, Protocols.WIREGUARD -> JsonObject(mapOf("publicKey" to JsonPrimitive(fakePublicKey)))
         else -> JsonObject(emptyMap())
     }
 
@@ -44,6 +44,9 @@ class SimulatedEngine(private val now: () -> Long = { Clock.System.now().toEpoch
         log(LogLevel.INFO, "Starting ${config.protocol} tunnel to ${config.location}")
         delay(900)
         if (options.killSwitch) log(LogLevel.INFO, "Kill switch armed")
+        (config.params["obfuscation"] as? JsonObject)?.let { o ->
+            log(LogLevel.INFO, "Obfuscation on: ${o["Jc"]?.jsonPrimitive?.content ?: 0} junk packets, padded handshake, custom headers")
+        }
         log(LogLevel.INFO, "Handshake completed with ${config.params["endpoint"]?.jsonPrimitive?.content ?: config.serverId}")
         log(LogLevel.INFO, "Tunnel up · ${config.address}")
         log(LogLevel.INFO, "DNS set to ${config.dns.joinToString()}")

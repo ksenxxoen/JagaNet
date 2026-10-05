@@ -20,8 +20,9 @@ import kotlin.time.Clock
 /** Display info for the protocols this app knows. Unknown ids still work, shown by id. */
 object ProtocolInfo {
     private val known = mapOf(
-        "wireguard" to ("WireGuard" to "Fast and battery-friendly. The best choice on most networks."),
-        "jaga-custom" to ("Stealth" to "Looks like ordinary HTTPS traffic. For networks that block VPNs."),
+        "amneziawg" to ("AmneziaWG" to "WireGuard speed, disguised so networks that block VPNs can’t spot it."),
+        "wireguard" to ("WireGuard" to "Plain WireGuard. Slightly lighter, but easy for censors to detect."),
+        "jaga-custom" to ("Custom (demo)" to "Example of a custom protocol plugged into JagaNet."),
     )
     fun label(id: String) = known[id]?.first ?: id
     fun description(id: String) = known[id]?.second ?: "Custom protocol"

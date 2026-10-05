@@ -29,3 +29,4 @@ DerivedData/
 
 .DS_Store
 node_modules/
+third_party/amneziawg/*.aar

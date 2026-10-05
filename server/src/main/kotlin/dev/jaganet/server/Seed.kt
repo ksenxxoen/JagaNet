@@ -6,8 +6,11 @@ import dev.jaganet.server.db.Sql
 import dev.jaganet.server.services.Crypto
 import dev.jaganet.server.services.monthStart
 import dev.jaganet.server.services.node
+import dev.jaganet.server.protocols.AwgParams
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -29,7 +32,20 @@ class Seed(private val ctx: Ctx) {
         sql.exec(
             """INSERT INTO servers (id, name, city, country_code, subnet, protocols, max_peers, monthly_traffic_limit_bytes, paid_through)
                VALUES ('sim-1','Sim node 1','Frankfurt','DE','10.8.0.0/24',?,50,1000000000000,?)""",
-            Jsonb("""{"wireguard":{"endpoint":"vpn1.sim.jaganet.dev:51820","publicKey":"c2ltdWxhdGVkLXNlcnZlci1wdWJsaWMta2V5LTAwMDA="},"jaga-custom":{"endpoint":"vpn1.sim.jaganet.dev:443"}}"""),
+            Jsonb(
+                buildJsonObject {
+                    put("amneziawg", buildJsonObject {
+                        put("endpoint", "vpn1.sim.jaganet.dev:51821")
+                        put("publicKey", "c2ltdWxhdGVkLXNlcnZlci1wdWJsaWMta2V5LTAwMDE=")
+                        put("obfuscation", JsonObject(AwgParams.generate().mapValues { JsonPrimitive(it.value) }))
+                    })
+                    put("wireguard", buildJsonObject {
+                        put("endpoint", "vpn1.sim.jaganet.dev:51820")
+                        put("publicKey", "c2ltdWxhdGVkLXNlcnZlci1wdWJsaWMta2V5LTAwMDA=")
+                    })
+                    put("jaga-custom", buildJsonObject { put("endpoint", "vpn1.sim.jaganet.dev:443") })
+                }.toString(),
+            ),
             LocalDate.ofInstant(now.plus(Duration.ofDays(40)), ZoneOffset.UTC),
         )
         sql.exec("INSERT INTO users (email, role, referral_code, created_at) VALUES ('owner@jaganet.dev','owner','OWNER-0000',?)", ago(Duration.ofDays(120)))

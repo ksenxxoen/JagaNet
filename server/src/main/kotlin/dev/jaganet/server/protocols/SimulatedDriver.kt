@@ -1,5 +1,6 @@
 package dev.jaganet.server.protocols
 
+import dev.jaganet.api.AmneziaWG
 import dev.jaganet.api.Protocols
 import dev.jaganet.api.WireGuard
 import kotlinx.serialization.json.JsonObject
@@ -73,6 +74,22 @@ class SimulatedDriver(
 
         /** Drivers used by `./gradlew :server:sim` and the tests. */
         fun registry(now: () -> Instant = Instant::now) = DriverRegistry()
+            // Default protocol: same shapes as AmneziaWgDriver, obfuscation from the node settings.
+            .register(SimulatedDriver(
+                id = Protocols.AMNEZIAWG,
+                parse = { Protocols.encode(Protocols.decode<WireGuard.ClientParams>(it)) },
+                peerKeyOf = { cp, _ -> cp["publicKey"]!!.jsonPrimitive.content },
+                buildParams = { s ->
+                    Protocols.encode(AmneziaWG.ServerParams(
+                        serverPublicKey = s["publicKey"]!!.jsonPrimitive.content,
+                        endpoint = s["endpoint"]!!.jsonPrimitive.content,
+                        allowedIps = listOf("0.0.0.0/0", "::/0"),
+                        persistentKeepalive = 25,
+                        obfuscation = (s["obfuscation"] as? JsonObject)?.mapValues { it.value.jsonPrimitive.content }.orEmpty(),
+                    ))
+                },
+                now = now,
+            ))
             // Same request/response shapes as the real WireGuard driver, no kernel needed.
             .register(SimulatedDriver(
                 id = Protocols.WIREGUARD,

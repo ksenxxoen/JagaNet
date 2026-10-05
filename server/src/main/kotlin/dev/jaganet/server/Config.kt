@@ -45,7 +45,7 @@ data class Config(
                 authSecret = secret.ifEmpty { "simulation-only-secret-do-not-use-in-production" },
                 publicUrl = env["PUBLIC_URL"] ?: "http://localhost:4000",
                 ownerEmail = env["OWNER_EMAIL"]?.lowercase()?.takeIf { it.isNotBlank() },
-                protocols = (env["PROTOCOLS"] ?: "wireguard").split(',').map { it.trim() }.filter { it.isNotEmpty() },
+                protocols = (env["PROTOCOLS"] ?: "amneziawg,wireguard").split(',').map { it.trim() }.filter { it.isNotEmpty() },
                 exposeOtp = mode != Mode.PRODUCTION && env["EXPOSE_OTP"] != "0",
                 plans = Plans(
                     freeMonthlyBytes = num("FREE_MONTHLY_GB", 10) * 1_000_000_000,

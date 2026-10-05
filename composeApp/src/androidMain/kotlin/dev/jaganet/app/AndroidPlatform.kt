@@ -62,14 +62,25 @@ class KeystoreStore(context: Context) : SecureStore {
     }
 }
 
-class AndroidPlatform private constructor(private val context: Context, override val apiUrl: String) : AppPlatform {
+/** Builds the protocol backends this APK contains; `onState` reports tunnel up/down to the engine. */
+typealias BackendFactory = (context: Context, store: SecureStore, onState: (Boolean) -> Unit) -> List<AndroidTunnelBackend>
+
+class AndroidPlatform private constructor(
+    private val context: Context,
+    override val apiUrl: String,
+    backends: BackendFactory,
+) : AppPlatform {
     /** Set by the visible activity: shows the VPN consent dialog, returns whether it was granted. */
     var vpnConsent: (suspend () -> Boolean)? = null
 
     override val kind = Platform.ANDROID
     override val deviceName: String = Build.MODEL ?: "Android"
     override val store: SecureStore = KeystoreStore(context)
-    override val tunnel: TunnelEngine = AndroidTunnelEngine(context, store) { vpnConsent?.invoke() ?: false }
+    override val tunnel: TunnelEngine = run {
+        lateinit var engine: AndroidTunnelEngine
+        engine = AndroidTunnelEngine(context, backends(context, store) { up -> engine.onBackendState(up) }) { vpnConsent?.invoke() ?: false }
+        engine
+    }
 
     override fun httpClient() = HttpClient(OkHttp)
 
@@ -89,8 +100,8 @@ class AndroidPlatform private constructor(private val context: Context, override
     companion object {
         @Volatile private var instance: AndroidPlatform? = null
         /** One per process, so the tunnel outlives activity recreation. */
-        fun get(context: Context, apiUrl: String) = instance ?: synchronized(this) {
-            instance ?: AndroidPlatform(context.applicationContext, apiUrl).also { instance = it }
+        fun get(context: Context, apiUrl: String, backends: BackendFactory) = instance ?: synchronized(this) {
+            instance ?: AndroidPlatform(context.applicationContext, apiUrl, backends).also { instance = it }
         }
     }
 }
