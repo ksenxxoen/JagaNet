@@ -31,6 +31,8 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
+# Never stop silently: say where it failed.
+trap 'printf "\033[1;31m✗\033[0m Stopped unexpectedly at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 
 # ---------- Java ----------
 check_java() {
@@ -82,32 +84,46 @@ EOF
 }
 
 # ---------- Android ----------
+# Git Bash on Windows: tools print CRLF, and Gradle wants C:/… paths, bash wants /c/….
+crlf() { tr -d '\r'; }
+to_unix() { if command -v cygpath >/dev/null 2>&1; then cygpath -u "$1"; else printf '%s\n' "$1"; fi; }
+to_native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s\n' "$1"; fi; }
+
 find_sdk() {
-  for d in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "$HOME/Library/Android/sdk" "$HOME/Android/Sdk"; do
-    [ -n "$d" ] && [ -d "$d/platform-tools" ] && { echo "$d"; return; }
+  local d from_props=""
+  [ -f local.properties ] && from_props="$(sed -n 's/^sdk.dir=//p' local.properties | head -1 | crlf | sed 's/\\:/:/g; s/\\\\/\//g')"
+  for d in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "$from_props" \
+           "${LOCALAPPDATA:+$LOCALAPPDATA/Android/Sdk}" "$HOME/AppData/Local/Android/Sdk" \
+           "$HOME/Library/Android/sdk" "$HOME/Android/Sdk"; do
+    [ -n "$d" ] || continue
+    d="$(to_unix "$d")"
+    if [ -d "$d/platform-tools" ]; then echo "$d"; return 0; fi
   done
-  [ -f local.properties ] && sed -n 's/^sdk.dir=//p' local.properties | head -1
+  return 0
 }
 
+devices() { "$adb" devices | crlf | awk 'NR>1 && $2=="device" {print $1; exit}'; }
+
 run_android() {
-  local sdk adb emulator serial avd
+  local sdk emulator serial avd
   sdk="$(find_sdk)"
-  [ -n "$sdk" ] && [ -d "$sdk" ] || die "Android SDK not found. Install Android Studio (https://developer.android.com/studio), open it once so it installs the SDK, then run this again."
-  [ -f local.properties ] || echo "sdk.dir=$sdk" > local.properties
+  [ -n "$sdk" ] || die "Android SDK not found. Install Android Studio (https://developer.android.com/studio) and open it once so it installs the SDK. If it's in an unusual place, set ANDROID_HOME to that folder."
+  say "Android SDK: $sdk"
+  grep -q '^sdk.dir=' local.properties 2>/dev/null || echo "sdk.dir=$(to_native "$sdk")" >> local.properties
   adb="$sdk/platform-tools/adb"
   emulator="$sdk/emulator/emulator"
 
-  serial="$("$adb" devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
+  serial="$(devices)"
   if [ -z "$serial" ]; then
-    [ -x "$emulator" ] || die "No phone connected and no emulator installed. In Android Studio: Device Manager › Create device."
-    avd="$("$emulator" -list-avds 2>/dev/null | head -1)"
+    [ -e "$emulator" ] || [ -e "$emulator.exe" ] || die "No phone connected and no emulator installed. In Android Studio: Device Manager › Create device."
+    avd="$("$emulator" -list-avds 2>/dev/null | crlf | grep -v '^INFO' | head -1)"
     [ -n "$avd" ] || die "No emulator created yet. In Android Studio: Device Manager › Create device, then run this again."
-    say "Starting emulator \"$avd\"…"
+    say "Starting emulator \"$avd\" (first boot can take a minute or two)…"
     "$emulator" -avd "$avd" -no-snapshot-save >"$LOGS/emulator.log" 2>&1 &
     EMULATOR_PID=$!
     "$adb" wait-for-device
-    until [ "$("$adb" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; do sleep 2; done
-    serial="$("$adb" devices | awk 'NR>1 && $2=="device" {print $1; exit}')"
+    until [ "$("$adb" shell getprop sys.boot_completed 2>/dev/null | crlf)" = "1" ]; do sleep 2; done
+    serial="$(devices)"
   fi
   export ANDROID_SERIAL="$serial"
   say "Using device $serial"
