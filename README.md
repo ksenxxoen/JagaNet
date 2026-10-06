@@ -13,7 +13,12 @@ A VPN app for iPhone and Android with one shared backend, written in Kotlin end 
 Default protocol: **AmneziaWG** (WireGuard with DPI obfuscation). Protocols are plug-ins, see
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#protocols).
 
-## Try it: one command
+## Try it
+
+**Windows, no experience needed:** double-click **`Start JagaNet.bat`**. It installs everything it needs
+and shows a menu. See [HOW-TO-TRY.md](HOW-TO-TRY.md).
+
+### From a terminal
 
 You need **Java 17+** ([Temurin 21](https://adoptium.net) recommended). For Android, also
 [Android Studio](https://developer.android.com/studio) with one emulator created in Device Manager
