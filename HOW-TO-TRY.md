@@ -10,7 +10,7 @@ You don't need to install anything yourself.
 
 | Key | What it does |
 |---|---|
-| **1** | Opens the app on a virtual Android phone on your screen |
+| **1** | Opens the app on Android: your own phone connected by USB, or else a virtual phone on your screen |
 | **2** | Opens the app in a phone-sized window on your PC (quickest, always works) |
 | **3** | Runs the automatic tests and shows which passed |
 | **4** | Takes a screenshot of every screen and opens the folder |
@@ -21,6 +21,16 @@ You don't need to install anything yourself.
 **The first time takes a while.** Option 1 downloads about 3 GB once (Java, the Android tools
 and the virtual phone): 10–30 minutes depending on your internet. Everything goes into
 `%LOCALAPPDATA%\JagaNet` (or `C:\JagaNetTools`), not into Windows. Later starts take about a minute.
+
+## Using your own Android phone
+
+No virtualization needed, and the first setup is much smaller.
+
+1. On the phone: **Settings › About phone**, tap **Build number** 7 times.
+2. **Settings › System › Developer options**, turn on **USB debugging**.
+3. Connect the phone with a USB cable and tap **Allow** when the phone asks.
+4. Choose **1** in the menu. If your phone isn't found, it may need its maker's USB driver
+   (Samsung, Xiaomi, … on their websites).
 
 ## In the app
 

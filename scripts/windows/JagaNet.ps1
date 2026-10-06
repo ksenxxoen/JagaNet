@@ -306,7 +306,13 @@ function Start-Phone {
                 Warn "The virtual phone couldn't use your PC's virtualization:"
                 Note $tail
                 Diagnose-Virtualization
-                Fail "The virtual phone can't start until the problem above is fixed. Option 2 (desktop window) works meanwhile."
+                Write-Host ""
+                Write-Host "  No virtualization needed: use your own Android phone instead." -ForegroundColor White
+                Note "1. On the phone: Settings > About phone > tap 'Build number' 7 times (unlocks Developer options)."
+                Note "2. Settings > System > Developer options > turn on 'USB debugging'."
+                Note "3. Connect the phone to this PC with a USB cable and tap 'Allow' on the phone."
+                Note "4. Choose 1 again: JagaNet is installed and opened on your phone."
+                Fail "The virtual phone can't start until the problem above is fixed. Your own phone (above) or option 2 (desktop window) work meanwhile."
             }
             Fail "The virtual phone closed while starting:`n    $tail`n    Full log: $log"
         }
@@ -376,7 +382,7 @@ function Run-Android {
     Ensure-AndroidSdk
     Ensure-Avd
     Start-Backend
-    Title "Opening JagaNet on the virtual phone"
+    Title "Opening JagaNet on Android"
     $serial = Start-Phone
     if (-not $serial) { return }
     $env:ANDROID_SERIAL = $serial
@@ -384,7 +390,7 @@ function Run-Android {
     Step "Building and installing the app (first time: several minutes)"
     Gradle ":androidApp:installDebug" "-Pjaganet.apiUrl=$Api"
     Adb shell am start -n dev.jaganet.app/dev.jaganet.android.MainActivity | Out-Null
-    Step "JagaNet is open on the virtual phone."
+    Step "JagaNet is open on the phone."
     Show-Accounts
     Note "Tip: click into the phone and type with your keyboard."
 }
@@ -465,7 +471,7 @@ try {
         Write-Host "   -------"
         if (Server-Up) { Write-Host "   Backend: running ($Api)" -ForegroundColor Green } else { Write-Host "   Backend: off for now - it switches on by itself when you choose 1, 2 or 4" -ForegroundColor Gray }
         Write-Host ""
-        Write-Host "   1  Open the app on a virtual Android phone"
+        Write-Host "   1  Open the app on Android (your phone by USB, or a virtual phone)"
         Write-Host "   2  Open the app in a desktop window (quickest)"
         Write-Host "   3  Run the automatic tests and show the results"
         Write-Host "   4  Take screenshots of every screen"
