@@ -15,6 +15,9 @@ Default protocol: **AmneziaWG** (WireGuard with DPI obfuscation). Protocols are 
 
 ## Try it
 
+**Easiest: open the [web demo](https://claude.ai/artifact/9L3VXx1V1sadFsLJfA9Qxa)** in any current browser. It is the real app
+with a built-in demo backend; nothing to install. See [docs/WEB-DEMO.md](docs/WEB-DEMO.md).
+
 **Windows, no experience needed:** double-click **`Start JagaNet.bat`**. It installs everything it needs
 and shows a menu. See [HOW-TO-TRY.md](HOW-TO-TRY.md).
 

@@ -106,7 +106,8 @@ fun SignInScreen(s: AppState) {
 
 @Composable
 fun VerifyScreen(s: AppState, r: Route.Verify) {
-    var code by remember { mutableStateOf("") }
+    // Simulation and demo: the server returns the code, so fill it in.
+    var code by remember { mutableStateOf(r.devCode ?: "") }
     val a = rememberAction()
     val scope = rememberCoroutineScope()
     val submit = {

@@ -19,6 +19,13 @@ kotlin {
     }
     // Desktop target = the app simulator: same UI and logic, simulated tunnel.
     jvm("desktop")
+    // Web target = the online demo: same UI, built-in demo backend (DemoBackend.kt).
+    @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
+    wasmJs {
+        outputModuleName.set("jaganet")
+        browser { commonWebpackConfig { outputFileName = "jaganet.js" } }
+        binaries.executable()
+    }
     listOf(iosArm64(), iosSimulatorArm64()).forEach {
         it.binaries.framework {
             baseName = "ComposeApp"
@@ -33,6 +40,8 @@ kotlin {
             implementation(libs.compose.foundation)
             implementation(libs.compose.ui)
             implementation(libs.compose.resources)
+            // Demo backend: answers API calls inside the app (web demo, offline previews).
+            implementation(libs.ktor.client.mock)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

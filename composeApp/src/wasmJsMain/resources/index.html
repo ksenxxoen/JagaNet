@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JagaNet</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #E4E2DC; overflow: hidden; }
+    #app { position: fixed; inset: 0; }
+    #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      font: 16px system-ui, sans-serif; color: #5C605F; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="loading">Loading JagaNet…</div>
+  <!-- With the webpack bundle (wasmJsBrowserDistribution) jaganet.js is self-contained.
+       For a plain static copy of the compiled .mjs files see docs/WEB-DEMO.md. -->
+  <script src="jaganet.js"></script>
+</body>
+</html>
