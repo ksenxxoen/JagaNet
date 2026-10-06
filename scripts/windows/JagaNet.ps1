@@ -150,18 +150,38 @@ function Ensure-Avd {
     Set-Content -Path $cfg -Value $lines -Encoding ASCII
 }
 
+# 1 = on, 2 = off, $null = unknown. Readable without admin rights.
+function Feature-State($name) {
+    try { return (Get-CimInstance Win32_OptionalFeature -Filter "Name='$name'" -ErrorAction Stop).InstallState } catch { return $null }
+}
+
 function Check-Acceleration {
     $emu = Join-Path $Sdk "emulator\emulator.exe"
     $out = Native $emu -accel-check | Out-String
-    if ($LASTEXITCODE -eq 0) { return $true }
-    Warn "Your PC's virtualization support is switched off, so the virtual phone cannot start."
-    Note ($out.Trim() -split "`n" | Select-Object -Last 2)
-    Note "Fix: turn on the Windows feature 'Windows Hypervisor Platform', then restart the PC."
-    Note "(If it still fails after that, 'Virtualization' / 'SVM' / 'VT-x' must also be enabled in the BIOS.)"
-    $answer = Read-Host "Turn it on now? Windows will ask for permission. [y/n]"
+    if ($LASTEXITCODE -eq 0 -or $out -match 'WHPX[^\r\n]*usable') { return $true }
+
+    # The emulator's own check also complains about its optional AEHD driver, even when
+    # Windows Hypervisor Platform (WHPX), which it can use instead, is on. Ask Windows.
+    $whpx = Feature-State "HypervisorPlatform"
+    if ($whpx -eq 1) {
+        Note "Windows Hypervisor Platform is on - starting the phone."
+        return $true
+    }
+    if ($null -eq $whpx) {
+        Note "Couldn't read the virtualization settings - trying to start the phone anyway."
+        return $true
+    }
+
+    Warn "The Windows feature 'Windows Hypervisor Platform' is off. The virtual phone needs it."
+    Note "(It is a separate checkbox from 'Hyper-V' in 'Turn Windows features on or off'.)"
+    $answer = Read-Host "Turn it on now? Windows will ask for permission, then you restart the PC once. [y/n]"
     if ($answer -match '^[yY]') {
         Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile -Command "Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All -NoRestart"'
-        Warn "Done. Restart your PC, then double-click 'Start JagaNet.bat' again."
+        if ((Feature-State "HypervisorPlatform") -eq 1) {
+            Warn "Turned on. Restart your PC, then double-click 'Start JagaNet.bat' again."
+        } else {
+            Warn "It didn't turn on. Tick 'Windows Hypervisor Platform' yourself in 'Turn Windows features on or off', then restart."
+        }
     } else {
         Note "Meanwhile you can use option 2 (desktop window): it shows the same app."
     }
@@ -196,18 +216,28 @@ function Start-Phone {
     if ($serial) { Step "Using the phone that's already running ($serial)"; return $serial }
     if (-not (Check-Acceleration)) { return $null }
     Step "Starting the virtual phone (first start takes 1-3 minutes)"
-    Start-Process -FilePath (Join-Path $Sdk "emulator\emulator.exe") -ArgumentList "-avd", $Avd -WindowStyle Normal | Out-Null
-    Adb wait-for-device | Out-Null
+    $log = Join-Path $Logs "emulator.log"
+    $p = Start-Process -FilePath (Join-Path $Sdk "emulator\emulator.exe") -ArgumentList "-avd", $Avd `
+        -RedirectStandardOutput $log -RedirectStandardError (Join-Path $Logs "emulator-errors.log") -PassThru
     $deadline = (Get-Date).AddMinutes(8)
     while ((Get-Date) -lt $deadline) {
-        $booted = (Adb shell getprop sys.boot_completed | Out-String).Trim()
-        if ($booted -eq "1") { break }
+        if ($p.HasExited) {
+            $tail = (Get-Content $log, (Join-Path $Logs "emulator-errors.log") -ErrorAction SilentlyContinue |
+                Where-Object { $_ -match 'ERROR|FATAL|error|fail' } | Select-Object -Last 6) -join "`n    "
+            if ($tail -match 'WHPX|HAXM|AEHD|accel|hypervisor|virtuali') {
+                Fail ("The virtual phone needs hardware virtualization, which is not available:`n    $tail`n" +
+                    "    Check: 'Windows Hypervisor Platform' is ticked in 'Turn Windows features on or off', the PC was restarted," +
+                    " and 'Virtualization' (Intel VT-x / AMD SVM) is enabled in the BIOS. Option 2 works without it.")
+            }
+            Fail "The virtual phone closed while starting:`n    $tail`n    Full log: $log"
+        }
+        if ((Device-Serial) -and ((Adb shell getprop sys.boot_completed | Out-String).Trim() -eq "1")) { break }
         Write-Host "." -NoNewline
         Start-Sleep 3
     }
     Write-Host ""
     $serial = Device-Serial
-    if (-not $serial) { Fail "The virtual phone did not finish starting. Close its window and try again." }
+    if (-not $serial) { Fail "The virtual phone did not finish starting within 8 minutes. Close its window and try again. Log: $log" }
     return $serial
 }
 
