@@ -245,24 +245,46 @@ function Diagnose-Virtualization {
     }
     # Feature on but hypervisor not running: usually the boot setting hypervisorlaunchtype=off
     # (set by some older VirtualBox versions, BlueStacks, some games' anti-cheat tools).
+    # Feature on and BIOS on, but the hypervisor didn't start. The boot setting decides whether
+    # Windows starts it; some apps (older VirtualBox, BlueStacks, anti-cheat tools) set it to Off
+    # or remove it. Reading it needs administrator rights.
     $boot = Native bcdedit /enum "{current}" | Out-String
-    if ($boot -match 'hypervisorlaunchtype\s+Off') {
-        Warn "Windows is set to start WITHOUT its hypervisor (boot setting 'hypervisorlaunchtype' is Off)."
-        Note "Some apps (older VirtualBox, BlueStacks, some anti-cheat tools) switch it off."
-    } else {
-        Warn "Windows' hypervisor is not running, although the feature is on and the boot setting allows it."
-        Note "That almost always means virtualization is switched off in the BIOS. To check without the BIOS:"
-        Note "open Task Manager (Ctrl+Shift+Esc) > Performance > CPU and look at 'Virtualization' at the bottom right."
-        Note "If it says Disabled: restart, press the BIOS key at the logo (usually F2 or Del), enable"
-        Note "$bios (often under Advanced > CPU Configuration), save with F10, then try again."
+    $launch = if ($boot -match 'hypervisorlaunchtype\s+(\w+)') { $Matches[1] } elseif ($boot -match 'identifier') { "missing" } else { "unknown" }
+
+    if ($launch -ne "Auto") {
+        if ($launch -eq "Off") { Warn "Windows is set to start WITHOUT its hypervisor (boot setting 'hypervisorlaunchtype' is Off)." }
+        elseif ($launch -eq "missing") { Warn "The boot setting that starts Windows' hypervisor is missing (some apps remove it)." }
+        else { Warn "Couldn't read the boot setting (start JagaNet as administrator to see it)." }
+        $answer = Read-Host "Set Windows to start its hypervisor (needs permission, then one restart)? [y/n]"
+        if ($answer -match '^[yY1]') {
+            Start-Process cmd.exe -Verb RunAs -Wait -ArgumentList '/c bcdedit /set hypervisorlaunchtype auto'
+            Warn "Done. Now RESTART the PC (use Restart, not Shut down), then start JagaNet again and choose 1."
+            Note "If an app stops working after that (e.g. an old VirtualBox or BlueStacks), undo it with: bcdedit /set hypervisorlaunchtype off"
+        }
         return
     }
-    $answer = Read-Host "Set Windows to start its hypervisor (needs permission, then one restart)? [y/n]"
-    if ($answer -match '^[yY1]') {
-        Start-Process cmd.exe -Verb RunAs -Wait -ArgumentList '/c bcdedit /set hypervisorlaunchtype auto'
-        Warn "Done. Restart your PC, then start JagaNet again and choose 1."
-        Note "If an app stops working after that (e.g. an old VirtualBox or BlueStacks), you can undo it with: bcdedit /set hypervisorlaunchtype off"
+
+    # Set to start, yet not running: Windows logs why the hypervisor failed to launch.
+    Warn "Windows is set to start its hypervisor, but it didn't start during the last boot."
+    $events = @()
+    try {
+        $events = @(Get-WinEvent -FilterHashtable @{ LogName = "System"; ProviderName = "Microsoft-Windows-Hyper-V-Hypervisor" } -MaxEvents 6 -ErrorAction Stop |
+            Where-Object { $_.Level -le 3 })
+    } catch { }
+    if ($events.Count -gt 0) {
+        Note "Windows' own explanation (latest first):"
+        foreach ($e in ($events | Select-Object -First 3)) {
+            Note ("  [{0:dd.MM HH:mm}] {1}" -f $e.TimeCreated, (($e.Message -split "`r?`n")[0]))
+        }
+    } else {
+        Note "Windows logged no hypervisor error."
     }
+    Note "Things that fix this most often:"
+    Note "  1. Restart with 'Restart' (not 'Shut down' + power on: with Fast Startup that skips the change)."
+    Note "  2. Uninstall or update apps with their own hypervisor: old VirtualBox (< 6), BlueStacks, LDPlayer, Nox, VMware (< 15.5)."
+    Note "  3. In the BIOS, also enable 'IOMMU' / 'SVM' if present, then restart."
+    Note "Send a screenshot of this window if it still doesn't work - the lines above say what Windows reports."
+
 }
 
 function Start-Phone {
