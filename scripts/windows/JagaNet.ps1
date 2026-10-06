@@ -342,7 +342,7 @@ try {
         Write-Host ""
         Write-Host "   JagaNet" -ForegroundColor Cyan
         Write-Host "   -------"
-        if (Server-Up) { Write-Host "   Backend: running at $Api" -ForegroundColor Green } else { Write-Host "   Backend: not running (starts automatically)" -ForegroundColor Gray }
+        if (Server-Up) { Write-Host "   Backend: running ($Api)" -ForegroundColor Green } else { Write-Host "   Backend: off for now - it switches on by itself when you choose 1, 2 or 4" -ForegroundColor Gray }
         Write-Host ""
         Write-Host "   1  Open the app on a virtual Android phone"
         Write-Host "   2  Open the app in a desktop window (quickest)"
