@@ -220,6 +220,10 @@ function Diagnose-Virtualization {
     Note ("Processor:                    {0}" -f $cpu.Name)
     Note ("Windows hypervisor running:   {0}" -f $(if ($running) { "yes" } else { "no" }))
     Note ("Windows Hypervisor Platform:  {0}" -f $(if ((Feature-State "HypervisorPlatform") -eq 1) { "on" } else { "off" }))
+    $fw = if ($null -eq $cpu.VirtualizationFirmwareEnabled) { "unknown" } elseif ($cpu.VirtualizationFirmwareEnabled) { "on" } else { "OFF" }
+    Note ("Virtualization in BIOS:       {0}" -f $fw)
+    $launch = ((Native bcdedit /enum "{current}" | Out-String) -split "`n" | Where-Object { $_ -match 'hypervisorlaunchtype' } | Select-Object -First 1)
+    Note ("Boot setting:                 {0}" -f $(if ($launch) { $launch.Trim() } else { "hypervisorlaunchtype not set" }))
 
     if ($cs.Model -match 'Virtual|VMware|VirtualBox|KVM|QEMU|Parallels') {
         Warn "Windows itself runs inside a virtual machine ($($cs.Model))."
@@ -231,10 +235,12 @@ function Diagnose-Virtualization {
         Note "Please send a screenshot of this window, and the file build\run\emulator.log."
         return
     }
+    $bios = if ($cpu.Name -match 'AMD') { "'SVM Mode' (sometimes 'AMD-V' or 'Virtualization')" } else { "'Intel Virtualization Technology' (VT-x)" }
     if ($cpu -and $cpu.VirtualizationFirmwareEnabled -eq $false) {
-        Warn "Virtualization is switched off in the BIOS/UEFI of your PC."
-        Note "Restart, open the BIOS setup (usually F2, F10, F12 or Del during start-up) and enable"
-        Note "'Intel Virtualization Technology (VT-x)' or 'SVM Mode' (AMD). Save, restart, try again."
+        Warn "Virtualization is switched off in your PC's BIOS. Windows can't turn it on; you do it once in the BIOS:"
+        Note "1. Restart and press the BIOS key while the logo shows (usually F2 or Del; some laptops F10, F12 or Esc)."
+        Note "2. Find $bios - often under Advanced > CPU Configuration - and set it to Enabled."
+        Note "3. Save and exit (usually F10). Then start JagaNet again and choose 1."
         return
     }
     # Feature on but hypervisor not running: usually the boot setting hypervisorlaunchtype=off
@@ -244,10 +250,15 @@ function Diagnose-Virtualization {
         Warn "Windows is set to start WITHOUT its hypervisor (boot setting 'hypervisorlaunchtype' is Off)."
         Note "Some apps (older VirtualBox, BlueStacks, some anti-cheat tools) switch it off."
     } else {
-        Warn "Windows' hypervisor is not running, although the feature is on."
+        Warn "Windows' hypervisor is not running, although the feature is on and the boot setting allows it."
+        Note "That almost always means virtualization is switched off in the BIOS. To check without the BIOS:"
+        Note "open Task Manager (Ctrl+Shift+Esc) > Performance > CPU and look at 'Virtualization' at the bottom right."
+        Note "If it says Disabled: restart, press the BIOS key at the logo (usually F2 or Del), enable"
+        Note "$bios (often under Advanced > CPU Configuration), save with F10, then try again."
+        return
     }
     $answer = Read-Host "Set Windows to start its hypervisor (needs permission, then one restart)? [y/n]"
-    if ($answer -match '^[yY]') {
+    if ($answer -match '^[yY1]') {
         Start-Process cmd.exe -Verb RunAs -Wait -ArgumentList '/c bcdedit /set hypervisorlaunchtype auto'
         Warn "Done. Restart your PC, then start JagaNet again and choose 1."
         Note "If an app stops working after that (e.g. an old VirtualBox or BlueStacks), you can undo it with: bcdedit /set hypervisorlaunchtype off"
