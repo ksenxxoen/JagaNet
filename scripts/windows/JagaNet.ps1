@@ -138,7 +138,7 @@ function Ensure-AndroidSdk {
 }
 
 function Ensure-Avd {
-    $existing = & (Join-Path $Sdk "emulator\emulator.exe") -list-avds 2>$null
+    $existing = Native (Join-Path $Sdk "emulator\emulator.exe") -list-avds
     if ($existing -contains $Avd) { return }
     Step "Creating the virtual phone `"$Avd`""
     "no" | & (SdkTool "avdmanager") create avd -n $Avd -k $SysImage -d pixel_6 --force | Out-Null
@@ -152,7 +152,7 @@ function Ensure-Avd {
 
 function Check-Acceleration {
     $emu = Join-Path $Sdk "emulator\emulator.exe"
-    $out = & $emu -accel-check 2>&1 | Out-String
+    $out = Native $emu -accel-check | Out-String
     if ($LASTEXITCODE -eq 0) { return $true }
     Warn "Your PC's virtualization support is switched off, so the virtual phone cannot start."
     Note ($out.Trim() -split "`n" | Select-Object -Last 2)
@@ -168,10 +168,22 @@ function Check-Acceleration {
     return $false
 }
 
-function Adb { & (Join-Path $Sdk "platform-tools\adb.exe") @args }
+# Runs a command-line tool and returns everything it prints as plain text.
+# Windows PowerShell 5.1 turns anything a tool prints to stderr (adb's harmless
+# "* daemon not running; starting now", for example) into an error; with
+# ErrorActionPreference=Stop that would abort the script. Inside this function
+# errors only continue, and success is judged by $LASTEXITCODE or the output.
+function Native {
+    $ErrorActionPreference = "Continue"
+    $exe = $args[0]
+    $rest = @($args | Select-Object -Skip 1)
+    & $exe @rest 2>&1 | ForEach-Object { "$_" }
+}
+
+function Adb { Native (Join-Path $Sdk "platform-tools\adb.exe") @args }
 
 function Device-Serial {
-    $lines = Adb devices 2>$null | Select-Object -Skip 1
+    $lines = Adb devices
     foreach ($l in $lines) {
         $parts = ("$l".Trim()) -split "\s+"
         if ($parts.Count -ge 2 -and $parts[1] -eq "device") { return $parts[0] }
@@ -188,7 +200,7 @@ function Start-Phone {
     Adb wait-for-device | Out-Null
     $deadline = (Get-Date).AddMinutes(8)
     while ((Get-Date) -lt $deadline) {
-        $booted = (Adb shell getprop sys.boot_completed 2>$null | Out-String).Trim()
+        $booted = (Adb shell getprop sys.boot_completed | Out-String).Trim()
         if ($booted -eq "1") { break }
         Write-Host "." -NoNewline
         Start-Sleep 3
@@ -326,10 +338,10 @@ function Stop-All {
     Title "Stopping everything"
     Stop-Backend
     if (Test-Path (Join-Path $Sdk "platform-tools\adb.exe")) {
-        Adb emu kill 2>$null | Out-Null
-        Adb kill-server 2>$null | Out-Null
+        Adb emu kill | Out-Null
+        Adb kill-server | Out-Null
     }
-    & (Join-Path $Root "gradlew.bat") --stop -q 2>$null | Out-Null
+    Native (Join-Path $Root "gradlew.bat") --stop -q | Out-Null
     Step "Backend, virtual phone and build tools stopped."
 }
 
