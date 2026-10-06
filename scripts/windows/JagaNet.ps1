@@ -211,13 +211,58 @@ function Device-Serial {
     return $null
 }
 
+# Works out why hardware virtualization isn't usable and, where possible, fixes it.
+function Diagnose-Virtualization {
+    Title "Checking your PC's virtualization"
+    $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
+    $cpu = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+    $running = [bool]$cs.HypervisorPresent
+    Note ("Processor:                    {0}" -f $cpu.Name)
+    Note ("Windows hypervisor running:   {0}" -f $(if ($running) { "yes" } else { "no" }))
+    Note ("Windows Hypervisor Platform:  {0}" -f $(if ((Feature-State "HypervisorPlatform") -eq 1) { "on" } else { "off" }))
+
+    if ($cs.Model -match 'Virtual|VMware|VirtualBox|KVM|QEMU|Parallels') {
+        Warn "Windows itself runs inside a virtual machine ($($cs.Model))."
+        Note "The virtual phone then needs 'nested virtualization' switched on in that VM's host. Option 2 works without it."
+        return
+    }
+    if ($running) {
+        Warn "The hypervisor is running and the feature is on, so this is unusual."
+        Note "Please send a screenshot of this window, and the file build\run\emulator.log."
+        return
+    }
+    if ($cpu -and $cpu.VirtualizationFirmwareEnabled -eq $false) {
+        Warn "Virtualization is switched off in the BIOS/UEFI of your PC."
+        Note "Restart, open the BIOS setup (usually F2, F10, F12 or Del during start-up) and enable"
+        Note "'Intel Virtualization Technology (VT-x)' or 'SVM Mode' (AMD). Save, restart, try again."
+        return
+    }
+    # Feature on but hypervisor not running: usually the boot setting hypervisorlaunchtype=off
+    # (set by some older VirtualBox versions, BlueStacks, some games' anti-cheat tools).
+    $boot = Native bcdedit /enum "{current}" | Out-String
+    if ($boot -match 'hypervisorlaunchtype\s+Off') {
+        Warn "Windows is set to start WITHOUT its hypervisor (boot setting 'hypervisorlaunchtype' is Off)."
+        Note "Some apps (older VirtualBox, BlueStacks, some anti-cheat tools) switch it off."
+    } else {
+        Warn "Windows' hypervisor is not running, although the feature is on."
+    }
+    $answer = Read-Host "Set Windows to start its hypervisor (needs permission, then one restart)? [y/n]"
+    if ($answer -match '^[yY]') {
+        Start-Process cmd.exe -Verb RunAs -Wait -ArgumentList '/c bcdedit /set hypervisorlaunchtype auto'
+        Warn "Done. Restart your PC, then start JagaNet again and choose 1."
+        Note "If an app stops working after that (e.g. an old VirtualBox or BlueStacks), you can undo it with: bcdedit /set hypervisorlaunchtype off"
+    }
+}
+
 function Start-Phone {
     $serial = Device-Serial
     if ($serial) { Step "Using the phone that's already running ($serial)"; return $serial }
     if (-not (Check-Acceleration)) { return $null }
     Step "Starting the virtual phone (first start takes 1-3 minutes)"
     $log = Join-Path $Logs "emulator.log"
-    $p = Start-Process -FilePath (Join-Path $Sdk "emulator\emulator.exe") -ArgumentList "-avd", $Avd `
+    # Ask explicitly for Windows Hypervisor Platform: without the optional AEHD driver
+    # some emulator versions don't pick it on their own.
+    $p = Start-Process -FilePath (Join-Path $Sdk "emulator\emulator.exe") -ArgumentList "-avd", $Avd, "-feature", "WindowsHypervisorPlatform" `
         -RedirectStandardOutput $log -RedirectStandardError (Join-Path $Logs "emulator-errors.log") -PassThru
     $deadline = (Get-Date).AddMinutes(8)
     while ((Get-Date) -lt $deadline) {
@@ -225,9 +270,10 @@ function Start-Phone {
             $tail = (Get-Content $log, (Join-Path $Logs "emulator-errors.log") -ErrorAction SilentlyContinue |
                 Where-Object { $_ -match 'ERROR|FATAL|error|fail' } | Select-Object -Last 6) -join "`n    "
             if ($tail -match 'WHPX|HAXM|AEHD|accel|hypervisor|virtuali') {
-                Fail ("The virtual phone needs hardware virtualization, which is not available:`n    $tail`n" +
-                    "    Check: 'Windows Hypervisor Platform' is ticked in 'Turn Windows features on or off', the PC was restarted," +
-                    " and 'Virtualization' (Intel VT-x / AMD SVM) is enabled in the BIOS. Option 2 works without it.")
+                Warn "The virtual phone couldn't use your PC's virtualization:"
+                Note $tail
+                Diagnose-Virtualization
+                Fail "The virtual phone can't start until the problem above is fixed. Option 2 (desktop window) works meanwhile."
             }
             Fail "The virtual phone closed while starting:`n    $tail`n    Full log: $log"
         }
