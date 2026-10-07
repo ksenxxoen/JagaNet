@@ -57,9 +57,9 @@ note "Server: $PUBLIC_IP ($CITY, $COUNTRY)  ·  address: https://$DOMAIN  ·  ne
 # ------------------------------------------------------------------ packages
 step "Installing system packages (a few minutes)"
 apt-get update -q
-apt-get install -y -q ca-certificates curl git gnupg iptables python3 software-properties-common \
+apt-get install -y -q ca-certificates curl git gnupg iptables python3 software-properties-common sudo \
   postgresql openjdk-21-jdk-headless "linux-headers-$(uname -r)" >/dev/null || \
-apt-get install -y -q ca-certificates curl git gnupg iptables python3 software-properties-common \
+apt-get install -y -q ca-certificates curl git gnupg iptables python3 software-properties-common sudo \
   postgresql openjdk-21-jdk-headless >/dev/null
 
 # ------------------------------------------------------------------ VPN
@@ -172,13 +172,9 @@ if [ "$PROTOCOL" = amneziawg ] && systemctl is-enabled -q wg-quick@wg0 2>/dev/nu
   systemctl disable -q --now wg-quick@wg0 || true
 fi
 id jaganet >/dev/null 2>&1 || useradd --system --home "$APP_DIR" --shell /usr/sbin/nologin jaganet
-if [ "$PROTOCOL" = amneziawg ] && [ ! -e /sys/module/amneziawg ]; then
-  # Userspace AmneziaWG is controlled through a root-only socket; let the backend use it.
-  mkdir -p "/etc/systemd/system/awg-quick@$IFACE.service.d"
-  cat > "/etc/systemd/system/awg-quick@$IFACE.service.d/jaganet.conf" <<EOF
-[Service]
-ExecStartPost=/bin/sh -c 'chgrp jaganet /var/run/amneziawg/%i.sock && chmod 660 /var/run/amneziawg/%i.sock'
-EOF
+# Leftover from an earlier installer version (it broke the interface start).
+if [ -f "/etc/systemd/system/awg-quick@$IFACE.service.d/jaganet.conf" ]; then
+  rm -rf "/etc/systemd/system/awg-quick@$IFACE.service.d"
   systemctl daemon-reload
 fi
 systemctl enable -q "$TOOL-quick@$IFACE"
@@ -233,6 +229,15 @@ sed -i "s/^PROTOCOLS=.*/PROTOCOLS=$PROTOCOL/" "$ENV_FILE"
 step "Starting the backend"
 id jaganet >/dev/null 2>&1 || useradd --system --home "$APP_DIR" --shell /usr/sbin/nologin jaganet
 chgrp jaganet "$ENV_FILE" /etc/jaganet
+# The backend adds and removes VPN peers with $TOOL, which needs root: allow exactly that
+# (with a kernel module a capability would do, but userspace AmneziaWG uses a root-only socket).
+TOOL_PATH="$(command -v "$TOOL")"
+printf 'Defaults:jaganet !syslog\njaganet ALL=(root) NOPASSWD: %s\n' "$TOOL_PATH" > /etc/sudoers.d/jaganet.tmp
+chmod 440 /etc/sudoers.d/jaganet.tmp
+visudo -cqf /etc/sudoers.d/jaganet.tmp && mv /etc/sudoers.d/jaganet.tmp /etc/sudoers.d/jaganet
+mkdir -p "$APP_DIR/bin"
+printf '#!/bin/sh\nexec sudo -n %s "$@"\n' "$TOOL_PATH" > "$APP_DIR/bin/$TOOL"
+chmod 755 "$APP_DIR/bin/$TOOL"
 cat > /etc/systemd/system/jaganet.service <<EOF
 [Unit]
 Description=JagaNet backend
@@ -246,10 +251,8 @@ Environment=JAVA_OPTS=-Xmx512m
 ExecStart=$APP_DIR/server/bin/server
 Restart=on-failure
 RestartSec=3
-# Needed to add and remove VPN peers with $TOOL.
-AmbientCapabilities=CAP_NET_ADMIN
-CapabilityBoundingSet=CAP_NET_ADMIN
-NoNewPrivileges=true
+# $APP_DIR/bin/$TOOL runs the real $TOOL through sudo (allowed for that one command only).
+Environment=PATH=$APP_DIR/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 [Install]
 WantedBy=multi-user.target
