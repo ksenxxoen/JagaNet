@@ -38,6 +38,8 @@ trap 'fail "Stopped at line $LINENO: $BASH_COMMAND"' ERR
 . /etc/os-release
 [ "${ID:-}" = ubuntu ] || fail "This installer supports Ubuntu 22.04 / 24.04 (found: ${PRETTY_NAME:-unknown})."
 export DEBIAN_FRONTEND=noninteractive
+# Some hosting images leave the hostname out of /etc/hosts; sudo then warns on every call.
+getent hosts "$(hostname)" >/dev/null 2>&1 || echo "127.0.1.1 $(hostname)" >> /etc/hosts
 
 PUBLIC_IP="$(curl -4 -fsS https://api.ipify.org || curl -4 -fsS https://ifconfig.me || true)"
 [ -n "$PUBLIC_IP" ] || fail "Couldn't find this server's public IPv4 address."
