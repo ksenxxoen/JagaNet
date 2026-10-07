@@ -27,6 +27,9 @@ import dev.jaganet.server.services.Admin
 import dev.jaganet.server.services.AuthService
 import dev.jaganet.server.services.Billing
 import dev.jaganet.server.services.Entitlements
+import dev.jaganet.server.services.Keys
+import dev.jaganet.server.services.Payments
+import dev.jaganet.server.services.Site
 import dev.jaganet.server.services.Principal
 import dev.jaganet.server.services.Referrals
 import dev.jaganet.server.services.Stats
@@ -71,11 +74,18 @@ class Services(val ctx: Ctx) {
     val billing = Billing(ctx)
     val referrals = Referrals(ctx)
     val admin = Admin(ctx)
+    val keys = Keys(ctx, tunnels)
+    val payments = Payments(ctx, billing, keys)
+    val site = Site(ctx)
+    /** Set when TELEGRAM_BOT_TOKEN is configured and the bot started. */
+    @Volatile var bot: dev.jaganet.server.telegram.TelegramBot? = null
 }
 
 private val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
 private val SIX = Regex("^\\d{6}$")
 private val AUTH_LIMIT = RateLimitName("auth")
+
+suspend fun ApplicationCall.principal(s: Services): Principal = s.auth.authenticate(request.headers[HttpHeaders.Authorization])
 
 fun Application.jaganet(s: Services) {
     val ctx = s.ctx
@@ -104,12 +114,12 @@ fun Application.jaganet(s: Services) {
         }
     }
 
-    suspend fun ApplicationCall.principal(): Principal = s.auth.authenticate(request.headers[HttpHeaders.Authorization])
-    suspend fun ApplicationCall.owner(): Principal = principal().also { if (it.user.role != Role.OWNER) throw forbidden() }
+    suspend fun ApplicationCall.owner(): Principal = principal(s).also { if (it.user.role != Role.OWNER) throw forbidden() }
     fun email(e: String) = e.trim().lowercase().also { if (!EMAIL.matches(it) || it.length > 254) throw badRequest("Invalid email") }
     fun code(c: String) = c.also { if (!SIX.matches(it)) throw badRequest("Code must be 6 digits") }
 
     routing {
+        website(s)
         get("/health") {
             call.respond(buildJsonObject {
                 put("ok", true)
@@ -135,14 +145,14 @@ fun Application.jaganet(s: Services) {
                 }
             }
             post("/auth/logout") {
-                s.auth.logout(call.principal())
+                s.auth.logout(call.principal(s))
                 call.respond(OkRes())
             }
 
-            get("/me") { call.respond(s.ent.me(call.principal())) }
-            get("/me/payments") { call.respond(PaymentsRes(s.ent.payments(call.principal()))) }
+            get("/me") { call.respond(s.ent.me(call.principal(s))) }
+            get("/me/payments") { call.respond(PaymentsRes(s.ent.payments(call.principal(s)))) }
             delete("/me") {
-                val p = call.principal()
+                val p = call.principal(s)
                 ctx.db.tx { sql ->
                     sql.query("SELECT id FROM devices WHERE user_id=?::uuid", p.user.id).forEach { s.tunnels.revoke(sql, it.str("id")) }
                     sql.exec("DELETE FROM users WHERE id=?::uuid", p.user.id)
@@ -151,54 +161,55 @@ fun Application.jaganet(s: Services) {
             }
 
             get("/servers") {
-                call.principal()
+                call.principal(s)
                 call.respond(ServersRes(s.tunnels.servers()))
             }
             post("/tunnel") {
-                val p = call.principal()
+                val p = call.principal(s)
                 val b = call.receive<TunnelProvisionReq>()
                 if (!Protocols.ID.matches(b.protocol)) throw badRequest("Invalid protocol id")
                 call.respond(s.tunnels.provision(p, b))
             }
             post("/tunnel/events") {
-                val p = call.principal()
+                val p = call.principal(s)
                 s.tunnels.connectionEvent(p, call.receive<ConnectionEventReq>())
                 call.respond(OkRes())
             }
 
             get("/devices") {
-                val p = call.principal()
+                val p = call.principal(s)
                 call.respond(DevicesRes(s.tunnels.devices(p), s.ent.me(p).entitlement.deviceLimit))
             }
             patch("/devices/{id}") {
-                val p = call.principal()
+                val p = call.principal(s)
                 s.tunnels.rename(p, call.parameters["id"]!!, call.receive<RenameDeviceReq>().name)
                 call.respond(OkRes())
             }
             delete("/devices/{id}") {
-                s.tunnels.remove(call.principal(), call.parameters["id"]!!)
+                s.tunnels.remove(call.principal(s), call.parameters["id"]!!)
                 call.respond(OkRes())
             }
-            post("/devices/pairing-code") { call.respond(s.auth.createPairingCode(call.principal())) }
+            post("/devices/pairing-code") { call.respond(s.auth.createPairingCode(call.principal(s))) }
 
             get("/stats") {
-                val p = call.principal()
+                val p = call.principal(s)
                 val period = call.request.queryParameters["period"]?.let { q -> StatsPeriod.entries.firstOrNull { it.name.equals(q, true) } ?: throw badRequest("Invalid period") }
                 call.respond(s.stats.get(p, period ?: StatsPeriod.WEEK))
             }
 
             get("/billing/plans") { call.respond(s.billing.plans()) }
             post("/billing/dev/purchase") {
-                val p = call.principal()
+                val p = call.principal(s)
                 s.billing.devPurchase(p, call.receive<DevPurchaseReq>().productId)
                 call.respond(s.ent.me(p))
             }
-            post("/billing/apple/verify") { call.principal(); s.billing.notImplementedStore() }
-            post("/billing/google/verify") { call.principal(); s.billing.notImplementedStore() }
+            post("/billing/apple/verify") { call.principal(s); s.billing.notImplementedStore() }
+            post("/billing/google/verify") { call.principal(s); s.billing.notImplementedStore() }
             post("/billing/apple/notifications") { s.billing.notImplementedStore() }
             post("/billing/google/rtdn") { s.billing.notImplementedStore() }
 
-            get("/referrals") { call.respond(s.referrals.get(call.principal())) }
+            get("/referrals") { call.respond(s.referrals.get(call.principal(s))) }
+            salesApi(s)
             get("/admin/overview") {
                 call.owner()
                 call.respond(s.admin.overview())

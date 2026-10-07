@@ -25,6 +25,7 @@ dependencies {
     implementation(libs.flyway.core)
     implementation(libs.flyway.postgres)
     implementation(libs.logback)
+    implementation(libs.qrcodegen)
     // Real PostgreSQL binaries from Maven: used by `./gradlew :server:sim` and the tests.
     implementation(libs.embedded.postgres)
 

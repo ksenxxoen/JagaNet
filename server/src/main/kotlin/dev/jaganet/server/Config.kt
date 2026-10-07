@@ -26,6 +26,15 @@ data class Config(
     /** Simulation only: return sign-in codes in the API response. */
     val exposeOtp: Boolean,
     val plans: Plans,
+    /** Website / Telegram checkout: "test" (built-in fake checkout) or a real provider id; null = selling off. */
+    val paymentProvider: String? = null,
+    /** From @BotFather. Unset = no Telegram bot. */
+    val telegramBotToken: String? = null,
+    /** Where the website's "Download for Android" points. Default: $publicUrl/download/android. */
+    val androidAppUrl: String? = null,
+    val iosAppUrl: String? = null,
+    /** Files served at /download/… (jaganet.apk). */
+    val downloadsDir: String? = null,
 ) {
     companion object {
         fun load(env: Map<String, String> = System.getenv()): Config {
@@ -58,6 +67,11 @@ data class Config(
                     priceMonthlyMinor = env["PRICE_MONTHLY_MINOR"]?.takeIf { it.isNotBlank() }?.toLong(),
                     priceYearlyMinor = env["PRICE_YEARLY_MINOR"]?.takeIf { it.isNotBlank() }?.toLong(),
                 ),
+                paymentProvider = env["PAYMENT_PROVIDER"]?.takeIf { it.isNotBlank() } ?: "test".takeIf { mode != Mode.PRODUCTION },
+                telegramBotToken = env["TELEGRAM_BOT_TOKEN"]?.takeIf { it.isNotBlank() },
+                androidAppUrl = env["ANDROID_APP_URL"]?.takeIf { it.isNotBlank() },
+                iosAppUrl = env["IOS_APP_URL"]?.takeIf { it.isNotBlank() },
+                downloadsDir = env["DOWNLOADS_DIR"]?.takeIf { it.isNotBlank() },
             )
         }
     }

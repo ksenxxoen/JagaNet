@@ -90,6 +90,14 @@ class ApiClient(
     suspend fun googleVerify(req: GoogleVerifyReq): MeRes = post("billing/google/verify", req)
 
     // referrals & owner
+    // Website / Telegram sales and VPN keys for other apps
+    suspend fun site(): SiteInfo = get("site")
+    suspend fun keys(): KeysRes = get("keys")
+    suspend fun createKey(): AccessKey = post("keys", OkRes())
+    suspend fun deleteKey(id: String): OkRes = delete("keys/$id")
+    suspend fun createOrder(req: CreateOrderReq): OrderRes = post("orders", req)
+    suspend fun order(id: String): OrderRes = get("orders/$id")
+
     suspend fun referrals(): ReferralRes = get("referrals")
     suspend fun adminOverview(): AdminOverviewRes = get("admin/overview")
 }

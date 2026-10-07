@@ -22,7 +22,11 @@ enum class ProductId(val periodDays: Int) {
 }
 
 @Serializable
-enum class BillingSource { @SerialName("apple") APPLE, @SerialName("google") GOOGLE, @SerialName("referral") REFERRAL, @SerialName("dev") DEV }
+enum class BillingSource {
+    @SerialName("apple") APPLE, @SerialName("google") GOOGLE, @SerialName("referral") REFERRAL, @SerialName("dev") DEV,
+    /** Paid on the website or through the Telegram bot. */
+    @SerialName("web") WEB, @SerialName("telegram") TELEGRAM,
+}
 
 @Serializable
 data class DeviceInfo(val name: String, val platform: Platform)
@@ -266,3 +270,57 @@ data class ErrorRes(val error: ErrorBody)
 
 @Serializable
 data class OkRes(val ok: Boolean = true)
+
+/* ---------- VPN keys (website / Telegram purchases) ---------- */
+
+/**
+ * A server-generated VPN config for apps other than JagaNet (AmneziaVPN, AmneziaWG, WireGuard).
+ * The link URLs carry a secret token: whoever has one can use the key.
+ */
+@Serializable
+data class AccessKey(
+    val id: String,
+    val name: String,
+    val protocol: String,
+    val location: String,
+    /** Page with the QR code, download and setup steps. */
+    val pageUrl: String,
+    /** The .conf file. */
+    val configUrl: String,
+    /** QR code (PNG) of the .conf text. */
+    val qrUrl: String,
+    val createdAt: String,
+)
+
+@Serializable
+data class KeysRes(val keys: List<AccessKey>)
+
+/* ---------- orders (website / Telegram) ---------- */
+
+@Serializable
+enum class OrderStatus { @SerialName("pending") PENDING, @SerialName("paid") PAID, @SerialName("cancelled") CANCELLED }
+
+@Serializable
+data class CreateOrderReq(val productId: ProductId)
+
+@Serializable
+data class OrderRes(
+    val id: String,
+    val productId: ProductId,
+    val status: OrderStatus,
+    /** Formatted, e.g. "$4.99". */
+    val amount: String,
+    /** Where to send the buyer to pay; null once paid. */
+    val checkoutUrl: String?,
+)
+
+/** Public settings the website needs. */
+@Serializable
+data class SiteInfo(
+    val androidAppUrl: String?,
+    val iosAppUrl: String?,
+    val telegramBotUrl: String?,
+    /** Payments go through the built-in test checkout (no real money). */
+    val testPayments: Boolean,
+    val paymentsEnabled: Boolean,
+)

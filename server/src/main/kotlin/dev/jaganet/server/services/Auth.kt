@@ -96,14 +96,16 @@ class AuthService(private val ctx: Ctx) {
     suspend fun logout(p: Principal) = ctx.db.run { it.exec("UPDATE sessions SET revoked_at=? WHERE token_hash=?", ctx.now(), p.tokenHash) }
 
     /** "Add device": a signed-in device shows a code, the new device types it in. */
-    suspend fun createPairingCode(p: Principal): PairingCodeRes = ctx.db.run { sql ->
+    suspend fun createPairingCode(p: Principal): PairingCodeRes = createPairingCodeFor(p.user.id)
+
+    suspend fun createPairingCodeFor(userId: String): PairingCodeRes = ctx.db.run { sql ->
         val expires = ctx.now().plus(PAIRING_TTL)
-        sql.exec("DELETE FROM pairing_codes WHERE user_id=?::uuid OR expires_at < ?", p.user.id, ctx.now())
+        sql.exec("DELETE FROM pairing_codes WHERE user_id=?::uuid OR expires_at < ?", userId, ctx.now())
         repeat(5) {
             val code = Crypto.sixDigits()
             val ok = sql.query(
                 "INSERT INTO pairing_codes (code_hash, user_id, expires_at) VALUES (?,?::uuid,?) ON CONFLICT DO NOTHING RETURNING 1",
-                hash("pair:$code"), p.user.id, expires,
+                hash("pair:$code"), userId, expires,
             )
             if (ok.isNotEmpty()) return@run PairingCodeRes(code, expires.toString())
         }

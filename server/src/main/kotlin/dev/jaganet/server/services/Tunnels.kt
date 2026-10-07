@@ -45,7 +45,12 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
             .filter { it.protocols.isNotEmpty() }
     }
 
-    suspend fun provision(p: Principal, req: TunnelProvisionReq): TunnelConfig {
+    suspend fun provision(p: Principal, req: TunnelProvisionReq): TunnelConfig = provisionFor(p.user.id, p.deviceId, req)
+
+    /** Protocol for server-made keys: the most preferred one any active node offers. */
+    suspend fun defaultProtocol(): String? = servers().flatMap { it.protocols }.toSet().let { offered -> ctx.drivers.ids().firstOrNull { it in offered } }
+
+    suspend fun provisionFor(userId: String, deviceId: String, req: TunnelProvisionReq): TunnelConfig {
         val driver = driver(req.protocol)
         val clientParams = try {
             driver.parseClientParams(req.clientParams)
@@ -56,15 +61,15 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         }
 
         return ctx.db.tx { sql ->
-            val e = ent.entitlement(sql, p.user.id)
+            val e = ent.entitlement(sql, userId)
             val limit = e.monthlyDataLimitBytes
-            if (limit != null && ent.monthlyUsageBytes(sql, p.user.id) >= limit) throw AppError(403, ErrorCode.DATA_LIMIT, "Monthly data used up")
-            if (ent.activeTunnelCount(sql, p.user.id, p.deviceId) >= e.deviceLimit) {
+            if (limit != null && ent.monthlyUsageBytes(sql, userId) >= limit) throw AppError(403, ErrorCode.DATA_LIMIT, "Monthly data used up")
+            if (ent.activeTunnelCount(sql, userId, deviceId) >= e.deviceLimit) {
                 throw AppError(403, ErrorCode.DEVICE_LIMIT, "Your plan allows ${e.deviceLimit} device(s)")
             }
 
             val server = pickServer(sql, req.protocol, req.serverId)
-            val existing = sql.one("SELECT * FROM tunnels WHERE device_id=?::uuid FOR UPDATE", p.deviceId)
+            val existing = sql.one("SELECT * FROM tunnels WHERE device_id=?::uuid FOR UPDATE", deviceId)
             // Allocate before touching the old peer, so a full server leaves the old tunnel intact.
             val address = existing?.takeIf { it.str("server_id") == server.str("id") }?.str("address")
                 ?: Ipam.allocate(server.str("subnet"), sql.query("SELECT address FROM tunnels WHERE server_id=?", server.str("id")).map { it.str("address") })
@@ -74,13 +79,13 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
                 val oldServer = sql.one("SELECT * FROM servers WHERE id=?", existing.str("server_id"))
                 val oldProto = existing.str("protocol")
                 if (oldServer != null) ctx.drivers[oldProto]?.removePeer(oldServer.node(oldProto), existing.str("peer_key"))
-                sql.exec("DELETE FROM tunnels WHERE device_id=?::uuid", p.deviceId)
+                sql.exec("DELETE FROM tunnels WHERE device_id=?::uuid", deviceId)
             }
 
-            val added = driver.addPeer(server.node(req.protocol), p.deviceId, address, clientParams)
+            val added = driver.addPeer(server.node(req.protocol), deviceId, address, clientParams)
             sql.exec(
                 "INSERT INTO tunnels (device_id, server_id, protocol, address, peer_key, client_params) VALUES (?::uuid,?,?,?,?,?)",
-                p.deviceId, server.str("id"), req.protocol, address, added.peerKey, clientParams,
+                deviceId, server.str("id"), req.protocol, address, added.peerKey, clientParams,
             )
             TunnelConfig(
                 protocol = req.protocol,
@@ -158,8 +163,10 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
     }
 
     /** Removing a device revokes its peer and signs it out. */
-    suspend fun remove(p: Principal, id: String) = ctx.db.tx { sql ->
-        sql.one("SELECT 1 FROM devices WHERE id=?::uuid AND user_id=?::uuid AND removed_at IS NULL", id, p.user.id) ?: throw notFound("Device not found")
+    suspend fun remove(p: Principal, id: String) = removeFor(p.user.id, id)
+
+    suspend fun removeFor(userId: String, id: String) = ctx.db.tx { sql ->
+        sql.one("SELECT 1 FROM devices WHERE id=?::uuid AND user_id=?::uuid AND removed_at IS NULL", id, userId) ?: throw notFound("Device not found")
         revoke(sql, id)
         sql.exec("UPDATE devices SET removed_at=? WHERE id=?::uuid", ctx.now(), id)
         sql.exec("UPDATE sessions SET revoked_at=? WHERE device_id=?::uuid AND revoked_at IS NULL", ctx.now(), id)

@@ -171,7 +171,7 @@ fun AccountScreen(s: AppState) {
                 Gap(10.dp)
                 Row {
                     DarkKV("This month", Format.bytes(m.usage.bytesUsed), Modifier.weight(1f), mono = true)
-                    DarkKV("Billed via", when (e.source) { BillingSource.APPLE -> "App Store"; BillingSource.GOOGLE -> "Google Play"; BillingSource.REFERRAL -> "Invite reward"; BillingSource.DEV -> "Simulation"; null -> "–" }, Modifier.weight(1f))
+                    DarkKV("Billed via", when (e.source) { BillingSource.APPLE -> "App Store"; BillingSource.GOOGLE -> "Google Play"; BillingSource.REFERRAL -> "Invite reward"; BillingSource.DEV -> "Simulation"; BillingSource.WEB -> "Website"; BillingSource.TELEGRAM -> "Telegram"; null -> "–" }, Modifier.weight(1f))
                 }
             }
         }

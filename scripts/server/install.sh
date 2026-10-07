@@ -16,6 +16,8 @@
 #   JAGANET_DOMAIN=vpn.example.com  your own domain instead of <ip>.sslip.io
 #   JAGANET_BRANCH=...            git branch to deploy
 #   TEST_SHOW_SIGNIN_CODES=0      hide sign-in codes (default 1 until email is set up)
+#   TELEGRAM_BOT_TOKEN=123:abc    turn on the Telegram bot (token from @BotFather), e.g.
+#     curl -fsSL …/install.sh | TELEGRAM_BOT_TOKEN=123:abc bash
 set -euo pipefail
 
 REPO="${JAGANET_REPO:-https://github.com/ksenxxoen/JagaNet.git}"
@@ -225,7 +227,16 @@ PRICE_YEARLY_MINOR=3999
 EOF
   chmod 640 "$ENV_FILE"
 fi
-sed -i "s/^PROTOCOLS=.*/PROTOCOLS=$PROTOCOL/" "$ENV_FILE"
+env_set() { # KEY VALUE: replace or add a setting
+  if grep -q "^$1=" "$ENV_FILE"; then sed -i "s|^$1=.*|$1=$2|" "$ENV_FILE"; else echo "$1=$2" >> "$ENV_FILE"; fi
+}
+env_default() { grep -q "^$1=" "$ENV_FILE" || echo "$1=$2" >> "$ENV_FILE"; }
+env_set PROTOCOLS "$PROTOCOL"
+# Website / Telegram checkout. "test" = built-in test checkout, no real money.
+env_default PAYMENT_PROVIDER test
+env_default DOWNLOADS_DIR "$APP_DIR/downloads"
+if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then env_set TELEGRAM_BOT_TOKEN "$TELEGRAM_BOT_TOKEN"; fi
+mkdir -p "$APP_DIR/downloads" && chmod 755 "$APP_DIR/downloads"
 
 # ------------------------------------------------------------------ service
 step "Starting the backend"
@@ -310,5 +321,8 @@ note "Owner account: $OWNER_EMAIL  (Settings > Business dashboard)"
 if [ "$SHOW_CODES" = 1 ]; then
   note "Sign-in codes are shown in the app (test mode). Turn off: set TEST_SHOW_SIGNIN_CODES=0 in $ENV_FILE, then systemctl restart jaganet"
 fi
+note "Website:       https://$DOMAIN  (sign up, buy, VPN keys)"
+if grep -q '^TELEGRAM_BOT_TOKEN=.' "$ENV_FILE"; then note "Telegram bot:  on"; else note "Telegram bot:  off (run again with TELEGRAM_BOT_TOKEN=… to turn it on)"; fi
+[ -f "$APP_DIR/downloads/jaganet.apk" ] || note "Android app:   upload it to $APP_DIR/downloads/jaganet.apk to offer it for download"
 note "Logs:          journalctl -u jaganet -f"
 note "Update later:  run this same command again"
