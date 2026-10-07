@@ -182,7 +182,10 @@ EOF
   systemctl daemon-reload
 fi
 systemctl enable -q "$TOOL-quick@$IFACE"
-systemctl restart "$TOOL-quick@$IFACE"
+systemctl restart "$TOOL-quick@$IFACE" || {
+  journalctl -u "$TOOL-quick@$IFACE" -n 40 --no-pager -o cat
+  fail "The VPN interface didn't start (log above)."
+}
 NODE_PUB="$(grep -m1 '^PrivateKey' "$CONF_DIR/$IFACE.conf" | awk '{print $3}' | $TOOL pubkey)"
 OBFUSCATION_JSON="$(python3 - "$CONF_DIR/$IFACE.conf" <<'PY'
 import json, re, sys
