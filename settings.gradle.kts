@@ -24,5 +24,8 @@ dependencyResolutionManagement {
     }
 }
 
-include(":shared", ":server", ":composeApp", ":androidApp")
+include(":shared", ":server")
+// JAGANET_SERVER_ONLY=1 (used by scripts/server/install.sh): build just the backend on a
+// plain Linux server, without the Android SDK and app toolchains.
+if (System.getenv("JAGANET_SERVER_ONLY") != "1") include(":composeApp", ":androidApp")
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")

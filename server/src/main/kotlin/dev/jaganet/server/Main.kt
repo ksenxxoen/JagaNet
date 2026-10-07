@@ -30,6 +30,12 @@ fun main() {
         val make = requireNotNull(AVAILABLE_DRIVERS[id]) { "No driver for protocol \"$id\". Known: ${AVAILABLE_DRIVERS.keys}" }
         drivers.register(make())
     }
+    if (cfg.exposeOtp) {
+        LoggerFactory.getLogger("jaganet").warn(
+            "TEST_SHOW_SIGNIN_CODES=1: sign-in codes are returned by the API, so anyone can sign in as anyone. " +
+                "Set up email and turn this off before real users arrive.",
+        )
+    }
     serve(Ctx(cfg, db, drivers, ConsoleMailer()), collectEveryMs = 60_000)
 }
 

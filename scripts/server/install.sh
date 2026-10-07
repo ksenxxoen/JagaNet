@@ -1,0 +1,264 @@
+#!/usr/bin/env bash
+# JagaNet server installer: one command on a fresh Ubuntu 22.04 / 24.04 server (KVM), as root.
+#
+#   curl -fsSL https://raw.githubusercontent.com/ksenxxoen/JagaNet/claude/adoring-brown-s8fqex/scripts/server/install.sh | bash
+#
+# Installs and configures:
+#   - AmneziaWG (the VPN, default protocol) with a fresh obfuscation profile
+#     (falls back to plain WireGuard if the AmneziaWG kernel module can't be built)
+#   - PostgreSQL (database)
+#   - the JagaNet backend, built from source, as a systemd service
+#   - Caddy with a free HTTPS certificate on <ip>.sslip.io (no domain needed)
+# Safe to run again: finished steps are skipped, the backend is rebuilt and restarted.
+#
+# Options (environment variables):
+#   OWNER_EMAIL=you@example.com   gets the owner dashboard (default: owner@jaganet.dev)
+#   JAGANET_DOMAIN=vpn.example.com  your own domain instead of <ip>.sslip.io
+#   JAGANET_BRANCH=...            git branch to deploy
+#   TEST_SHOW_SIGNIN_CODES=0      hide sign-in codes (default 1 until email is set up)
+set -euo pipefail
+
+REPO="${JAGANET_REPO:-https://github.com/ksenxxoen/JagaNet.git}"
+BRANCH="${JAGANET_BRANCH:-claude/adoring-brown-s8fqex}"
+OWNER_EMAIL="${OWNER_EMAIL:-owner@jaganet.dev}"
+SHOW_CODES="${TEST_SHOW_SIGNIN_CODES:-1}"
+APP_DIR=/opt/jaganet
+ENV_FILE=/etc/jaganet/env
+AWG_PORT=51821
+WG_PORT=51820
+SUBNET=10.8.0.0/24
+NODE_ADDR=10.8.0.1/24
+
+step() { printf '\n\033[1;32m==> %s\033[0m\n' "$*"; }
+note() { printf '    %s\n' "$*"; }
+fail() { printf '\n\033[1;31mxx %s\033[0m\n' "$*" >&2; exit 1; }
+trap 'fail "Stopped at line $LINENO: $BASH_COMMAND"' ERR
+
+[ "$(id -u)" = 0 ] || fail "Run this as root (log in as root, or prefix with sudo)."
+. /etc/os-release
+[ "${ID:-}" = ubuntu ] || fail "This installer supports Ubuntu 22.04 / 24.04 (found: ${PRETTY_NAME:-unknown})."
+export DEBIAN_FRONTEND=noninteractive
+
+PUBLIC_IP="$(curl -4 -fsS https://api.ipify.org || curl -4 -fsS https://ifconfig.me || true)"
+[ -n "$PUBLIC_IP" ] || fail "Couldn't find this server's public IPv4 address."
+DOMAIN="${JAGANET_DOMAIN:-${PUBLIC_IP//./-}.sslip.io}"
+WAN_IF="$(ip -4 route show default | awk '{print $5; exit}')"
+# City and country for the app's "Server location" (best effort).
+LOCATION="$(curl -fsS "https://ipinfo.io/$PUBLIC_IP/json" 2>/dev/null | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin); print((d.get("city") or "Server") + "|" + (d.get("country") or "XX"))
+except Exception:
+    print("Server|XX")' 2>/dev/null || echo "Server|XX")"
+CITY="${LOCATION%%|*}"
+COUNTRY="${LOCATION##*|}"
+note "Server: $PUBLIC_IP ($CITY, $COUNTRY)  ·  address: https://$DOMAIN  ·  network interface: $WAN_IF"
+
+# ------------------------------------------------------------------ packages
+step "Installing system packages (a few minutes)"
+apt-get update -q
+apt-get install -y -q ca-certificates curl git gnupg iptables python3 software-properties-common \
+  postgresql openjdk-21-jdk-headless "linux-headers-$(uname -r)" >/dev/null || \
+apt-get install -y -q ca-certificates curl git gnupg iptables python3 software-properties-common \
+  postgresql openjdk-21-jdk-headless >/dev/null
+
+# ------------------------------------------------------------------ VPN
+step "Installing the VPN (AmneziaWG)"
+PROTOCOL=amneziawg
+if ! command -v awg >/dev/null 2>&1 || ! modprobe amneziawg 2>/dev/null; then
+  add-apt-repository -y ppa:amnezia/ppa >/dev/null 2>&1 || true
+  apt-get update -q >/dev/null || true
+  apt-get install -y -q amneziawg amneziawg-tools >/dev/null 2>&1 || true
+fi
+if command -v awg >/dev/null 2>&1 && modprobe amneziawg 2>/dev/null; then
+  note "AmneziaWG kernel module loaded."
+else
+  PROTOCOL=wireguard
+  note "AmneziaWG couldn't be installed on this kernel; using plain WireGuard instead."
+  note "(The apps fall back to it automatically. AmneziaWG can be added later.)"
+  apt-get install -y -q wireguard-tools >/dev/null
+  modprobe wireguard
+fi
+
+# IP forwarding, so VPN clients reach the internet.
+echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/90-jaganet.conf
+sysctl -q -p /etc/sysctl.d/90-jaganet.conf
+
+# ------------------------------------------------------------------ build the backend
+step "Building the JagaNet backend (first time: 5-10 minutes)"
+# Small servers (1-2 GB RAM) need swap for the build.
+MEM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+SWAP_MB=$(awk '/SwapTotal/ {print int($2/1024)}' /proc/meminfo)
+if [ $((MEM_MB + SWAP_MB)) -lt 3500 ] && [ ! -f /swapfile ]; then
+  note "Adding 2 GB swap (this server has ${MEM_MB} MB RAM)."
+  { fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none; } \
+    && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile \
+    && echo '/swapfile none swap sw 0 0' >> /etc/fstab || note "(couldn't add swap; continuing)"
+fi
+mkdir -p "$APP_DIR"
+if [ -d "$APP_DIR/src/.git" ]; then
+  git -C "$APP_DIR/src" fetch -q --depth 1 origin "$BRANCH"
+  git -C "$APP_DIR/src" reset -q --hard FETCH_HEAD
+else
+  git clone -q --depth 1 --branch "$BRANCH" "$REPO" "$APP_DIR/src" || \
+    fail "Couldn't download the code from $REPO. If the repository is private, make it public or clone it to $APP_DIR/src yourself, then run this again."
+fi
+( cd "$APP_DIR/src" && JAGANET_SERVER_ONLY=1 ./gradlew -q --no-daemon \
+    -Dorg.gradle.jvmargs="-Xmx1g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process \
+    :server:installDist )
+rm -rf "$APP_DIR/server.new" && cp -r "$APP_DIR/src/server/build/install/server" "$APP_DIR/server.new"
+rm -rf "$APP_DIR/server" && mv "$APP_DIR/server.new" "$APP_DIR/server"
+note "Commit $(git -C "$APP_DIR/src" rev-parse --short HEAD) built."
+
+# ------------------------------------------------------------------ VPN interface
+step "Configuring the VPN interface"
+if [ "$PROTOCOL" = amneziawg ]; then
+  CONF_DIR=/etc/amnezia/amneziawg; IFACE=awg0; TOOL=awg; PORT=$AWG_PORT
+else
+  CONF_DIR=/etc/wireguard; IFACE=wg0; TOOL=wg; PORT=$WG_PORT
+fi
+mkdir -p "$CONF_DIR" && chmod 700 "$CONF_DIR"
+if [ ! -f "$CONF_DIR/$IFACE.conf" ]; then
+  PRIV="$($TOOL genkey)"
+  {
+    echo "[Interface]"
+    echo "PrivateKey = $PRIV"
+    echo "Address = $NODE_ADDR"
+    echo "ListenPort = $PORT"
+    # Peers are added by the backend at runtime; SaveConfig keeps them across clean restarts.
+    echo "SaveConfig = true"
+    echo "PostUp = iptables -t nat -A POSTROUTING -s $SUBNET -o $WAN_IF -j MASQUERADE; iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT"
+    echo "PostDown = iptables -t nat -D POSTROUTING -s $SUBNET -o $WAN_IF -j MASQUERADE; iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT"
+    if [ "$PROTOCOL" = amneziawg ]; then
+      # Fresh obfuscation profile (S1, S2, H1-H4 must match on clients: the backend sends them).
+      # Only the keys every AmneziaWG version understands, with single-value headers, so it
+      # works whatever version the distro packages ship.
+      java -cp "$APP_DIR/server/lib/*" dev.jaganet.server.protocols.AwgParamsKt \
+        | grep -E '^(Jc|Jmin|Jmax|S1|S2|H1|H2|H3|H4) = ' \
+        | sed -E 's/^(H[1-4] = [0-9]+)-[0-9]+$/\1/'
+    fi
+  } > "$CONF_DIR/$IFACE.conf"
+  chmod 600 "$CONF_DIR/$IFACE.conf"
+fi
+systemctl enable -q "$TOOL-quick@$IFACE"
+systemctl restart "$TOOL-quick@$IFACE"
+NODE_PUB="$(grep -m1 '^PrivateKey' "$CONF_DIR/$IFACE.conf" | awk '{print $3}' | $TOOL pubkey)"
+OBFUSCATION_JSON="$(python3 - "$CONF_DIR/$IFACE.conf" <<'PY'
+import json, re, sys
+keys = {"Jc","Jmin","Jmax","S1","S2","S3","S4","H1","H2","H3","H4","I1","I2","I3","I4","I5","HeaderProtectionKey"}
+out = {}
+for line in open(sys.argv[1]):
+    m = re.match(r'^([A-Za-z0-9]+)\s*=\s*(.+?)\s*$', line)
+    if m and m.group(1) in keys: out[m.group(1)] = m.group(2)
+print(json.dumps(out))
+PY
+)"
+
+# ------------------------------------------------------------------ database
+step "Setting up the database"
+systemctl enable -q --now postgresql
+mkdir -p /etc/jaganet && chmod 750 /etc/jaganet
+if [ ! -f "$ENV_FILE" ]; then
+  DB_PASS="$(openssl rand -hex 24)"
+  sudo -u postgres psql -q -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='jaganet') THEN CREATE ROLE jaganet LOGIN PASSWORD '$DB_PASS'; ELSE ALTER ROLE jaganet PASSWORD '$DB_PASS'; END IF; END \$\$;"
+  sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='jaganet'" | grep -q 1 || sudo -u postgres createdb -O jaganet jaganet
+  cat > "$ENV_FILE" <<EOF
+# JagaNet backend settings. After changes: systemctl restart jaganet
+PORT=4000
+DATABASE_URL=jdbc:postgresql://127.0.0.1:5432/jaganet
+DATABASE_USER=jaganet
+DATABASE_PASSWORD=$DB_PASS
+AUTH_SECRET=$(openssl rand -base64 48 | tr -d '\n')
+PUBLIC_URL=https://$DOMAIN
+OWNER_EMAIL=$OWNER_EMAIL
+PROTOCOLS=$PROTOCOL
+# Shows sign-in codes in the app while there is no email sending. Set 0 before real users arrive.
+TEST_SHOW_SIGNIN_CODES=$SHOW_CODES
+FREE_MONTHLY_GB=10
+FREE_DEVICE_LIMIT=1
+PRO_DEVICE_LIMIT=5
+CURRENCY=USD
+PRICE_MONTHLY_MINOR=499
+PRICE_YEARLY_MINOR=3999
+EOF
+  chmod 640 "$ENV_FILE"
+fi
+
+# ------------------------------------------------------------------ service
+step "Starting the backend"
+id jaganet >/dev/null 2>&1 || useradd --system --home "$APP_DIR" --shell /usr/sbin/nologin jaganet
+chgrp jaganet "$ENV_FILE" /etc/jaganet
+cat > /etc/systemd/system/jaganet.service <<EOF
+[Unit]
+Description=JagaNet backend
+After=network-online.target postgresql.service $TOOL-quick@$IFACE.service
+Wants=network-online.target
+
+[Service]
+User=jaganet
+EnvironmentFile=$ENV_FILE
+Environment=JAVA_OPTS=-Xmx512m
+ExecStart=$APP_DIR/server/bin/server
+Restart=on-failure
+RestartSec=3
+# Needed to add and remove VPN peers with $TOOL.
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable -q jaganet
+systemctl restart jaganet
+for i in $(seq 1 60); do curl -fsS http://127.0.0.1:4000/health >/dev/null 2>&1 && break; sleep 2; done
+curl -fsS http://127.0.0.1:4000/health >/dev/null || { journalctl -u jaganet -n 30 --no-pager; fail "The backend didn't start (log above)."; }
+
+# Register this machine as the VPN node (first run) or refresh its settings.
+NODE_JSON="$(python3 -c "
+import json, sys
+p, port, key, iface, obf = sys.argv[1:6]
+node = {'endpoint': '$PUBLIC_IP:' + port, 'publicKey': key, 'interface': iface}
+if p == 'amneziawg': node['obfuscation'] = json.loads(obf)
+print(json.dumps({p: node}))
+" "$PROTOCOL" "$PORT" "$NODE_PUB" "$IFACE" "$OBFUSCATION_JSON")"
+sudo -u postgres psql -q -d jaganet -v node="$NODE_JSON" -v city="$CITY" -v cc="$COUNTRY" <<'SQL'
+INSERT INTO servers (id, name, city, country_code, subnet, protocols, max_peers)
+VALUES ('node-1', :'city', :'city', :'cc', '10.8.0.0/24', :'node'::jsonb, 250)
+ON CONFLICT (id) DO UPDATE SET protocols = EXCLUDED.protocols, city = EXCLUDED.city, country_code = EXCLUDED.country_code;
+SQL
+
+# ------------------------------------------------------------------ HTTPS
+step "Setting up HTTPS (free certificate for $DOMAIN)"
+if ! command -v caddy >/dev/null 2>&1; then
+  curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt > /etc/apt/sources.list.d/caddy-stable.list
+  apt-get update -q >/dev/null && apt-get install -y -q caddy >/dev/null
+fi
+cat > /etc/caddy/Caddyfile <<EOF
+$DOMAIN {
+	reverse_proxy 127.0.0.1:4000
+}
+EOF
+systemctl enable -q caddy
+systemctl restart caddy
+
+# Firewall: only if ufw is active (most cloud images leave it off).
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
+  ufw allow 22/tcp >/dev/null; ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null; ufw allow "$PORT/udp" >/dev/null
+fi
+
+ok=""
+for i in $(seq 1 30); do curl -fsS "https://$DOMAIN/health" >/dev/null 2>&1 && { ok=1; break; }; sleep 3; done
+
+step "Done"
+note "Backend:       https://$DOMAIN   (health: https://$DOMAIN/health)"
+[ -n "$ok" ] || note "               (the HTTPS certificate is still being issued; try the link again in a few minutes)"
+note "VPN:           $PROTOCOL on UDP port $PORT"
+note "Owner account: $OWNER_EMAIL  (Settings > Business dashboard)"
+if [ "$SHOW_CODES" = 1 ]; then
+  note "Sign-in codes are shown in the app (test mode). Turn off: set TEST_SHOW_SIGNIN_CODES=0 in $ENV_FILE, then systemctl restart jaganet"
+fi
+note "Logs:          journalctl -u jaganet -f"
+note "Update later:  run this same command again"
