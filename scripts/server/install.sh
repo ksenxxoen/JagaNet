@@ -65,17 +65,44 @@ apt-get install -y -q ca-certificates curl git gnupg iptables python3 software-p
 # ------------------------------------------------------------------ VPN
 step "Installing the VPN (AmneziaWG)"
 PROTOCOL=amneziawg
+# 1) the kernel module from the Amnezia PPA (fastest), 2) else amneziawg-go, the userspace
+# version, built from source (works on any kernel), 3) else plain WireGuard.
 if ! command -v awg >/dev/null 2>&1 || ! modprobe amneziawg 2>/dev/null; then
   add-apt-repository -y ppa:amnezia/ppa >/dev/null 2>&1 || true
   apt-get update -q >/dev/null || true
-  apt-get install -y -q amneziawg amneziawg-tools >/dev/null 2>&1 || true
+  apt-get install -y -q amneziawg-tools >/dev/null 2>&1 || true
+  apt-get install -y -q amneziawg >/dev/null 2>&1 || true
 fi
+GO_DIR=/opt/jaganet/go
+build_awg_userspace() {
+  apt-get install -y -q build-essential >/dev/null
+  case "$(uname -m)" in x86_64) GOARCH=amd64 ;; aarch64) GOARCH=arm64 ;; *) return 1 ;; esac
+  if [ ! -x "$GO_DIR/bin/go" ]; then
+    GOVER="$(curl -fsS 'https://go.dev/VERSION?m=text' | head -1)"
+    rm -rf "$GO_DIR" && mkdir -p "$GO_DIR"
+    curl -fsSL "https://dl.google.com/go/$GOVER.linux-$GOARCH.tar.gz" | tar -xz -C "$GO_DIR" --strip-components=1
+  fi
+  local b; b="$(mktemp -d)"
+  if ! command -v awg-quick >/dev/null 2>&1; then
+    git clone -q --depth 1 https://github.com/amnezia-vpn/amneziawg-tools.git "$b/tools"
+    make -s -C "$b/tools/src" >/dev/null
+    make -s -C "$b/tools/src" install WITH_WGQUICK=yes WITH_SYSTEMDUNITS=yes >/dev/null
+  fi
+  git clone -q --depth 1 https://github.com/amnezia-vpn/amneziawg-go.git "$b/go"
+  ( cd "$b/go" && PATH="$GO_DIR/bin:$PATH" GOTOOLCHAIN=local go build -o /usr/bin/amneziawg-go . )
+  rm -rf "$b"
+  # Runs as an if-condition, where bash ignores errors: check the result explicitly.
+  [ -x /usr/bin/amneziawg-go ]
+}
 if command -v awg >/dev/null 2>&1 && modprobe amneziawg 2>/dev/null; then
   note "AmneziaWG kernel module loaded."
+elif [ -c /dev/net/tun ] && { command -v amneziawg-go >/dev/null 2>&1 || build_awg_userspace; } \
+     && command -v awg-quick >/dev/null 2>&1; then
+  note "Using AmneziaWG userspace version (amneziawg-go); the kernel module isn't available here."
 else
   PROTOCOL=wireguard
-  note "AmneziaWG couldn't be installed on this kernel; using plain WireGuard instead."
-  note "(The apps fall back to it automatically. AmneziaWG can be added later.)"
+  note "AmneziaWG couldn't be installed on this server; using plain WireGuard instead."
+  note "(The apps fall back to it automatically.)"
   apt-get install -y -q wireguard-tools >/dev/null
   modprobe wireguard
 fi
@@ -140,6 +167,20 @@ if [ ! -f "$CONF_DIR/$IFACE.conf" ]; then
   } > "$CONF_DIR/$IFACE.conf"
   chmod 600 "$CONF_DIR/$IFACE.conf"
 fi
+# An earlier run fell back to WireGuard: switch that interface off (same VPN subnet).
+if [ "$PROTOCOL" = amneziawg ] && systemctl is-enabled -q wg-quick@wg0 2>/dev/null; then
+  systemctl disable -q --now wg-quick@wg0 || true
+fi
+id jaganet >/dev/null 2>&1 || useradd --system --home "$APP_DIR" --shell /usr/sbin/nologin jaganet
+if [ "$PROTOCOL" = amneziawg ] && [ ! -e /sys/module/amneziawg ]; then
+  # Userspace AmneziaWG is controlled through a root-only socket; let the backend use it.
+  mkdir -p "/etc/systemd/system/awg-quick@$IFACE.service.d"
+  cat > "/etc/systemd/system/awg-quick@$IFACE.service.d/jaganet.conf" <<EOF
+[Service]
+ExecStartPost=/bin/sh -c 'chgrp jaganet /var/run/amneziawg/%i.sock && chmod 660 /var/run/amneziawg/%i.sock'
+EOF
+  systemctl daemon-reload
+fi
 systemctl enable -q "$TOOL-quick@$IFACE"
 systemctl restart "$TOOL-quick@$IFACE"
 NODE_PUB="$(grep -m1 '^PrivateKey' "$CONF_DIR/$IFACE.conf" | awk '{print $3}' | $TOOL pubkey)"
@@ -183,6 +224,7 @@ PRICE_YEARLY_MINOR=3999
 EOF
   chmod 640 "$ENV_FILE"
 fi
+sed -i "s/^PROTOCOLS=.*/PROTOCOLS=$PROTOCOL/" "$ENV_FILE"
 
 # ------------------------------------------------------------------ service
 step "Starting the backend"
