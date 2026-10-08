@@ -20,7 +20,7 @@ fun productOf(s: String) = ProductId.entries.firstOrNull { it.name.equals(s, ign
 
 class Entitlements(private val ctx: Ctx) {
     fun entitlement(sql: Sql, userId: String): Entitlement {
-        val p = ctx.cfg.plans
+        val p = ctx.live.plans
         // Paid subscriptions first; referral time stacks after paid time.
         val sub = sql.one(
             """SELECT * FROM subscriptions

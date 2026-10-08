@@ -365,6 +365,8 @@ data class AdminOverviewRes(val revenue: Revenue, val server: ServerHealth)
 enum class ErrorCode {
     BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, INVALID_CODE, TOO_MANY_ATTEMPTS,
     DEVICE_LIMIT, DATA_LIMIT, SERVER_FULL, UNSUPPORTED_PROTOCOL, NOT_IMPLEMENTED, INTERNAL,
+    /** A feature that isn't set up on this server (e-mail, payments, store purchases). */
+    SERVICE_UNAVAILABLE,
 }
 
 @Serializable
@@ -428,4 +430,192 @@ data class SiteInfo(
     /** Payments go through the built-in test checkout (no real money). */
     val testPayments: Boolean,
     val paymentsEnabled: Boolean,
+    /** Sign-in by e-mail works (e-mail is set up, or codes are shown in test mode). */
+    val emailSignIn: Boolean = true,
+    /** Sign-in codes are shown on screen (test mode). */
+    val testCodes: Boolean = false,
+)
+
+/* ---------- server monitoring (owner only) ---------- */
+
+@Serializable
+enum class CheckLevel { @SerialName("ok") OK, @SerialName("warning") WARNING, @SerialName("critical") CRITICAL, @SerialName("unknown") UNKNOWN }
+
+/**
+ * One health check. [message] is an English text (translation key) with `{placeholders}`
+ * filled from [args], e.g. "Packet loss {loss}% to {host}".
+ */
+@Serializable
+data class HealthCheck(
+    /** Stable id: "vpn", "db", "https", "cert", "bot", "cpu", "memory", "disk", "channel", "net_errors", "ping", "dns", "traffic". */
+    val key: String,
+    val level: CheckLevel,
+    val message: String,
+    val args: Map<String, String> = emptyMap(),
+)
+
+/** One minute (or an average over a longer bucket) of server measurements. */
+@Serializable
+data class MetricPoint(
+    val ts: String,
+    /** 0..1 */
+    val cpu: Double,
+    val memUsed: Long,
+    val memTotal: Long,
+    val diskFree: Long,
+    val diskTotal: Long,
+    /** Internet interface throughput, bits per second. */
+    val rxBps: Long,
+    val txBps: Long,
+    /** Busiest direction / channel capacity, 0..1; null when the capacity is unknown. */
+    val utilization: Double? = null,
+    /** Average round trip to the ping targets, ms; null when all pings failed. */
+    val pingMs: Double? = null,
+    /** 0..100 */
+    val lossPct: Double? = null,
+    val peers: Int = 0,
+    /** Peers with a handshake in the last 3 minutes. */
+    val online: Int = 0,
+    /** Interface errors and drops in this interval. */
+    val errors: Long = 0,
+    val drops: Long = 0,
+)
+
+@Serializable
+data class NetworkInfo(
+    /** The internet-facing interface, e.g. "enp1s0". */
+    val iface: String?,
+    /** Channel capacity in Mbit/s used for the load percentage. */
+    val capacityMbps: Long? = null,
+    /** "config" (CHANNEL_MBPS), "link" (reported by the network card) or null. */
+    val capacitySource: String? = null,
+    val monthRxBytes: Long = 0,
+    val monthTxBytes: Long = 0,
+    /** The hosting plan's monthly traffic allowance, if set. */
+    val monthLimitBytes: Long? = null,
+)
+
+@Serializable
+data class MonitorAlert(
+    val id: String,
+    val key: String,
+    val level: CheckLevel,
+    val message: String,
+    val args: Map<String, String> = emptyMap(),
+    val openedAt: String,
+    val resolvedAt: String? = null,
+)
+
+@Serializable
+data class NotifySettings(val emails: List<String>, val emailReady: Boolean, val telegramChats: Int)
+
+@Serializable
+data class MonitorRes(
+    val checkedAt: String?,
+    val overall: CheckLevel,
+    val checks: List<HealthCheck>,
+    val network: NetworkInfo,
+    /** Oldest first. */
+    val series: List<MetricPoint>,
+    /** Open alerts first, then the latest resolved ones. */
+    val alerts: List<MonitorAlert>,
+    val notify: NotifySettings,
+)
+
+/* ---------- one-time sign-in links (Telegram /login, owner login from the server) ---------- */
+
+@Serializable
+data class LinkLoginReq(val token: String, val device: DeviceInfo)
+
+/* ---------- owner admin panel: settings ---------- */
+
+@Serializable
+data class PriceSettings(val monthlyMinor: Long, val yearlyMinor: Long)
+
+@Serializable
+data class PlanSettings(
+    val freeMonthlyGb: Long,
+    val freeDeviceLimit: Int,
+    val proDeviceLimit: Int,
+    val referralRewardDays: Int,
+    /** "RUB" (Russian) and "EUR" (German, English). */
+    val prices: Map<String, PriceSettings>,
+)
+
+@Serializable
+data class SmtpSettings(
+    val host: String,
+    val port: Int,
+    val user: String? = null,
+    /** Write only: the server never sends it back. null when saving = keep the current one. */
+    val password: String? = null,
+    val from: String,
+    /** "starttls", "ssl" or "none" */
+    val security: String = "starttls",
+)
+
+@Serializable
+data class AlertSettings(val emails: List<String>, val telegramChats: List<Long>)
+
+@Serializable
+data class ModeSettings(
+    /** Show sign-in codes on screen instead of e-mailing them. Anyone can then sign in as anyone. */
+    val showSignInCodes: Boolean,
+    /** Built-in test checkout: subscriptions without real money. */
+    val testPayments: Boolean,
+)
+
+@Serializable
+data class AdminSettingsRes(
+    val plans: PlanSettings,
+    /** null = e-mail not set up. Its password is never returned. */
+    val smtp: SmtpSettings? = null,
+    val smtpHasPassword: Boolean = false,
+    val alerts: AlertSettings,
+    val modes: ModeSettings,
+    /** A real payment service is connected. */
+    val paymentsConnected: Boolean,
+    val botEnabled: Boolean,
+)
+
+@Serializable
+data class TestEmailReq(val to: String)
+
+/* ---------- owner admin panel: money ---------- */
+
+@Serializable
+data class FinanceDay(val day: String, val revenue: List<MoneyAmount>, val orders: Int, val newSubscriptions: Int, val renewals: Int)
+
+@Serializable
+data class PaymentRow(
+    val at: String,
+    val email: String,
+    /** "pro_monthly", "pro_yearly" */
+    val product: String,
+    /** null for store purchases (the stores report amounts in their own consoles). */
+    val amount: MoneyAmount? = null,
+    /** "web", "telegram", "apple", "google", "dev" */
+    val channel: String,
+    val renewal: Boolean,
+)
+
+@Serializable
+data class FinanceRes(
+    val period: ReferralPeriod,
+    /** Received in the period, per currency (website and Telegram payments). */
+    val revenue: List<MoneyAmount>,
+    val paidOrders: Int,
+    val newSubscriptions: Int,
+    val renewals: Int,
+    /** People with a paid subscription right now. */
+    val activeSubscribers: Int,
+    /** Monthly recurring revenue of active website / Telegram subscriptions, per currency. */
+    val mrr: List<MoneyAmount>,
+    /** Paid subscriptions in the period by channel ("web", "telegram", "apple", "google", "dev"). */
+    val byChannel: List<CountBy>,
+    val byProduct: List<CountBy>,
+    val days: List<FinanceDay>,
+    val recent: List<PaymentRow>,
+    /** Orders started but not paid in the period (abandoned checkouts). */
+    val unpaidOrders: Int,
 )

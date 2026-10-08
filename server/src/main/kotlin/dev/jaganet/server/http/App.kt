@@ -27,7 +27,14 @@ import dev.jaganet.server.services.Admin
 import dev.jaganet.server.services.AuthService
 import dev.jaganet.server.services.Billing
 import dev.jaganet.server.services.Entitlements
+import dev.jaganet.server.services.EmailSender
+import dev.jaganet.server.monitor.AlertSink
+import dev.jaganet.server.monitor.LinuxProbe
+import dev.jaganet.server.monitor.Monitor
+import dev.jaganet.server.monitor.SystemProbe
+import dev.jaganet.server.services.Finance
 import dev.jaganet.server.services.Keys
+import dev.jaganet.server.services.Settings
 import dev.jaganet.server.services.Payments
 import dev.jaganet.server.services.Site
 import dev.jaganet.server.services.Principal
@@ -65,7 +72,7 @@ import kotlinx.serialization.json.add
 import kotlin.time.Duration.Companion.minutes
 
 /** All services wired together. */
-class Services(val ctx: Ctx) {
+class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
     val auth = AuthService(ctx)
     val ent = Entitlements(ctx)
     val tunnels = Tunnels(ctx, ent)
@@ -75,10 +82,24 @@ class Services(val ctx: Ctx) {
     val referrals = Referrals(ctx) { bot?.username }
     val admin = Admin(ctx)
     val keys = Keys(ctx, tunnels)
+    val settings = Settings(ctx)
+    val finance = Finance(ctx)
     val payments = Payments(ctx, billing, keys)
     val site = Site(ctx)
     /** Set when TELEGRAM_BOT_TOKEN is configured and the bot started. */
     @Volatile var bot: dev.jaganet.server.telegram.TelegramBot? = null
+    val monitor = Monitor(
+        ctx, probe,
+        sinks = {
+            buildList {
+                val smtp = ctx.live.smtp
+                if (smtp != null && ctx.live.alertEmails.isNotEmpty()) add(AlertSink { subj, text -> EmailSender(smtp).send(ctx.live.alertEmails, subj, text) })
+                bot?.let { b -> ctx.live.alertTelegramChats.forEach { chat -> add(AlertSink { subj, text -> b.sendText(chat, "$subj\n\n$text") }) } }
+            }
+        },
+        botAlive = { bot?.lastPollOk },
+        botEnabled = ctx.cfg.telegramBotToken != null,
+    )
 }
 
 private val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
@@ -120,6 +141,7 @@ fun Application.jaganet(s: Services) {
 
     routing {
         website(s)
+        ownerLoginLink(s)
         get("/health") {
             call.respond(buildJsonObject {
                 put("ok", true)
@@ -132,8 +154,8 @@ fun Application.jaganet(s: Services) {
             rateLimit(AUTH_LIMIT) {
                 post("/auth/email/start") {
                     val b = call.receive<EmailStartReq>()
-                    val code = s.auth.startEmailLogin(email(b.email), b.referralCode?.trim()?.take(32))
-                    call.respond(EmailStartRes(devCode = code.takeIf { ctx.cfg.exposeOtp }))
+                    val code = s.auth.startEmailLogin(email(b.email), b.referralCode?.trim()?.take(32), call.apiLang())
+                    call.respond(EmailStartRes(devCode = code.takeIf { ctx.live.showSignInCodes }))
                 }
                 post("/auth/email/verify") {
                     val b = call.receive<EmailVerifyReq>()
@@ -209,6 +231,8 @@ fun Application.jaganet(s: Services) {
             post("/billing/apple/notifications") { s.billing.notImplementedStore() }
             post("/billing/google/rtdn") { s.billing.notImplementedStore() }
 
+            monitorApi(s)
+            adminApi(s)
             get("/referrals") { call.respond(s.referrals.get(call.principal(s))) }
             referralApi(s)
             salesApi(s)

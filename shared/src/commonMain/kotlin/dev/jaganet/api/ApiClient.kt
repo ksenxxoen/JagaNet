@@ -12,6 +12,7 @@ import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
@@ -60,6 +61,9 @@ class ApiClient(
     private suspend inline fun <reified B, reified R> post(path: String, body: B): R =
         http.post(path) { auth(); contentType(ContentType.Application.Json); setBody(body) }.read()
 
+    private suspend inline fun <reified B, reified R> put(path: String, body: B): R =
+        http.put(path) { auth(); contentType(ContentType.Application.Json); setBody(body) }.read()
+
     private suspend inline fun <reified R> delete(path: String): R = http.delete(path) { auth() }.read()
 
     // auth
@@ -104,6 +108,17 @@ class ApiClient(
     suspend fun order(id: String): OrderRes = get("orders/$id")
 
     suspend fun referrals(): ReferralRes = get("referrals")
+    suspend fun redeemLoginLink(req: LinkLoginReq): SessionRes = post("auth/link/redeem", req)
+    suspend fun adminSettings(): AdminSettingsRes = get("admin/settings")
+    suspend fun savePlanSettings(p: PlanSettings): AdminSettingsRes = put("admin/settings/plans", p)
+    suspend fun saveSmtpSettings(p: SmtpSettings?): AdminSettingsRes = put("admin/settings/smtp", p ?: SmtpSettings("", 0, from = ""))
+    suspend fun saveAlertSettings(p: AlertSettings): AdminSettingsRes = put("admin/settings/alerts", p)
+    suspend fun saveModeSettings(p: ModeSettings): AdminSettingsRes = put("admin/settings/modes", p)
+    suspend fun sendTestEmail(to: String): OkRes = post("admin/settings/smtp/test", TestEmailReq(to))
+    suspend fun adminFinance(period: ReferralPeriod): FinanceRes = get("admin/finance") { parameter("period", Protocols.json.encodeToString(ReferralPeriod.serializer(), period).trim('"')) }
+    /** range: "1h", "24h", "7d" or "30d". */
+    suspend fun adminMonitor(range: String = "24h"): MonitorRes = get("admin/monitor") { parameter("range", range) }
+    suspend fun adminTestAlert(): OkRes = post("admin/monitor/test", OkRes())
     suspend fun referralStats(period: ReferralPeriod): ReferralStatsRes = get("referrals/stats") { parameter("period", Protocols.json.encodeToString(ReferralPeriod.serializer(), period).trim('"')) }
     suspend fun createReferralLink(req: CreateReferralLinkReq): ReferralLink = post("referrals/links", req)
     suspend fun renameReferralLink(id: String, name: String): OkRes =

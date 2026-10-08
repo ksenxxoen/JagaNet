@@ -182,7 +182,7 @@ class BillingTest {
 
     @Test fun `refuses store purchases until verification is implemented`() = harness {
         val a = signIn("s@example.com")
-        assertEquals("NOT_IMPLEMENTED", code { a.api.appleVerify(AppleVerifyReq("x")) })
+        assertEquals("SERVICE_UNAVAILABLE", code { a.api.appleVerify(AppleVerifyReq("x")) })
         assertEquals(PlanId.FREE, a.api.me().entitlement.plan)
     }
 }

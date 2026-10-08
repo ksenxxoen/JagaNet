@@ -93,4 +93,8 @@ internal val telegramStrings: List<S> = listOf(
         "Detaillierte Statistiken und eigene Links für jede Kampagne findest du in deinem Konto auf der Website.",
     ),
     S("Open statistics", "Открыть статистику", "Statistik öffnen"),
+
+    // Sign-in link
+    S("Sign in on the website", "Войти на сайте", "Auf der Website anmelden"),
+    S("Open this link to sign in on the website. It works once, within 15 minutes.", "Откройте ссылку, чтобы войти на сайте. Она сработает один раз в течение 15 минут.", "Öffne diesen Link, um dich auf der Website anzumelden. Er funktioniert einmal, innerhalb von 15 Minuten."),
 )

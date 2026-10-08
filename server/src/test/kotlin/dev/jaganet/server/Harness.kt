@@ -14,6 +14,7 @@ import dev.jaganet.server.db.Jsonb
 import dev.jaganet.server.http.Services
 import dev.jaganet.server.http.jaganet
 import dev.jaganet.server.protocols.SimulatedDriver
+import dev.jaganet.server.services.Mailer
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.runBlocking
@@ -39,7 +40,12 @@ class Harness(val b: ApplicationTestBuilder) {
     val mail = mutableMapOf<String, String>()
     val cfg = Config.load(mapOf("JAGANET_MODE" to "test", "OWNER_EMAIL" to "owner@test.dev", "EXPOSE_OTP" to "0", "PRICE_RUB_MONTHLY" to "30000", "PRICE_RUB_YEARLY" to "250000", "PRICE_EUR_MONTHLY" to "500", "PRICE_EUR_YEARLY" to "4800"))
     val drivers = SimulatedDriver.registry { clock }
-    val ctx = Ctx(cfg, TestPg.freshDb(), drivers, { e, c -> mail[e] = c }, { clock })
+    /** false = e-mail "not set up" (sign-in by e-mail unavailable unless codes are shown). */
+    var mailReady = true
+    val ctx = Ctx(cfg, TestPg.freshDb(), drivers, object : Mailer {
+        override suspend fun sendLoginCode(email: String, code: String, lang: dev.jaganet.api.i18n.Lang) { mail[email] = code }
+        override fun ready() = mailReady
+    }, { clock })
     val services = Services(ctx)
 
     init {

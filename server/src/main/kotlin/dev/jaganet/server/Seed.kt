@@ -27,7 +27,39 @@ class Seed(private val ctx: Ctx) {
     private val hour = Duration.ofHours(1)
     private var ip = 10
 
-    suspend fun run() = ctx.db.run { sql ->
+    suspend fun run() {
+        seedAll()
+        seedMetrics()
+    }
+
+    /** A week of server measurements every 5 minutes, with a daily rhythm and one past incident. */
+    private suspend fun seedMetrics() = ctx.db.run { sql ->
+        if (sql.one("SELECT count(*)::int AS n FROM server_metrics")!!.int("n") > 0) return@run
+        val rnd = java.util.Random(7)
+        var t = now.minus(Duration.ofDays(7))
+        while (t < now.minus(Duration.ofMinutes(5))) {
+            val h = t.atZone(java.time.ZoneOffset.UTC).hour
+            val daily = 0.35 + 0.65 * kotlin.math.max(0.0, kotlin.math.sin((h - 6) / 24.0 * 2 * Math.PI))
+            val incident = Duration.between(t, now) in Duration.ofHours(30)..Duration.ofHours(31)
+            val rx = ((120 + 380 * daily) * 1_000_000 * (0.85 + 0.3 * rnd.nextDouble())).toLong()
+            val tx = (rx * (0.9 + 0.15 * rnd.nextDouble())).toLong()
+            sql.exec(
+                """INSERT INTO server_metrics (ts, cpu, mem_used, mem_total, disk_free, disk_total, rx_bps, tx_bps, rx_bytes, tx_bytes,
+                     utilization, ping_ms, loss_pct, peers, online, errors, drops) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                t, 0.08 + 0.35 * daily + 0.05 * rnd.nextDouble(), (1_100 + 500 * daily).toLong() * 1_000_000, 3_900_000_000L,
+                21_000_000_000L, 40_000_000_000L, rx, tx, rx / 8 * 300, tx / 8 * 300, rx.coerceAtLeast(tx) / 1e9,
+                if (incident) 180.0 + 60 * rnd.nextDouble() else 4.0 + 3 * rnd.nextDouble(), if (incident) 12.0 else 0.0,
+                (40 + 25 * daily).toInt(), (8 + 30 * daily).toInt(), if (incident) 420L else rnd.nextInt(3).toLong(), if (incident) 160L else 0L,
+            )
+            t = t.plus(Duration.ofMinutes(5))
+        }
+        sql.exec(
+            "INSERT INTO monitor_alerts (key, level, message, args, opened_at, resolved_at) VALUES ('ping','critical','Packet loss {loss}% to {host}',?,?,?)",
+            Jsonb("""{"loss":"12","host":"1.1.1.1"}"""), now.minus(Duration.ofHours(31)), now.minus(Duration.ofHours(30)),
+        )
+    }
+
+    private suspend fun seedAll() = ctx.db.run { sql ->
         if (sql.one("SELECT count(*)::int AS n FROM users")!!.int("n") > 0) return@run
         sql.exec(
             """INSERT INTO servers (id, name, city, country_code, subnet, protocols, max_peers, monthly_traffic_limit_bytes, paid_through)

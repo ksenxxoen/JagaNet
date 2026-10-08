@@ -50,6 +50,8 @@ fun Route.salesApi(s: Services) {
                 telegramBotUrl = s.bot?.username?.let { "https://t.me/$it" },
                 testPayments = s.payments.isTest,
                 paymentsEnabled = s.payments.provider != null,
+                emailSignIn = s.auth.emailSignInAvailable(),
+                testCodes = s.ctx.live.showSignInCodes,
             ),
         )
     }

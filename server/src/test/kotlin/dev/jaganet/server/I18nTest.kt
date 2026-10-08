@@ -20,7 +20,7 @@ class I18nTest {
 
     /** t("…"), tp(n, "…"), and server errors: notFound("…"), badRequest("…"), AppError(…, "…"), translate(…, "…"). */
     private val keyCall = Regex(
-        """\b(?:t\(|tp\([^,()]+,\s*|notFound\(|badRequest\(|AppError\(\d+,\s*ErrorCode\.\w+,\s*|translate\([^,()]+(?:\([^)]*\))?,\s*)"((?:[^"\\]|\\.)*)"""",
+        """\b(?:t\(|tp\([^,()]+,\s*|notFound\(|badRequest\(|AppError\(\d+,\s*ErrorCode\.\w+,\s*|translate\([^,()]+(?:\([^)]*\))?,\s*|HealthCheck\("\w+",\s*[^",]+?,\s*)"((?:[^"\\]|\\.)*)"""",
     )
 
     private fun keysIn(f: File): List<String> = keyCall.findAll(f.readText())

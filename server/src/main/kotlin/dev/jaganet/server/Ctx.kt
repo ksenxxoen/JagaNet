@@ -12,4 +12,19 @@ class Ctx(
     val drivers: DriverRegistry,
     val mailer: Mailer,
     val now: () -> Instant = Instant::now,
-)
+) {
+    /** Settings the owner can change in the admin panel; start from the environment. */
+    val live = Live(cfg)
+}
+
+/** Current values of the settings editable at runtime (saved in the settings table). */
+class Live(cfg: Config) {
+    @Volatile var plans: Plans = cfg.plans
+    @Volatile var smtp: Smtp? = cfg.smtp
+    @Volatile var alertEmails: List<String> = cfg.monitor.alertEmails
+    @Volatile var alertTelegramChats: List<Long> = cfg.monitor.alertTelegramChats
+    /** Test mode: sign-in codes in the API response instead of e-mail. */
+    @Volatile var showSignInCodes: Boolean = cfg.exposeOtp
+    /** "test" or a real provider id; null = selling is off. */
+    @Volatile var paymentProvider: String? = cfg.paymentProvider
+}

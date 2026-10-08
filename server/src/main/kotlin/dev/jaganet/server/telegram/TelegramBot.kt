@@ -53,6 +53,9 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
     private val ctx = s.ctx
     @Volatile var username: String? = null
         private set
+    /** Last time Telegram answered a poll (monitoring checks it). */
+    @Volatile var lastPollOk: Instant? = null
+        private set
 
     init {
         s.payments.listeners.add(PaidListener { order, key, until -> if (order.channel == Channel.TELEGRAM) onPaid(order, key, until) })
@@ -80,7 +83,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
                 api.call("getUpdates", buildJsonObject {
                     put("offset", offset); put("timeout", 50)
                     putJsonArray("allowed_updates") { add("message"); add("callback_query") }
-                }).jsonArray
+                }).jsonArray.also { lastPollOk = ctx.now() }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -108,6 +111,8 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
                 "/app" -> appAction(who)
                 "/status" -> statusAction(who)
                 "/invite" -> inviteAction(who)
+                "/login" -> loginAction(who)
+                "/myid" -> send(who, who.t("This chat's id is {id}. Put it in ALERT_TELEGRAM_CHAT_IDS to get server alerts here.", "id" to chat))
                 "/language" -> languageAction(who)
                 else -> menu(who)
             }
@@ -123,6 +128,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
                 data == "app" -> appAction(who)
                 data == "status" -> statusAction(who)
                 data == "invite" -> inviteAction(who)
+                data == "login" -> loginAction(who)
                 data == "language" -> languageAction(who)
                 data.startsWith("lang:") -> {
                     val lang = Lang.of(data.removePrefix("lang:")) ?: Lang.DEFAULT
@@ -159,7 +165,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
         } catch (e: AppError) {
             return send(u, u.t("Sorry, buying isn't available right now.") + "\n" + translate(u.lang, e.message ?: "", e.args))
         }
-        val price = Format.money(price(id, u.lang) ?: 0, ctx.cfg.plans.currencyFor(u.lang), u.lang)
+        val price = Format.money(price(id, u.lang) ?: 0, ctx.live.plans.currencyFor(u.lang), u.lang)
         val text = buildString {
             appendLine(u.t("{product} for {price}", "product" to productName(id, u.lang), "price" to price))
             append(u.t("Tap the button to pay. Your VPN key arrives here right after."))
@@ -201,6 +207,12 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
             },
             links,
         )
+    }
+
+    /** A one-time link that signs this Telegram account in on the website (no e-mail needed). */
+    private suspend fun loginAction(u: Who) {
+        val link = s.auth.createLoginLink(u.userId).replace("/#/", "/?lang=${u.lang.code}#/")
+        send(u, u.t("Open this link to sign in on the website. It works once, within 15 minutes."), listOf(listOf(Btn(u.t("Sign in on the website"), url = link))))
     }
 
     /** The user's main referral link and a 30-day summary; details are on the website. */
@@ -268,10 +280,10 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
 
     /* ---------------- helpers ---------------- */
 
-    private fun price(id: ProductId, lang: Lang) = ctx.cfg.plans.let { it.price(id, it.currencyFor(lang)) }
+    private fun price(id: ProductId, lang: Lang) = ctx.live.plans.let { it.price(id, it.currencyFor(lang)) }
 
     private fun buyButtons(u: Who): List<List<Btn>> = ProductId.entries.sortedByDescending { it.periodDays }.mapNotNull { id ->
-        price(id, u.lang)?.let { listOf(Btn(u.t("{product} for {price}", "product" to productName(id, u.lang), "price" to Format.money(it, ctx.cfg.plans.currencyFor(u.lang), u.lang)), data = "buy:${id.name.lowercase()}")) }
+        price(id, u.lang)?.let { listOf(Btn(u.t("{product} for {price}", "product" to productName(id, u.lang), "price" to Format.money(it, ctx.live.plans.currencyFor(u.lang), u.lang)), data = "buy:${id.name.lowercase()}")) }
     }
 
     /** Pro expiry, or null on the free plan. */
@@ -309,6 +321,11 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
         }))
     }
 
+    /** Plain message to a chat (server alerts). */
+    suspend fun sendText(chat: Long, text: String) {
+        api.call("sendMessage", buildJsonObject { put("chat_id", chat); put("text", text); put("link_preview_options", buildJsonObject { put("is_disabled", true) }) })
+    }
+
     private suspend fun send(u: Who, text: String, buttons: List<List<Btn>> = emptyList()) {
         api.call("sendMessage", buildJsonObject {
             put("chat_id", u.chat); put("text", text)
@@ -324,6 +341,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
             "app" to "Get the app",
             "status" to "My subscription",
             "invite" to "Invite friends",
+            "login" to "Sign in on the website",
             "language" to "Language",
         )
     }

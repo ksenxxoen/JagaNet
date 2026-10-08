@@ -94,4 +94,22 @@ internal val serverStrings: List<S> = listOf(
     S("You can have up to 50 links", "Можно создать до 50 ссылок", "Du kannst bis zu 50 Links haben"),
     S("This code is taken", "Этот код уже занят", "Dieser Code ist schon vergeben"),
     S("Link not found", "Ссылка не найдена", "Link nicht gefunden"),
+
+    // Unavailable services and one-time links
+    S("Sign-in by e-mail is temporarily unavailable", "Вход по почте временно недоступен", "Die Anmeldung per E-Mail ist vorübergehend nicht verfügbar"),
+    S("Couldn't send the e-mail, try again later", "Не удалось отправить письмо, попробуйте позже", "Die E-Mail konnte nicht gesendet werden, versuch es später noch einmal"),
+    S("Payments are temporarily unavailable", "Оплата временно недоступна", "Zahlungen sind vorübergehend nicht verfügbar"),
+    S("In-app purchases are temporarily unavailable", "Покупки в приложении временно недоступны", "In-App-Käufe sind vorübergehend nicht verfügbar"),
+    S("This link is used or has expired, ask for a new one", "Ссылка уже использована или устарела, запросите новую", "Dieser Link wurde schon benutzt oder ist abgelaufen, fordere einen neuen an"),
+    S("OWNER_EMAIL is not set", "Не задан OWNER_EMAIL", "OWNER_EMAIL ist nicht gesetzt"),
+
+    // Admin settings
+    S("Some values are out of range", "Некоторые значения вне допустимых пределов", "Einige Werte liegen außerhalb des erlaubten Bereichs"),
+    S("Prices in rubles and euros are required", "Нужны цены в рублях и евро", "Preise in Rubel und Euro sind erforderlich"),
+    S("Prices must be above zero", "Цены должны быть больше нуля", "Preise müssen über null liegen"),
+    S("Port must be 1 to 65535", "Порт должен быть от 1 до 65535", "Der Port muss zwischen 1 und 65535 liegen"),
+    S("E-mail is not set up", "Почта не настроена", "E-Mail ist nicht eingerichtet"),
+    S("The mail server refused, {reason}", "Почтовый сервер отказал, {reason}", "Der Mailserver hat abgelehnt, {reason}"),
+    S("Test e-mail", "Тестовое письмо", "Test-E-Mail"),
+    S("E-mail from your JagaNet server works.", "Почта с вашего сервера JagaNet работает.", "E-Mails von deinem JagaNet-Server funktionieren."),
 )

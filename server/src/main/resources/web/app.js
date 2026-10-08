@@ -75,12 +75,16 @@ function go(hash) { if (location.hash === hash) render(); else location.hash = h
 function renderNav() {
   const langs = `<span class="langs nav">${LANGS.map(([c, name]) => `<button type="button" class="${c === lang ? "on" : ""}" data-lang="${c}" title="${name}" lang="${c}">${c.toUpperCase()}</button>`).join("")}</span>`;
   nav.innerHTML = langs + (store.get("token")
-    ? `<a class="btn secondary small" href="#/referrals">${t("Referral program")}</a><a class="btn secondary small" href="#/account">${t("My account")}</a>`
+    ? (role === "owner" ? `<a class="btn secondary small" href="#/admin">${t("Admin panel")}</a><a class="btn secondary small" href="#/status">${t("Server status")}</a>` : "") + `<a class="btn secondary small" href="#/referrals">${t("Referral program")}</a><a class="btn secondary small" href="#/account">${t("My account")}</a>`
     : `<a class="btn secondary small" href="#/signin">${t("Sign in")}</a>`);
   for (const b of nav.querySelectorAll("[data-lang]")) b.onclick = () => setLang(b.dataset.lang);
 }
 
 const productTitle = (id) => (id === "pro_yearly" ? t("Pro yearly") : t("Pro monthly"));
+/** Buying works unless the server says no payment service is set up. */
+const payOk = () => site?.paymentsEnabled !== false;
+const buyBtn = (productId, cls, label) => `<button class="btn ${cls}" ${payOk() ? `onclick="buy('${productId}')"` : "disabled"}>${label}</button>`;
+const testPayBadge = () => (site?.testPayments ? `<span class="badge test">${t("Test payments, no real money")}</span>` : "");
 
 /* ---------------- landing ---------------- */
 
@@ -95,7 +99,7 @@ async function home() {
       <h1>${t("A fast and secure VPN.")}</h1>
       <p class="muted">${t("JagaNet encrypts all your traffic and keeps the internet fast.")}</p>
       <div class="cta">
-        <button class="btn green" onclick="buy('pro_yearly')">${t("Get Pro")}</button>
+        ${payOk() ? buyBtn("pro_yearly", "green", t("Get Pro")) : ""}
         <a class="btn secondary" href="#download">${t("Download the app")}</a>
       </div>
     </div>
@@ -114,16 +118,18 @@ async function home() {
   </div>
 
   <h2 id="pricing">${t("Pricing")}</h2>
+  ${payOk() ? "" : `<div class="notice bad">${t("Payments are temporarily unavailable")}</div>`}
+  ${site?.testPayments ? `<p>${testPayBadge()}</p>` : ""}
   <div class="plans">
     <div class="card plan"><h3>${t("Free")}</h3><div class="price">${h(money(0, p.pro_monthly?.currency || "USD"))}</div>
       <ul><li>${t("{n} GB a month", { n: Math.round(free.monthlyDataLimitBytes / 1e9) })}</li><li>${tp(free.deviceLimit, "{n} device|{n} devices")}</li><li>${t("JagaNet app")}</li></ul>
       <a class="btn secondary" href="#download">${t("Download the app")}</a></div>
     <div class="card plan"><h3>${t("Pro monthly")}</h3><div class="price">${price(p.pro_monthly)}</div>
       <ul><li>${t("Unlimited data")}</li><li>${t("Up to {n} devices", { n: pro.deviceLimit })}</li><li>${t("Works in other VPN apps too")}</li></ul>
-      <button class="btn" onclick="buy('pro_monthly')">${t("Buy for a month")}</button></div>
+      ${buyBtn("pro_monthly", "", t("Buy for a month"))}</div>
     <div class="card plan best"><span class="badge">${t("BEST VALUE")}</span><h3>${t("Pro yearly")}</h3><div class="price">${price(p.pro_yearly)}</div>
       <ul><li>${t("Everything in the monthly plan")}</li><li>${t("About 4 months free")}</li></ul>
-      <button class="btn green" onclick="buy('pro_yearly')">${t("Buy for a year")}</button></div>
+      ${buyBtn("pro_yearly", "green", t("Buy for a year"))}</div>
   </div>
 
   <h2 id="download">${t("Get the app")}</h2>
@@ -156,9 +162,22 @@ window.buy = async function (productId) {
 
 function signin() {
   if (store.get("token")) return go("#/account");
+  const bot = site?.telegramBotUrl;
+  const viaTelegram = bot ? `<div class="alt"><a class="btn secondary" href="${h(bot)}" target="_blank" rel="noreferrer">${t("Sign in with Telegram")}</a>
+    <p class="muted small">${t("Send /login to the bot and open the link it gives you.")}</p></div>` : "";
+  if (site?.emailSignIn === false) {
+    view.innerHTML = `
+    <div class="card signbox">
+      <h1>${t("Sign in")}</h1>
+      <div class="notice bad">${t("Sign-in by e-mail is temporarily unavailable")}</div>
+      ${viaTelegram || `<p class="muted">${t("Please try again later.")}</p>`}
+    </div>`;
+    return;
+  }
   view.innerHTML = `
-  <div class="card" style="max-width:420px;margin:24px auto">
+  <div class="card signbox">
     <h1>${t("Sign in")}</h1>
+    ${site?.testCodes ? `<p><span class="badge test">${t("Test mode, sign-in codes are shown on screen")}</span></p>` : ""}
     <p class="muted">${t("Enter your email. We'll send a 6-digit code, no password needed.")}</p>
     <form id="f1"><label for="email">${t("Email")}</label><input id="email" type="email" autocomplete="email" required placeholder="you@example.com">
       <button class="btn" type="submit">${t("Email me a code")}</button></form>
@@ -167,6 +186,7 @@ function signin() {
       <button class="btn" type="submit">${t("Sign in")}</button>
       <p style="margin-top:12px"><button class="link" type="button" id="back">${t("Use another email")}</button></p></form>
     <p id="err" class="warn"></p>
+    ${viaTelegram ? `<div class="or"><span>${t("or")}</span></div>${viaTelegram}` : ""}
   </div>`;
   const f1 = document.getElementById("f1"), f2 = document.getElementById("f2"), err = document.getElementById("err");
   let email = "";
@@ -195,6 +215,25 @@ function signin() {
     } catch (e) { err.textContent = e.message; }
   };
   document.getElementById("back").onclick = () => { f2.hidden = true; f1.hidden = false; };
+}
+
+/** #/login?token=... : a one-time sign-in link from the Telegram bot or from the server. */
+async function login(params) {
+  const token = params.get("token");
+  view.innerHTML = `<div class="card signbox"><p class="muted">${t("Signing you in…")}</p></div>`;
+  try {
+    if (!token) throw new Error(t("This sign-in link is incomplete. Ask for a new one."));
+    const r = await api("/auth/link/redeem", { method: "POST", body: { token, device: { name: t("Website"), platform: "other" } } });
+    store.set("token", r.token);
+    role = null;
+    // Keep the used token out of the browser history.
+    history.replaceState(null, "", location.pathname + location.search + "#/account");
+    return render();
+  } catch (e) {
+    view.innerHTML = `<div class="card signbox"><h1>${t("Sign in")}</h1>
+      <div class="notice bad">${h(e.message)}</div>
+      <a class="btn" href="#/signin">${t("Back to sign in")}</a></div>`;
+  }
 }
 
 /* ---------------- account ---------------- */
@@ -226,10 +265,12 @@ async function account(params) {
       <div style="font-size:26px;font-weight:700">${isPro ? "Pro" : t("Free")}</div>
       <div class="muted">${isPro ? t("Active until {date}", { date: date(e.expiresAt) }) : `${t("{n} GB a month", { n: Math.round(e.monthlyDataLimitBytes / 1e9) })}, ${tp(e.deviceLimit, "{n} device|{n} devices")}`}</div>
     </div>
-    <div class="keyactions">
-      <button class="btn green" onclick="buy('pro_monthly')">${t(isPro ? "Extend for a month for {price}" : "Pro for a month for {price}", { price: h(money(p.pro_monthly?.priceMinor, p.pro_monthly?.currency)) })}</button>
-      <button class="btn secondary" onclick="buy('pro_yearly')">${t("For a year for {price}", { price: h(money(p.pro_yearly?.priceMinor, p.pro_yearly?.currency)) })}</button>
-    </div></div>
+    <div><div class="keyactions">
+      ${buyBtn("pro_monthly", "green", t(isPro ? "Extend for a month for {price}" : "Pro for a month for {price}", { price: h(money(p.pro_monthly?.priceMinor, p.pro_monthly?.currency)) }))}
+      ${buyBtn("pro_yearly", "secondary", t("For a year for {price}", { price: h(money(p.pro_yearly?.priceMinor, p.pro_yearly?.currency)) }))}
+    </div>
+    ${payOk() ? "" : `<p class="paynote">${t("Payments are temporarily unavailable")}</p>`}
+    ${site?.testPayments ? `<p class="paynote">${testPayBadge()}</p>` : ""}</div></div>
   </div>
 
   <h2>${t("VPN keys")}</h2>
@@ -306,9 +347,9 @@ function funnelTiles(f) {
 
 /**
  * Daily bar chart in SVG. series: [{key, label, color}]; one series = plain bars,
- * two = grouped bars with a legend. One axis, recessive grid, hover tooltip per day.
+ * two = grouped bars with a legend. One axis, recessive grid, hover tooltip per day (values through fmt).
  */
-function dayChart(days, series, title) {
+function dayChart(days, series, title, fmt = (v) => v) {
   // Drawn at the real width so labels keep their size on phones.
   const W = Math.max(300, Math.min(1000, (view.clientWidth || 960) - 42)), H = W < 600 ? 180 : 220, L = 34, R = 8, T = 10, B = 26;
   const max = Math.max(1, ...days.flatMap((d) => series.map((s) => d[s.key])));
@@ -328,7 +369,7 @@ function dayChart(days, series, title) {
       return `<rect x="${x0 + j * (bw + 2)}" y="${y(0) - hgt}" width="${bw}" height="${hgt}" rx="${Math.min(4, bw / 2)}" fill="${s.color}"/>`;
     }).join("");
     const label = i % every === 0 ? `<text x="${L + i * cw + cw / 2}" y="${H - 8}" class="axis" text-anchor="middle">${h(shortDate(d.day))}</text>` : "";
-    const tip = h(date(d.day)) + "|" + series.map((s) => `${s.label} ${d[s.key]}`).join("|");
+    const tip = h(date(d.day)) + "|" + series.map((s) => h(`${s.label} ${fmt(d[s.key])}`)).join("|");
     return `<g class="col" data-tip="${tip}"><rect x="${L + i * cw}" y="${T}" width="${cw}" height="${H - T - B}" class="hit"/>${rects}${label}</g>`;
   }).join("");
   const legend = series.length > 1 ? `<div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${s.label}</span>`).join("")}</div>` : "";
@@ -347,7 +388,8 @@ function wireCharts(root) {
         tip.innerHTML = `<b>${head}</b>` + rows.map((r) => `<div>${r}</div>`).join("");
         tip.hidden = false;
         const box = c.getBoundingClientRect(), r = g.getBoundingClientRect();
-        tip.style.left = Math.min(box.width - 170, Math.max(0, r.left - box.left + r.width / 2 - 80)) + "px";
+        const tw = tip.offsetWidth || 160;
+        tip.style.left = Math.max(0, Math.min(box.width - tw - 10, r.left - box.left + r.width / 2 - tw / 2)) + "px";
       };
       g.onmouseleave = () => (tip.hidden = true);
     }
@@ -443,17 +485,445 @@ async function referrals(params) {
   };
 }
 
+/* ---------------- server status (owners) ---------------- */
+
+const RANGES = [["1h", "1 hour"], ["24h", "24 hours"], ["7d", "7 days"], ["30d", "30 days"]];
+const LEVELS = { ok: "OK", warning: "Warning", critical: "Problem", unknown: "Unknown" };
+const CHECK_NAMES = {
+  vpn: "VPN", db: "Database", https: "Website (HTTPS)", cert: "Certificate", bot: "Telegram bot", cpu: "Processor", memory: "Memory",
+  disk: "Disk", channel: "Channel load", net_errors: "Network errors", ping: "Ping and packet loss", dns: "DNS", traffic: "Monthly traffic",
+};
+const DOWN = "#1baf7a", UP = "#eb6834", ONE = "#1E6B57";
+let statusTimer = null;
+
+/** 12.5 with the language's decimal separator; whole numbers from 10 up. */
+function num(v, digits = v < 10 && !Number.isInteger(v) ? 1 : 0) {
+  const s = (Math.round(v * 10 ** digits) / 10 ** digits).toFixed(digits);
+  return lang === "en" ? s : s.replace(".", ",");
+}
+/** Bits per second: "850 Kbit/s", "12,5 Мбит/с", "1,2 Gbit/s". */
+function bits(bps) {
+  if (bps == null) return "-";
+  const u = lang === "ru" ? ["Кбит/с", "Мбит/с", "Гбит/с"] : ["Kbit/s", "Mbit/s", "Gbit/s"];
+  if (bps >= 1e9) return `${num(bps / 1e9)} ${u[2]}`;
+  if (bps >= 1e6) return `${num(bps / 1e6)} ${u[1]}`;
+  return `${num(bps / 1e3)} ${u[0]}`;
+}
+/** Same units as the apps (Format.bytes). */
+function bytes(b) {
+  const u = (x) => (lang === "ru" ? { B: "Б", KB: "КБ", MB: "МБ", GB: "ГБ", TB: "ТБ" }[x] : x);
+  if (b >= 1e12) return `${num(b / 1e12, 1)} ${u("TB")}`;
+  if (b >= 1e9) return `${num(b / 1e9, 1)} ${u("GB")}`;
+  if (b >= 1e6) return `${Math.round(b / 1e6)} ${u("MB")}`;
+  if (b >= 1e3) return `${Math.round(b / 1e3)} ${u("KB")}`;
+  return `${b} ${u("B")}`;
+}
+const percent = (v) => (v == null ? "-" : `${num(v)}%`);
+const clock = (iso) => { const d = new Date(iso); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+const localDay = (iso) => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const dateTime = (iso) => (iso ? `${date(localDay(iso))} ${clock(iso)}` : "-");
+function duration(ms) {
+  const m = Math.max(0, Math.round(ms / 60000));
+  if (m < 60) return t("{n} min", { n: m });
+  const hrs = Math.floor(m / 60);
+  if (hrs < 48) return `${t("{n} h", { n: hrs })} ${t("{n} min", { n: String(m % 60).padStart(2, "0") })}`;
+  return tp(Math.floor(hrs / 24), "{n} day|{n} days");
+}
+const levelLabel = (l) => t(LEVELS[l] || "Unknown");
+const levelBadge = (l) => `<span class="lvl ${h(l)}"><i></i>${levelLabel(l)}</span>`;
+
+/** A round axis top (1, 1.2, 1.5, 2, 2.5 ... times a power of ten) at or above max. */
+function niceTop(max) {
+  if (!(max > 0)) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(max)));
+  return [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].map((k) => k * mag).find((v) => v >= max * 0.999) || 10 * mag;
+}
+
+/**
+ * Time line chart in SVG, same look as dayChart. points: [{ts, <key>: number|null}] oldest first;
+ * series: [{key, label, color}]. One y axis (formatY for ticks and tooltips), gaps where a value is null,
+ * a legend for 2+ series and a crosshair tooltip on hover. opts.top fixes the axis top (e.g. 100 for %).
+ */
+function lineChart(points, series, title, formatY, opts = {}) {
+  const pts = points.filter((p) => series.some((s) => p[s.key] != null));
+  if (pts.length < 2) return `<div class="card chart"><h3>${title}</h3><p class="muted">${t("No data yet.")}</p></div>`;
+  const W = Math.max(280, Math.min(1000, (opts.width || view.clientWidth || 960) - 42)), H = opts.small ? 120 : W < 600 ? 180 : 220;
+  const T = 10, B = 26, R = 10;
+  const max = Math.max(0, ...pts.flatMap((p) => series.map((s) => p[s.key] ?? 0)));
+  const top = opts.top ? Math.max(opts.top, max) : niceTop(max);
+  const ticks = [0, top / 2, top];
+  const L = Math.max(30, 10 + Math.max(...ticks.slice(1).map((v) => formatY(v).length)) * 6.3);
+  const times = pts.map((p) => Date.parse(p.ts)), t0 = times[0], t1 = times[times.length - 1], span = Math.max(1, t1 - t0);
+  const x = (ms) => L + ((W - L - R) * (ms - t0)) / span;
+  const y = (v) => T + (H - T - B) * (1 - v / top);
+  const grid = ticks.map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${L - 6}" y="${y(v) + 4}" class="axis" text-anchor="end">${v ? h(formatY(v)) : "0"}</text>`).join("");
+  // Time labels: clock times within two days, dates beyond.
+  const byDay = span > 2 * 86400e3, nLabels = Math.max(2, Math.min(6, Math.floor((W - L) / 90)));
+  const labels = Array.from({ length: nLabels }, (_, i) => {
+    const ms = t0 + (span * i) / (nLabels - 1), iso = new Date(ms).toISOString();
+    const anchor = i === 0 ? "start" : i === nLabels - 1 ? "end" : "middle";
+    return `<text x="${x(ms)}" y="${H - 8}" class="axis" text-anchor="${anchor}">${h(byDay ? shortDate(localDay(iso)) : clock(iso))}</text>`;
+  }).join("");
+  // A gap in the data (missing minutes, null values) breaks the line.
+  const step = span / Math.max(1, pts.length - 1);
+  const lines = series.map((s) => {
+    let d = "", prev = null;
+    pts.forEach((p, i) => {
+      const v = p[s.key];
+      if (v == null) { prev = null; return; }
+      const cont = prev != null && times[i] - times[prev] <= step * 3;
+      d += `${cont ? "L" : "M"}${x(times[i]).toFixed(1)} ${y(v).toFixed(1)}`;
+      prev = i;
+    });
+    return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  }).join("");
+  // Hover: one column per point with a crosshair and dots.
+  const cols = pts.map((p, i) => {
+    const cx = x(times[i]);
+    const a = i ? (cx + x(times[i - 1])) / 2 : L, b = i < pts.length - 1 ? (cx + x(times[i + 1])) / 2 : W - R;
+    const dots = series.map((s) => (p[s.key] == null ? "" : `<circle cx="${cx}" cy="${y(p[s.key])}" r="4" fill="${s.color}" class="dot"/>`)).join("");
+    const tip = h(byDay ? dateTime(p.ts) : clock(p.ts)) + "|" + series.map((s) => h(`${s.label} ${p[s.key] == null ? "-" : formatY(p[s.key])}`)).join("|");
+    return `<g class="col" data-tip="${tip}"><rect x="${a}" y="${T}" width="${Math.max(0.5, b - a)}" height="${H - T - B}" class="hit"/><line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" class="xh"/>${dots}</g>`;
+  }).join("");
+  const legend = series.length > 1 ? `<div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${s.label}</span>`).join("")}</div>` : "";
+  return `<div class="card chart line"><div class="row"><h3>${title}</h3>${legend}</div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${h(title)}" preserveAspectRatio="none">${grid}<line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" class="base"/>${lines}${labels}${cols}</svg>
+    <div class="tip" hidden></div></div>`;
+}
+
+const kpi = (label, value, note) => `<div class="card kpi"><div class="muted">${label}</div><div class="kpi-v">${value}</div>${note ? `<div class="muted kpi-n">${note}</div>` : ""}</div>`;
+const meter = (part, whole) => `<div class="meter"><div style="width:${Math.min(100, Math.max(1, (part / whole) * 100))}%" class="${part / whole >= 0.9 ? "hot" : ""}"></div></div>`;
+
+async function status(params) {
+  if (!store.get("token")) return go("#/signin");
+  if (role !== "owner") return go("#/account");
+  const range = RANGES.some(([k]) => k === params.get("range")) ? params.get("range") : store.get("monRange") || "24h";
+  store.set("monRange", range);
+  const m = await api(`/admin/monitor?range=${range}`);
+  if (!location.hash.startsWith("#/status")) return;
+  const net = m.network, last = m.series[m.series.length - 1];
+  const pts = m.series.map((p) => ({
+    ts: p.ts, rx: p.rxBps, tx: p.txBps, load: p.utilization == null ? null : p.utilization * 100, ping: p.pingMs ?? null, loss: p.lossPct ?? null,
+    errors: p.errors, drops: p.drops, cpu: p.cpu * 100, mem: p.memTotal ? (p.memUsed / p.memTotal) * 100 : null, online: p.online,
+  }));
+  const whole = (v) => String(Math.round(v));
+  const half = view.clientWidth > 760 ? (view.clientWidth - 14) / 2 : 0;
+  const capNote = net.capacityMbps
+    ? t(net.capacitySource === "config" ? "Capacity {speed}, from CHANNEL_MBPS" : "Capacity {speed}, reported by the network card", { speed: bits(net.capacityMbps * 1e6) })
+    : t("Capacity unknown");
+  const banner = { ok: "Everything works", warning: "Something needs attention", critical: "There is a problem" }[m.overall] || "State unknown";
+  const open = m.alerts.filter((a) => !a.resolvedAt), done = m.alerts.filter((a) => a.resolvedAt);
+  const monthTotal = (net.monthRxBytes || 0) + (net.monthTxBytes || 0);
+
+  view.innerHTML = `
+  <div class="row"><h1>${t("Server status")}</h1>
+    <div class="chips">${RANGES.map(([k, l]) => `<a class="chip ${k === range ? "on" : ""}" href="#/status?range=${k}">${t(l)}</a>`).join("")}</div></div>
+  <div class="overall ${h(m.overall)}"><i></i><div><b>${t(banner)}</b>
+    <div class="small">${m.checkedAt ? t("Checked at {time}", { time: h(dateTime(m.checkedAt)) }) : t("Not checked yet")}. ${t("Updates every minute")}</div></div></div>
+
+  <div class="checks">${m.checks.map((c) => `<div class="card check ${h(c.level)}"><div class="row"><h3>${t(CHECK_NAMES[c.key] || c.key)}</h3>${levelBadge(c.level)}</div>
+    <p class="muted">${h(t(c.message, c.args))}</p></div>`).join("")}</div>
+
+  <h2>${t("Network")}</h2>
+  <div class="kpis k4">
+    ${kpi(t("Download speed"), h(bits(last?.rxBps)))}
+    ${kpi(t("Upload speed"), h(bits(last?.txBps)))}
+    ${kpi(t("Channel load"), last?.utilization == null ? "-" : percent(last.utilization * 100), h(capNote))}
+    ${kpi(t("Traffic this month"), h(bytes(monthTotal)), `${t("Downloaded")} ${h(bytes(net.monthRxBytes || 0))}<br>${t("Uploaded")} ${h(bytes(net.monthTxBytes || 0))}`)}
+  </div>
+  ${net.capacityMbps ? "" : `<p class="hint">${t("The channel capacity is unknown. Set CHANNEL_MBPS in /etc/jaganet/env to see the load.")}</p>`}
+  ${net.monthLimitBytes ? `<div class="card limit"><div class="row"><span>${t("{used} of {limit} allowed by the hosting plan", { used: h(bytes(monthTotal)), limit: h(bytes(net.monthLimitBytes)) })}</span><b class="mono">${percent((monthTotal / net.monthLimitBytes) * 100)}</b></div>${meter(monthTotal, net.monthLimitBytes)}</div>` : ""}
+  ${net.iface ? `<p class="muted small">${t("Interface {name}", { name: `<span class="mono">${h(net.iface)}</span>` })}</p>` : ""}
+  ${lineChart(pts, [{ key: "rx", label: t("Download"), color: DOWN }, { key: "tx", label: t("Upload"), color: UP }], t("Throughput"), bits)}
+  ${net.capacityMbps ? lineChart(pts, [{ key: "load", label: t("Load"), color: ONE }], t("Channel load, %"), (v) => `${whole(v)}%`, { top: 100 }) : ""}
+  <div class="grid2">
+    ${lineChart(pts, [{ key: "ping", label: t("Ping"), color: ONE }], t("Ping, ms"), (v) => t("{n} ms", { n: num(v) }), { small: true, width: half })}
+    ${lineChart(pts, [{ key: "loss", label: t("Packet loss"), color: ONE }], t("Packet loss, %"), (v) => `${num(v)}%`, { small: true, width: half })}
+  </div>
+  ${lineChart(pts, [{ key: "errors", label: t("Errors"), color: DOWN }, { key: "drops", label: t("Drops"), color: UP }], t("Errors and drops"), whole)}
+
+  <h2>${t("Resources")}</h2>
+  <div class="kpis k3">
+    ${kpi(t("Processor"), last ? percent(last.cpu * 100) : "-")}
+    ${kpi(t("Memory"), last ? percent((last.memUsed / (last.memTotal || 1)) * 100) : "-", last ? t("{used} of {total}", { used: h(bytes(last.memUsed)), total: h(bytes(last.memTotal)) }) : "")}
+    ${kpi(t("Disk free"), last ? h(bytes(last.diskFree)) : "-", last ? t("{used} of {total}", { used: percent((last.diskFree / (last.diskTotal || 1)) * 100), total: h(bytes(last.diskTotal)) }) : "")}
+  </div>
+  ${lineChart(pts, [{ key: "cpu", label: t("Processor"), color: DOWN }, { key: "mem", label: t("Memory"), color: UP }], t("Processor and memory, %"), (v) => `${whole(v)}%`, { top: 100 })}
+
+  <h2>VPN</h2>
+  <div class="kpis k3">
+    ${kpi(t("Keys on the server"), last ? last.peers : "-")}
+    ${kpi(t("Connected now"), last ? last.online : "-")}
+  </div>
+  ${lineChart(pts, [{ key: "online", label: t("Online"), color: ONE }], t("Devices online"), whole)}
+
+  <h2>${t("Alerts")}</h2>
+  <div class="card tablewrap"><table class="data alerts"><thead><tr><th>${t("Level")}</th><th>${t("Message")}</th><th>${t("Started")}</th></tr></thead>
+  <tbody>${open.map((a) => `<tr><td>${levelBadge(a.level)}</td><td>${h(t(a.message, a.args))}</td><td>${h(dateTime(a.openedAt))}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">${t("No open alerts.")}</td></tr>`}</tbody></table></div>
+  ${done.length ? `<h3 class="sub">${t("Resolved alerts")}</h3>
+  <div class="card tablewrap"><table class="data alerts"><thead><tr><th>${t("Level")}</th><th>${t("Message")}</th><th>${t("Started")}</th><th>${t("Ended")}</th><th>${t("Duration")}</th></tr></thead>
+  <tbody>${done.map((a) => `<tr><td>${levelBadge(a.level)}</td><td>${h(t(a.message, a.args))}</td><td>${h(dateTime(a.openedAt))}</td><td>${h(dateTime(a.resolvedAt))}</td><td>${h(duration(Date.parse(a.resolvedAt) - Date.parse(a.openedAt)))}</td></tr>`).join("")}</tbody></table></div>` : ""}
+
+  <h2>${t("Notifications")}</h2>
+  <div class="card notify">
+    <p class="muted">${t("Where alerts are sent")}</p>
+    <div class="nrow"><b>${t("Email")}</b><span>${m.notify.emails.length ? m.notify.emails.map((e) => `<span class="mono">${h(e)}</span>`).join("<br>") : `<span class="muted">${t("No email addresses")}</span>`}</span></div>
+    ${m.notify.emailReady ? "" : `<p class="warn">${t("E-mail sending is not set up yet.")} <a href="#/admin?tab=email">${t("Set up e-mail")}</a></p>`}
+    <div class="nrow"><b>Telegram</b><span>${tp(m.notify.telegramChats, "{n} Telegram chat|{n} Telegram chats")}</span></div>
+    <div class="row" style="margin-top:12px;justify-content:flex-start"><button class="btn secondary" id="testnote">${t("Send test notification")}</button><span id="testres" class="muted"></span></div>
+    <p class="small" style="margin-top:10px"><a href="#/admin?tab=alerts">${t("Change recipients")}</a></p>
+  </div>`;
+
+  wireCharts(view);
+  const btn = document.getElementById("testnote"), res = document.getElementById("testres");
+  btn.onclick = async () => {
+    btn.disabled = true; res.className = "muted"; res.textContent = "";
+    try { await api("/admin/monitor/test", { method: "POST" }); res.textContent = t("Sent"); }
+    catch (e) { res.className = "warn"; res.textContent = e.message; }
+    btn.disabled = false;
+  };
+  statusTimer = setTimeout(() => { if (location.hash.startsWith("#/status")) render(); }, 60000);
+}
+
+/* ---------------- admin panel (owners) ---------------- */
+
+const ADMIN_TABS = [["money", "Money"], ["plans", "Plans and prices"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"]];
+const payChannel = (k) => ({ web: t("Website"), telegram: "Telegram", apple: "App Store", google: "Google Play", dev: t("Test payments") })[k] || k;
+const NEW_SUB = "#1baf7a", RENEWAL = "#eb6834";
+
+/** "299" or "4,99" in major units → minor units; NaN when it isn't a price. */
+function toMinor(text) {
+  const s = String(text).trim().replace(/[\s ]/g, "").replace(",", ".");
+  return /^\d+(\.\d{1,2})?$/.test(s) ? Math.round(Number(s) * 100) : NaN;
+}
+function fromMinor(minor) {
+  const s = minor % 100 ? (minor / 100).toFixed(2) : String(minor / 100);
+  return lang === "en" ? s : s.replace(".", ",");
+}
+const field = (id, label, value, attrs = "") => `<div><label for="${id}">${label}</label><input id="${id}" value="${h(value ?? "")}" ${attrs}></div>`;
+const val = (id) => document.getElementById(id).value.trim();
+
+/** Runs a save; on success redraws the pane with the server's answer and says "Saved". */
+async function saveWith(btn, outId, request, redraw) {
+  const out = document.getElementById(outId);
+  btn.disabled = true; out.className = "result"; out.textContent = "";
+  try {
+    const r = await request();
+    site = null; // the public settings (sign-in, payments) may have changed
+    if (redraw) redraw(r);
+    const o = document.getElementById(outId);
+    o.className = "result ok"; o.textContent = t("Saved");
+  } catch (e) { out.className = "result warn"; out.textContent = e.message; }
+  btn.disabled = false;
+}
+
+async function admin(params) {
+  if (!store.get("token")) return go("#/signin");
+  if (role !== "owner") return go("#/account");
+  const tab = ADMIN_TABS.some(([k]) => k === params.get("tab")) ? params.get("tab") : "money";
+  const head = `<h1>${t("Admin panel")}</h1>
+    <nav class="tabs">${ADMIN_TABS.map(([k, l]) => `<a class="${k === tab ? "on" : ""}" href="#/admin?tab=${k}">${t(l)}</a>`).join("")}</nav>`;
+  if (tab === "money") return adminMoney(params, head);
+  const s = await api("/admin/settings");
+  if (!location.hash.startsWith("#/admin")) return;
+  view.innerHTML = head + `<div id="pane"></div>`;
+  ({ plans: plansPane, email: emailPane, alerts: alertsPane, modes: modesPane })[tab](s);
+}
+
+async function adminMoney(params, head) {
+  const period = PERIODS.some(([k]) => k === params.get("period")) ? params.get("period") : store.get("finPeriod") || "30d";
+  store.set("finPeriod", period);
+  const f = await api(`/admin/finance?period=${period}`);
+  if (!location.hash.startsWith("#/admin")) return;
+  const currencies = [...new Set([...f.revenue, ...f.days.flatMap((d) => d.revenue)].map((m) => m.currency))];
+  const empty = (title) => `<div class="card chart"><h3>${title}</h3><p class="muted">${t("No data yet.")}</p></div>`;
+  const revenueChart = (cur) => dayChart(
+    f.days.map((d) => ({ day: d.day, v: (d.revenue.find((m) => m.currency === cur)?.minor || 0) / 100 })),
+    [{ key: "v", label: t("Revenue"), color: ONE }], `${t("Revenue by day")}, ${h(cur)}`, (v) => money(Math.round(v * 100), cur));
+  const subsSeries = [{ key: "newSubscriptions", label: t("New subscriptions"), color: NEW_SUB }, { key: "renewals", label: t("Renewals"), color: RENEWAL }];
+  const who = (email) => (email.endsWith("@telegram.invalid") ? t("Telegram account") : email);
+
+  view.innerHTML = `${head}
+  <div class="chips">${PERIODS.map(([k, l]) => `<a class="chip ${k === period ? "on" : ""}" href="#/admin?tab=money&period=${k}">${t(l)}</a>`).join("")}</div>
+  <div class="kpis k4">
+    ${kpi(t("Revenue"), h(revenueText(f.revenue)), t("Website and Telegram payments"))}
+    ${kpi(t("Paid orders"), f.paidOrders)}
+    ${kpi(t("New subscriptions"), f.newSubscriptions)}
+    ${kpi(t("Renewals"), f.renewals)}
+    ${kpi(t("Active subscribers"), f.activeSubscribers, t("Paid Pro right now"))}
+    ${kpi(t("Monthly recurring revenue"), h(revenueText(f.mrr)), t("Website and Telegram subscriptions"))}
+    ${kpi(t("Unpaid orders"), f.unpaidOrders, t("Checkouts started but not paid"))}
+  </div>
+  ${f.days.length && currencies.length ? currencies.map(revenueChart).join("") : empty(t("Revenue by day"))}
+  ${f.days.length ? dayChart(f.days, subsSeries, t("New subscriptions and renewals by day")) : empty(t("New subscriptions and renewals by day"))}
+  <div class="grid2" style="margin-top:14px">${breakdown(t("Subscriptions by channel"), f.byChannel, payChannel)}${breakdown(t("Subscriptions by plan"), f.byProduct, productTitle)}</div>
+  <h2>${t("Recent payments")}</h2>
+  <div class="card tablewrap"><table class="data pays"><thead><tr><th>${t("Date")}</th><th>${t("Email")}</th><th>${t("Plan")}</th><th>${t("Amount")}</th><th>${t("Channel")}</th><th>${t("Type")}</th></tr></thead>
+  <tbody>${f.recent.map((r) => `<tr><td>${h(dateTime(r.at))}</td><td>${h(who(r.email))}</td><td>${h(productTitle(r.product))}</td>
+    <td>${r.amount ? h(money(r.amount.minor, r.amount.currency)) : r.channel === "apple" || r.channel === "google" ? `<span class="muted">${t("Via the store")}</span>` : "-"}</td><td>${h(payChannel(r.channel))}</td>
+    <td><span class="status ${r.renewal ? "" : "active"}">${r.renewal ? t("Renewal") : t("New subscription")}</span></td></tr>`).join("") || `<tr><td colspan="6" class="muted">${t("No payments in this period.")}</td></tr>`}</tbody></table></div>`;
+  wireCharts(view);
+}
+
+function plansPane(s) {
+  const pane = document.getElementById("pane"), p = s.plans;
+  const price = (c, k) => fromMinor(p.prices?.[c]?.[k] ?? 0);
+  const whole = 'type="number" min="0" step="1" inputmode="numeric" required';
+  pane.innerHTML = `<form class="card adminform" id="pf">
+    <h3>${t("Prices")}</h3>
+    <p class="muted">${t("Russian visitors see prices in rubles, German and English visitors in euros.")}</p>
+    <div class="fields">
+      ${field("rm", t("Month, rubles"), price("RUB", "monthlyMinor"), 'inputmode="decimal" required placeholder="299"')}
+      ${field("ry", t("Year, rubles"), price("RUB", "yearlyMinor"), 'inputmode="decimal" required placeholder="2490"')}
+      ${field("em", t("Month, euros"), price("EUR", "monthlyMinor"), 'inputmode="decimal" required placeholder="4,99"')}
+      ${field("ey", t("Year, euros"), price("EUR", "yearlyMinor"), 'inputmode="decimal" required placeholder="39,99"')}
+    </div>
+    <h3>${t("Limits")}</h3>
+    <div class="fields">
+      ${field("fg", t("Free data per month, GB"), p.freeMonthlyGb, whole)}
+      ${field("fd", t("Devices on Free"), p.freeDeviceLimit, whole)}
+      ${field("pd", t("Devices on Pro"), p.proDeviceLimit, whole)}
+      ${field("rd", t("Pro days for an invite"), p.referralRewardDays, whole)}
+    </div>
+    <p class="muted small">${t("New prices apply to new payments. Paid subscriptions keep their end date.")}</p>
+    <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button></div>
+    <p class="result" id="pres"></p></form>`;
+  const form = document.getElementById("pf");
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    saveWith(form.querySelector("button[type=submit]"), "pres", () => {
+      const prices = { RUB: { monthlyMinor: toMinor(val("rm")), yearlyMinor: toMinor(val("ry")) }, EUR: { monthlyMinor: toMinor(val("em")), yearlyMinor: toMinor(val("ey")) } };
+      if (Object.values(prices).some((x) => !(x.monthlyMinor > 0) || !(x.yearlyMinor > 0))) throw new Error(t("Enter prices as numbers above zero, for example 299 or 4,99"));
+      const body = { freeMonthlyGb: Number(val("fg")), freeDeviceLimit: Number(val("fd")), proDeviceLimit: Number(val("pd")), referralRewardDays: Number(val("rd")), prices };
+      return api("/admin/settings/plans", { method: "PUT", body });
+    }, plansPane);
+  };
+}
+
+function emailPane(s) {
+  const pane = document.getElementById("pane"), m = s.smtp || {};
+  const sec = m.security || "starttls";
+  const PORTS = { starttls: 587, ssl: 465, none: 25 };
+  pane.innerHTML = `
+  ${s.smtp ? `<div class="notice">${t("E-mail is set up, it goes out through {host}.", { host: h(m.host) })}</div>`
+           : `<div class="notice bad">${t("E-mail is not set up")}. ${t("Sign-in codes and alerts can't be sent by e-mail yet.")}</div>`}
+  <form class="card adminform" id="sf" autocomplete="off">
+    <h3>${t("Mail server (SMTP)")}</h3>
+    <div class="fields">
+      ${field("sh", t("Server"), m.host, 'placeholder="smtp-relay.brevo.com" required')}
+      ${field("sp", t("Port"), m.port || PORTS[sec], 'type="number" min="1" max="65535" required')}
+      <div><label for="ss">${t("Encryption")}</label><select id="ss">
+        ${[["starttls", "STARTTLS"], ["ssl", "SSL/TLS"], ["none", t("None")]].map(([k, l]) => `<option value="${k}" ${k === sec ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+      ${field("su", t("User name"), m.user, 'autocomplete="off"')}
+      ${field("sw", t("Password"), "", `type="password" autocomplete="new-password" placeholder="${s.smtpHasPassword ? h(t("saved")) : ""}"`)}
+      ${field("sf2", t("Sender address"), m.from, 'placeholder="JagaNet &lt;no-reply@example.com&gt;" required')}
+    </div>
+    ${s.smtpHasPassword ? `<p class="muted small">${t("Leave the password empty to keep the saved one.")}</p>` : ""}
+    <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button>
+      ${s.smtp ? `<button class="btn danger" type="button" id="soff">${t("Turn e-mail off")}</button>` : ""}</div>
+    <p class="result" id="sres"></p>
+  </form>
+  <p class="hint">${t("Any service with SMTP works, for example Brevo, Mailgun, Postmark, Amazon SES, Gmail or Zoho. Take the server, port, login and password from its SMTP settings.")}</p>
+  <form class="card adminform" id="tf">
+    <h3>${t("Send test e-mail")}</h3>
+    <div class="formrow two"><div><label for="tt">${t("Email")}</label><input id="tt" type="email" required placeholder="you@example.com"></div>
+      <button class="btn secondary" type="submit" ${s.smtp ? "" : "disabled"}>${t("Send test e-mail")}</button></div>
+    <p class="result" id="tres"></p>
+  </form>`;
+  const ss = document.getElementById("ss"), sp = document.getElementById("sp");
+  ss.onchange = () => { if (!sp.value || Object.values(PORTS).includes(Number(sp.value))) sp.value = PORTS[ss.value]; };
+  const sf = document.getElementById("sf");
+  sf.onsubmit = (e) => {
+    e.preventDefault();
+    const body = { host: val("sh"), port: Number(val("sp")), security: ss.value, user: val("su") || null, password: document.getElementById("sw").value || null, from: val("sf2") };
+    saveWith(sf.querySelector("button[type=submit]"), "sres", () => api("/admin/settings/smtp", { method: "PUT", body }), emailPane);
+  };
+  const off = document.getElementById("soff");
+  if (off) off.onclick = () => {
+    if (!confirm(t("Turn e-mail off? Sign-in codes and alerts will no longer be sent by e-mail."))) return;
+    saveWith(off, "sres", () => api("/admin/settings/smtp", { method: "PUT", body: { host: "", port: m.port || 587, security: sec, from: m.from || "" } }), emailPane);
+  };
+  const tf = document.getElementById("tf");
+  tf.onsubmit = (e) => {
+    e.preventDefault();
+    const btn = tf.querySelector("button"), out = document.getElementById("tres");
+    btn.disabled = true; out.className = "result"; out.textContent = "";
+    api("/admin/settings/smtp/test", { method: "POST", body: { to: val("tt") } })
+      .then(() => { out.className = "result ok"; out.textContent = t("Sent. Check the inbox and the spam folder."); })
+      .catch((x) => { out.className = "result warn"; out.textContent = x.message; })
+      .finally(() => (btn.disabled = false));
+  };
+}
+
+function alertsPane(s) {
+  const pane = document.getElementById("pane"), a = s.alerts;
+  pane.innerHTML = `<form class="card adminform" id="af">
+    <h3>${t("Who gets server alerts")}</h3>
+    <p class="muted">${t("You get a message when something breaks on the server and when it works again.")}</p>
+    <label for="ae">${t("E-mail addresses, one per line or separated by commas")}</label>
+    <textarea id="ae" rows="3" placeholder="you@example.com">${h(a.emails.join("\n"))}</textarea>
+    ${s.smtp ? "" : `<p class="warn">${t("E-mail is not set up")}. <a href="#/admin?tab=email">${t("Set up e-mail")}</a></p>`}
+    <label for="at" style="margin-top:12px">${t("Telegram chat ids, separated by commas")}</label>
+    <input id="at" value="${h(a.telegramChats.join(", "))}" placeholder="123456789">
+    <p class="muted small" style="margin-top:6px">${t("Send /myid to the bot in a chat to see that chat's id.")}</p>
+    ${s.botEnabled ? "" : `<p class="warn">${t("The Telegram bot is not set up, so alerts can't go to Telegram.")}</p>`}
+    <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button><a class="btn secondary" href="#/status">${t("Server status")}</a></div>
+    <p class="result" id="ares"></p></form>`;
+  const form = document.getElementById("af");
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    saveWith(form.querySelector("button[type=submit]"), "ares", () => {
+      const emails = val("ae").split(/[\s,;]+/).filter(Boolean);
+      const ids = val("at").split(/[\s,;]+/).filter(Boolean);
+      if (ids.some((x) => !/^-?\d+$/.test(x))) throw new Error(t("A Telegram chat id is a number, like 123456789 or -1001234567890"));
+      return api("/admin/settings/alerts", { method: "PUT", body: { emails, telegramChats: ids.map(Number) } });
+    }, alertsPane);
+  };
+}
+
+function modesPane(s) {
+  const pane = document.getElementById("pane"), m = s.modes;
+  const on = m.showSignInCodes || m.testPayments;
+  pane.innerHTML = `
+  ${on ? `<div class="notice danger">${t("A test mode is on. Turn it off before real people use the service.")}</div>` : ""}
+  <form class="card adminform" id="mf">
+    <h3>${t("Test modes")}</h3>
+    <p class="muted">${t("Only for trying the service out yourself.")}</p>
+    <label class="toggle"><input type="checkbox" id="mc" ${m.showSignInCodes ? "checked" : ""}><span>${t("Show sign-in codes on screen")}</span></label>
+    <p class="danger-text">${t("Anyone can then sign in to any account, yours too, just by typing its e-mail address.")}</p>
+    <label class="toggle"><input type="checkbox" id="mp" ${m.testPayments && !s.paymentsConnected ? "checked" : ""} ${s.paymentsConnected ? "disabled" : ""}><span>${t("Test payments")}</span></label>
+    <p class="danger-text">${t("Anyone can then get Pro without paying. No money is taken.")}</p>
+    ${s.paymentsConnected ? `<p class="muted small">${t("A real payment service is connected, so test payments can't be turned on.")}</p>` : ""}
+    <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button></div>
+    <p class="result" id="mres"></p></form>`;
+  const form = document.getElementById("mf");
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const body = { showSignInCodes: document.getElementById("mc").checked, testPayments: document.getElementById("mp").checked && !s.paymentsConnected };
+    saveWith(form.querySelector("button[type=submit]"), "mres", () => api("/admin/settings/modes", { method: "PUT", body }), modesPane);
+  };
+}
+
 /* ---------------- router ---------------- */
 
+let role = null;
+
 async function render() {
+  clearTimeout(statusTimer);
+  // The role decides the owner's extra menu item; asked once per sign-in.
+  if (!store.get("token")) role = null;
+  else if (role == null) role = await api("/me").then((me) => me.user.role).catch(() => null);
   renderNav();
   const [path, query] = (location.hash.slice(1) || "/").split("?");
   const params = new URLSearchParams(query || "");
   try {
     if (!site) site = await api("/site").catch(() => ({}));
     if (path === "/signin") return signin();
+    if (path === "/login") return await login(params);
+    if (path === "/admin") return await admin(params);
     if (path === "/account") return await account(params);
     if (path === "/referrals") return await referrals(params);
+    if (path === "/status") return await status(params);
     await home();
     if (location.hash === "#download") document.getElementById("download")?.scrollIntoView();
   } catch (e) {

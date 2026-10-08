@@ -61,14 +61,14 @@ class Payments(private val ctx: Ctx, private val billing: Billing, private val k
         TestPaymentProvider(ctx.cfg.publicUrl),
     ).associateBy { it.id }
 
-    val provider: PaymentProvider? get() = ctx.cfg.paymentProvider?.let { providers[it] }
+    val provider: PaymentProvider? get() = ctx.live.paymentProvider?.let { providers[it] }
     val isTest get() = provider?.id == "test"
 
     /** An order in the buyer's currency: rubles for Russian, euros for German and English. */
     suspend fun create(userId: String, productId: ProductId, channel: Channel, lang: Lang = Lang.DEFAULT): OrderRes {
-        val provider = provider ?: throw AppError(501, ErrorCode.NOT_IMPLEMENTED, "Payments are not set up yet")
-        val currency = ctx.cfg.plans.currencyFor(lang)
-        val amount = ctx.cfg.plans.price(productId, currency) ?: throw AppError(501, ErrorCode.NOT_IMPLEMENTED, "No price set for this plan")
+        val provider = provider ?: throw AppError(503, ErrorCode.SERVICE_UNAVAILABLE, "Payments are temporarily unavailable")
+        val currency = ctx.live.plans.currencyFor(lang)
+        val amount = ctx.live.plans.price(productId, currency) ?: throw AppError(501, ErrorCode.NOT_IMPLEMENTED, "No price set for this plan")
         val row = ctx.db.run { sql ->
             sql.one(
                 """INSERT INTO orders (user_id, product_id, channel, provider, amount_minor, currency)
@@ -88,7 +88,7 @@ class Payments(private val ctx: Ctx, private val billing: Billing, private val k
 
     fun res(o: Order) = OrderRes(
         o.id, o.productId, o.status, Format.money(o.amountMinor, o.currency),
-        checkoutUrl = if (o.status == OrderStatus.PENDING) providers[ctx.cfg.paymentProvider]?.checkoutUrl(o) else null,
+        checkoutUrl = if (o.status == OrderStatus.PENDING) providers[ctx.live.paymentProvider]?.checkoutUrl(o) else null,
     )
 
     /**

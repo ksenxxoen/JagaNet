@@ -46,6 +46,9 @@ data class Config(
     val iosAppUrl: String? = null,
     /** Files served at /download/… (jaganet.apk). */
     val downloadsDir: String? = null,
+    /** Outgoing e-mail (sign-in codes, alerts). Null = not set up. */
+    val smtp: Smtp? = null,
+    val monitor: MonitorConfig = MonitorConfig(),
 ) {
     companion object {
         fun load(env: Map<String, String> = System.getenv()): Config {
@@ -85,7 +88,46 @@ data class Config(
                 androidAppUrl = env["ANDROID_APP_URL"]?.takeIf { it.isNotBlank() },
                 iosAppUrl = env["IOS_APP_URL"]?.takeIf { it.isNotBlank() },
                 downloadsDir = env["DOWNLOADS_DIR"]?.takeIf { it.isNotBlank() },
+                smtp = env["SMTP_HOST"]?.takeIf { it.isNotBlank() }?.let { host ->
+                    val security = env["SMTP_SECURITY"]?.lowercase() ?: "starttls"
+                    Smtp(
+                        host = host,
+                        port = num("SMTP_PORT", if (security == "ssl") 465 else 587).toInt(),
+                        user = env["SMTP_USER"]?.takeIf { it.isNotBlank() },
+                        password = env["SMTP_PASSWORD"],
+                        from = env["SMTP_FROM"]?.takeIf { it.isNotBlank() } ?: env["SMTP_USER"] ?: "jaganet@localhost",
+                        security = security,
+                    )
+                },
+                monitor = MonitorConfig(
+                    enabled = env["MONITOR"]?.let { it != "0" } ?: (mode != Mode.TEST),
+                    alertEmails = (env["ALERT_EMAILS"] ?: env["OWNER_EMAIL"].orEmpty()).split(',').map { it.trim().lowercase() }
+                        .filter { '@' in it && !it.endsWith("@jaganet.dev") },
+                    alertTelegramChats = env["ALERT_TELEGRAM_CHAT_IDS"].orEmpty().split(',').mapNotNull { it.trim().toLongOrNull() },
+                    channelMbps = env["CHANNEL_MBPS"]?.takeIf { it.isNotBlank() }?.toLong(),
+                    monthlyTrafficLimitBytes = env["HOST_TRAFFIC_LIMIT_GB"]?.takeIf { it.isNotBlank() }?.toLong()?.times(1_000_000_000),
+                    wanInterface = env["WAN_INTERFACE"]?.takeIf { it.isNotBlank() },
+                    pingTargets = (env["PING_TARGETS"] ?: "1.1.1.1,8.8.8.8").split(',').map { it.trim() }.filter { it.isNotEmpty() },
+                ),
             )
         }
     }
 }
+
+data class Smtp(val host: String, val port: Int, val user: String?, val password: String?, val from: String, /** "starttls", "ssl" or "none" */ val security: String)
+
+data class MonitorConfig(
+    /** Checks every minute; on by default except in tests. */
+    val enabled: Boolean = false,
+    /** Who gets alert e-mails. Default: OWNER_EMAIL (unless it is the placeholder). */
+    val alertEmails: List<String> = emptyList(),
+    /** Telegram chats that get alerts (the bot's /myid shows a chat's id). */
+    val alertTelegramChats: List<Long> = emptyList(),
+    /** Internet channel capacity, Mbit/s, for the load percentage; else what the network card reports. */
+    val channelMbps: Long? = null,
+    /** The hosting plan's monthly traffic allowance. */
+    val monthlyTrafficLimitBytes: Long? = null,
+    /** Internet interface; default: the one with the default route. */
+    val wanInterface: String? = null,
+    val pingTargets: List<String> = listOf("1.1.1.1", "8.8.8.8"),
+)

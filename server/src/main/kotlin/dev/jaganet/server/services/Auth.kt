@@ -6,6 +6,8 @@ import dev.jaganet.api.PairingCodeRes
 import dev.jaganet.api.Role
 import dev.jaganet.api.SessionRes
 import dev.jaganet.api.User
+import dev.jaganet.api.i18n.Lang
+import org.slf4j.LoggerFactory
 import dev.jaganet.server.AppError
 import dev.jaganet.server.Ctx
 import dev.jaganet.server.db.Row
@@ -24,7 +26,11 @@ fun Row.toUser() = User(str("id"), str("email"), if (str("role") == "owner") Rol
 class AuthService(private val ctx: Ctx) {
     private fun hash(v: String) = Crypto.hmac(ctx.cfg.authSecret, v)
 
-    suspend fun startEmailLogin(email: String, referral: String?): String {
+    /** Can people sign in with e-mail codes right now (e-mail set up, or codes shown in test mode)? */
+    fun emailSignInAvailable() = ctx.live.showSignInCodes || ctx.mailer.ready()
+
+    suspend fun startEmailLogin(email: String, referral: String?, lang: Lang = Lang.DEFAULT): String {
+        if (!emailSignInAvailable()) throw AppError(503, ErrorCode.SERVICE_UNAVAILABLE, "Sign-in by e-mail is temporarily unavailable")
         val code = Crypto.sixDigits()
         ctx.db.run {
             it.exec(
@@ -34,8 +40,49 @@ class AuthService(private val ctx: Ctx) {
                 email, hash("otp:$email:$code"), referral?.uppercase(), ctx.now().plus(OTP_TTL),
             )
         }
-        ctx.mailer.sendLoginCode(email, code)
+        if (ctx.mailer.ready()) {
+            try {
+                ctx.mailer.sendLoginCode(email, code, lang)
+            } catch (e: Exception) {
+                LoggerFactory.getLogger("auth").error("sign-in e-mail to $email failed", e)
+                if (!ctx.live.showSignInCodes) throw AppError(503, ErrorCode.SERVICE_UNAVAILABLE, "Couldn't send the e-mail, try again later")
+            }
+        }
         return code
+    }
+
+    /* ---- one-time sign-in links: Telegram /login, and the owner's link from the server console ---- */
+
+    private val LINK_TTL = Duration.ofMinutes(15)
+
+    /** A link that signs [userId] in once, within 15 minutes. */
+    suspend fun createLoginLink(userId: String): String {
+        val token = Crypto.newToken()
+        ctx.db.run { sql ->
+            sql.exec("DELETE FROM login_links WHERE expires_at < ?", ctx.now())
+            sql.exec("INSERT INTO login_links (token_hash, user_id, expires_at) VALUES (?,?::uuid,?)", hash("link:$token"), userId, ctx.now().plus(LINK_TTL))
+        }
+        return "${ctx.cfg.publicUrl.trimEnd('/')}/#/login?token=$token"
+    }
+
+    suspend fun redeemLoginLink(token: String, device: DeviceInfo): SessionRes = ctx.db.tx { sql ->
+        val user = sql.one(
+            """UPDATE login_links l SET used_at=? FROM users u
+                WHERE l.token_hash=? AND l.used_at IS NULL AND l.expires_at > ? AND u.id = l.user_id RETURNING u.*""",
+            ctx.now(), hash("link:$token"), ctx.now(),
+        ) ?: throw AppError(400, ErrorCode.INVALID_CODE, "This link is used or has expired, ask for a new one")
+        createSession(sql, user, device)
+    }
+
+    /** The owner's account (made if it doesn't exist yet) and a sign-in link for it. */
+    suspend fun ownerLoginLink(): String {
+        val email = ctx.cfg.ownerEmail ?: throw AppError(503, ErrorCode.SERVICE_UNAVAILABLE, "OWNER_EMAIL is not set")
+        val id = ctx.db.tx { sql ->
+            sql.one("SELECT id FROM users WHERE email=?", email)?.str("id")
+                ?: sql.one("INSERT INTO users (email, role, referral_code) VALUES (?,'owner',?) RETURNING id", email, Crypto.referralCode(email))!!.str("id")
+        }
+        ctx.db.run { it.exec("UPDATE users SET role='owner' WHERE id=?::uuid", id) }
+        return createLoginLink(id)
     }
 
     suspend fun verifyEmailLogin(email: String, code: String, device: DeviceInfo): SessionRes {
@@ -66,7 +113,7 @@ class AuthService(private val ctx: Ctx) {
         }
     }
 
-    private fun createSession(sql: Sql, user: Row, device: DeviceInfo): SessionRes {
+    fun createSession(sql: Sql, user: Row, device: DeviceInfo): SessionRes {
         val deviceId = sql.one(
             "INSERT INTO devices (user_id, name, platform, last_seen_at) VALUES (?::uuid,?,?,?) RETURNING id",
             user.str("id"), device.name.trim().take(60), device.platform.name.lowercase(), ctx.now(),

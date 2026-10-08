@@ -15,7 +15,10 @@
 #   OWNER_EMAIL=you@example.com   gets the owner dashboard (default: owner@jaganet.dev)
 #   JAGANET_DOMAIN=vpn.example.com  your own domain instead of <ip>.sslip.io
 #   JAGANET_BRANCH=...            git branch to deploy
-#   TEST_SHOW_SIGNIN_CODES=0      hide sign-in codes (default 1 until email is set up)
+#   Optional, written to /etc/jaganet/env when given (all can be changed later in the admin panel):
+#   SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASSWORD SMTP_FROM SMTP_SECURITY   outgoing e-mail
+#   ALERT_EMAILS ALERT_TELEGRAM_CHAT_IDS   who gets server alerts
+#   CHANNEL_MBPS HOST_TRAFFIC_LIMIT_GB     the internet channel's capacity and the hosting plan's monthly traffic
 #   TELEGRAM_BOT_TOKEN=123:abc    turn on the Telegram bot (token from @BotFather), e.g.
 #     curl -fsSL …/install.sh | TELEGRAM_BOT_TOKEN=123:abc bash
 set -euo pipefail
@@ -23,7 +26,6 @@ set -euo pipefail
 REPO="${JAGANET_REPO:-https://github.com/ksenxxoen/JagaNet.git}"
 BRANCH="${JAGANET_BRANCH:-claude/adoring-brown-s8fqex}"
 OWNER_EMAIL="${OWNER_EMAIL:-owner@jaganet.dev}"
-SHOW_CODES="${TEST_SHOW_SIGNIN_CODES:-1}"
 APP_DIR=/opt/jaganet
 ENV_FILE=/etc/jaganet/env
 AWG_PORT=51821
@@ -61,7 +63,7 @@ note "Server: $PUBLIC_IP ($CITY, $COUNTRY)  ·  address: https://$DOMAIN  ·  ne
 # ------------------------------------------------------------------ packages
 step "Installing system packages (a few minutes)"
 apt-get update -q
-apt-get install -y -q ca-certificates curl git gnupg iptables python3 software-properties-common sudo \
+apt-get install -y -q ca-certificates curl git gnupg iptables python3 software-properties-common sudo iputils-ping \
   postgresql openjdk-21-jdk-headless "linux-headers-$(uname -r)" >/dev/null || \
 apt-get install -y -q ca-certificates curl git gnupg iptables python3 software-properties-common sudo \
   postgresql openjdk-21-jdk-headless >/dev/null
@@ -217,7 +219,7 @@ PUBLIC_URL=https://$DOMAIN
 OWNER_EMAIL=$OWNER_EMAIL
 PROTOCOLS=$PROTOCOL
 # Shows sign-in codes in the app while there is no email sending. Set 0 before real users arrive.
-TEST_SHOW_SIGNIN_CODES=$SHOW_CODES
+TEST_SHOW_SIGNIN_CODES=0
 FREE_MONTHLY_GB=10
 FREE_DEVICE_LIMIT=1
 PRO_DEVICE_LIMIT=5
@@ -229,8 +231,13 @@ env_set() { # KEY VALUE: replace or add a setting
 }
 env_default() { grep -q "^$1=" "$ENV_FILE" || echo "$1=$2" >> "$ENV_FILE"; }
 env_set PROTOCOLS "$PROTOCOL"
-# Website / Telegram checkout. "test" = built-in test checkout, no real money.
-env_default PAYMENT_PROVIDER test
+# Real mode by default: no sign-in codes on screen, no test checkout. The admin panel can turn
+# test modes on deliberately (its choice is stored in the database and wins over this file).
+env_set TEST_SHOW_SIGNIN_CODES 0
+env_set PAYMENT_PROVIDER ""
+for k in SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASSWORD SMTP_FROM SMTP_SECURITY ALERT_EMAILS ALERT_TELEGRAM_CHAT_IDS CHANNEL_MBPS HOST_TRAFFIC_LIMIT_GB; do
+  if [ -n "${!k:-}" ]; then env_set "$k" "${!k}"; fi
+done
 # Prices in kopecks / cents. Russian pays in rubles, German and English in euros.
 sed -i '/^CURRENCY=/d; /^PRICE_MONTHLY_MINOR=/d; /^PRICE_YEARLY_MINOR=/d' "$ENV_FILE"
 env_default PRICE_RUB_MONTHLY 29900
@@ -313,6 +320,14 @@ if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
   ufw allow 22/tcp >/dev/null; ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null; ufw allow "$PORT/udp" >/dev/null
 fi
 
+# jaganet-admin: a one-time sign-in link to the owner's admin panel (works only on this server).
+cat > /usr/local/bin/jaganet-admin <<'EOF'
+#!/bin/sh
+# Prints a one-time link that signs the owner in on the website (valid 15 minutes).
+exec curl -fsS http://127.0.0.1:4000/internal/owner-login
+EOF
+chmod 755 /usr/local/bin/jaganet-admin
+
 ok=""
 for i in $(seq 1 30); do curl -fsS "https://$DOMAIN/health" >/dev/null 2>&1 && { ok=1; break; }; sleep 3; done
 
@@ -320,10 +335,9 @@ step "Done"
 note "Backend:       https://$DOMAIN   (health: https://$DOMAIN/health)"
 [ -n "$ok" ] || note "               (the HTTPS certificate is still being issued; try the link again in a few minutes)"
 note "VPN:           $PROTOCOL on UDP port $PORT"
-note "Owner account: $OWNER_EMAIL  (Settings > Business dashboard)"
-if [ "$SHOW_CODES" = 1 ]; then
-  note "Sign-in codes are shown in the app (test mode). Turn off: set TEST_SHOW_SIGNIN_CODES=0 in $ENV_FILE, then systemctl restart jaganet"
-fi
+note "Owner account: $OWNER_EMAIL"
+note "Admin panel:   open this link within 15 minutes (new link any time: jaganet-admin)"
+note "               $(/usr/local/bin/jaganet-admin 2>/dev/null || echo 'run jaganet-admin in a minute')"
 note "Website:       https://$DOMAIN  (sign up, buy, VPN keys)"
 if grep -q '^TELEGRAM_BOT_TOKEN=.' "$ENV_FILE"; then note "Telegram bot:  on"; else note "Telegram bot:  off (run again with TELEGRAM_BOT_TOKEN=… to turn it on)"; fi
 [ -f "$APP_DIR/downloads/jaganet.apk" ] || note "Android app:   upload it to $APP_DIR/downloads/jaganet.apk to offer it for download"

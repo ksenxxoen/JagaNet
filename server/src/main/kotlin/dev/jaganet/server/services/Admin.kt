@@ -42,7 +42,7 @@ class Admin(private val ctx: Ctx) {
         ).associate { (it["day"] as LocalDate) to it.int("n") }
         val last7 = (6 downTo 0).map { today.minusDays(it.toLong()) }.map { DayCount(it.toString(), daily[it] ?: 0) }
 
-        val p = ctx.cfg.plans
+        val p = ctx.live.plans
         val cur = p.currencyFor(lang)
         val mrr = monthly * (p.price(ProductId.PRO_MONTHLY, cur) ?: 0) + yearly * (p.price(ProductId.PRO_YEARLY, cur) ?: 0) / 12
 

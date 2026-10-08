@@ -18,7 +18,7 @@ import java.time.Instant
 class Billing(private val ctx: Ctx) {
     /** Plans with prices in the currency of [lang] (rubles for Russian, euros otherwise). */
     fun plans(lang: Lang = Lang.DEFAULT): PlansRes {
-        val p = ctx.cfg.plans
+        val p = ctx.live.plans
         val cur = p.currencyFor(lang)
         val yearly = p.price(ProductId.PRO_YEARLY, cur)
         val monthly = p.price(ProductId.PRO_MONTHLY, cur)
@@ -57,14 +57,14 @@ class Billing(private val ctx: Ctx) {
             sql.exec(
                 """INSERT INTO subscriptions (user_id, product_id, source, external_id, started_at, expires_at, auto_renew)
                    VALUES (?::uuid,'referral','referral',?,?,?,false) ON CONFLICT (source, external_id) DO NOTHING""",
-                beneficiary, "ref:$from->$beneficiary", start, start.plus(Duration.ofDays(ctx.cfg.plans.referralRewardDays.toLong())),
+                beneficiary, "ref:$from->$beneficiary", start, start.plus(Duration.ofDays(ctx.live.plans.referralRewardDays.toLong())),
             )
         }
     }
 
     /** Simulation only: pretend the store charged the user. */
     suspend fun devPurchase(p: Principal, productId: ProductId) {
-        if (ctx.cfg.mode == Mode.PRODUCTION) throw AppError(404, ErrorCode.NOT_FOUND, "Not found")
+        if (ctx.cfg.mode == Mode.PRODUCTION) throw AppError(503, ErrorCode.SERVICE_UNAVAILABLE, "In-app purchases are temporarily unavailable")
         val now = ctx.now()
         ctx.db.tx { sql ->
             recordPaidSubscription(sql, p.user.id, productId, "dev", "dev-${p.user.id}-${now.toEpochMilli()}", now, now.plus(Duration.ofDays(productId.periodDays.toLong())))
@@ -78,5 +78,5 @@ class Billing(private val ctx: Ctx) {
      *  - Google: purchases.subscriptionsv2.get with a service account, acknowledge, then
      *    recordPaidSubscription(); handle Real-time Developer Notifications (Pub/Sub push).
      */
-    fun notImplementedStore(): Nothing = throw AppError(501, ErrorCode.NOT_IMPLEMENTED, "Store verification is not set up yet")
+    fun notImplementedStore(): Nothing = throw AppError(503, ErrorCode.SERVICE_UNAVAILABLE, "In-app purchases are temporarily unavailable")
 }

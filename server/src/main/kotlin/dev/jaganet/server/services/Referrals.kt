@@ -103,7 +103,7 @@ class Referrals(private val ctx: Ctx, private val botUsername: () -> String? = {
                  FROM users u WHERE u.referred_by=?::uuid""",
             p.user.id,
         )!!
-        ReferralRes(code, r.int("invited"), r.int("subscribed"), ctx.cfg.plans.referralRewardDays, daysEarned(sql, p.user.id), webUrl(code))
+        ReferralRes(code, r.int("invited"), r.int("subscribed"), ctx.live.plans.referralRewardDays, daysEarned(sql, p.user.id), webUrl(code))
     }
 
     private fun daysEarned(sql: Sql, userId: String) = sql.one(
@@ -131,7 +131,7 @@ class Referrals(private val ctx: Ctx, private val botUsername: () -> String? = {
             sources = sources(sql, scope, from),
             channels = channels(sql, scope, from),
             recent = recent(sql, scope, from),
-            rewardDays = ctx.cfg.plans.referralRewardDays,
+            rewardDays = ctx.live.plans.referralRewardDays,
             daysEarned = daysEarned(sql, userId),
         )
     }

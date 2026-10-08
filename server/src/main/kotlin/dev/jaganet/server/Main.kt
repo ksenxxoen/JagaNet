@@ -7,7 +7,7 @@ import dev.jaganet.server.protocols.DriverRegistry
 import dev.jaganet.server.protocols.ProtocolDriver
 import dev.jaganet.server.protocols.AmneziaWgDriver
 import dev.jaganet.server.protocols.WireGuardDriver
-import dev.jaganet.server.services.ConsoleMailer
+import dev.jaganet.server.services.LiveMailer
 import dev.jaganet.server.telegram.HttpTelegramApi
 import dev.jaganet.server.telegram.TelegramBot
 import io.ktor.server.engine.embeddedServer
@@ -39,11 +39,15 @@ fun main() {
                 "Set up email and turn this off before real users arrive.",
         )
     }
-    serve(Ctx(cfg, db, drivers, ConsoleMailer()), collectEveryMs = 60_000)
+    lateinit var ctx: Ctx
+    ctx = Ctx(cfg, db, drivers, LiveMailer { ctx.live.smtp })
+    serve(ctx, collectEveryMs = 60_000)
 }
 
 fun serve(ctx: Ctx, collectEveryMs: Long, wait: Boolean = true) {
     val services = Services(ctx)
+    // Settings changed in the admin panel override the environment file.
+    kotlinx.coroutines.runBlocking { services.settings.load() }
     val log = LoggerFactory.getLogger("jaganet")
     embeddedServer(Netty, port = ctx.cfg.port, host = "0.0.0.0") {
         jaganet(services)
@@ -51,6 +55,13 @@ fun serve(ctx: Ctx, collectEveryMs: Long, wait: Boolean = true) {
             val bot = TelegramBot(services, HttpTelegramApi(token))
             services.bot = bot
             launch { bot.run() }
+        }
+        if (ctx.cfg.monitor.enabled) launch {
+            delay(5_000)
+            while (true) {
+                runCatching { services.monitor.tick() }.onFailure { log.error("monitoring failed", it) }
+                delay(60_000)
+            }
         }
         launch {
             while (true) {
