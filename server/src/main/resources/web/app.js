@@ -93,7 +93,7 @@ async function home() {
   <section class="hero">
     <div>
       <h1>${t("A fast and secure VPN.")}</h1>
-      <p class="muted">${t("JagaNet encrypts all your traffic and keeps the internet fast. We never log what you browse.")}</p>
+      <p class="muted">${t("JagaNet encrypts all your traffic and keeps the internet fast.")}</p>
       <div class="cta">
         <button class="btn green" onclick="buy('pro_yearly')">${t("Get Pro")}</button>
         <a class="btn secondary" href="#download">${t("Download the app")}</a>
@@ -110,7 +110,7 @@ async function home() {
   <div class="grid3">
     <div class="card"><h3>${t("Fast")}</h3><p class="muted">${t("Connects in a second and keeps full speed for video, games and calls.")}</p></div>
     <div class="card"><h3>${t("Secure")}</h3><p class="muted">${t("Modern encryption protects your data on public Wi-Fi, at home and when you travel.")}</p></div>
-    <div class="card"><h3>${t("No logs")}</h3><p class="muted">${t("We don't keep your browsing history and never sell data. We only count how much traffic you use.")}</p></div>
+    <div class="card"><h3>${t("No logs")}</h3><p class="muted">${t("We don't keep your browsing history and never sell data.")}</p></div>
   </div>
 
   <h2 id="pricing">${t("Pricing")}</h2>
@@ -125,7 +125,6 @@ async function home() {
       <ul><li>${t("Everything in the monthly plan")}</li><li>${t("About 4 months free")}</li></ul>
       <button class="btn green" onclick="buy('pro_yearly')">${t("Buy for a year")}</button></div>
   </div>
-  ${site?.testPayments ? `<p class="muted" style="margin-top:10px">${t("Payments are in test mode, no real money is taken yet.")}</p>` : ""}
 
   <h2 id="download">${t("Get the app")}</h2>
   <div class="grid3">${downloads()}</div>
@@ -140,8 +139,8 @@ function downloads() {
     <div class="card"><h3>iPhone</h3><p class="muted">${t("The JagaNet app for iOS.")}</p>
       ${i ? `<a class="btn" href="${h(i)}">${t("Download on the App Store")}</a>` : `<button class="btn" disabled>${t("Coming soon")}</button>`}</div>
     <div class="card"><h3>${tg ? "Telegram" : t("Other VPN apps")}</h3>
-      ${tg ? `<p class="muted">${t("Buy and get your key right in Telegram.")}</p><a class="btn" href="${h(tg)}">${t("Open the bot")}</a>`
-           : `<p class="muted">${t("Your Pro key also works in other VPN apps, for example AmneziaVPN.")}</p><a class="btn secondary" href="https://amnezia.org/downloads" rel="noreferrer">${t("Get AmneziaVPN")}</a>`}</div>`;
+      ${tg ? `<p class="muted">${t("Buy your key right in Telegram.")}</p><a class="btn" href="${h(tg)}">${t("Open the bot")}</a>`
+           : `<p class="muted">${t("Your Pro key also works in other VPN apps.")}</p><a class="btn secondary" href="https://amnezia.org/downloads" rel="noreferrer">${t("Get AmneziaVPN")}</a>`}</div>`;
 }
 
 window.buy = async function (productId) {
@@ -234,12 +233,11 @@ async function account(params) {
   </div>
 
   <h2>${t("VPN keys")}</h2>
-  <p class="muted">${t("A personal key for other VPN apps, for example AmneziaVPN. Each key counts as one of your devices.")}</p>
+  <p class="muted">${t("A personal key for other VPN apps. Each key counts as one of your devices.")}</p>
   <div class="keys" id="keys">${keys.keys.map(keyCard).join("") || `<div class="card muted">${isPro ? t("You have no keys yet.") : t("Get Pro to receive your personal VPN key.")}</div>`}</div>
   ${isPro || keys.keys.length ? `<p style="margin-top:12px"><button class="btn secondary" id="newkey">${t("New key")}</button></p>` : ""}
 
-  <a class="card refbanner" href="#/referrals"><div><h3>${t("Referral program")}</h3>
-    <p class="muted" style="margin:0">${t("Share your links, see clicks, sign-ups and payments they bring.")}</p></div><span class="btn green small">${t("Open")}</span></a>
+  <a class="card refbanner" href="#/referrals"><div><h3>${t("Referral program")}</h3></div><span class="btn green small">${t("Open")}</span></a>
 
   <h2>${t("Apps")}</h2>
   <div class="grid3">${downloads()}</div>
@@ -269,7 +267,7 @@ function keyCard(k) {
     <div class="keyinfo">
       <h3>${h(k.name)}</h3>
       <p class="muted">${h(k.location)}<br>${t("Made on {date}", { date: date(k.createdAt) })}</p>
-      <p class="muted" style="font-size:14px">${t("Scan the QR code in AmneziaVPN or AmneziaWG (tap + and choose Scan QR code), or download the file and import it.")}</p>
+      <p class="muted" style="font-size:14px">${t("Scan the QR code in AmneziaVPN or download the file and import it.")}</p>
       <div class="keyactions">
         <a class="btn small" href="${h(k.configUrl)}" download>${t("Download file")}</a>
         <a class="btn secondary small" href="${h(withLang(k.pageUrl))}" target="_blank" rel="noreferrer">${t("Open key link")}</a>
@@ -396,14 +394,13 @@ async function referrals(params) {
   const st = await api(`/referrals/stats?period=${period}`);
   view.innerHTML = `
   <div class="row"><h1>${t("Referral program")}</h1>${ownerTabs}</div>
-  <p class="muted">${tp(st.rewardDays, "When someone subscribes through your link, you both get {n} day of Pro.|When someone subscribes through your link, you both get {n} days of Pro.")} ${st.daysEarned ? tp(st.daysEarned, "You have earned {n} day.|You have earned {n} days.") : ""}</p>
+  ${st.daysEarned ? `<p class="muted">${tp(st.daysEarned, "You have earned {n} day.|You have earned {n} days.")}</p>` : ""}
   ${tabs}
   ${funnelTiles(st.totals)}
   ${dayChart(st.days, CLICKS(), t("Clicks by day"))}
   ${dayChart(st.days, CONVERSIONS(), t("Sign-ups and payments by day"))}
 
   <h2>${t("Your links")}</h2>
-  <p class="muted">${t("Make a separate link for each place you share it, so you can see which one works best.")}</p>
   <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Link")}</th><th>${t("Clicks")}</th><th>${t("Unique visitors")}</th><th>${t("Sign-ups")}</th><th>${t("Paid")}</th><th>${t("Conversion")}</th><th>${t("Revenue")}</th><th></th></tr></thead>
   <tbody>${st.links.map((l) => `<tr>
     <td><b>${h(linkName(l))}</b><div class="mono muted small">${h(l.webUrl)}</div>
@@ -417,7 +414,6 @@ async function referrals(params) {
     <div class="formrow"><div><label for="ln">${t("Name, for example Instagram")}</label><input id="ln" maxlength="40" required></div>
     <div><label for="lc">${t("Own code (optional)")}</label><input id="lc" maxlength="32" placeholder="ALEX-INSTA"></div>
     <button class="btn" type="submit">${t("Create link")}</button></div>
-    <p class="muted small">${t("Tip: add ?utm_source=name to a link to see that source separately.")}</p>
     <p id="lerr" class="warn"></p></form>
 
   <div class="grid2" style="margin-top:14px">${breakdown(t("Where clicks come from"), st.sources, sourceName)}${breakdown(t("Where people sign up"), st.channels, channelName)}</div>
