@@ -3,6 +3,7 @@ package dev.jaganet.server.services
 import dev.jaganet.api.AdminSettingsRes
 import dev.jaganet.api.AlertSettings
 import dev.jaganet.api.ModeSettings
+import dev.jaganet.api.NetworkSettings
 import dev.jaganet.api.PlanSettings
 import dev.jaganet.api.PriceSettings
 import dev.jaganet.api.Protocols
@@ -37,6 +38,7 @@ class Settings(private val ctx: Ctx) {
         rows["smtp"]?.let { runCatching { ctx.live.smtp = Protocols.decode<StoredSmtp>(it).toSmtp() }.onFailure { e -> log.error("bad smtp setting", e) } }
         rows["alerts"]?.let { runCatching { Protocols.decode<AlertSettings>(it).let { a -> ctx.live.alertEmails = a.emails; ctx.live.alertTelegramChats = a.telegramChats } } }
         rows["modes"]?.let { runCatching { applyModes(Protocols.decode<ModeSettings>(it)) } }
+        rows["network"]?.let { runCatching { applyNetwork(Protocols.decode<NetworkSettings>(it)) } }
         if (rows["smtp_off"] != null) ctx.live.smtp = null
     }
 
@@ -51,6 +53,7 @@ class Settings(private val ctx: Ctx) {
             smtpHasPassword = ctx.live.smtp?.password?.isNotEmpty() == true,
             alerts = AlertSettings(ctx.live.alertEmails, ctx.live.alertTelegramChats),
             modes = ModeSettings(ctx.live.showSignInCodes, ctx.live.paymentProvider == "test"),
+            network = NetworkSettings(ctx.live.channelMbps, ctx.live.monthlyTrafficLimitBytes?.div(1_000_000_000)),
             paymentsConnected = ctx.live.paymentProvider != null && ctx.live.paymentProvider != "test",
             botEnabled = botEnabled,
         )
@@ -104,6 +107,19 @@ class Settings(private val ctx: Ctx) {
     suspend fun saveModes(m: ModeSettings) {
         applyModes(m)
         store("modes", Protocols.encode(m))
+    }
+
+    suspend fun saveNetwork(n: NetworkSettings) {
+        if ((n.channelMbps != null && n.channelMbps !in 1L..1_000_000L) || (n.monthlyTrafficGb != null && n.monthlyTrafficGb !in 1L..10_000_000L)) {
+            throw badRequest("Some values are out of range")
+        }
+        applyNetwork(n)
+        store("network", Protocols.encode(n))
+    }
+
+    private fun applyNetwork(n: NetworkSettings) {
+        ctx.live.channelMbps = n.channelMbps
+        ctx.live.monthlyTrafficLimitBytes = n.monthlyTrafficGb?.times(1_000_000_000)
     }
 
     private fun applyModes(m: ModeSettings) {

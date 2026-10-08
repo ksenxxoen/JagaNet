@@ -609,7 +609,7 @@ async function status(params) {
   const whole = (v) => String(Math.round(v));
   const half = view.clientWidth > 760 ? (view.clientWidth - 14) / 2 : 0;
   const capNote = net.capacityMbps
-    ? t(net.capacitySource === "config" ? "Capacity {speed}, from CHANNEL_MBPS" : "Capacity {speed}, reported by the network card", { speed: bits(net.capacityMbps * 1e6) })
+    ? t(net.capacitySource === "config" ? "Capacity {speed}" : "Capacity {speed}, reported by the network card", { speed: bits(net.capacityMbps * 1e6) })
     : t("Capacity unknown");
   const banner = { ok: "Everything works", warning: "Something needs attention", critical: "There is a problem" }[m.overall] || "State unknown";
   const open = m.alerts.filter((a) => !a.resolvedAt), done = m.alerts.filter((a) => a.resolvedAt);
@@ -619,7 +619,7 @@ async function status(params) {
   <div class="row"><h1>${t("Server status")}</h1>
     <div class="chips">${RANGES.map(([k, l]) => `<a class="chip ${k === range ? "on" : ""}" href="#/status?range=${k}">${t(l)}</a>`).join("")}</div></div>
   <div class="overall ${h(m.overall)}"><i></i><div><b>${t(banner)}</b>
-    <div class="small">${m.checkedAt ? t("Checked at {time}", { time: h(dateTime(m.checkedAt)) }) : t("Not checked yet")}. ${t("Updates every minute")}</div></div></div>
+    <div class="small">${m.checkedAt ? t("Checked at {time}", { time: h(dateTime(m.checkedAt)) }) : t("Not checked yet")}</div></div></div>
 
   <div class="checks">${m.checks.map((c) => `<div class="card check ${h(c.level)}"><div class="row"><h3>${t(CHECK_NAMES[c.key] || c.key)}</h3>${levelBadge(c.level)}</div>
     <p class="muted">${h(t(c.message, c.args))}</p></div>`).join("")}</div>
@@ -631,7 +631,6 @@ async function status(params) {
     ${kpi(t("Channel load"), last?.utilization == null ? "-" : percent(last.utilization * 100), h(capNote))}
     ${kpi(t("Traffic this month"), h(bytes(monthTotal)), `${t("Downloaded")} ${h(bytes(net.monthRxBytes || 0))}<br>${t("Uploaded")} ${h(bytes(net.monthTxBytes || 0))}`)}
   </div>
-  ${net.capacityMbps ? "" : `<p class="hint">${t("The channel capacity is unknown. Set CHANNEL_MBPS in /etc/jaganet/env to see the load.")}</p>`}
   ${net.monthLimitBytes ? `<div class="card limit"><div class="row"><span>${t("{used} of {limit} allowed by the hosting plan", { used: h(bytes(monthTotal)), limit: h(bytes(net.monthLimitBytes)) })}</span><b class="mono">${percent((monthTotal / net.monthLimitBytes) * 100)}</b></div>${meter(monthTotal, net.monthLimitBytes)}</div>` : ""}
   ${net.iface ? `<p class="muted small">${t("Interface {name}", { name: `<span class="mono">${h(net.iface)}</span>` })}</p>` : ""}
   ${lineChart(pts, [{ key: "rx", label: t("Download"), color: DOWN }, { key: "tx", label: t("Upload"), color: UP }], t("Throughput"), bits)}
@@ -823,7 +822,6 @@ function emailPane(s) {
       ${s.smtp ? `<button class="btn danger" type="button" id="soff">${t("Turn e-mail off")}</button>` : ""}</div>
     <p class="result" id="sres"></p>
   </form>
-  <p class="hint">${t("Any service with SMTP works, for example Brevo, Mailgun, Postmark, Amazon SES, Gmail or Zoho. Take the server, port, login and password from its SMTP settings.")}</p>
   <form class="card adminform" id="tf">
     <h3>${t("Send test e-mail")}</h3>
     <div class="formrow two"><div><label for="tt">${t("Email")}</label><input id="tt" type="email" required placeholder="you@example.com"></div>
@@ -868,7 +866,24 @@ function alertsPane(s) {
     <p class="muted small" style="margin-top:6px">${t("Send /myid to the bot in a chat to see that chat's id.")}</p>
     ${s.botEnabled ? "" : `<p class="warn">${t("The Telegram bot is not set up, so alerts can't go to Telegram.")}</p>`}
     <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button><a class="btn secondary" href="#/status">${t("Server status")}</a></div>
-    <p class="result" id="ares"></p></form>`;
+    <p class="result" id="ares"></p></form>
+  <form class="card adminform" id="nf" style="margin-top:14px">
+    <h3>${t("Server channel")}</h3>
+    <p class="muted">${t("From your hosting plan. Used for the channel load and the monthly traffic warning.")}</p>
+    <label for="nc">${t("Channel speed, Mbit/s")}</label>
+    <input id="nc" inputmode="numeric" value="${h(s.network?.channelMbps ?? "")}" placeholder="1000">
+    <label for="nt" style="margin-top:12px">${t("Traffic per month, GB (empty if unlimited)")}</label>
+    <input id="nt" inputmode="numeric" value="${h(s.network?.monthlyTrafficGb ?? "")}" placeholder="">
+    <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button></div>
+    <p class="result" id="nres"></p></form>`;
+  const nform = document.getElementById("nf");
+  nform.onsubmit = (e) => {
+    e.preventDefault();
+    saveWith(nform.querySelector("button[type=submit]"), "nres", () => {
+      const num = (id) => { const v = val(id).replace(/\s/g, ""); if (!v) return null; if (!/^\d+$/.test(v)) throw new Error(t("Enter a whole number")); return Number(v); };
+      return api("/admin/settings/network", { method: "PUT", body: { channelMbps: num("nc"), monthlyTrafficGb: num("nt") } });
+    }, alertsPane);
+  };
   const form = document.getElementById("af");
   form.onsubmit = (e) => {
     e.preventDefault();

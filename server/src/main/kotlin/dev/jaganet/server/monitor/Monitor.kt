@@ -88,7 +88,7 @@ class Monitor(
         // ---- internet channel
         val iface = cfg.wanInterface ?: probe.wanInterface()
         val counters = iface?.let { probe.counters(it) }
-        val capacityMbps = cfg.channelMbps ?: iface?.let { probe.linkSpeedMbps(it) }
+        val capacityMbps = ctx.live.channelMbps ?: iface?.let { probe.linkSpeedMbps(it) }
         var rxBps = 0L; var txBps = 0L; var rxBytes = 0L; var txBytes = 0L; var errors = 0L; var drops = 0L
         val p = prev
         if (counters != null && p != null && p.first < now) {
@@ -204,7 +204,7 @@ class Monitor(
                     else -> HealthCheck("dns", CheckLevel.OK, "{ms} ms", mapOf("ms" to "$dnsMs"))
                 },
             )
-            cfg.monthlyTrafficLimitBytes?.let { limit ->
+            ctx.live.monthlyTrafficLimitBytes?.let { limit ->
                 val share = monthBytes.toDouble() / limit
                 add(HealthCheck("traffic", level(share, 0.8, 0.95), "{used} of {limit} this month", mapOf("used" to bytes(monthBytes), "limit" to bytes(limit))))
             }
@@ -336,12 +336,12 @@ class Monitor(
                 "SELECT * FROM monitor_alerts ORDER BY (resolved_at IS NULL) DESC, opened_at DESC LIMIT 100",
             ).map { it.toAlert() }
             val iface = cfg.wanInterface ?: probe.wanInterface()
-            val cap = cfg.channelMbps ?: iface?.let { probe.linkSpeedMbps(it) }
+            val cap = ctx.live.channelMbps ?: iface?.let { probe.linkSpeedMbps(it) }
             MonitorRes(
                 checkedAt = checkedAt?.toString(),
                 overall = overall(latest),
                 checks = checks(readerLang),
-                network = NetworkInfo(iface, cap, if (cfg.channelMbps != null) "config" else if (cap != null) "link" else null, month.long("rx"), month.long("tx"), cfg.monthlyTrafficLimitBytes),
+                network = NetworkInfo(iface, cap, if (ctx.live.channelMbps != null) "config" else if (cap != null) "link" else null, month.long("rx"), month.long("tx"), ctx.live.monthlyTrafficLimitBytes),
                 series = series,
                 alerts = alerts,
                 notify = NotifySettings(ctx.live.alertEmails, ctx.live.smtp != null, ctx.live.alertTelegramChats.size),

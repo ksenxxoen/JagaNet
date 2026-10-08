@@ -557,6 +557,15 @@ data class SmtpSettings(
 @Serializable
 data class AlertSettings(val emails: List<String>, val telegramChats: List<Long>)
 
+/** The server's internet channel, for the load percentage and the monthly traffic warning. */
+@Serializable
+data class NetworkSettings(
+    /** Channel speed limit in Mbit/s (from the hosting plan); null = take what the network card reports. */
+    val channelMbps: Long? = null,
+    /** Monthly traffic included in the hosting plan, GB; null = unlimited. */
+    val monthlyTrafficGb: Long? = null,
+)
+
 @Serializable
 data class ModeSettings(
     /** Show sign-in codes on screen instead of e-mailing them. Anyone can then sign in as anyone. */
@@ -573,6 +582,7 @@ data class AdminSettingsRes(
     val smtpHasPassword: Boolean = false,
     val alerts: AlertSettings,
     val modes: ModeSettings,
+    val network: NetworkSettings = NetworkSettings(),
     /** A real payment service is connected. */
     val paymentsConnected: Boolean,
     val botEnabled: Boolean,

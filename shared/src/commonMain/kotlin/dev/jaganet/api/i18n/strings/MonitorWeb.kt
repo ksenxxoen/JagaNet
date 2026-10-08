@@ -13,7 +13,6 @@ internal val monitorWebStrings: List<S> = listOf(
     S("State unknown", "Состояние неизвестно", "Status unbekannt"),
     S("Checked at {time}", "Проверено {time}", "Geprüft am {time}"),
     S("Not checked yet", "Ещё не проверялось", "Noch nicht geprüft"),
-    S("Updates every minute", "Обновляется каждую минуту", "Wird jede Minute aktualisiert"),
 
     // Check levels
     S("OK", "Норма", "OK"),
@@ -35,14 +34,8 @@ internal val monitorWebStrings: List<S> = listOf(
     S("Network", "Сеть", "Netzwerk"),
     S("Download speed", "Скорость загрузки", "Download-Geschwindigkeit"),
     S("Upload speed", "Скорость отдачи", "Upload-Geschwindigkeit"),
-    S("Capacity {speed}, from CHANNEL_MBPS", "Канал {speed}, из CHANNEL_MBPS", "Kanal {speed}, aus CHANNEL_MBPS"),
     S("Capacity {speed}, reported by the network card", "Канал {speed}, по данным сетевой карты", "Kanal {speed}, laut Netzwerkkarte"),
     S("Capacity unknown", "Ширина канала неизвестна", "Kanalkapazität unbekannt"),
-    S(
-        "The channel capacity is unknown. Set CHANNEL_MBPS in /etc/jaganet/env to see the load.",
-        "Ширина канала неизвестна. Укажите CHANNEL_MBPS в /etc/jaganet/env, чтобы видеть загрузку.",
-        "Die Kanalkapazität ist unbekannt. Setze CHANNEL_MBPS in /etc/jaganet/env, um die Auslastung zu sehen.",
-    ),
     S("{used} of {limit} allowed by the hosting plan", "{used} из {limit} по тарифу хостинга", "{used} von {limit} laut Hosting-Tarif"),
     S("Interface {name}", "Интерфейс {name}", "Schnittstelle {name}"),
     S("Throughput", "Скорость канала", "Durchsatz"),

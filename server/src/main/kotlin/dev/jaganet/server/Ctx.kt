@@ -25,6 +25,10 @@ class Live(cfg: Config) {
     @Volatile var alertTelegramChats: List<Long> = cfg.monitor.alertTelegramChats
     /** Test mode: sign-in codes in the API response instead of e-mail. */
     @Volatile var showSignInCodes: Boolean = cfg.exposeOtp
+    /** Internet channel capacity, Mbit/s (CHANNEL_MBPS or the admin panel). */
+    @Volatile var channelMbps: Long? = cfg.monitor.channelMbps
+    /** Monthly traffic of the hosting plan (HOST_TRAFFIC_LIMIT_GB or the admin panel). */
+    @Volatile var monthlyTrafficLimitBytes: Long? = cfg.monitor.monthlyTrafficLimitBytes
     /** "test" or a real provider id; null = selling is off. */
     @Volatile var paymentProvider: String? = cfg.paymentProvider
 }

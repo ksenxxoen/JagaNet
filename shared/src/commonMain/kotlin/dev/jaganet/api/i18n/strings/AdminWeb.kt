@@ -105,11 +105,6 @@ internal val adminWebStrings: List<S> = listOf(
     S("Sender address", "Адрес отправителя", "Absenderadresse"),
     S("Leave the password empty to keep the saved one.", "Оставьте пароль пустым, чтобы сохранить прежний.", "Lass das Passwort leer, um das gespeicherte zu behalten."),
     S("Turn e-mail off", "Отключить почту", "E-Mail ausschalten"),
-    S(
-        "Any service with SMTP works, for example Brevo, Mailgun, Postmark, Amazon SES, Gmail or Zoho. Take the server, port, login and password from its SMTP settings.",
-        "Подойдёт любой сервис с SMTP, например Brevo, Mailgun, Postmark, Amazon SES, Gmail или Zoho. Сервер, порт, логин и пароль возьмите из его настроек SMTP.",
-        "Jeder Dienst mit SMTP funktioniert, zum Beispiel Brevo, Mailgun, Postmark, Amazon SES, Gmail oder Zoho. Server, Port, Benutzername und Passwort findest du in seinen SMTP-Einstellungen.",
-    ),
     S("Send test e-mail", "Отправить тестовое письмо", "Test-E-Mail senden"),
     S(
         "Turn e-mail off? Sign-in codes and alerts will no longer be sent by e-mail.",
@@ -171,4 +166,10 @@ internal val adminWebStrings: List<S> = listOf(
         "Ein echter Zahlungsdienst ist angebunden, deshalb lassen sich Testzahlungen nicht einschalten.",
     ),
     S("Owner account, no time limit", "Аккаунт владельца, без срока", "Inhaberkonto, unbefristet"),
+    S("Capacity {speed}", "Канал {speed}", "Kanal {speed}"),
+    S("Server channel", "Канал сервера", "Serverkanal"),
+    S("From your hosting plan. Used for the channel load and the monthly traffic warning.", "Из тарифа хостинга. Нужно для загрузки канала и предупреждения о трафике за месяц.", "Aus deinem Hosting-Tarif. Für die Kanalauslastung und die Warnung zum Monatsvolumen."),
+    S("Channel speed, Mbit/s", "Скорость канала, Мбит/с", "Kanalgeschwindigkeit, Mbit/s"),
+    S("Traffic per month, GB (empty if unlimited)", "Трафик в месяц, ГБ (пусто, если без ограничений)", "Datenvolumen pro Monat, GB (leer, wenn unbegrenzt)"),
+    S("Enter a whole number", "Введите целое число", "Gib eine ganze Zahl ein"),
 )

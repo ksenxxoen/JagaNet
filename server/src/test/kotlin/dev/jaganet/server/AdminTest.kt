@@ -96,14 +96,16 @@ class AdminTest {
 
         o.saveAlertSettings(AlertSettings(listOf("Ops@Example.com"), listOf(42)))
         o.saveModeSettings(ModeSettings(showSignInCodes = false, testPayments = false))
+        assertEquals(1000L, o.saveNetworkSettings(dev.jaganet.api.NetworkSettings(channelMbps = 1000)).network.channelMbps)
         assertNull(ctx.live.paymentProvider)
 
         // A restart loads them back from the database.
-        ctx.live.smtp = null; ctx.live.alertEmails = emptyList(); ctx.live.plans = cfg.plans; ctx.live.paymentProvider = "test"
+        ctx.live.smtp = null; ctx.live.alertEmails = emptyList(); ctx.live.channelMbps = null; ctx.live.plans = cfg.plans; ctx.live.paymentProvider = "test"
         Settings(ctx).load()
         assertEquals("secret", ctx.live.smtp!!.password)
         assertEquals(listOf("ops@example.com"), ctx.live.alertEmails)
         assertEquals(7, ctx.live.plans.proDeviceLimit)
+        assertEquals(1000L, ctx.live.channelMbps)
         assertNull(ctx.live.paymentProvider)
     }
 

@@ -114,6 +114,7 @@ class ApiClient(
     suspend fun saveSmtpSettings(p: SmtpSettings?): AdminSettingsRes = put("admin/settings/smtp", p ?: SmtpSettings("", 0, from = ""))
     suspend fun saveAlertSettings(p: AlertSettings): AdminSettingsRes = put("admin/settings/alerts", p)
     suspend fun saveModeSettings(p: ModeSettings): AdminSettingsRes = put("admin/settings/modes", p)
+    suspend fun saveNetworkSettings(p: NetworkSettings): AdminSettingsRes = put("admin/settings/network", p)
     suspend fun sendTestEmail(to: String): OkRes = post("admin/settings/smtp/test", TestEmailReq(to))
     suspend fun adminFinance(period: ReferralPeriod): FinanceRes = get("admin/finance") { parameter("period", Protocols.json.encodeToString(ReferralPeriod.serializer(), period).trim('"')) }
     /** range: "1h", "24h", "7d" or "30d". */
