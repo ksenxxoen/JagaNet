@@ -11,14 +11,14 @@ internal val telegramStrings: List<S> = listOf(
     S("My subscription", "Моя подписка", "Mein Abo"),
 
     S(
-        "JagaNet VPN is fast, private and works where other VPNs are blocked.",
-        "JagaNet VPN быстрый, приватный и работает там, где другие VPN блокируют.",
-        "JagaNet VPN ist schnell, privat und funktioniert dort, wo andere VPNs blockiert werden.",
+        "JagaNet VPN is fast and secure. It encrypts all your traffic and never logs what you browse.",
+        "JagaNet VPN быстрый и безопасный. Он шифрует весь ваш трафик и не хранит историю посещений.",
+        "JagaNet VPN ist schnell und sicher. Es verschlüsselt deinen gesamten Datenverkehr und speichert nie, was du aufrufst.",
     ),
     S(
-        "Pro gives unlimited data and up to {n} devices. It works in the JagaNet app and in AmneziaVPN or AmneziaWG.",
-        "Pro даёт безлимитный трафик и до {n} устройств. Работает в приложении JagaNet, а также в AmneziaVPN и AmneziaWG.",
-        "Pro bietet unbegrenztes Datenvolumen und bis zu {n} Geräte. Es funktioniert in der JagaNet-App und in AmneziaVPN oder AmneziaWG.",
+        "Pro gives unlimited data and up to {n} devices. It works in the JagaNet app and in other VPN apps.",
+        "Pro даёт безлимитный трафик и до {n} устройств. Работает в приложении JagaNet и в других VPN-приложениях.",
+        "Pro bietet unbegrenztes Datenvolumen und bis zu {n} Geräte. Es funktioniert in der JagaNet-App und in anderen VPN-Apps.",
     ),
     S("✅ Your Pro is active until {date}.", "✅ Ваш Pro действует до {date}.", "✅ Dein Pro ist aktiv bis {date}."),
     S("🔑 My VPN key", "🔑 Мой VPN-ключ", "🔑 Mein VPN-Schlüssel"),

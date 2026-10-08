@@ -9,39 +9,15 @@ internal val webStrings: List<S> = listOf(
     S("My account", "Личный кабинет", "Mein Konto"),
 
     // Landing
-    S("A VPN that works where others are blocked.", "VPN, который работает там, где другие блокируют.", "Ein VPN, das funktioniert, wo andere blockiert werden."),
-    S(
-        "JagaNet runs on AmneziaWG. It is as fast as WireGuard, and its traffic doesn't look like a VPN. We keep no logs of what you browse, only how many bytes you used.",
-        "JagaNet работает на AmneziaWG. Он такой же быстрый, как WireGuard, а его трафик не похож на VPN. Мы не храним историю того, что вы открываете, только объём трафика.",
-        "JagaNet läuft mit AmneziaWG. Es ist so schnell wie WireGuard, und sein Datenverkehr sieht nicht nach VPN aus. Wir speichern nicht, was du aufrufst, nur wie viele Daten du genutzt hast.",
-    ),
     S("Download the app", "Скачать приложение", "App herunterladen"),
     S("PROTECTED", "ЗАЩИЩЕНО", "GESCHÜTZT"),
     S("Server", "Сервер", "Server"),
     S("Amsterdam, Netherlands", "Амстердам, Нидерланды", "Amsterdam, Niederlande"),
     S("Why JagaNet", "Почему JagaNet", "Warum JagaNet"),
-    S("Hard to block", "Сложно заблокировать", "Schwer zu blockieren"),
-    S(
-        "AmneziaWG disguises the VPN, so it keeps working on networks that block WireGuard and OpenVPN.",
-        "AmneziaWG маскирует VPN, поэтому он работает даже в сетях, где блокируют WireGuard и OpenVPN.",
-        "AmneziaWG tarnt das VPN, deshalb funktioniert es auch in Netzen, die WireGuard und OpenVPN blockieren.",
-    ),
     S("Fast", "Быстрый", "Schnell"),
-    S(
-        "Built on WireGuard. Quick to connect, easy on the battery, great for streaming and calls.",
-        "Основан на WireGuard. Быстро подключается, бережёт батарею, отлично подходит для видео и звонков.",
-        "Basiert auf WireGuard. Verbindet schnell, schont den Akku, ideal für Streaming und Anrufe.",
-    ),
-    S("Any app you like", "Любое приложение", "Jede App, die du magst"),
-    S(
-        "Use our app, or take your personal key to AmneziaVPN or AmneziaWG with a link or QR code.",
-        "Пользуйтесь нашим приложением или добавьте личный ключ в AmneziaVPN или AmneziaWG по ссылке или QR-коду.",
-        "Nutze unsere App oder bring deinen persönlichen Schlüssel per Link oder QR-Code in AmneziaVPN oder AmneziaWG.",
-    ),
     S("Pricing", "Тарифы", "Preise"),
     S("JagaNet app", "Приложение JagaNet", "JagaNet-App"),
     S("Up to {n} devices", "До {n} устройств", "Bis zu {n} Geräte"),
-    S("Personal key for any AmneziaWG app", "Личный ключ для любого приложения AmneziaWG", "Persönlicher Schlüssel für jede AmneziaWG-App"),
     S("Buy for a month", "Купить на месяц", "Für einen Monat kaufen"),
     S("Everything in the monthly plan", "Всё, что в месячном тарифе", "Alles aus dem Monatstarif"),
     S("About 4 months free", "Около 4 месяцев бесплатно", "Etwa 4 Monate gratis"),
@@ -52,10 +28,8 @@ internal val webStrings: List<S> = listOf(
     S("Coming soon", "Скоро", "Bald verfügbar"),
     S("The JagaNet app for iOS.", "Приложение JagaNet для iOS.", "Die JagaNet-App für iOS."),
     S("Download on the App Store", "Скачать в App Store", "Im App Store laden"),
-    S("Any AmneziaWG app", "Любое приложение AmneziaWG", "Jede AmneziaWG-App"),
     S("Buy and get your key right in Telegram.", "Покупайте и получайте ключ прямо в Telegram.", "Kaufe und erhalte deinen Schlüssel direkt in Telegram."),
     S("Open the bot", "Открыть бота", "Bot öffnen"),
-    S("Your Pro key works in AmneziaVPN and AmneziaWG.", "Ваш Pro-ключ работает в AmneziaVPN и AmneziaWG.", "Dein Pro-Schlüssel funktioniert in AmneziaVPN und AmneziaWG."),
     S("Get AmneziaVPN", "Скачать AmneziaVPN", "AmneziaVPN holen"),
 
     // Sign in
@@ -73,11 +47,6 @@ internal val webStrings: List<S> = listOf(
     S("Pro for a month for {price}", "Pro на месяц за {price}", "Pro für einen Monat für {price}"),
     S("For a year for {price}", "На год за {price}", "Ein Jahr für {price}"),
     S("VPN keys", "VPN-ключи", "VPN-Schlüssel"),
-    S(
-        "A personal key for AmneziaVPN, AmneziaWG or any app that imports WireGuard configs. Each key counts as one of your devices.",
-        "Личный ключ для AmneziaVPN, AmneziaWG или любого приложения, которое принимает настройки WireGuard. Каждый ключ считается одним из ваших устройств.",
-        "Ein persönlicher Schlüssel für AmneziaVPN, AmneziaWG oder jede App, die WireGuard-Konfigurationen importiert. Jeder Schlüssel zählt als eines deiner Geräte.",
-    ),
     S("You have no keys yet.", "У вас пока нет ключей.", "Du hast noch keine Schlüssel."),
     S("Get Pro to receive your personal VPN key.", "Оформите Pro, чтобы получить личный VPN-ключ.", "Hol dir Pro, um deinen persönlichen VPN-Schlüssel zu bekommen."),
     S("New key", "Новый ключ", "Neuer Schlüssel"),
@@ -88,7 +57,6 @@ internal val webStrings: List<S> = listOf(
     S("Payments", "Платежи", "Zahlungen"),
     S("Works for 10 minutes", "Действует 10 минут", "Gilt 10 Minuten"),
     S("Delete this key? Apps using it will stop connecting.", "Удалить этот ключ? Приложения, которые его используют, перестанут подключаться.", "Diesen Schlüssel löschen? Apps, die ihn nutzen, können sich dann nicht mehr verbinden."),
-    S("made on {date}", "создан {date}", "erstellt am {date}"),
     S(
         "Scan the QR code in AmneziaVPN or AmneziaWG (tap + and choose Scan QR code), or download the file and import it.",
         "Отсканируйте QR-код в AmneziaVPN или AmneziaWG (нажмите + и выберите сканирование QR-кода) или скачайте файл и импортируйте его.",
@@ -96,4 +64,42 @@ internal val webStrings: List<S> = listOf(
     ),
     S("Download file", "Скачать файл", "Datei herunterladen"),
     S("Open key link", "Открыть ссылку ключа", "Schlüssel-Link öffnen"),
+
+    // Landing: speed and security
+    S("A fast and secure VPN.", "Быстрый и безопасный VPN.", "Ein schnelles und sicheres VPN."),
+    S(
+        "JagaNet encrypts all your traffic and keeps the internet fast. We never log what you browse.",
+        "JagaNet шифрует весь ваш трафик и не замедляет интернет. Мы не храним историю того, что вы открываете.",
+        "JagaNet verschlüsselt deinen gesamten Datenverkehr und hält das Internet schnell. Wir speichern nie, was du aufrufst.",
+    ),
+    S(
+        "Connects in a second and keeps full speed for video, games and calls.",
+        "Подключается за секунду и сохраняет полную скорость для видео, игр и звонков.",
+        "Verbindet in einer Sekunde und hält volle Geschwindigkeit für Videos, Spiele und Anrufe.",
+    ),
+    S("Secure", "Безопасный", "Sicher"),
+    S(
+        "Modern encryption protects your data on public Wi-Fi, at home and when you travel.",
+        "Современное шифрование защищает ваши данные в публичных сетях Wi-Fi, дома и в поездках.",
+        "Moderne Verschlüsselung schützt deine Daten im öffentlichen WLAN, zu Hause und auf Reisen.",
+    ),
+    S("No logs", "Без логов", "Keine Logs"),
+    S(
+        "We don't keep your browsing history and never sell data. We only count how much traffic you use.",
+        "Мы не храним историю посещений и не продаём данные. Считаем только объём трафика.",
+        "Wir speichern keinen Verlauf und verkaufen nie Daten. Wir zählen nur, wie viel Datenvolumen du nutzt.",
+    ),
+    S("Works in other VPN apps too", "Работает и в других VPN-приложениях", "Funktioniert auch in anderen VPN-Apps"),
+    S("Other VPN apps", "Другие VPN-приложения", "Andere VPN-Apps"),
+    S(
+        "Your Pro key also works in other VPN apps, for example AmneziaVPN.",
+        "Ключ Pro работает и в других VPN-приложениях, например в AmneziaVPN.",
+        "Dein Pro-Schlüssel funktioniert auch in anderen VPN-Apps, zum Beispiel in AmneziaVPN.",
+    ),
+    S(
+        "A personal key for other VPN apps, for example AmneziaVPN. Each key counts as one of your devices.",
+        "Личный ключ для других VPN-приложений, например AmneziaVPN. Каждый ключ считается одним из ваших устройств.",
+        "Ein persönlicher Schlüssel für andere VPN-Apps, zum Beispiel AmneziaVPN. Jeder Schlüssel zählt als eines deiner Geräte.",
+    ),
+    S("Made on {date}", "Создан {date}", "Erstellt am {date}"),
 )

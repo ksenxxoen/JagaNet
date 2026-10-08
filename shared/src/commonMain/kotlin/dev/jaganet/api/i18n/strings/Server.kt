@@ -55,7 +55,7 @@ internal val serverStrings: List<S> = listOf(
     S("Copied", "Скопировано", "Kopiert"),
     S("How to connect", "Как подключиться", "So verbindest du dich"),
     S("Install an app", "Установите приложение", "Installiere eine App"),
-    S("Any app that supports {protocol}", "Подойдёт любое приложение с поддержкой {protocol}", "Jede App, die {protocol} unterstützt"),
+    S("For example one of these apps", "Например, одно из этих приложений", "Zum Beispiel eine dieser Apps"),
     S("JagaNet for Android", "JagaNet для Android", "JagaNet für Android"),
     S("JagaNet for iPhone", "JagaNet для iPhone", "JagaNet für iPhone"),
     S("In our app you just sign in, no key needed", "В нашем приложении достаточно войти, ключ не нужен", "In unserer App meldest du dich einfach an, ohne Schlüssel"),

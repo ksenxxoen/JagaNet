@@ -134,9 +134,9 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
     private suspend fun menu(u: Who) {
         val pro = isPro(u.userId)
         val text = buildString {
-            appendLine(u.t("JagaNet VPN is fast, private and works where other VPNs are blocked."))
+            appendLine(u.t("JagaNet VPN is fast and secure. It encrypts all your traffic and never logs what you browse."))
             appendLine()
-            appendLine(u.t("Pro gives unlimited data and up to {n} devices. It works in the JagaNet app and in AmneziaVPN or AmneziaWG.", "n" to s.billing.plans().pro.deviceLimit))
+            appendLine(u.t("Pro gives unlimited data and up to {n} devices. It works in the JagaNet app and in other VPN apps.", "n" to s.billing.plans().pro.deviceLimit))
             if (pro != null) { appendLine(); append(u.t("✅ Your Pro is active until {date}.", "date" to Format.date(pro.toString(), u.lang))) }
         }
         send(u, text, buyButtons(u) + listOf(listOf(Btn(u.t("🔑 My VPN key"), "key"), Btn(u.t("📱 Get the app"), "app")), listOf(Btn("🌐 " + u.lang.nativeName, "language"))))

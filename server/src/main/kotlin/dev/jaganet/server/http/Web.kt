@@ -141,12 +141,11 @@ private class Pages(val lang: Lang) {
 
     fun key(k: KeyConfig, token: String, s: Services): String {
         val base = "/k/" + esc(token)
-        val proto = if (k.protocol == "amneziawg") "AmneziaWG" else "WireGuard"
         val ours = s.site.androidAppUrl()?.let { """<li><a href="${esc(it)}">${t("JagaNet for Android")}</a><br><span class="muted">${t("In our app you just sign in, no key needed")}</span></li>""" } ?: ""
         val others = s.site.otherApps.joinToString("") { (n, u) -> """<li><a href="${esc(u)}" rel="noreferrer">${esc(n)}</a></li>""" }
         return page(t("Your VPN key"), """
 <h1>${t("Your VPN key")}</h1>
-<p class="muted">${esc(k.location)}<br>$proto, ${esc(keyName(k.name, lang))}</p>
+<p class="muted">${esc(k.location)}<br>${esc(keyName(k.name, lang))}</p>
 <div class="card keycard">
   <img class="qr" src="$base/qr.png" alt="${t("QR code of your VPN key")}" width="280" height="280">
   <div class="keyactions">
@@ -156,7 +155,7 @@ private class Pages(val lang: Lang) {
 </div>
 <h2>${t("How to connect")}</h2>
 <ol class="steps">
-  <li><b>${t("Install an app")}</b><br>${t("Any app that supports {protocol}", "protocol" to proto)}<ul>$ours$others</ul></li>
+  <li><b>${t("Install an app")}</b><br>${t("For example one of these apps")}<ul>$ours$others</ul></li>
   <li><b>${t("Add the key")}</b><br>${t("In the app tap + and choose Scan QR code, then point the camera at the code above. Or choose Import from file and pick {file}.", "file" to Keys.CONFIG_FILE)}</li>
   <li><b>${t("Turn on the VPN")}</b><br>${t("That's all.")}</li>
 </ol>

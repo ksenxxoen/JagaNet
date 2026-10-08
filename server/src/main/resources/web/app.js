@@ -91,8 +91,8 @@ async function home() {
   view.innerHTML = `
   <section class="hero">
     <div>
-      <h1>${t("A VPN that works where others are blocked.")}</h1>
-      <p class="muted">${t("JagaNet runs on AmneziaWG. It is as fast as WireGuard, and its traffic doesn't look like a VPN. We keep no logs of what you browse, only how many bytes you used.")}</p>
+      <h1>${t("A fast and secure VPN.")}</h1>
+      <p class="muted">${t("JagaNet encrypts all your traffic and keeps the internet fast. We never log what you browse.")}</p>
       <div class="cta">
         <button class="btn green" onclick="buy('pro_yearly')">${t("Get Pro")}</button>
         <a class="btn secondary" href="#download">${t("Download the app")}</a>
@@ -107,9 +107,9 @@ async function home() {
 
   <h2>${t("Why JagaNet")}</h2>
   <div class="grid3">
-    <div class="card"><h3>${t("Hard to block")}</h3><p class="muted">${t("AmneziaWG disguises the VPN, so it keeps working on networks that block WireGuard and OpenVPN.")}</p></div>
-    <div class="card"><h3>${t("Fast")}</h3><p class="muted">${t("Built on WireGuard. Quick to connect, easy on the battery, great for streaming and calls.")}</p></div>
-    <div class="card"><h3>${t("Any app you like")}</h3><p class="muted">${t("Use our app, or take your personal key to AmneziaVPN or AmneziaWG with a link or QR code.")}</p></div>
+    <div class="card"><h3>${t("Fast")}</h3><p class="muted">${t("Connects in a second and keeps full speed for video, games and calls.")}</p></div>
+    <div class="card"><h3>${t("Secure")}</h3><p class="muted">${t("Modern encryption protects your data on public Wi-Fi, at home and when you travel.")}</p></div>
+    <div class="card"><h3>${t("No logs")}</h3><p class="muted">${t("We don't keep your browsing history and never sell data. We only count how much traffic you use.")}</p></div>
   </div>
 
   <h2 id="pricing">${t("Pricing")}</h2>
@@ -118,7 +118,7 @@ async function home() {
       <ul><li>${t("{n} GB a month", { n: Math.round(free.monthlyDataLimitBytes / 1e9) })}</li><li>${tp(free.deviceLimit, "{n} device|{n} devices")}</li><li>${t("JagaNet app")}</li></ul>
       <a class="btn secondary" href="#download">${t("Download the app")}</a></div>
     <div class="card plan"><h3>${t("Pro monthly")}</h3><div class="price">${price(p.pro_monthly)}</div>
-      <ul><li>${t("Unlimited data")}</li><li>${t("Up to {n} devices", { n: pro.deviceLimit })}</li><li>${t("Personal key for any AmneziaWG app")}</li></ul>
+      <ul><li>${t("Unlimited data")}</li><li>${t("Up to {n} devices", { n: pro.deviceLimit })}</li><li>${t("Works in other VPN apps too")}</li></ul>
       <button class="btn" onclick="buy('pro_monthly')">${t("Buy for a month")}</button></div>
     <div class="card plan best"><span class="badge">${t("BEST VALUE")}</span><h3>${t("Pro yearly")}</h3><div class="price">${price(p.pro_yearly)}</div>
       <ul><li>${t("Everything in the monthly plan")}</li><li>${t("About 4 months free")}</li></ul>
@@ -138,9 +138,9 @@ function downloads() {
       ${a ? `<a class="btn" href="${h(a)}">${t("Download for Android")}</a>` : `<button class="btn" disabled>${t("Coming soon")}</button>`}</div>
     <div class="card"><h3>iPhone</h3><p class="muted">${t("The JagaNet app for iOS.")}</p>
       ${i ? `<a class="btn" href="${h(i)}">${t("Download on the App Store")}</a>` : `<button class="btn" disabled>${t("Coming soon")}</button>`}</div>
-    <div class="card"><h3>${tg ? "Telegram" : t("Any AmneziaWG app")}</h3>
+    <div class="card"><h3>${tg ? "Telegram" : t("Other VPN apps")}</h3>
       ${tg ? `<p class="muted">${t("Buy and get your key right in Telegram.")}</p><a class="btn" href="${h(tg)}">${t("Open the bot")}</a>`
-           : `<p class="muted">${t("Your Pro key works in AmneziaVPN and AmneziaWG.")}</p><a class="btn secondary" href="https://amnezia.org/downloads" rel="noreferrer">${t("Get AmneziaVPN")}</a>`}</div>`;
+           : `<p class="muted">${t("Your Pro key also works in other VPN apps, for example AmneziaVPN.")}</p><a class="btn secondary" href="https://amnezia.org/downloads" rel="noreferrer">${t("Get AmneziaVPN")}</a>`}</div>`;
 }
 
 window.buy = async function (productId) {
@@ -233,7 +233,7 @@ async function account(params) {
   </div>
 
   <h2>${t("VPN keys")}</h2>
-  <p class="muted">${t("A personal key for AmneziaVPN, AmneziaWG or any app that imports WireGuard configs. Each key counts as one of your devices.")}</p>
+  <p class="muted">${t("A personal key for other VPN apps, for example AmneziaVPN. Each key counts as one of your devices.")}</p>
   <div class="keys" id="keys">${keys.keys.map(keyCard).join("") || `<div class="card muted">${isPro ? t("You have no keys yet.") : t("Get Pro to receive your personal VPN key.")}</div>`}</div>
   ${isPro || keys.keys.length ? `<p style="margin-top:12px"><button class="btn secondary" id="newkey">${t("New key")}</button></p>` : ""}
 
@@ -264,7 +264,7 @@ function keyCard(k) {
     <img class="qr" src="${h(k.qrUrl)}" alt="${t("QR code of your VPN key")}" loading="lazy">
     <div class="keyinfo">
       <h3>${h(k.name)}</h3>
-      <p class="muted">${h(k.location)}<br>${k.protocol === "amneziawg" ? "AmneziaWG" : "WireGuard"}, ${t("made on {date}", { date: date(k.createdAt) })}</p>
+      <p class="muted">${h(k.location)}<br>${t("Made on {date}", { date: date(k.createdAt) })}</p>
       <p class="muted" style="font-size:14px">${t("Scan the QR code in AmneziaVPN or AmneziaWG (tap + and choose Scan QR code), or download the file and import it.")}</p>
       <div class="keyactions">
         <a class="btn small" href="${h(k.configUrl)}" download>${t("Download file")}</a>
