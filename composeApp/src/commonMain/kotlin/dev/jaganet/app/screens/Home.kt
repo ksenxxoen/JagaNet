@@ -33,6 +33,10 @@ import dev.jaganet.api.ErrorCode
 import dev.jaganet.api.Format
 import dev.jaganet.api.MeRes
 import dev.jaganet.api.PlanId
+import dev.jaganet.app.i18n.fBytes
+import dev.jaganet.app.i18n.fDate
+import dev.jaganet.app.i18n.fMbps
+import dev.jaganet.app.i18n.t
 import dev.jaganet.app.state.AppState
 import dev.jaganet.app.state.Route
 import dev.jaganet.app.theme.C
@@ -77,8 +81,8 @@ fun HomeScreen(s: AppState) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Brand()
             if (m != null) {
-                if (pro) Pill("Pro", C.greenTint, C.greenDark) { s.router.go(Route.Account) }
-                else Pill("Get Pro", C.ink, Color.White) { s.router.go(Route.Plans) }
+                if (pro) Pill(t("Pro"), C.greenTint, C.greenDark) { s.router.go(Route.Account) }
+                else Pill(t("Get Pro"), C.ink, Color.White) { s.router.go(Route.Plans) }
             }
         }
 
@@ -87,10 +91,10 @@ fun HomeScreen(s: AppState) {
             PowerButton(connected, busy) { if (connected) s.tunnel.disconnect() else if (!busy) s.tunnel.connect() }
             T(
                 when (st.status) {
-                    TunnelStatus.CONNECTED -> "Tap to disconnect"
-                    TunnelStatus.CONNECTING -> "Connecting…"
-                    TunnelStatus.DISCONNECTING -> "Disconnecting…"
-                    else -> "Tap to connect"
+                    TunnelStatus.CONNECTED -> t("Tap to disconnect")
+                    TunnelStatus.CONNECTING -> t("Connecting…")
+                    TunnelStatus.DISCONNECTING -> t("Disconnecting…")
+                    else -> t("Tap to connect")
                 },
                 TS.Small, color = C.muted,
             )
@@ -107,7 +111,7 @@ fun HomeScreen(s: AppState) {
         }
         if (s.tunnel.engine.simulated) {
             Gap(Space.lg)
-            T("Simulated tunnel — no real traffic is routed.", TS.Caption, color = C.muted, modifier = Modifier.fillMaxWidth())
+            T(t("Simulated tunnel. No real traffic is routed."), TS.Caption, color = C.muted, modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -116,16 +120,15 @@ fun HomeScreen(s: AppState) {
 private fun StatusLine(status: TunnelStatus, since: Long?) {
     val now = nowMs()
     val (dot, text, label) = when (status) {
-        TunnelStatus.CONNECTED -> Triple(C.green, C.green, "Protected")
-        TunnelStatus.CONNECTING -> Triple(C.faint, C.muted, "Connecting")
-        TunnelStatus.ERROR -> Triple(C.warn, C.warnText, "Couldn’t connect")
-        else -> Triple(C.warn, C.warnText, "Not protected")
+        TunnelStatus.CONNECTED -> Triple(C.green, C.green, t("Protected"))
+        TunnelStatus.CONNECTING -> Triple(C.faint, C.muted, t("Connecting"))
+        TunnelStatus.ERROR -> Triple(C.warn, C.warnText, t("Couldn’t connect"))
+        else -> Triple(C.warn, C.warnText, t("Not protected"))
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(Modifier.size(10.dp).clip(CircleShape).background(dot))
         T(label, TS.Body, FontWeight.SemiBold, text)
         if (status == TunnelStatus.CONNECTED && since != null) {
-            T("·", TS.Body, FontWeight.SemiBold, text)
             T(Format.clock((now - since) / 1000), TS.Body, FontWeight.Medium, text, mono = true)
         }
     }
@@ -143,7 +146,7 @@ private fun PowerButton(on: Boolean, busy: Boolean, onClick: () -> Unit) {
                 .background(if (on) C.green else Color.White)
                 .border(2.dp, if (on) C.green else C.ink, CircleShape)
                 .clickable(enabled = !busy, role = Role.Button, onClick = onClick)
-                .semantics { contentDescription = if (on) "Disconnect" else "Connect" },
+                .semantics { contentDescription = if (on) t("Disconnect") else t("Connect") },
             contentAlignment = Alignment.Center,
         ) { Icon(Ic.Power, if (on) Color.White else if (busy) C.faint else C.ink, if (on) 64.dp else 60.dp) }
     }
@@ -154,8 +157,8 @@ private fun Blocked(s: AppState) {
     val code = s.tunnel.blockedBy
     val msg = s.tunnel.failure ?: return
     val (text, action) = when (code) {
-        ErrorCode.DATA_LIMIT -> "You’ve used this month’s free data." to "Get unlimited"
-        ErrorCode.DEVICE_LIMIT -> "Your plan’s device limit is reached." to "See plans"
+        ErrorCode.DATA_LIMIT -> t("You’ve used this month’s free data.") to t("Get unlimited")
+        ErrorCode.DEVICE_LIMIT -> t("Your plan’s device limit is reached.") to t("See plans")
         else -> msg to null
     }
     Gap(Space.lg)
@@ -179,7 +182,7 @@ private fun LocationCard(s: AppState) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             IconTile(Ic.Globe)
             Column(Modifier.weight(1f)) {
-                T("Server location", TS.Caption, color = C.muted)
+                T(t("Server location"), TS.Caption, color = C.muted)
                 T(server?.let { "${it.city}, ${it.countryCode}" } ?: "…", TS.Body, FontWeight.SemiBold)
             }
             Box(Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button) { s.router.go(Route.Protocol) }.padding(6.dp)) {
@@ -193,17 +196,17 @@ private fun LocationCard(s: AppState) {
 private fun Connected(s: AppState, sessionBytes: Long) {
     val cfg = s.tunnel.config
     Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        SpeedTile("Download", Ic.ArrowDown, Format.mbps(s.tunnel.downBps), "Mbps", Modifier.weight(1f))
-        SpeedTile("Upload", Ic.ArrowUp, Format.mbps(s.tunnel.upBps), "Mbps", Modifier.weight(1f))
-        SpeedTile("Protocol", null, cfg?.protocol?.let(ProtocolInfo::label) ?: "–", "", Modifier.weight(1f), mono = false)
+        SpeedTile(t("Download"), Ic.ArrowDown, fMbps(s.tunnel.downBps), t("Mbps"), Modifier.weight(1f))
+        SpeedTile(t("Upload"), Ic.ArrowUp, fMbps(s.tunnel.upBps), t("Mbps"), Modifier.weight(1f))
+        SpeedTile(t("Protocol"), null, cfg?.protocol?.let(ProtocolInfo::label) ?: "-", "", Modifier.weight(1f), mono = false)
     }
     Gap(12.dp)
     Card(padding = 16.dp) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            KV("Location", cfg?.location ?: "–")
-            KV("Tunnel address", cfg?.address?.substringBefore('/') ?: "–", mono = true)
-            KV("DNS", cfg?.dns?.joinToString() ?: "–", mono = true)
-            KV("This session", Format.bytes(sessionBytes), mono = true)
+            KV(t("Location"), cfg?.location ?: "-")
+            KV(t("Tunnel address"), cfg?.address?.substringBefore('/') ?: "-", mono = true)
+            KV(t("DNS"), cfg?.dns?.joinToString() ?: "-", mono = true)
+            KV(t("This session"), fBytes(sessionBytes), mono = true)
         }
     }
 }
@@ -226,11 +229,8 @@ private fun FreeCard(s: AppState, m: MeRes) {
     val left = (limit - m.usage.bytesUsed).coerceAtLeast(0)
     Card(padding = 14.dp) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            T("Free plan", TS.Small, FontWeight.SemiBold)
-            Row {
-                T(Format.bytes(left), TS.Small, color = C.muted, mono = true)
-                T(" left this month", TS.Small, color = C.muted)
-            }
+            T(t("Free plan"), TS.Small, FontWeight.SemiBold)
+            T(t("{amount} left this month", "amount" to fBytes(left)), TS.Small, color = C.muted)
         }
         Gap(8.dp)
         Progress(m.usage.bytesUsed.toFloat() / limit, C.warn)
@@ -240,9 +240,9 @@ private fun FreeCard(s: AppState, m: MeRes) {
                 .clickable(role = Role.Button) { s.router.go(Route.Plans) }.padding(horizontal = 14.dp),
             horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically,
         ) {
-            T("Unlimited data, 5 devices", TS.Small, FontWeight.SemiBold, Color.White)
+            T(t("Unlimited data, 5 devices"), TS.Small, FontWeight.SemiBold, Color.White)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                T("Upgrade", TS.Small, FontWeight.SemiBold, Color.White)
+                T(t("Upgrade"), TS.Small, FontWeight.SemiBold, Color.White)
                 Icon(Ic.ChevronRight, Color.White, 16.dp, 2.2f)
             }
         }
@@ -252,7 +252,7 @@ private fun FreeCard(s: AppState, m: MeRes) {
 @Composable
 private fun ProCard(m: MeRes) = Card(padding = 14.dp) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        T("Pro · unlimited data", TS.Small, FontWeight.SemiBold)
-        T((if (m.entitlement.autoRenew) "Renews " else "Until ") + Format.date(m.entitlement.expiresAt), TS.Small, color = C.muted)
+        T(t("Pro, unlimited data"), TS.Small, FontWeight.SemiBold)
+        T(if (m.entitlement.autoRenew) t("Renews {date}", "date" to fDate(m.entitlement.expiresAt)) else t("Until {date}", "date" to fDate(m.entitlement.expiresAt)), TS.Small, color = C.muted)
     }
 }

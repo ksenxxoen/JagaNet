@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import dev.jaganet.app.i18n.t
 import dev.jaganet.app.platform.AppPlatform
 import dev.jaganet.app.screens.AccountScreen
 import dev.jaganet.app.screens.AdminScreen
@@ -93,7 +94,7 @@ private fun TabBar(s: AppState) {
     Column(Modifier.background(C.surface).windowInsetsPadding(WindowInsets.navigationBars)) {
         Divider(C.line)
         Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), horizontalArrangement = Arrangement.SpaceAround) {
-            listOf(Route.Home to (Ic.Shield to "Connect"), Route.Stats to (Ic.Stats to "Stats"), Route.Devices to (Ic.Devices to "Devices"), Route.Settings to (Ic.Settings to "Settings"))
+            listOf(Route.Home to (Ic.Shield to t("Connect")), Route.Stats to (Ic.Stats to t("Stats")), Route.Devices to (Ic.Devices to t("Devices")), Route.Settings to (Ic.Settings to t("Settings")))
                 .forEach { (route, v) ->
                     val on = s.router.current == route
                     val color = if (on) C.green else C.muted

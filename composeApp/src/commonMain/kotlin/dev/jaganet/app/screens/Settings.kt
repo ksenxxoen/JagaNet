@@ -30,7 +30,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.jaganet.api.Format
 import dev.jaganet.api.Platform
+import dev.jaganet.api.PlanId
+import dev.jaganet.api.ProductId
+import dev.jaganet.api.i18n.Lang
 import dev.jaganet.api.Role as UserRole
+import dev.jaganet.app.i18n.AppLang
+import dev.jaganet.app.i18n.t
+import dev.jaganet.app.i18n.tp
 import dev.jaganet.app.state.AppState
 import dev.jaganet.app.state.Route
 import dev.jaganet.app.theme.C
@@ -62,7 +68,7 @@ fun SettingsScreen(s: AppState) {
     val me = load(s.dataVersion) { s.api.me() }
     val ios = s.platform.kind == Platform.IOS
     Screen {
-        Title("Settings")
+        Title(t("Settings"))
         Gap(16.dp)
         Card(Modifier.clickable(role = Role.Button) { s.router.go(Route.Account) }, padding = 14.dp) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -71,7 +77,13 @@ fun SettingsScreen(s: AppState) {
                 }
                 Column(Modifier.weight(1f)) {
                     T(s.user?.email ?: "", TS.Body, FontWeight.SemiBold, maxLines = 1)
-                    T((me as? Load.Ok)?.value?.entitlement?.let { if (it.productId != null) it.productId!!.name.replace('_', ' ').lowercase().replaceFirstChar(Char::uppercase) else it.plan.name.lowercase().replaceFirstChar(Char::uppercase) } ?: "", TS.Label, color = C.muted)
+                    T((me as? Load.Ok)?.value?.entitlement?.let { e ->
+                        when (e.productId) {
+                            ProductId.PRO_MONTHLY -> t("Pro monthly")
+                            ProductId.PRO_YEARLY -> t("Pro yearly")
+                            null -> when (e.plan) { PlanId.FREE -> t("Free"); PlanId.PRO -> t("Pro") }
+                        }
+                    } ?: "", TS.Label, color = C.muted)
                 }
                 Icon(Ic.ChevronRight, C.muted, 18.dp, 2f)
             }
@@ -82,48 +94,54 @@ fun SettingsScreen(s: AppState) {
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(Ic.Gift, C.greenDark, 20.dp)
-            T("Invite friends, get free Pro time", TS.Small, FontWeight.SemiBold, C.greenDark, modifier = Modifier.weight(1f))
+            T(t("Invite friends, get free Pro time"), TS.Small, FontWeight.SemiBold, C.greenDark, modifier = Modifier.weight(1f))
             Icon(Ic.ChevronRight, C.greenDark, 18.dp, 2f)
         }
 
-        SectionLabel("Connection")
+        SectionLabel(t("Language"))
         Card {
-            ListRow("Kill switch", if (ios) "Route all traffic through the VPN while it’s on" else "Block internet if the VPN drops", trailing = {
-                Toggle(st.killSwitch, "Kill switch") { v -> s.settings.update { it.copy(killSwitch = v) } }
-            })
-            ListRow("Auto-connect", "On Wi-Fi networks you don’t trust", trailing = {
-                Toggle(st.autoConnect, "Auto-connect") { v -> s.settings.update { it.copy(autoConnect = v) } }
-            })
-            ListRow("Protocol", value = st.protocol?.let(ProtocolInfo::label) ?: "Automatic", onClick = { s.router.go(Route.Protocol) })
-            if (ios) ListRow("Split tunneling", "Not available on iPhone: iOS doesn’t allow per-app VPN outside managed devices", last = true)
-            else ListRow("Split tunneling", value = if (st.split.mode == SplitMode.ALL) "Off" else "${st.split.apps.size} apps", last = true, onClick = { s.router.go(Route.SplitTunnel) })
+            Lang.entries.forEach { lang ->
+                LanguageOption(lang.nativeName, AppLang.current == lang) { s.setLanguage(lang) }
+            }
         }
 
-        SectionLabel("App")
+        SectionLabel(t("Connection"))
         Card {
-            ListRow("Notifications", "Disconnects and billing reminders", trailing = {
-                Toggle(st.notifications, "Notifications") { v -> s.settings.update { it.copy(notifications = v) } }
+            ListRow(t("Kill switch"), if (ios) t("Route all traffic through the VPN while it’s on") else t("Block internet if the VPN drops"), trailing = {
+                Toggle(st.killSwitch, t("Kill switch")) { v -> s.settings.update { it.copy(killSwitch = v) } }
             })
-            if (!ios) ListRow("Start on boot", "Reconnect after the phone restarts", trailing = {
-                Toggle(st.startOnBoot, "Start on boot") { v -> s.settings.update { it.copy(startOnBoot = v) } }
+            ListRow(t("Auto-connect"), t("On Wi-Fi networks you don’t trust"), trailing = {
+                Toggle(st.autoConnect, t("Auto-connect")) { v -> s.settings.update { it.copy(autoConnect = v) } }
             })
-            ListRow("Language", value = "English", last = true)
+            ListRow(t("Protocol"), value = st.protocol?.let { t(ProtocolInfo.label(it)) } ?: t("Automatic"), onClick = { s.router.go(Route.Protocol) })
+            if (ios) ListRow(t("Split tunneling"), t("Not available on iPhone: iOS doesn’t allow per-app VPN outside managed devices"), last = true)
+            else ListRow(t("Split tunneling"), value = if (st.split.mode == SplitMode.ALL) t("Off") else tp(st.split.apps.size, "{n} app|{n} apps"), last = true, onClick = { s.router.go(Route.SplitTunnel) })
+        }
+
+        SectionLabel(t("App"))
+        Card {
+            ListRow(t("Notifications"), t("Disconnects and billing reminders"), last = ios, trailing = {
+                Toggle(st.notifications, t("Notifications")) { v -> s.settings.update { it.copy(notifications = v) } }
+            })
+            if (!ios) ListRow(t("Start on boot"), t("Reconnect after the phone restarts"), last = true, trailing = {
+                Toggle(st.startOnBoot, t("Start on boot")) { v -> s.settings.update { it.copy(startOnBoot = v) } }
+            })
         }
 
         if (s.user?.role == UserRole.OWNER) {
-            SectionLabel("Owner")
-            Card { ListRow("Business dashboard", "Revenue, users and server health", last = true, onClick = { s.router.go(Route.Admin) }) }
+            SectionLabel(t("Owner"))
+            Card { ListRow(t("Business dashboard"), t("Revenue, users and server health"), last = true, onClick = { s.router.go(Route.Admin) }) }
         }
 
-        SectionLabel("Help")
+        SectionLabel(t("Help"))
         Card {
-            ListRow("Contact support", value = "Usually replies in a day", onClick = { s.platform.openUrl("mailto:support@jaganet.dev") })
-            ListRow("Connection log", onClick = { s.router.go(Route.Logs) })
-            ListRow("Privacy policy", onClick = { s.platform.openUrl("https://jaganet.dev/privacy") })
-            ListRow("Terms of service", value = "v0.1.0", last = true, onClick = { s.platform.openUrl("https://jaganet.dev/terms") })
+            ListRow(t("Contact support"), value = t("Usually replies in a day"), onClick = { s.platform.openUrl("mailto:support@jaganet.dev") })
+            ListRow(t("Connection log"), onClick = { s.router.go(Route.Logs) })
+            ListRow(t("Privacy policy"), onClick = { s.platform.openUrl("https://jaganet.dev/privacy") })
+            ListRow(t("Terms of service"), value = "v0.1.0", last = true, onClick = { s.platform.openUrl("https://jaganet.dev/terms") })
         }
         Gap(16.dp)
-        Button("Sign out", { s.signOut() }, Modifier.fillMaxWidth(), ButtonKind.Ghost)
+        Button(t("Sign out"), { s.signOut() }, Modifier.fillMaxWidth(), ButtonKind.Ghost)
     }
 }
 
@@ -133,24 +151,24 @@ fun ProtocolScreen(s: AppState) {
     val servers = load(Unit) { s.api.servers().servers }
     Screen(onBack = { s.router.back() }) {
         Gap(8.dp)
-        Title("Protocol")
-        T("How this device talks to the server. Automatic picks the best one both support.", TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
+        Title(t("Protocol"))
+        T(t("How this device talks to the server. Automatic picks the best one both support."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
         Gap(18.dp)
         Loaded(servers) { list ->
             val server = list.firstOrNull { it.id == st.serverId } ?: list.firstOrNull()
             val offered = server?.protocols.orEmpty()
             Card {
-                ProtocolOption("Automatic", "Recommended", st.protocol == null) { s.settings.update { it.copy(protocol = null) } }
+                ProtocolOption(t("Automatic"), t("Recommended"), st.protocol == null) { s.settings.update { it.copy(protocol = null) } }
                 offered.forEach { id ->
                     val supported = id in s.tunnel.engine.protocols
                     ProtocolOption(
-                        ProtocolInfo.label(id),
-                        if (supported) ProtocolInfo.description(id) else "Not supported on this device yet",
+                        t(ProtocolInfo.label(id)),
+                        if (supported) t(ProtocolInfo.description(id)) else t("Not supported on this device yet"),
                         st.protocol == id, enabled = supported,
                     ) { s.settings.update { it.copy(protocol = id) } }
                 }
             }
-            T("Changes apply the next time you connect.", TS.Caption, color = C.muted, modifier = Modifier.padding(top = 10.dp, start = 4.dp))
+            T(t("Changes apply the next time you connect."), TS.Caption, color = C.muted, modifier = Modifier.padding(top = 10.dp, start = 4.dp))
         }
     }
 }
@@ -169,17 +187,29 @@ private fun ProtocolOption(title: String, hint: String, selected: Boolean, enabl
     }
 }
 
+/** One language in the picker. Names are always shown in their own language. */
+@Composable
+private fun LanguageOption(name: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 52.dp).selectable(selected, role = Role.RadioButton, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Radio(selected)
+        T(name, TS.Body, FontWeight.SemiBold, modifier = Modifier.weight(1f))
+    }
+}
+
 @Composable
 fun SplitTunnelScreen(s: AppState) {
     val st by s.settings.state.collectAsState()
     val apps = load(Unit) { s.tunnel.engine.installedApps() }
     Screen(onBack = { s.router.back() }) {
         Gap(8.dp)
-        Title("Split tunneling")
-        T("Choose which apps use the tunnel. Leave out apps that don’t need protection, like local banking or streaming.", TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
+        Title(t("Split tunneling"))
+        T(t("Choose which apps use the tunnel. Leave out apps that don’t need protection, like local banking or streaming."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
         Gap(18.dp)
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(SplitMode.ALL to "All apps use the VPN", SplitMode.ONLY to "Only selected apps", SplitMode.EXCLUDE to "All except selected apps").forEach { (mode, label) ->
+            listOf(SplitMode.ALL to t("All apps use the VPN"), SplitMode.ONLY to t("Only selected apps"), SplitMode.EXCLUDE to t("All except selected apps")).forEach { (mode, label) ->
                 val on = st.split.mode == mode
                 Row(
                     Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(R.button)).background(C.surface)
@@ -194,9 +224,9 @@ fun SplitTunnelScreen(s: AppState) {
             }
         }
         if (st.split.mode == SplitMode.ALL) {
-            T("Every app goes through your server.", TS.Small, color = C.muted, modifier = Modifier.padding(top = 16.dp, start = 4.dp))
+            T(t("Every app goes through your server."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 16.dp, start = 4.dp))
         } else {
-            SectionLabel(if (st.split.mode == SplitMode.ONLY) "Apps that use the VPN" else "Apps that skip the VPN")
+            SectionLabel(if (st.split.mode == SplitMode.ONLY) t("Apps that use the VPN") else t("Apps that skip the VPN"))
             Loaded(apps) { list ->
                 Card {
                     list.forEachIndexed { i, app ->
@@ -233,11 +263,11 @@ fun LogsScreen(s: AppState) {
     val text = lines.joinToString("\n") { "${Format.clockOfDay(it.time)}  ${it.level}  ${it.msg}" }
     Screen(onBack = { s.router.back() }) {
         Gap(8.dp)
-        Title("Connection log")
-        T("Kept only on this device.", TS.Small, color = C.muted, modifier = Modifier.padding(top = 4.dp))
+        Title(t("Connection log"))
+        T(t("Kept only on this device."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 4.dp))
         Gap(14.dp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("all" to "All", "warn" to "Warnings", "error" to "Errors").forEach { (k, l) ->
+            listOf("all" to t("All"), "warn" to t("Warnings"), "error" to t("Errors")).forEach { (k, l) ->
                 val on = filter == k
                 Box(
                     Modifier.heightIn(min = 36.dp).clip(CircleShape).background(if (on) C.ink else C.surface)
@@ -249,7 +279,7 @@ fun LogsScreen(s: AppState) {
         }
         Gap(14.dp)
         Column(Modifier.fillMaxWidth().heightIn(min = 360.dp).clip(RoundedCornerShape(R.tile)).background(C.night).padding(horizontal = 14.dp, vertical = 12.dp)) {
-            if (lines.isEmpty()) T("Nothing logged yet. Connect to see tunnel events.", TS.Caption, color = C.nightMuted, mono = true)
+            if (lines.isEmpty()) T(t("Nothing logged yet. Connect to see tunnel events."), TS.Caption, color = C.nightMuted, mono = true)
             lines.forEach { l ->
                 Row(Modifier.padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     T(Format.clockOfDay(l.time), TS.Caption, color = C.faint, mono = true)
@@ -260,8 +290,8 @@ fun LogsScreen(s: AppState) {
         }
         Gap(14.dp)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button("Copy", { s.platform.copy(text) }, Modifier.weight(1f), ButtonKind.Secondary)
-            Button("Share", { s.platform.share(text) }, Modifier.weight(1f))
+            Button(t("Copy"), { s.platform.copy(text) }, Modifier.weight(1f), ButtonKind.Secondary)
+            Button(t("Share"), { s.platform.share(text) }, Modifier.weight(1f))
         }
     }
 }

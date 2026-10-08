@@ -16,7 +16,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.jaganet.api.AdminOverviewRes
-import dev.jaganet.api.Format
+import dev.jaganet.app.i18n.fBytes
+import dev.jaganet.app.i18n.fDate
+import dev.jaganet.app.i18n.fDuration
+import dev.jaganet.app.i18n.fMoney
+import dev.jaganet.app.i18n.t
 import dev.jaganet.app.state.AppState
 import dev.jaganet.app.theme.C
 import dev.jaganet.app.theme.R
@@ -37,8 +41,8 @@ import kotlin.math.roundToInt
 fun AdminScreen(s: AppState) {
     val data = load(s.dataVersion) { s.api.adminOverview() }
     Screen(dark = true, onBack = { s.router.back() }) {
-        T("OWNER ONLY", TS.Caption, FontWeight.SemiBold, C.alert, letterSpacing = androidx.compose.ui.unit.TextUnit(0.08f, androidx.compose.ui.unit.TextUnitType.Em))
-        Title("Business", C.nightText)
+        T(t("OWNER ONLY"), TS.Caption, FontWeight.SemiBold, C.alert, letterSpacing = androidx.compose.ui.unit.TextUnit(0.08f, androidx.compose.ui.unit.TextUnitType.Em))
+        Title(t("Business"), C.nightText)
         Loaded(data, dark = true) { Body(it) }
     }
 }
@@ -49,12 +53,12 @@ private fun H(text: String) = T(text, TS.Label, FontWeight.SemiBold, C.nightMute
 @Composable
 private fun Body(d: AdminOverviewRes) {
     val r = d.revenue
-    H("Revenue")
+    H(t("Revenue"))
     Card(dark = true, padding = 16.dp) {
-        T("Monthly recurring revenue", TS.Label, color = C.nightMuted)
-        T(Format.money(r.mrrMinor, r.currency), TS.Display, FontWeight.Medium, C.nightText, mono = true, modifier = Modifier.padding(top = 4.dp))
+        T(t("Monthly recurring revenue"), TS.Label, color = C.nightMuted)
+        T(fMoney(r.mrrMinor, r.currency), TS.Display, FontWeight.Medium, C.nightText, mono = true, modifier = Modifier.padding(top = 4.dp))
         Row(Modifier.padding(top = 14.dp)) {
-            listOf("Paying" to "${r.paying}", "Free" to "${r.free}", "Conversion" to "${(r.conversion * 100).roundToInt()}%").forEach { (k, v) ->
+            listOf(t("Paying") to "${r.paying}", t("Free users") to "${r.free}", t("Conversion") to "${(r.conversion * 100).roundToInt()}%").forEach { (k, v) ->
                 Column(Modifier.weight(1f)) {
                     T(k, TS.Caption, color = C.nightMuted)
                     T(v, TS.Stat, color = C.nightText, mono = true, modifier = Modifier.padding(top = 2.dp))
@@ -64,8 +68,8 @@ private fun Body(d: AdminOverviewRes) {
     }
     Gap(10.dp)
     listOf(
-        listOf("New subs this week" to "+${r.newSubsThisWeek}", "Cancelled this month" to "${r.cancelledThisMonth}"),
-        listOf("Yearly / monthly" to "${r.yearly} / ${r.monthly}", "From referrals" to "${r.fromReferrals}"),
+        listOf(t("New subscriptions this week") to "+${r.newSubsThisWeek}", t("Cancelled this month") to "${r.cancelledThisMonth}"),
+        listOf(t("Yearly / monthly") to "${r.yearly} / ${r.monthly}", t("From invites") to "${r.fromReferrals}"),
     ).forEach { row ->
         Row(Modifier.padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             row.forEach { (k, v) ->
@@ -77,7 +81,7 @@ private fun Body(d: AdminOverviewRes) {
         }
     }
 
-    H("New paying users · last 7 days")
+    H(t("New paying users in the last 7 days"))
     Card(dark = true, padding = 16.dp) {
         val max = r.newPayingLast7Days.maxOfOrNull { it.count }?.coerceAtLeast(1) ?: 1
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Bottom) {
@@ -92,15 +96,15 @@ private fun Body(d: AdminOverviewRes) {
     }
 
     val sv = d.server
-    H("Server capacity · ${sv.name}")
+    H(t("Server capacity, {name}", "name" to sv.name))
     Card(dark = true, padding = 16.dp) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Meter("Connected now", "${sv.connectedNow} / ${sv.maxPeers}", sv.connectedNow.toFloat() / sv.maxPeers.coerceAtLeast(1))
-            Meter("CPU", "${(sv.cpu * 100).roundToInt()}%", sv.cpu.toFloat())
-            Meter("Memory", "${sv.memUsedBytes / 1_048_576} / ${sv.memTotalBytes / 1_048_576} MB", sv.memUsedBytes.toFloat() / sv.memTotalBytes)
+            Meter(t("Connected now"), "${sv.connectedNow} / ${sv.maxPeers}", sv.connectedNow.toFloat() / sv.maxPeers.coerceAtLeast(1))
+            Meter(t("CPU"), "${(sv.cpu * 100).roundToInt()}%", sv.cpu.toFloat())
+            Meter(t("Memory"), t("{used} / {total} MB", "used" to sv.memUsedBytes / 1_048_576, "total" to sv.memTotalBytes / 1_048_576), sv.memUsedBytes.toFloat() / sv.memTotalBytes)
             Meter(
-                "Traffic this month",
-                Format.bytes(sv.trafficThisMonthBytes) + " / " + (sv.trafficLimitBytes?.let(Format::bytes) ?: "∞"),
+                t("Traffic this month"),
+                fBytes(sv.trafficThisMonthBytes) + " / " + (sv.trafficLimitBytes?.let { fBytes(it) } ?: "∞"),
                 sv.trafficLimitBytes?.let { sv.trafficThisMonthBytes.toFloat() / it } ?: 0f,
             )
             sv.warnings.forEach { w ->
@@ -114,12 +118,12 @@ private fun Body(d: AdminOverviewRes) {
             }
             Row {
                 Column(Modifier.weight(1f)) {
-                    T("Uptime", TS.Caption, color = C.nightMuted)
-                    T(Format.duration(sv.uptimeSeconds), TS.Small, color = C.nightText, mono = true)
+                    T(t("Uptime"), TS.Caption, color = C.nightMuted)
+                    T(fDuration(sv.uptimeSeconds), TS.Small, color = C.nightText, mono = true)
                 }
                 Column(Modifier.weight(1f)) {
-                    T("Server paid through", TS.Caption, color = C.nightMuted)
-                    T(Format.date(sv.paidThrough), TS.Small, color = C.nightText)
+                    T(t("Server paid through"), TS.Caption, color = C.nightMuted)
+                    T(fDate(sv.paidThrough), TS.Small, color = C.nightText)
                 }
             }
         }
@@ -142,5 +146,7 @@ private fun weekday(isoDate: String): String {
     val yy = y + 4800 - a
     val mm = m + 12 * a - 3
     val jdn = d + (153 * mm + 2) / 5 + 365 * yy + yy / 4 - yy / 100 + yy / 400 - 32045
-    return listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")[jdn % 7]
+    return when (jdn % 7) {
+        0 -> t("Mon"); 1 -> t("Tue"); 2 -> t("Wed"); 3 -> t("Thu"); 4 -> t("Fri"); 5 -> t("Sat"); else -> t("Sun")
+    }
 }

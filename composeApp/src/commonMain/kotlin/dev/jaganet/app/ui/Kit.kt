@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.jaganet.app.i18n.t
 import dev.jaganet.app.theme.C
 import dev.jaganet.app.theme.LocalFonts
 import dev.jaganet.app.theme.R
@@ -123,8 +124,8 @@ fun Screen(
         if (onBack != null) {
             Box(
                 Modifier.offset(x = (-10).dp).size(44.dp).clip(CircleShape)
-                    .clickable(role = Role.Button, onClickLabel = "Back", onClick = onBack)
-                    .semantics { contentDescription = "Back" },
+                    .clickable(role = Role.Button, onClickLabel = t("Back"), onClick = onBack)
+                    .semantics { contentDescription = t("Back") },
                 contentAlignment = Alignment.Center,
             ) { Icon(Ic.ChevronLeft, if (dark) C.nightText else C.ink, strokeWidth = 2f) }
         }
@@ -273,7 +274,7 @@ fun IconTile(icon: Ic, bg: Color = C.lineSoft, fg: Color = C.ink, size: Dp = 40.
 
 @Composable
 fun Loading(dark: Boolean = false) = Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
-    T("Loading…", TS.Small, color = if (dark) C.nightMuted else C.muted)
+    T(t("Loading…"), TS.Small, color = if (dark) C.nightMuted else C.muted)
 }
 
 @Composable
@@ -304,7 +305,7 @@ fun <T> load(vararg keys: Any?, fetch: suspend () -> T): Load<T> {
             Load.Ok(fetch())
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
-            Load.Failed(e.message ?: "Something went wrong")
+            Load.Failed(e.message ?: t("Something went wrong"))
         }
     }
     return state

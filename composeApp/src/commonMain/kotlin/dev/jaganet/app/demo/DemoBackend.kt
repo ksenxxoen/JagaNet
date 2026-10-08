@@ -2,6 +2,8 @@ package dev.jaganet.app.demo
 
 import dev.jaganet.api.AdminOverviewRes
 import dev.jaganet.api.BillingSource
+import dev.jaganet.api.i18n.I18n
+import dev.jaganet.api.i18n.Lang
 import dev.jaganet.api.ConnectionEventReq
 import dev.jaganet.api.ConnectionEventType
 import dev.jaganet.api.DayCount
@@ -214,9 +216,10 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
 
     // ------------------------------------------------------------ routing
 
-    private class ApiError(val status: HttpStatusCode, val code: ErrorCode, message: String) : Exception(message)
+    private class ApiError(val status: HttpStatusCode, val code: ErrorCode, message: String, val n: Int? = null) : Exception(message)
 
-    private fun err(status: HttpStatusCode, code: ErrorCode, msg: String): Nothing = throw ApiError(status, code, msg)
+    /** [msg] is an English server message (translation key); [n] the count for plural messages. */
+    private fun err(status: HttpStatusCode, code: ErrorCode, msg: String, n: Int? = null): Nothing = throw ApiError(status, code, msg, n)
 
     val engine = MockEngine { req -> handle(req) }
 
@@ -230,7 +233,9 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
             @Suppress("UNCHECKED_CAST")
             respond(json.encodeToString(serializer as KSerializer<Any>, out), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
         } catch (e: ApiError) {
-            respond(json.encodeToString(ErrorRes.serializer(), ErrorRes(ErrorBody(e.code, e.message ?: ""))), e.status, headersOf(HttpHeaders.ContentType, "application/json"))
+            val lang = Lang.of(req.headers[HttpHeaders.AcceptLanguage]) ?: Lang.DEFAULT
+            val text = e.n?.let { I18n.plural(lang, it.toLong(), e.message ?: "") } ?: I18n.tr(lang, e.message ?: "")
+            respond(json.encodeToString(ErrorRes.serializer(), ErrorRes(ErrorBody(e.code, text))), e.status, headersOf(HttpHeaders.ContentType, "application/json"))
         }
     }
 
@@ -289,7 +294,7 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
                 val ent = entitlement(u)
                 ent.monthlyDataLimitBytes?.let { if (usage(u) >= it) err(HttpStatusCode.Forbidden, ErrorCode.DATA_LIMIT, "Monthly data used up") }
                 if (devices.count { it.userId == u.id && it.address != null && it.id != me.id } >= ent.deviceLimit) {
-                    err(HttpStatusCode.Forbidden, ErrorCode.DEVICE_LIMIT, "Your plan allows ${ent.deviceLimit} device(s)")
+                    err(HttpStatusCode.Forbidden, ErrorCode.DEVICE_LIMIT, "Your plan allows {n} device|Your plan allows {n} devices", ent.deviceLimit)
                 }
                 me.protocol = r.protocol
                 me.address = me.address ?: "10.8.0.${nextIp++}"
@@ -346,8 +351,8 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
             }
             method == HttpMethod.Get && path == "billing/plans" -> return PlansRes(
                 listOf(
-                    Product(ProductId.PRO_YEARLY, "Pro · Yearly", "year", "$39.99/yr", "jaganet.pro.yearly", "pro_yearly"),
-                    Product(ProductId.PRO_MONTHLY, "Pro · Monthly", "month", "$4.99/mo", "jaganet.pro.monthly", "pro_monthly"),
+                    Product(ProductId.PRO_YEARLY, "Pro yearly", "year", "$39.99/yr", "jaganet.pro.yearly", "pro_yearly", 3999, "USD"),
+                    Product(ProductId.PRO_MONTHLY, "Pro monthly", "month", "$4.99/mo", "jaganet.pro.monthly", "pro_monthly", 499, "USD"),
                 ),
                 FreePlan(10_000_000_000, 1), ProPlan(5),
             ) to PlansRes.serializer()

@@ -20,8 +20,8 @@ class Billing(private val ctx: Ctx) {
         fun price(minor: Long?, per: String) = (minor?.let { Format.money(it, p.currency) } ?: "[PRICE]") + "/$per"
         return PlansRes(
             products = listOf(
-                Product(ProductId.PRO_YEARLY, "Pro · Yearly", "year", price(p.priceYearlyMinor, "yr"), "jaganet.pro.yearly", "pro_yearly"),
-                Product(ProductId.PRO_MONTHLY, "Pro · Monthly", "month", price(p.priceMonthlyMinor, "mo"), "jaganet.pro.monthly", "pro_monthly"),
+                Product(ProductId.PRO_YEARLY, "Pro yearly", "year", price(p.priceYearlyMinor, "yr"), "jaganet.pro.yearly", "pro_yearly", p.priceYearlyMinor, p.currency),
+                Product(ProductId.PRO_MONTHLY, "Pro monthly", "month", price(p.priceMonthlyMinor, "mo"), "jaganet.pro.monthly", "pro_monthly", p.priceMonthlyMinor, p.currency),
             ),
             free = FreePlan(p.freeMonthlyBytes, p.freeDeviceLimit),
             pro = ProPlan(p.proDeviceLimit),

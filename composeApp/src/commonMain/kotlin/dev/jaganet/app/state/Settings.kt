@@ -18,6 +18,8 @@ data class Settings(
     val protocol: String? = null,
     val serverId: String? = null,
     val split: SplitTunnel = SplitTunnel(),
+    /** Interface language code ("ru", "de", "en"); null = default (Russian). */
+    val language: String? = null,
 )
 
 class SettingsStore(private val store: SecureStore) {

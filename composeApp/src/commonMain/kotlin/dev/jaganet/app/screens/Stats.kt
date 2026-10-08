@@ -26,10 +26,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import dev.jaganet.api.Format
 import dev.jaganet.api.PlanId
 import dev.jaganet.api.StatsPeriod
 import dev.jaganet.api.StatsRes
+import dev.jaganet.app.i18n.fBytes
+import dev.jaganet.app.i18n.fDate
+import dev.jaganet.app.i18n.fDuration
+import dev.jaganet.app.i18n.fMbps
+import dev.jaganet.app.i18n.t
 import dev.jaganet.app.state.AppState
 import dev.jaganet.app.state.Route
 import dev.jaganet.app.theme.C
@@ -50,7 +54,11 @@ import dev.jaganet.app.ui.load
 
 /** Device colours for the "By device" bar; differ in lightness, not hue alone. */
 private val DEVICE_TONES = listOf(C.green, Color(0xFF6FA592), Color(0xFFB9D3C8), C.faint, C.lineStrong)
-private val WEEKDAYS = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+/** Short weekday name, 0 = Monday. */
+private fun weekdayName(i: Int): String = when (i) {
+    0 -> t("Mon"); 1 -> t("Tue"); 2 -> t("Wed"); 3 -> t("Thu"); 4 -> t("Fri"); 5 -> t("Sat"); else -> t("Sun")
+}
 
 @Composable
 fun StatsScreen(s: AppState) {
@@ -58,24 +66,24 @@ fun StatsScreen(s: AppState) {
     val stats = load(period, s.dataVersion) { s.api.stats(period) }
     val me = load(s.dataVersion) { s.api.me() }
     Screen {
-        Title("Statistics")
+        Title(t("Statistics"))
         Gap(14.dp)
-        Segmented(listOf(StatsPeriod.DAY to "Day", StatsPeriod.WEEK to "Week", StatsPeriod.MONTH to "Month"), period) { period = it }
+        Segmented(listOf(StatsPeriod.DAY to t("Day"), StatsPeriod.WEEK to t("Week"), StatsPeriod.MONTH to t("Month")), period) { period = it }
         Gap(14.dp)
         Loaded(stats) { st -> StatsBody(st) }
 
-        SectionLabel("Your plan")
+        SectionLabel(t("Your plan"))
         Loaded(me) { m ->
             Card(padding = 16.dp) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        T(if (m.entitlement.plan == PlanId.PRO) "Pro" else "Free", TS.Body, FontWeight.SemiBold)
-                        T("Active", TS.Caption, FontWeight.SemiBold, C.greenDark, modifier = Modifier.background(C.greenTint, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
+                        T(if (m.entitlement.plan == PlanId.PRO) t("Pro") else t("Free"), TS.Body, FontWeight.SemiBold)
+                        T(t("Active"), TS.Caption, FontWeight.SemiBold, C.greenDark, modifier = Modifier.background(C.greenTint, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
                     }
-                    KV("Data", m.entitlement.monthlyDataLimitBytes?.let { "${Format.bytes(m.usage.bytesUsed)} / ${Format.bytes(it)}" } ?: "Unlimited")
-                    KV("Devices", "${m.usage.devicesUsed} / ${m.entitlement.deviceLimit}", mono = true)
-                    if (m.entitlement.expiresAt != null) KV(if (m.entitlement.autoRenew) "Renews" else "Pro until", Format.date(m.entitlement.expiresAt))
-                    Button(if (m.entitlement.plan == PlanId.PRO) "Manage subscription" else "Upgrade to Pro", { s.router.go(if (m.entitlement.plan == PlanId.PRO) Route.Account else Route.Plans) }, Modifier.fillMaxWidth(), ButtonKind.Secondary)
+                    KV(t("Data"), m.entitlement.monthlyDataLimitBytes?.let { "${fBytes(m.usage.bytesUsed)} / ${fBytes(it)}" } ?: t("Unlimited"))
+                    KV(t("Devices"), "${m.usage.devicesUsed} / ${m.entitlement.deviceLimit}", mono = true)
+                    if (m.entitlement.expiresAt != null) KV(if (m.entitlement.autoRenew) t("Renews") else t("Pro until"), fDate(m.entitlement.expiresAt))
+                    Button(if (m.entitlement.plan == PlanId.PRO) t("Manage subscription") else t("Upgrade to Pro"), { s.router.go(if (m.entitlement.plan == PlanId.PRO) Route.Account else Route.Plans) }, Modifier.fillMaxWidth(), ButtonKind.Secondary)
                 }
             }
         }
@@ -86,28 +94,28 @@ fun StatsScreen(s: AppState) {
 private fun StatsBody(st: StatsRes) {
     val total = st.totalRxBytes + st.totalTxBytes
     Card(padding = 16.dp) {
-        T("Traffic · ${when (st.period) { StatsPeriod.DAY -> "Today"; StatsPeriod.WEEK -> "This week"; StatsPeriod.MONTH -> "Last 30 days" }}", TS.Label, color = C.muted)
-        T(Format.bytes(total), TS.Display, FontWeight.Medium, mono = true, modifier = Modifier.padding(top = 4.dp))
+        T(when (st.period) { StatsPeriod.DAY -> t("Traffic today"); StatsPeriod.WEEK -> t("Traffic this week"); StatsPeriod.MONTH -> t("Traffic in the last 30 days") }, TS.Label, color = C.muted)
+        T(fBytes(total), TS.Display, FontWeight.Medium, mono = true, modifier = Modifier.padding(top = 4.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(top = 6.dp)) {
-            Legend(C.green, "Down", Format.bytes(st.totalRxBytes))
-            Legend(C.chartGreen, "Up", Format.bytes(st.totalTxBytes))
+            Legend(C.green, t("Downloaded"), fBytes(st.totalRxBytes))
+            Legend(C.chartGreen, t("Uploaded"), fBytes(st.totalTxBytes))
         }
         Gap(14.dp)
         BarChart(st)
     }
     Gap(10.dp)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Tile("Time protected", Format.duration(st.protectedSeconds), Modifier.weight(1f))
-        Tile("Sessions", st.sessions.toString(), Modifier.weight(1f))
+        Tile(t("Time protected"), fDuration(st.protectedSeconds), Modifier.weight(1f))
+        Tile(t("Sessions"), st.sessions.toString(), Modifier.weight(1f))
     }
     Gap(8.dp)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Tile("Avg. throughput", Format.mbps(st.avgDownBps) + if (st.avgDownBps != null) " Mbps" else "", Modifier.weight(1f))
-        Tile("Peak speed", Format.mbps(st.peakDownBps) + if (st.peakDownBps != null) " Mbps" else "", Modifier.weight(1f))
+        Tile(t("Avg. speed"), st.avgDownBps?.let { t("{v} Mbps", "v" to fMbps(it)) } ?: "-", Modifier.weight(1f))
+        Tile(t("Peak speed"), st.peakDownBps?.let { t("{v} Mbps", "v" to fMbps(it)) } ?: "-", Modifier.weight(1f))
     }
 
     if (st.byDevice.isNotEmpty()) {
-        SectionLabel("By device")
+        SectionLabel(t("By device"))
         val sum = st.byDevice.sumOf { it.bytes }.coerceAtLeast(1)
         Card(padding = 16.dp) {
             Row(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp))) {
@@ -150,7 +158,7 @@ private fun BarChart(st: StatsRes) {
     val max = st.buckets.maxOfOrNull { it.rxBytes + it.txBytes }?.coerceAtLeast(1) ?: 1
     val gap = if (st.period == StatsPeriod.MONTH) 2.dp else 6.dp
     Row(
-        Modifier.fillMaxWidth().semantics { contentDescription = "Traffic chart, ${Format.bytes(st.totalRxBytes + st.totalTxBytes)} total" },
+        Modifier.fillMaxWidth().semantics { contentDescription = t("Traffic chart, {total} in total", "total" to fBytes(st.totalRxBytes + st.totalTxBytes)) },
         horizontalArrangement = Arrangement.spacedBy(gap),
         verticalAlignment = Alignment.Bottom,
     ) {
@@ -162,7 +170,7 @@ private fun BarChart(st: StatsRes) {
                 Box(Modifier.fillMaxWidth().height((h - upH).coerceAtLeast(if (h > 0) 0f else 2f).dp).background(C.green))
                 val label = when (st.period) {
                     StatsPeriod.DAY -> b.start.substring(11, 13)
-                    StatsPeriod.WEEK -> WEEKDAYS[dayOfWeek(b.start)]
+                    StatsPeriod.WEEK -> weekdayName(dayOfWeek(b.start))
                     StatsPeriod.MONTH -> if (i % 5 == 0) b.start.substring(8, 10).trimStart('0') else ""
                 }
                 T(label, TS.Caption, color = C.muted, align = TextAlign.Center, modifier = Modifier.padding(top = 6.dp), maxLines = 1)

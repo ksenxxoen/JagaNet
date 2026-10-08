@@ -57,3 +57,17 @@ Adding the real service (`server/.../services/Payments.kt`):
 
 The site offers the APK if `/opt/jaganet/downloads/jaganet.apk` exists
 (or set `ANDROID_APP_URL` / `IOS_APP_URL` in `/etc/jaganet/env`).
+
+## Languages
+
+Russian (default), German and English everywhere: apps, website, bot, server pages and API errors.
+All texts live in `shared/src/commonMain/kotlin/dev/jaganet/api/i18n/strings/` as
+`S("English", "Русский", "Deutsch")`; the English text is the key (`t("…")` in code).
+
+- App: Settings → Language. Sends `Accept-Language`, so server errors come translated.
+- Website: RU / DE / EN in the header (remembered; `?lang=de` also works). Tables come from `/v1/i18n/<lang>`.
+- Bot: Russian until the user picks another language with /language (stored per user).
+- Key and checkout pages: `?lang=`, then the website's choice, else Russian.
+
+House style, checked by `I18nTest`: no long dashes, no "·" separators, at most one colon per text,
+and every text has Russian and German.

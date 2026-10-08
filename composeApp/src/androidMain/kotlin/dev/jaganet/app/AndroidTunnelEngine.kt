@@ -66,7 +66,7 @@ class AndroidTunnelEngine(
             backend.start(config, options)
             active = backend
             status.value = EngineStatus(TunnelStatus.CONNECTED, since = System.currentTimeMillis())
-            log(LogLevel.INFO, "Tunnel up · ${config.address}")
+            log(LogLevel.INFO, "Tunnel up at ${config.address}")
             if (options.killSwitch) log(LogLevel.INFO, "For a full kill switch enable Always-on VPN + Block connections in Android settings")
         } catch (e: Exception) {
             log(LogLevel.ERROR, e.message ?: "Failed to start")

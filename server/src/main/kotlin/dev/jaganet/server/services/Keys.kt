@@ -135,7 +135,7 @@ class Keys(private val ctx: Ctx, private val tunnels: Tunnels) {
                 Protocols.AMNEZIAWG -> Protocols.decode<AmneziaWG.ServerParams>(c.params)
                 Protocols.WIREGUARD -> Protocols.decode<WireGuard.ServerParams>(c.params)
                     .let { AmneziaWG.ServerParams(it.serverPublicKey, it.endpoint, it.allowedIps, it.persistentKeepalive, emptyMap()) }
-                else -> throw AppError(400, ErrorCode.UNSUPPORTED_PROTOCOL, "No config file for ${c.protocol}")
+                else -> throw AppError(400, ErrorCode.UNSUPPORTED_PROTOCOL, "No config file for {protocol}", mapOf("protocol" to c.protocol))
             }
             return AmneziaWG.quickConfig(privateKey, c.address, c.dns, c.mtu, p)
         }

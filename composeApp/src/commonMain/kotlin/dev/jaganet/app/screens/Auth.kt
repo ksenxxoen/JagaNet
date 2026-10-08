@@ -24,6 +24,7 @@ import dev.jaganet.api.EmailStartReq
 import dev.jaganet.api.EmailVerifyReq
 import dev.jaganet.api.PairRedeemReq
 import dev.jaganet.app.APP_NAME
+import dev.jaganet.app.i18n.t
 import dev.jaganet.app.state.AppState
 import dev.jaganet.app.state.Route
 import dev.jaganet.app.theme.C
@@ -74,7 +75,7 @@ fun SignInScreen(s: AppState) {
                 val r = s.api.startEmail(EmailStartReq(e, invite.trim().ifEmpty { null }))
                 s.router.go(Route.Verify(e, r.devCode))
             } catch (e: Exception) {
-                a.error = (e as? ApiException)?.message ?: "Can’t reach the server. Check your connection."
+                a.error = (e as? ApiException)?.message ?: t("Can’t reach the server. Check your connection.")
             } finally { a.busy = false }
         }
         Unit
@@ -83,23 +84,23 @@ fun SignInScreen(s: AppState) {
         Gap(24.dp)
         Brand()
         Gap(48.dp)
-        Title("Private internet,\nno setup.")
-        T("Sign in with your email. We send a 6-digit code — no password to remember.", TS.Small, color = C.muted, modifier = Modifier.padding(top = 8.dp))
+        Title(t("Private internet,\nno setup."))
+        T(t("Sign in with your email. We’ll send a 6-digit code, so there’s no password to remember."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 8.dp))
         Gap(28.dp)
-        Field("Email", email, { email = it }, "you@example.com", KeyboardType.Email, onDone = submit)
+        Field(t("Email"), email, { email = it }, "you@example.com", KeyboardType.Email, onDone = submit)
         if (showInvite) {
             Gap(Space.md)
-            Field("Invite code", invite, { invite = it.uppercase() }, "ALEX-7Q2K")
+            Field(t("Invite code"), invite, { invite = it.uppercase() }, "ALEX-7Q2K")
         }
         ErrorNote(a.error)
         Gap(Space.lg)
-        Button("Email me a code", submit, Modifier.fillMaxWidth(), enabled = email.contains('@'), busy = a.busy)
-        if (!showInvite) Button("I have an invite code", { showInvite = true }, Modifier.fillMaxWidth(), ButtonKind.Ghost)
+        Button(t("Email me a code"), submit, Modifier.fillMaxWidth(), enabled = email.contains('@'), busy = a.busy)
+        if (!showInvite) Button(t("I have an invite code"), { showInvite = true }, Modifier.fillMaxWidth(), ButtonKind.Ghost)
         Gap(Space.xl)
         Card(padding = 16.dp) {
-            T("Already use $APP_NAME on another device?", TS.Small, FontWeight.SemiBold)
-            T("Open Devices there, tap Add device and enter the code here.", TS.Label, color = C.muted, modifier = Modifier.padding(top = 2.dp, bottom = 10.dp))
-            Button("Sign in with a device code", { s.router.go(Route.Pair) }, Modifier.fillMaxWidth(), ButtonKind.Secondary)
+            T(t("Already use {app} on another device?", "app" to APP_NAME), TS.Small, FontWeight.SemiBold)
+            T(t("Open Devices there, tap Add device and enter the code here."), TS.Label, color = C.muted, modifier = Modifier.padding(top = 2.dp, bottom = 10.dp))
+            Button(t("Sign in with a device code"), { s.router.go(Route.Pair) }, Modifier.fillMaxWidth(), ButtonKind.Secondary)
         }
     }
 }
@@ -116,27 +117,27 @@ fun VerifyScreen(s: AppState, r: Route.Verify) {
             try {
                 s.signedIn(s.api.verifyEmail(EmailVerifyReq(r.email, code, s.thisDevice)))
             } catch (e: Exception) {
-                a.error = (e as? ApiException)?.message ?: "Can’t reach the server."
+                a.error = (e as? ApiException)?.message ?: t("Can’t reach the server.")
             } finally { a.busy = false }
         }
         Unit
     }
     Screen(onBack = { s.router.back() }) {
         Gap(8.dp)
-        Title("Check your email")
-        T("We sent a 6-digit code to ${r.email}. It expires in 10 minutes.", TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
+        Title(t("Check your email"))
+        T(t("We sent a 6-digit code to {email}. It expires in 10 minutes.", "email" to r.email), TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
         if (r.devCode != null) {
             Gap(Space.lg)
             Box(Modifier.fillMaxWidth().background(C.greenTint, RoundedCornerShape(12.dp)).padding(12.dp)) {
-                T("Simulation: your code is ${r.devCode}", TS.Label, FontWeight.Medium, C.greenDark)
+                T(t("Test mode, your code {code} is filled in for you.", "code" to r.devCode), TS.Label, FontWeight.Medium, C.greenDark)
             }
         }
         Gap(24.dp)
-        Field("Code", code, { v -> code = v.filter(Char::isDigit).take(6) }, "000000", KeyboardType.NumberPassword, mono = true, onDone = submit)
+        Field(t("Code"), code, { v -> code = v.filter(Char::isDigit).take(6) }, "000000", KeyboardType.NumberPassword, mono = true, onDone = submit)
         ErrorNote(a.error)
         Gap(Space.lg)
-        Button("Sign in", submit, Modifier.fillMaxWidth(), enabled = code.length == 6, busy = a.busy)
-        Button("Use a different email", { s.router.back() }, Modifier.fillMaxWidth(), ButtonKind.Ghost)
+        Button(t("Sign in"), submit, Modifier.fillMaxWidth(), enabled = code.length == 6, busy = a.busy)
+        Button(t("Use a different email"), { s.router.back() }, Modifier.fillMaxWidth(), ButtonKind.Ghost)
     }
 }
 
@@ -151,19 +152,19 @@ fun PairScreen(s: AppState) {
             try {
                 s.signedIn(s.api.redeemPairing(PairRedeemReq(code, s.thisDevice)))
             } catch (e: Exception) {
-                a.error = (e as? ApiException)?.message ?: "Can’t reach the server."
+                a.error = (e as? ApiException)?.message ?: t("Can’t reach the server.")
             } finally { a.busy = false }
         }
         Unit
     }
     Screen(onBack = { s.router.back() }) {
         Gap(8.dp)
-        Title("Enter device code")
-        T("On a device that’s already signed in, open Devices › Add device. Type the 6 digits shown there.", TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
+        Title(t("Enter device code"))
+        T(t("On a device that’s already signed in, open Devices and tap Add device. Enter the 6 digits shown there."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
         Gap(24.dp)
-        Field("Device code", code, { v -> code = v.filter(Char::isDigit).take(6) }, "000000", KeyboardType.NumberPassword, mono = true, onDone = submit)
+        Field(t("Device code"), code, { v -> code = v.filter(Char::isDigit).take(6) }, "000000", KeyboardType.NumberPassword, mono = true, onDone = submit)
         ErrorNote(a.error)
         Gap(Space.lg)
-        Button("Sign in", submit, Modifier.fillMaxWidth(), enabled = code.length == 6, busy = a.busy)
+        Button(t("Sign in"), submit, Modifier.fillMaxWidth(), enabled = code.length == 6, busy = a.busy)
     }
 }

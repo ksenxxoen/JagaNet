@@ -37,7 +37,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
     }
 
     private fun driver(protocol: String): ProtocolDriver =
-        ctx.drivers[protocol] ?: throw AppError(400, ErrorCode.UNSUPPORTED_PROTOCOL, "Protocol \"$protocol\" is not available")
+        ctx.drivers[protocol] ?: throw AppError(400, ErrorCode.UNSUPPORTED_PROTOCOL, "Protocol {protocol} is not available", mapOf("protocol" to protocol))
 
     suspend fun servers(): List<ServerLocation> = ctx.db.run { sql ->
         sql.query("SELECT s.*, (SELECT count(*)::int FROM tunnels t WHERE t.server_id=s.id) AS peers FROM servers s WHERE s.active ORDER BY s.name")
@@ -65,7 +65,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
             val limit = e.monthlyDataLimitBytes
             if (limit != null && ent.monthlyUsageBytes(sql, userId) >= limit) throw AppError(403, ErrorCode.DATA_LIMIT, "Monthly data used up")
             if (ent.activeTunnelCount(sql, userId, deviceId) >= e.deviceLimit) {
-                throw AppError(403, ErrorCode.DEVICE_LIMIT, "Your plan allows ${e.deviceLimit} device(s)")
+                throw AppError(403, ErrorCode.DEVICE_LIMIT, "Your plan allows {n} device|Your plan allows {n} devices", mapOf("n" to e.deviceLimit))
             }
 
             val server = pickServer(sql, req.protocol, req.serverId)
@@ -102,14 +102,14 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
     private fun pickServer(sql: Sql, protocol: String, serverId: String?): Row {
         if (serverId != null) {
             val s = sql.one("SELECT * FROM servers WHERE id=? AND active", serverId) ?: throw notFound("Server not found")
-            if (protocol !in s.json("protocols")) throw AppError(400, ErrorCode.UNSUPPORTED_PROTOCOL, "${s.str("name")} does not offer $protocol")
+            if (protocol !in s.json("protocols")) throw AppError(400, ErrorCode.UNSUPPORTED_PROTOCOL, "{server} does not offer {protocol}", mapOf("server" to s.str("name"), "protocol" to protocol))
             return s
         }
         return sql.one(
             """SELECT s.* FROM servers s WHERE s.active AND (s.protocols -> ?) IS NOT NULL
                 ORDER BY (SELECT count(*) FROM tunnels t WHERE t.server_id=s.id)::float / s.max_peers LIMIT 1""",
             protocol,
-        ) ?: throw AppError(503, ErrorCode.SERVER_FULL, "No server offers $protocol")
+        ) ?: throw AppError(503, ErrorCode.SERVER_FULL, "No server offers {protocol}", mapOf("protocol" to protocol))
     }
 
     suspend fun connectionEvent(p: Principal, ev: ConnectionEventReq) {
@@ -157,7 +157,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
 
     suspend fun rename(p: Principal, id: String, name: String) {
         val n = name.trim()
-        if (n.isEmpty() || n.length > 60) throw badRequest("Name must be 1–60 characters")
+        if (n.isEmpty() || n.length > 60) throw badRequest("Name must be 1 to 60 characters")
         val rows = ctx.db.run { it.exec("UPDATE devices SET name=? WHERE id=?::uuid AND user_id=?::uuid AND removed_at IS NULL", n, id, p.user.id) }
         if (rows == 0) throw notFound("Device not found")
     }

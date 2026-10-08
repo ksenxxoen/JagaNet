@@ -10,6 +10,7 @@ import dev.jaganet.api.ConnectionEventType
 import dev.jaganet.api.ErrorCode
 import dev.jaganet.api.TunnelConfig
 import dev.jaganet.api.TunnelProvisionReq
+import dev.jaganet.app.i18n.t
 import dev.jaganet.app.state.SettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -19,13 +20,19 @@ import kotlin.time.Clock
 
 /** Display info for the protocols this app knows. Unknown ids still work, shown by id. */
 object ProtocolInfo {
-    private val known = mapOf(
-        "amneziawg" to ("AmneziaWG" to "WireGuard speed, disguised so networks that block VPNs can’t spot it."),
-        "wireguard" to ("WireGuard" to "Plain WireGuard. Slightly lighter, but easy for censors to detect."),
-        "jaga-custom" to ("Custom (demo)" to "Example of a custom protocol plugged into JagaNet."),
-    )
-    fun label(id: String) = known[id]?.first ?: id
-    fun description(id: String) = known[id]?.second ?: "Custom protocol"
+    // Computed on each call so a language switch applies right away.
+    fun label(id: String): String = when (id) {
+        "amneziawg" -> "AmneziaWG"
+        "wireguard" -> "WireGuard"
+        "jaga-custom" -> t("Custom (demo)")
+        else -> id
+    }
+    fun description(id: String): String = when (id) {
+        "amneziawg" -> t("WireGuard speed, disguised so networks that block VPNs can’t spot it.")
+        "wireguard" -> t("Plain WireGuard. Slightly lighter, but easy for censors to detect.")
+        "jaga-custom" -> t("Example of a custom protocol plugged into JagaNet.")
+        else -> t("Custom protocol")
+    }
 }
 
 /**
@@ -80,15 +87,15 @@ class TunnelController(
         failure = null
         try {
             if (!engine.requestPermission()) {
-                failure = "VPN permission was not granted"
+                failure = t("VPN permission was not granted")
                 return@launch
             }
             val s = settings.state.value
             val servers = api.servers().servers
-            val server = servers.firstOrNull { it.id == s.serverId } ?: servers.firstOrNull() ?: error("No server available")
+            val server = servers.firstOrNull { it.id == s.serverId } ?: servers.firstOrNull() ?: error(t("No server available"))
             // The user's choice, else the first protocol the server offers that this device can run.
             val usable = server.protocols.filter { it in engine.protocols }
-            val protocol = s.protocol?.takeIf { it in usable } ?: usable.firstOrNull() ?: error("No common protocol with ${server.name}")
+            val protocol = s.protocol?.takeIf { it in usable } ?: usable.firstOrNull() ?: error(t("No common protocol with {server}", "server" to server.name))
             val cfg = api.provisionTunnel(TunnelProvisionReq(protocol, server.id, engine.clientParams(protocol)))
             config = cfg
             peak = 0
@@ -99,7 +106,7 @@ class TunnelController(
             blockedBy = e.code
             failure = e.message
         } catch (e: Exception) {
-            failure = e.message ?: "Could not connect"
+            failure = e.message ?: t("Couldn’t connect")
         } finally {
             onChanged()
         }

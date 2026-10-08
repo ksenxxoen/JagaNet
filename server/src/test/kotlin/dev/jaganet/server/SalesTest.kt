@@ -70,7 +70,8 @@ class KeysAndSalesTest {
         assertTrue("Jc = 5" in conf && "S1 = 86" in conf && "Endpoint = n1:51821" in conf, conf)
         val png = b.client.get(key.qrUrl.removePrefix(cfg.publicUrl)).bodyAsBytes()
         assertEquals(listOf(0x89, 'P'.code, 'N'.code, 'G'.code), png.take(4).map { it.toInt() and 0xFF })
-        assertTrue("How to connect" in b.client.get(key.pageUrl.removePrefix(cfg.publicUrl)).bodyAsText())
+        assertTrue("Как подключиться" in b.client.get(key.pageUrl.removePrefix(cfg.publicUrl)).bodyAsText())
+        assertTrue("So verbindest du dich" in b.client.get(key.pageUrl.removePrefix(cfg.publicUrl) + "?lang=de").bodyAsText())
 
         // The key is a device of the user, with its own peer on the node.
         assertTrue(a.api.devices().devices.any { it.id == key.id && it.tunnelAddress != null })
@@ -105,13 +106,13 @@ class KeysAndSalesTest {
 
         bot.handle(callback(chat = 42, data = "buy:pro_yearly"))
         val payUrl = tg.sent("sendMessage").last()["reply_markup"]!!.jsonObject["inline_keyboard"]!!.jsonArray[0].jsonArray[0].jsonObject["url"]!!.jsonPrimitive.content
-        val orderId = payUrl.substringAfterLast('/')
+        val orderId = payUrl.substringAfterLast('/').substringBefore('?')
 
         val paid = services.payments.markPaid(orderId)!!
         assertEquals(Channel.TELEGRAM, paid.channel)
         assertEquals(listOf("photo", "document"), tg.uploads.map { it.field })
         assertTrue(String(tg.uploads[1].bytes).startsWith("[Interface]"))
-        assertTrue("Pro is active until" in tg.sent("sendPhoto").last()["caption"]!!.jsonPrimitive.content)
+        assertTrue("Pro действует до" in tg.sent("sendPhoto").last()["caption"]!!.jsonPrimitive.content)
 
         // "Get the app" hands out a device code that signs the app into the same account.
         bot.handle(callback(chat = 42, data = "app"))
@@ -124,6 +125,28 @@ class KeysAndSalesTest {
         bot.handle(message(chat = 42, text = "/key"))
         assertEquals(4, tg.uploads.size)
         assertEquals(1, client(s.token).keys().keys.size)
+    }
+
+    @Test fun `the bot speaks Russian by default and switches language`() = harness {
+        val tg = FakeTelegram()
+        val bot = TelegramBot(services, tg)
+        bot.handle(message(chat = 9, text = "/start"))
+        val ruMenu = tg.sent("sendMessage").last()["reply_markup"].toString()
+        assertTrue("Pro на 1 год за 48,00 $" in ruMenu, ruMenu)
+        bot.handle(callback(chat = 9, data = "lang:de"))
+        val deMenu = tg.sent("sendMessage").last()["reply_markup"].toString()
+        assertTrue("Pro für 1 Jahr für 48,00 $" in deMenu, deMenu)
+        bot.handle(message(chat = 9, text = "/status"))
+        assertEquals("Kein aktives Abo.", tg.sent("sendMessage").last()["text"]!!.jsonPrimitive.content)
+    }
+
+    @Test fun `API errors come in the requested language`() = harness {
+        val ru = dev.jaganet.api.ApiClient("", b.createClient {}, { null }, lang = { "ru" })
+        val de = dev.jaganet.api.ApiClient("", b.createClient {}, { null }, lang = { "de" })
+        suspend fun msg(c: dev.jaganet.api.ApiClient) =
+            runCatching { c.verifyEmail(dev.jaganet.api.EmailVerifyReq("x@example.com", "123456", DeviceInfo("p", Platform.IOS))) }.exceptionOrNull()!!.message
+        assertEquals("Срок действия кода истёк, запросите новый", msg(ru))
+        assertEquals("Der Code ist abgelaufen, fordere einen neuen an", msg(de))
     }
 
     @Test fun `the bot asks free users to buy before giving a key`() = harness {

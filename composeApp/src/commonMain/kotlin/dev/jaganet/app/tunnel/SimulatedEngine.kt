@@ -2,6 +2,8 @@ package dev.jaganet.app.tunnel
 
 import dev.jaganet.api.Protocols
 import dev.jaganet.api.TunnelConfig
+import dev.jaganet.app.i18n.t
+import dev.jaganet.app.i18n.tp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -41,15 +43,16 @@ class SimulatedEngine(private val now: () -> Long = { Clock.System.now().toEpoch
 
     override suspend fun start(config: TunnelConfig, options: TunnelOptions) {
         status.update { it.copy(status = TunnelStatus.CONNECTING, error = null) }
-        log(LogLevel.INFO, "Starting ${config.protocol} tunnel to ${config.location}")
+        log(LogLevel.INFO, t("Starting {protocol} tunnel to {location}", "protocol" to ProtocolInfo.label(config.protocol), "location" to config.location))
         delay(900)
-        if (options.killSwitch) log(LogLevel.INFO, "Kill switch armed")
+        if (options.killSwitch) log(LogLevel.INFO, t("Kill switch armed"))
         (config.params["obfuscation"] as? JsonObject)?.let { o ->
-            log(LogLevel.INFO, "Obfuscation on: ${o["Jc"]?.jsonPrimitive?.content ?: 0} junk packets, padded handshake, custom headers")
+            val junk = o["Jc"]?.jsonPrimitive?.content?.toLongOrNull() ?: 0
+            log(LogLevel.INFO, t("Obfuscation on: {packets}, padded handshake, custom headers", "packets" to tp(junk, "{n} junk packet|{n} junk packets")))
         }
-        log(LogLevel.INFO, "Handshake completed with ${config.params["endpoint"]?.jsonPrimitive?.content ?: config.serverId}")
-        log(LogLevel.INFO, "Tunnel up · ${config.address}")
-        log(LogLevel.INFO, "DNS set to ${config.dns.joinToString()}")
+        log(LogLevel.INFO, t("Handshake completed with {endpoint}", "endpoint" to (config.params["endpoint"]?.jsonPrimitive?.content ?: config.serverId)))
+        log(LogLevel.INFO, t("Tunnel up, address {address}", "address" to config.address))
+        log(LogLevel.INFO, t("DNS set to {dns}", "dns" to config.dns.joinToString()))
         status.value = EngineStatus(TunnelStatus.CONNECTED, since = now())
         traffic = scope.launch {
             while (isActive) {
@@ -64,7 +67,7 @@ class SimulatedEngine(private val now: () -> Long = { Clock.System.now().toEpoch
         traffic?.cancel()
         status.update { it.copy(status = TunnelStatus.DISCONNECTING) }
         delay(300)
-        log(LogLevel.INFO, "Tunnel down")
+        log(LogLevel.INFO, t("Tunnel down"))
         status.value = EngineStatus(TunnelStatus.DISCONNECTED)
     }
 

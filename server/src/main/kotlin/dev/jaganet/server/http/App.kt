@@ -103,14 +103,14 @@ fun Application.jaganet(s: Services) {
     install(StatusPages) {
         suspend fun ApplicationCall.err(status: Int, code: ErrorCode, msg: String) =
             respond(HttpStatusCode.fromValue(status), ErrorRes(ErrorBody(code, msg)))
-        exception<AppError> { call, e -> call.err(e.status, e.code, e.message ?: "") }
+        exception<AppError> { call, e -> call.err(e.status, e.code, translate(call.apiLang(), e.message ?: "", e.args)) }
         exception<BadRequestException> { call, e -> call.err(400, ErrorCode.BAD_REQUEST, e.cause?.message ?: e.message ?: "Bad request") }
         exception<SerializationException> { call, e -> call.err(400, ErrorCode.BAD_REQUEST, e.message ?: "Bad request") }
         exception<IllegalArgumentException> { call, e -> call.err(400, ErrorCode.BAD_REQUEST, e.message ?: "Bad request") }
-        status(HttpStatusCode.TooManyRequests) { call, _ -> call.err(429, ErrorCode.TOO_MANY_ATTEMPTS, "Slow down") }
+        status(HttpStatusCode.TooManyRequests) { call, _ -> call.err(429, ErrorCode.TOO_MANY_ATTEMPTS, translate(call.apiLang(), "Too many requests, wait a minute")) }
         exception<Throwable> { call, e ->
             call.application.environment.log.error("unhandled", e)
-            call.err(500, ErrorCode.INTERNAL, "Something went wrong")
+            call.err(500, ErrorCode.INTERNAL, translate(call.apiLang(), "Something went wrong"))
         }
     }
 
@@ -178,7 +178,8 @@ fun Application.jaganet(s: Services) {
 
             get("/devices") {
                 val p = call.principal(s)
-                call.respond(DevicesRes(s.tunnels.devices(p), s.ent.me(p).entitlement.deviceLimit))
+                val lang = call.apiLang()
+                call.respond(DevicesRes(s.tunnels.devices(p).map { it.copy(name = keyName(it.name, lang)) }, s.ent.me(p).entitlement.deviceLimit))
             }
             patch("/devices/{id}") {
                 val p = call.principal(s)

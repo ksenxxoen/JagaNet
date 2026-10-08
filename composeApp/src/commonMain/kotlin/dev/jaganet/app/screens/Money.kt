@@ -32,11 +32,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.jaganet.api.BillingSource
-import dev.jaganet.api.Format
 import dev.jaganet.api.PaymentStatus
 import dev.jaganet.api.PlanId
 import dev.jaganet.api.Platform
 import dev.jaganet.api.ProductId
+import dev.jaganet.app.i18n.fBytes
+import dev.jaganet.app.i18n.fDate
+import dev.jaganet.app.i18n.fMoney
+import dev.jaganet.app.i18n.t
+import dev.jaganet.app.i18n.tp
 import dev.jaganet.app.state.AppState
 import dev.jaganet.app.state.Route
 import dev.jaganet.app.theme.C
@@ -70,14 +74,14 @@ fun PlansScreen(s: AppState) {
     Screen {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             Box(
-                Modifier.size(44.dp).clip(CircleShape).clickable(role = Role.Button) { s.router.back() }.semantics { contentDescription = "Close" },
+                Modifier.size(44.dp).clip(CircleShape).clickable(role = Role.Button) { s.router.back() }.semantics { contentDescription = t("Close") },
                 contentAlignment = Alignment.Center,
             ) { Icon(Ic.Close, C.ink, strokeWidth = 2f) }
         }
-        T("Go Pro.\nNo limits, no ads.", TS.Title, FontWeight.Bold)
+        T(t("Go Pro.\nNo limits, no ads."), TS.Title, FontWeight.Bold)
         Gap(18.dp)
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            listOf("Unlimited data", "Up to 5 devices at once", "Full speed, no throttling", "Split tunneling and kill switch").forEach {
+            listOf(t("Unlimited data"), t("Up to 5 devices at once"), t("Full speed, no throttling"), t("Split tunneling and kill switch")).forEach {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(Modifier.size(24.dp).clip(CircleShape).background(C.greenTint), contentAlignment = Alignment.Center) { Icon(Ic.Check, C.green, 14.dp, 2.6f) }
                     T(it, TS.Body)
@@ -88,14 +92,21 @@ fun PlansScreen(s: AppState) {
         Loaded(plans) { p ->
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 p.products.forEach { prod ->
-                    PlanOption(prod.title, if (prod.id == ProductId.PRO_YEARLY) "Best value · billed yearly" else "Billed every month", prod.displayPrice, pick == prod.id, prod.id == ProductId.PRO_YEARLY) { pick = prod.id }
+                    val yearly = prod.id == ProductId.PRO_YEARLY
+                    val price = productPrice(prod)
+                    PlanOption(
+                        if (yearly) t("Pro yearly") else t("Pro monthly"),
+                        if (yearly) t("Best value, billed yearly") else t("Billed every month"),
+                        if (yearly) t("{price} a year", "price" to price) else t("{price} a month", "price" to price),
+                        pick == prod.id, yearly,
+                    ) { pick = prod.id }
                 }
-                PlanOption("Free", "${Format.bytes(p.free.monthlyDataLimitBytes)} a month · ${p.free.deviceLimit} device", "0", pick == null, false) { pick = null }
+                PlanOption(t("Free"), tp(p.free.deviceLimit, "{data} a month, {n} device|{data} a month, {n} devices", "data" to fBytes(p.free.monthlyDataLimitBytes)), fMoney(0, p.products.firstOrNull()?.currency ?: "USD"), pick == null, false) { pick = null }
             }
         }
         ErrorNote(a.error)
         Gap(18.dp)
-        Button(if (pick == null) "Continue with Free" else "Subscribe", {
+        Button(if (pick == null) t("Continue with Free") else t("Subscribe"), {
             val product = pick
             if (product == null) s.router.back() else scope.launch {
                 a.busy = true; a.error = null
@@ -110,9 +121,9 @@ fun PlansScreen(s: AppState) {
                 } finally { a.busy = false }
             }
         }, Modifier.fillMaxWidth(), ButtonKind.Primary, busy = a.busy)
-        T("Renews automatically. Cancel anytime in your $store account.", TS.Caption, color = C.muted, align = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
+        T(t("Renews automatically. Cancel anytime in your {store} account.", "store" to t(store)), TS.Caption, color = C.muted, align = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally)) {
-            listOf("Restore purchase", "Terms", "Privacy").forEach { T(it, TS.Caption, FontWeight.Medium, C.green) }
+            listOf(t("Restore purchase"), t("Terms"), t("Privacy")).forEach { T(it, TS.Caption, FontWeight.Medium, C.green) }
         }
     }
 }
@@ -134,7 +145,7 @@ private fun PlanOption(name: String, sub: String, price: String, on: Boolean, ba
             T(price, TS.Small, FontWeight.Medium, mono = true)
         }
         if (badge) T(
-            "BEST VALUE", TS.Tab, FontWeight.Bold, Color.White,
+            t("BEST VALUE"), TS.Tab, FontWeight.Bold, Color.White,
             modifier = Modifier.align(Alignment.TopEnd).offset(x = (-14).dp, y = (-8).dp).background(C.green, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
         )
     }
@@ -145,55 +156,63 @@ fun AccountScreen(s: AppState) {
     val me = load(s.dataVersion) { s.api.me() }
     val payments = load(s.dataVersion) { s.api.payments().payments }
     val refs = load(Unit) { s.api.referrals() }
+    val plans = load(Unit) { s.api.plans() }
     var confirmDelete by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     Screen(onBack = { s.router.back() }) {
         Gap(8.dp)
-        Title("Account")
+        Title(t("Account"))
         T(s.user?.email ?: "", TS.Small, color = C.muted, modifier = Modifier.padding(top = 4.dp))
         Gap(18.dp)
         Loaded(me) { m ->
             val e = m.entitlement
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(R.hero)).background(C.ink).padding(18.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    T("Current plan", TS.Label, color = C.nightMuted)
-                    T("Active", TS.Caption, FontWeight.SemiBold, C.ink, modifier = Modifier.background(C.greenTint, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
+                    T(t("Current plan"), TS.Label, color = C.nightMuted)
+                    T(t("Active"), TS.Caption, FontWeight.SemiBold, C.ink, modifier = Modifier.background(C.greenTint, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
                 }
                 T(
-                    when { e.plan == PlanId.FREE -> "Free"; e.source == BillingSource.REFERRAL -> "Pro · invite reward"; e.productId == ProductId.PRO_MONTHLY -> "Pro · Monthly"; else -> "Pro · Yearly" },
+                    when { e.plan == PlanId.FREE -> t("Free"); e.source == BillingSource.REFERRAL -> t("Invite reward"); e.productId == ProductId.PRO_MONTHLY -> t("Pro monthly"); else -> t("Pro yearly") },
                     TS.Plan, FontWeight.Bold, Color.White, modifier = Modifier.padding(top = 6.dp),
                 )
                 Gap(14.dp)
                 Row {
-                    DarkKV("Devices", "${m.usage.devicesUsed} / ${e.deviceLimit}", Modifier.weight(1f), mono = true)
-                    DarkKV(if (e.autoRenew) "Renews on" else if (e.expiresAt != null) "Pro until" else "Data", e.expiresAt?.let(Format::date) ?: "${Format.bytes(m.usage.bytesUsed)} used", Modifier.weight(1f))
+                    DarkKV(t("Devices"), "${m.usage.devicesUsed} / ${e.deviceLimit}", Modifier.weight(1f), mono = true)
+                    DarkKV(if (e.autoRenew) t("Renews on") else if (e.expiresAt != null) t("Pro until") else t("Data"), e.expiresAt?.let(::fDate) ?: t("{data} used", "data" to fBytes(m.usage.bytesUsed)), Modifier.weight(1f))
                 }
                 Gap(10.dp)
                 Row {
-                    DarkKV("This month", Format.bytes(m.usage.bytesUsed), Modifier.weight(1f), mono = true)
-                    DarkKV("Billed via", when (e.source) { BillingSource.APPLE -> "App Store"; BillingSource.GOOGLE -> "Google Play"; BillingSource.REFERRAL -> "Invite reward"; BillingSource.DEV -> "Simulation"; BillingSource.WEB -> "Website"; BillingSource.TELEGRAM -> "Telegram"; null -> "–" }, Modifier.weight(1f))
+                    DarkKV(t("This month"), fBytes(m.usage.bytesUsed), Modifier.weight(1f), mono = true)
+                    DarkKV(t("Billed via"), when (e.source) { BillingSource.APPLE -> t("App Store"); BillingSource.GOOGLE -> t("Google Play"); BillingSource.REFERRAL -> t("Invite reward"); BillingSource.DEV -> t("Simulation"); BillingSource.WEB -> t("Website"); BillingSource.TELEGRAM -> t("Telegram"); null -> "-" }, Modifier.weight(1f))
                 }
             }
         }
         Gap(10.dp)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button("Change plan", { s.router.go(Route.Plans) }, Modifier.weight(1f), ButtonKind.Secondary)
-            Button("Manage in store", {
+            Button(t("Change plan"), { s.router.go(Route.Plans) }, Modifier.weight(1f), ButtonKind.Secondary)
+            Button(t("Manage in store"), {
                 s.platform.openUrl(if (s.platform.kind == Platform.IOS) "https://apps.apple.com/account/subscriptions" else "https://play.google.com/store/account/subscriptions")
             }, Modifier.weight(1f), ButtonKind.Secondary)
         }
 
-        SectionLabel("Payment history")
+        SectionLabel(t("Payment history"))
         Loaded(payments) { list ->
             Card {
-                if (list.isEmpty()) T("No payments yet.", TS.Small, color = C.muted, modifier = Modifier.padding(16.dp))
+                if (list.isEmpty()) T(t("No payments yet."), TS.Small, color = C.muted, modifier = Modifier.padding(16.dp))
                 list.forEachIndexed { i, p ->
                     Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column {
-                            T(if (p.source == BillingSource.REFERRAL) "Invite reward" else if (p.productId == "pro_yearly") "Pro · Yearly" else "Pro · Monthly", TS.Small)
-                            T(Format.date(p.startedAt) + if (p.status != PaymentStatus.ACTIVE) " · ${p.status.name.lowercase()}" else "", TS.Caption, color = C.muted)
+                            T(if (p.source == BillingSource.REFERRAL) t("Invite reward") else if (p.productId == "pro_yearly") t("Pro yearly") else t("Pro monthly"), TS.Small)
+                            T(t("{from} to {to}", "from" to fDate(p.startedAt), "to" to fDate(p.expiresAt)), TS.Caption, color = C.muted)
+                            when (p.status) {
+                                PaymentStatus.ACTIVE -> {}
+                                PaymentStatus.EXPIRED -> T(t("Expired"), TS.Caption, color = C.muted)
+                                PaymentStatus.CANCELLED -> T(t("Cancelled"), TS.Caption, color = C.muted)
+                                PaymentStatus.REFUNDED -> T(t("Refunded"), TS.Caption, color = C.muted)
+                            }
                         }
-                        T(if (p.source == BillingSource.REFERRAL) "free" else "[PRICE]", TS.Small, mono = true)
+                        val price = (plans as? Load.Ok)?.value?.products?.firstOrNull { it.id.name.lowercase() == p.productId }?.let(::productPrice) ?: "-"
+                        T(if (p.source == BillingSource.REFERRAL) t("No charge") else price, TS.Small, mono = true)
                     }
                     if (i < list.lastIndex) Divider()
                 }
@@ -206,22 +225,22 @@ fun AccountScreen(s: AppState) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                T("Invite friends", TS.Body, FontWeight.SemiBold, C.greenDark)
+                T(t("Invite friends"), TS.Body, FontWeight.SemiBold, C.greenDark)
                 val r = (refs as? Load.Ok)?.value
-                T(if (r != null) "${r.subscribed} joined · ${r.daysEarned} days of Pro earned" else "Free Pro time for both of you", TS.Label, color = C.greenDark, modifier = Modifier.padding(top = 2.dp))
+                T(if (r != null) t("{n} joined", "n" to r.subscribed) + ", " + tp(r.daysEarned, "{n} day of Pro earned|{n} days of Pro earned") else t("Free Pro time for both of you"), TS.Label, color = C.greenDark, modifier = Modifier.padding(top = 2.dp))
             }
             Icon(Ic.ChevronRight, C.greenDark, 18.dp, 2f)
         }
 
         Gap(20.dp)
-        Button("Sign out", { s.signOut() }, Modifier.fillMaxWidth(), ButtonKind.Ghost)
-        if (!confirmDelete) Button("Delete account", { confirmDelete = true }, Modifier.fillMaxWidth(), ButtonKind.Danger)
+        Button(t("Sign out"), { s.signOut() }, Modifier.fillMaxWidth(), ButtonKind.Ghost)
+        if (!confirmDelete) Button(t("Delete account"), { confirmDelete = true }, Modifier.fillMaxWidth(), ButtonKind.Danger)
         else Card(padding = 16.dp) {
-            T("Delete your account?", TS.Body, FontWeight.SemiBold)
-            T("Your devices are disconnected and your data is erased. Store subscriptions must be cancelled in the store.", TS.Label, color = C.muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
+            T(t("Delete your account?"), TS.Body, FontWeight.SemiBold)
+            T(t("Your devices are disconnected and your data is erased. Store subscriptions must be cancelled in the store."), TS.Label, color = C.muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button("Cancel", { confirmDelete = false }, Modifier.weight(1f), ButtonKind.Secondary)
-                Button("Delete", { scope.launch { runCatching { s.api.deleteAccount() }; s.signOut() } }, Modifier.weight(1f), ButtonKind.Danger)
+                Button(t("Cancel"), { confirmDelete = false }, Modifier.weight(1f), ButtonKind.Secondary)
+                Button(t("Delete"), { scope.launch { runCatching { s.api.deleteAccount() }; s.signOut() } }, Modifier.weight(1f), ButtonKind.Danger)
             }
         }
     }
@@ -239,20 +258,20 @@ fun ReferralScreen(s: AppState) {
     var copied by remember { mutableStateOf(false) }
     Screen(onBack = { s.router.back() }) {
         Gap(8.dp)
-        Title("Give Pro, get Pro")
+        Title(t("Give Pro, get Pro"))
         Loaded(refs) { r ->
-            T("When a friend subscribes with your code, you both get ${r.rewardDays} days of Pro for free.", TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
+            T(tp(r.rewardDays, "When a friend subscribes with your code, you both get {n} day of Pro for free.|When a friend subscribes with your code, you both get {n} days of Pro for free."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
             Gap(20.dp)
             Card(padding = 16.dp) {
-                T("Your code", TS.Label, color = C.muted)
+                T(t("Your code"), TS.Label, color = C.muted)
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     T(r.code, TS.Plan, FontWeight.Medium, mono = true)
-                    Button(if (copied) "Copied" else "Copy", { s.platform.copy(r.code); copied = true }, kind = ButtonKind.Secondary)
+                    Button(if (copied) t("Copied") else t("Copy"), { s.platform.copy(r.code); copied = true }, kind = ButtonKind.Secondary)
                 }
             }
             Gap(10.dp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Invited" to r.invited.toString(), "Subscribed" to r.subscribed.toString(), "Earned" to "${r.daysEarned} d").forEach { (k, v) ->
+                listOf(t("Invited") to r.invited.toString(), t("Subscribed") to r.subscribed.toString(), t("Earned") to t("{n} d", "n" to r.daysEarned)).forEach { (k, v) ->
                     Card(Modifier.weight(1f), padding = 14.dp) {
                         T(k, TS.Caption, color = C.muted)
                         T(v, TS.Stat, FontWeight.Medium, mono = true, modifier = Modifier.padding(top = 4.dp))
@@ -260,7 +279,11 @@ fun ReferralScreen(s: AppState) {
                 }
             }
             Gap(24.dp)
-            Button("Share invite link", { s.platform.share("Join me on JagaNet: ${r.shareUrl}") }, Modifier.fillMaxWidth(), icon = Ic.Share)
+            Button(t("Share invite link"), { s.platform.share(t("Join me on JagaNet: {url}", "url" to r.shareUrl)) }, Modifier.fillMaxWidth(), icon = Ic.Share)
         }
     }
 }
+
+/** The list price in the interface language; falls back to the server's English label. */
+private fun productPrice(p: dev.jaganet.api.Product): String =
+    if (p.priceMinor != null && p.currency != null) fMoney(p.priceMinor!!, p.currency!!) else p.displayPrice.substringBefore('/')

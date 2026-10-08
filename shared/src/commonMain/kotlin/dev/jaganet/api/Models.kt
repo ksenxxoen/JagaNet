@@ -189,6 +189,9 @@ data class Product(
     val displayPrice: String,
     val appleProductId: String,
     val googleProductId: String,
+    /** List price in minor units (cents), for formatting in the reader's language. */
+    val priceMinor: Long? = null,
+    val currency: String? = null,
 )
 
 @Serializable

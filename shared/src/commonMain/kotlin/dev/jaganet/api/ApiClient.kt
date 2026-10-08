@@ -8,6 +8,7 @@ import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
@@ -15,6 +16,7 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
@@ -30,6 +32,8 @@ class ApiClient(
     httpClient: HttpClient,
     private val token: () -> String?,
     private val onUnauthorized: () -> Unit = {},
+    /** Interface language code: the server answers errors in it. */
+    private val lang: () -> String? = { null },
 ) {
     private val http = httpClient.config {
         expectSuccess = false
@@ -47,6 +51,7 @@ class ApiClient(
 
     private fun HttpRequestBuilder.auth() {
         token()?.let { bearerAuth(it) }
+        lang()?.let { header(HttpHeaders.AcceptLanguage, it) }
     }
 
     private suspend inline fun <reified R> get(path: String, crossinline q: HttpRequestBuilder.() -> Unit = {}): R =
