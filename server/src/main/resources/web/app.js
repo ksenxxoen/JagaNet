@@ -311,15 +311,17 @@ function funnelTiles(f) {
  * two = grouped bars with a legend. One axis, recessive grid, hover tooltip per day.
  */
 function dayChart(days, series, title) {
-  const W = 960, H = 220, L = 34, R = 8, T = 10, B = 26;
+  // Drawn at the real width so labels keep their size on phones.
+  const W = Math.max(300, Math.min(1000, (view.clientWidth || 960) - 42)), H = W < 600 ? 180 : 220, L = 34, R = 8, T = 10, B = 26;
   const max = Math.max(1, ...days.flatMap((d) => series.map((s) => d[s.key])));
-  const step = Math.pow(10, Math.floor(Math.log10(max)));
-  const top = Math.ceil(max / step) * step;
+  // A round top that is even, so the middle gridline is a whole number too.
+  const mag = Math.pow(10, Math.floor(Math.log10(max)));
+  const top = Math.max(2, [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].map((k) => k * mag).find((v) => v >= max && Number.isInteger(v / 2)) || 10 * mag);
   const n = days.length, cw = (W - L - R) / n;
   const bw = Math.max(2, Math.min(18, (cw - 2) / series.length - 2));
   const y = (v) => T + (H - T - B) * (1 - v / top);
   const ticks = [0, top / 2, top].map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${L - 6}" y="${y(v) + 4}" class="axis" text-anchor="end">${Math.round(v)}</text>`).join("");
-  const every = Math.ceil(n / 8);
+  const every = Math.ceil(n / Math.max(3, Math.floor(W / 110)));
   const bars = days.map((d, i) => {
     const x0 = L + i * cw + (cw - series.length * (bw + 2)) / 2;
     const rects = series.map((s, j) => {

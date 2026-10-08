@@ -108,7 +108,7 @@ footer a { margin-left: 14px; }
 .kpi-v { font: 600 26px/1.2 "IBM Plex Mono", monospace; margin-top: 4px; overflow-wrap: anywhere; }
 .kpi-n { font-size: 12px !important; margin-top: 2px; }
 .chart { position: relative; margin-bottom: 14px; }
-.chart svg { width: 100%; height: 220px; display: block; margin-top: 8px; }
+.chart svg { width: 100%; height: auto; display: block; margin-top: 8px; }
 .chart .grid { stroke: var(--line-soft); stroke-width: 1; }
 .chart .base { stroke: var(--line); stroke-width: 1; }
 .chart .axis { font: 11px "IBM Plex Sans", sans-serif; fill: var(--muted); }
@@ -136,4 +136,4 @@ table.data td.actions, table.data td:nth-child(5) .status { font-family: inherit
 .status.active { background: var(--green-tint); color: var(--green-dark); }
 .status.lapsed { background: #F6E5DA; color: var(--warn-text); }
 @media (max-width: 900px) { .kpis { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 760px) { .kpis { grid-template-columns: repeat(2, 1fr); } .formrow { grid-template-columns: 1fr; } .chart svg { height: 180px; } }
+@media (max-width: 760px) { .kpis { grid-template-columns: repeat(2, 1fr); } .formrow { grid-template-columns: 1fr; } }
