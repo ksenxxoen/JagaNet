@@ -165,7 +165,7 @@ private class Pages(val lang: Lang) {
 <h2>${t("How to connect")}</h2>
 <ol class="steps">
   <li><b>${t("Install an app")}</b><br>${t("For example one of these apps")}<ul>$ours$others</ul></li>
-  <li><b>${t("Add the key")}</b><br>${t("In the app tap + and choose Scan QR code, then point the camera at the code above. Or choose Import from file and pick {file}.", "file" to Keys.CONFIG_FILE)}</li>
+  <li><b>${t("Add the key")}</b><br>${t("Scan the QR code above in the app or import the {file} file.", "file" to Keys.CONFIG_FILE)}</li>
   <li><b>${t("Turn on the VPN")}</b><br>${t("That's all.")}</li>
 </ol>
 <p class="warn">${t("Keep this page private. Anyone with this link can use your subscription. If it leaks, delete the key in your account and make a new one.")}</p>

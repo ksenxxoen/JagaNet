@@ -35,11 +35,6 @@ internal val referralStrings: List<S> = listOf(
     S("Archive this link?", "Архивировать ссылку?", "Link archivieren?"),
     S("The link stops working and leaves this list.", "Ссылка перестанет работать и исчезнет из списка.", "Der Link funktioniert dann nicht mehr und verschwindet aus der Liste."),
     S("New link", "Новая ссылка", "Neuer Link"),
-    S(
-        "Make a link for each place you share it, to see which works best.",
-        "Создайте отдельную ссылку для каждой площадки и сравните, какая работает лучше.",
-        "Erstelle für jeden Ort einen eigenen Link und sieh, welcher am besten wirkt.",
-    ),
     S("Link name", "Название ссылки", "Name des Links"),
     S("Custom code, optional", "Свой код, необязательно", "Eigener Code, optional"),
     S("3 to 32 Latin letters, digits or hyphens.", "От 3 до 32 латинских букв, цифр или дефисов.", "3 bis 32 lateinische Buchstaben, Ziffern oder Bindestriche."),

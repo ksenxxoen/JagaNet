@@ -94,7 +94,7 @@ fun SettingsScreen(s: AppState) {
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(Ic.Gift, C.greenDark, 20.dp)
-            T(t("Invite friends, get free Pro time"), TS.Small, FontWeight.SemiBold, C.greenDark, modifier = Modifier.weight(1f))
+            T(t("Invite friends"), TS.Small, FontWeight.SemiBold, C.greenDark, modifier = Modifier.weight(1f))
             Icon(Ic.ChevronRight, C.greenDark, 18.dp, 2f)
         }
 

@@ -14,6 +14,5 @@ class Site(private val ctx: Ctx) {
     /** Third-party apps that import our key links / QR codes. */
     val otherApps = listOf(
         "AmneziaVPN" to "https://amnezia.org/downloads",
-        "AmneziaWG (Android)" to "https://play.google.com/store/apps/details?id=org.amnezia.awg",
     )
 }

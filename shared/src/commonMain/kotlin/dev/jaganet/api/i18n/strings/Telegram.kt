@@ -11,9 +11,9 @@ internal val telegramStrings: List<S> = listOf(
     S("My subscription", "Моя подписка", "Mein Abo"),
 
     S(
-        "JagaNet VPN is fast and secure. It encrypts all your traffic and never logs what you browse.",
-        "JagaNet VPN быстрый и безопасный. Он шифрует весь ваш трафик и не хранит историю посещений.",
-        "JagaNet VPN ist schnell und sicher. Es verschlüsselt deinen gesamten Datenverkehr und speichert nie, was du aufrufst.",
+        "JagaNet VPN is fast and secure. It encrypts all your traffic.",
+        "JagaNet VPN быстрый и безопасный. Он шифрует весь ваш трафик.",
+        "JagaNet VPN ist schnell und sicher. Es verschlüsselt deinen gesamten Datenverkehr.",
     ),
     S(
         "Pro gives unlimited data and up to {n} devices. It works in the JagaNet app and in other VPN apps.",
@@ -31,7 +31,6 @@ internal val telegramStrings: List<S> = listOf(
         "Нажмите кнопку, чтобы оплатить. VPN-ключ придёт сюда сразу после оплаты.",
         "Tippe auf den Button, um zu bezahlen. Dein VPN-Schlüssel kommt direkt danach hierher.",
     ),
-    S("Test mode, no real money is taken.", "Тестовый режим, деньги не списываются.", "Testmodus, es wird kein echtes Geld abgebucht."),
     S("Pay {price}", "Оплатить {price}", "{price} bezahlen"),
     S(
         "You don't have an active subscription yet. Choose a plan.",
@@ -51,9 +50,9 @@ internal val telegramStrings: List<S> = listOf(
         "Der Code gilt 10 Minuten. Die App nutzt dasselbe Abo.",
     ),
     S(
-        "Prefer another app? AmneziaVPN and AmneziaWG work with your key from /key.",
-        "Хотите другое приложение? AmneziaVPN и AmneziaWG работают с вашим ключом из /key.",
-        "Lieber eine andere App? AmneziaVPN und AmneziaWG funktionieren mit deinem Schlüssel aus /key.",
+        "Prefer another app? AmneziaVPN works with your key from /key.",
+        "Хотите другое приложение? AmneziaVPN работает с вашим ключом из /key.",
+        "Lieber eine andere App? AmneziaVPN funktioniert mit deinem Schlüssel aus /key.",
     ),
     S("No active subscription.", "Нет активной подписки.", "Kein aktives Abo."),
     S("✅ Pro until {date}.", "✅ Pro до {date}.", "✅ Pro bis {date}."),
@@ -63,14 +62,14 @@ internal val telegramStrings: List<S> = listOf(
     S("Tap /key to get your VPN key.", "Нажмите /key, чтобы получить VPN-ключ.", "Tippe auf /key, um deinen VPN-Schlüssel zu bekommen."),
     S("That key was deleted. Tap /key for a new one.", "Этот ключ удалён. Нажмите /key, чтобы получить новый.", "Dieser Schlüssel wurde gelöscht. Tippe auf /key für einen neuen."),
     S(
-        "1. Install AmneziaVPN or AmneziaWG (buttons below) or our JagaNet app.",
-        "1. Установите AmneziaVPN или AmneziaWG (кнопки ниже) или наше приложение JagaNet.",
-        "1. Installiere AmneziaVPN oder AmneziaWG (Buttons unten) oder unsere JagaNet-App.",
+        "1. Install AmneziaVPN (button below) or our JagaNet app.",
+        "1. Установите AmneziaVPN (кнопка ниже) или наше приложение JagaNet.",
+        "1. Installiere AmneziaVPN (Button unten) oder unsere JagaNet-App.",
     ),
     S(
-        "2. In the app tap + and choose Scan QR code (scan this picture from another screen) or import the {file} file below.",
-        "2. В приложении нажмите + и выберите сканирование QR-кода (отсканируйте эту картинку с другого экрана) или импортируйте файл {file} ниже.",
-        "2. Tippe in der App auf + und wähle QR-Code scannen (scanne dieses Bild von einem anderen Bildschirm) oder importiere die Datei {file} unten.",
+        "2. Scan this QR code in the app from another screen or import the {file} file below.",
+        "2. Отсканируйте этот QR-код в приложении с другого экрана или импортируйте файл {file} ниже.",
+        "2. Scanne diesen QR-Code in der App von einem anderen Bildschirm oder importiere die Datei {file} unten.",
     ),
     S("3. Connect.", "3. Подключитесь.", "3. Verbinde dich."),
     S(
@@ -83,11 +82,6 @@ internal val telegramStrings: List<S> = listOf(
     // Referral program
     S("Invite friends", "Пригласить друзей", "Freunde einladen"),
     S("🎁 Invite friends", "🎁 Пригласить друзей", "🎁 Freunde einladen"),
-    S(
-        "Invite friends. When someone subscribes through your link, you both get {n} day of Pro.|Invite friends. When someone subscribes through your link, you both get {n} days of Pro.",
-        "Приглашайте друзей. Когда кто-то оформит подписку по вашей ссылке, вы оба получите {n} день Pro.|Приглашайте друзей. Когда кто-то оформит подписку по вашей ссылке, вы оба получите {n} дня Pro.|Приглашайте друзей. Когда кто-то оформит подписку по вашей ссылке, вы оба получите {n} дней Pro.",
-        "Lade Freunde ein. Wenn jemand über deinen Link ein Abo abschließt, bekommt ihr beide {n} Tag Pro.|Lade Freunde ein. Wenn jemand über deinen Link ein Abo abschließt, bekommt ihr beide {n} Tage Pro.",
-    ),
     S("Your link", "Ваша ссылка", "Dein Link"),
     S("Link to this bot", "Ссылка на этого бота", "Link zu diesem Bot"),
     S("Clicks {n}", "Переходы {n}", "Klicks {n}"),

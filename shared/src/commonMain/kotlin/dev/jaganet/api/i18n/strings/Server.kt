@@ -61,9 +61,9 @@ internal val serverStrings: List<S> = listOf(
     S("In our app you just sign in, no key needed", "В нашем приложении достаточно войти, ключ не нужен", "In unserer App meldest du dich einfach an, ohne Schlüssel"),
     S("Add the key", "Добавьте ключ", "Füge den Schlüssel hinzu"),
     S(
-        "In the app tap + and choose Scan QR code, then point the camera at the code above. Or choose Import from file and pick {file}.",
-        "В приложении нажмите + и выберите сканирование QR-кода, затем наведите камеру на код выше. Или выберите импорт из файла и укажите {file}.",
-        "Tippe in der App auf + und wähle QR-Code scannen, dann richte die Kamera auf den Code oben. Oder wähle Aus Datei importieren und nimm {file}.",
+        "Scan the QR code above in the app or import the {file} file.",
+        "Отсканируйте QR-код выше в приложении или импортируйте файл {file}.",
+        "Scanne den QR-Code oben in der App oder importiere die Datei {file}.",
     ),
     S("Turn on the VPN", "Включите VPN", "Schalte das VPN ein"),
     S("That's all.", "Готово.", "Fertig."),

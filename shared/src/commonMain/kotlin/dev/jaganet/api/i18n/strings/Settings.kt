@@ -4,7 +4,6 @@ import dev.jaganet.api.i18n.S
 
 internal val settingsStrings: List<S> = listOf(
     // Settings
-    S("Invite friends, get free Pro time", "Приглашайте друзей и получайте Pro бесплатно", "Lade Freunde ein und erhalte Pro gratis"),
     S("Connection", "Подключение", "Verbindung"),
     S("Kill switch", "Kill switch", "Kill Switch"),
     S("Route all traffic through the VPN while it’s on", "Весь трафик идет через VPN, пока он включен", "Der ganze Datenverkehr läuft über das VPN, solange es an ist"),

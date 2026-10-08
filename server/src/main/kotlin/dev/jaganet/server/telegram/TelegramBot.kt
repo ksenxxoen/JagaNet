@@ -141,7 +141,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
     private suspend fun menu(u: Who) {
         val pro = isPro(u.userId)
         val text = buildString {
-            appendLine(u.t("JagaNet VPN is fast and secure. It encrypts all your traffic and never logs what you browse."))
+            appendLine(u.t("JagaNet VPN is fast and secure. It encrypts all your traffic."))
             appendLine()
             appendLine(u.t("Pro gives unlimited data and up to {n} devices. It works in the JagaNet app and in other VPN apps.", "n" to s.billing.plans().pro.deviceLimit))
             if (pro != null) { appendLine(); append(u.t("✅ Your Pro is active until {date}.", "date" to Format.date(pro.toString(), u.lang))) }
@@ -163,7 +163,6 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
         val text = buildString {
             appendLine(u.t("{product} for {price}", "product" to productName(id, u.lang), "price" to price))
             append(u.t("Tap the button to pay. Your VPN key arrives here right after."))
-            if (s.payments.isTest) { appendLine(); appendLine(); append(u.t("Test mode, no real money is taken.")) }
         }
         val url = order.checkoutUrl?.let { withLang(it, u.lang) }
         send(u, text, listOf(listOf(Btn(u.t("Pay {price}", "price" to price), url = url))))
@@ -198,7 +197,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
                 appendLine()
                 appendLine(u.t("The code works for 10 minutes. The app uses this same subscription."))
                 appendLine()
-                append(u.t("Prefer another app? AmneziaVPN and AmneziaWG work with your key from /key."))
+                append(u.t("Prefer another app? AmneziaVPN works with your key from /key."))
             },
             links,
         )
@@ -210,8 +209,6 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
         val main = st.links.first { it.main }
         val f = st.totals
         val text = buildString {
-            appendLine(u.tp(st.rewardDays, "Invite friends. When someone subscribes through your link, you both get {n} day of Pro.|Invite friends. When someone subscribes through your link, you both get {n} days of Pro."))
-            appendLine()
             appendLine(u.t("Your link"))
             appendLine(main.webUrl)
             main.telegramUrl?.let { appendLine(u.t("Link to this bot")); appendLine(it) }
@@ -252,8 +249,8 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
             appendLine(head)
             appendLine()
             appendLine(u.t("How to connect"))
-            appendLine(u.t("1. Install AmneziaVPN or AmneziaWG (buttons below) or our JagaNet app."))
-            appendLine(u.t("2. In the app tap + and choose Scan QR code (scan this picture from another screen) or import the {file} file below.", "file" to Keys.CONFIG_FILE))
+            appendLine(u.t("1. Install AmneziaVPN (button below) or our JagaNet app."))
+            appendLine(u.t("2. Scan this QR code in the app from another screen or import the {file} file below.", "file" to Keys.CONFIG_FILE))
             appendLine(u.t("3. Connect."))
             appendLine()
             append(u.t("Keep the key private. Anyone who has it uses your subscription."))

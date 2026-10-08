@@ -277,9 +277,8 @@ fun ReferralScreen(s: AppState) {
     val reload: () -> Unit = { version++ }
     Screen(onBack = { s.router.back() }) {
         Gap(8.dp)
-        Title(t("Give Pro, get Pro"))
+        Title(t("Referral program"))
         (stats as? Load.Ok)?.value?.let { r ->
-            T(tp(r.rewardDays, "When a friend subscribes with your code, you both get {n} day of Pro for free.|When a friend subscribes with your code, you both get {n} days of Pro for free."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
             if (r.daysEarned > 0) T(tp(r.daysEarned, "{n} day of Pro earned|{n} days of Pro earned"), TS.Small, FontWeight.SemiBold, C.green, modifier = Modifier.padding(top = 4.dp))
         }
         Gap(18.dp)
@@ -504,8 +503,6 @@ private fun RefNewLink(s: AppState, reload: () -> Unit) {
         }
     }
     Card(padding = 16.dp) {
-        T(t("Make a link for each place you share it, to see which works best."), TS.Label, color = C.muted)
-        Gap(12.dp)
         Field(t("Link name"), name, { name = it.take(40) }, "Instagram")
         Gap(10.dp)
         Field(t("Custom code, optional"), code, { v -> code = v.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' || it == '-' }.take(32) }, "INSTA-2026", onDone = { create() })

@@ -68,12 +68,6 @@ internal val moneyStrings: List<S> = listOf(
     S("Delete", "Удалить", "Löschen"),
 
     // Referral
-    S("Give Pro, get Pro", "Дарите Pro, получайте Pro", "Pro schenken, Pro bekommen"),
-    S(
-        "When a friend subscribes with your code, you both get {n} day of Pro for free.|When a friend subscribes with your code, you both get {n} days of Pro for free.",
-        "Когда друг оформит подписку по вашему коду, вы оба бесплатно получите {n} день Pro.|Когда друг оформит подписку по вашему коду, вы оба бесплатно получите {n} дня Pro.|Когда друг оформит подписку по вашему коду, вы оба бесплатно получите {n} дней Pro.",
-        "Wenn ein Freund mit deinem Code ein Abo abschließt, bekommt ihr beide {n} Tag Pro gratis.|Wenn ein Freund mit deinem Code ein Abo abschließt, bekommt ihr beide {n} Tage Pro gratis.",
-    ),
     S("Your code", "Ваш код", "Dein Code"),
     S("Copy", "Копировать", "Kopieren"),
     S("Copied", "Скопировано", "Kopiert"),
