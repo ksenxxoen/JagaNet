@@ -71,3 +71,27 @@ All texts live in `shared/src/commonMain/kotlin/dev/jaganet/api/i18n/strings/` a
 
 House style, checked by `I18nTest`: no long dashes, no "·" separators, at most one colon per text,
 and every text has Russian and German.
+
+## Referral program
+
+Every user has a main link and can add up to 50 more, one per campaign ("Instagram", "YouTube"),
+optionally with their own code. Links: `https://<site>/r/<CODE>` and, with the bot on,
+`https://t.me/<bot>?start=<CODE>`. Adding `?utm_source=name` to a web link tags its clicks.
+
+What is counted (`server/.../services/Referrals.kt`, tables `referral_links`, `referral_clicks`):
+
+| Step | How |
+| --- | --- |
+| Click | each visit of `/r/<code>` or Telegram `/start <code>` |
+| Unique visitor | HMAC of IP + browser (or Telegram id). No IP addresses are stored |
+| Sign-up | first touch: the website keeps the code until sign-up; the app takes it in the invite field |
+| Paid | referred people whose first paid purchase falls in the period |
+| Purchases | all paid purchases of referred people, renewals included |
+| Revenue | website and Telegram orders, per currency (store purchases have no amount here) |
+
+Per link and in total, for 7, 30 or 90 days or all time, with a daily series, click sources
+(utm_source or referring site), sign-up channels (website, app, Telegram) and the list of invited
+people (emails masked). Archived links stop counting clicks; their history stays in the totals.
+The owner sees the whole program and the top partners (`/v1/admin/referrals`).
+
+Where: website `#/referrals`, the app's Invite friends screen and owner dashboard, the bot's /invite.

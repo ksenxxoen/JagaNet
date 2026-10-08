@@ -104,5 +104,11 @@ class ApiClient(
     suspend fun order(id: String): OrderRes = get("orders/$id")
 
     suspend fun referrals(): ReferralRes = get("referrals")
+    suspend fun referralStats(period: ReferralPeriod): ReferralStatsRes = get("referrals/stats") { parameter("period", Protocols.json.encodeToString(ReferralPeriod.serializer(), period).trim('"')) }
+    suspend fun createReferralLink(req: CreateReferralLinkReq): ReferralLink = post("referrals/links", req)
+    suspend fun renameReferralLink(id: String, name: String): OkRes =
+        http.patch("referrals/links/$id") { auth(); contentType(ContentType.Application.Json); setBody(RenameReferralLinkReq(name)) }.read()
+    suspend fun archiveReferralLink(id: String): OkRes = delete("referrals/links/$id")
+    suspend fun adminReferrals(period: ReferralPeriod): AdminReferralsRes = get("admin/referrals") { parameter("period", Protocols.json.encodeToString(ReferralPeriod.serializer(), period).trim('"')) }
     suspend fun adminOverview(): AdminOverviewRes = get("admin/overview")
 }

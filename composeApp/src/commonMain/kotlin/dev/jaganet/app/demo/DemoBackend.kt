@@ -1,12 +1,15 @@
 package dev.jaganet.app.demo
 
 import dev.jaganet.api.AdminOverviewRes
+import dev.jaganet.api.AdminReferralsRes
 import dev.jaganet.api.BillingSource
 import dev.jaganet.api.Format
 import dev.jaganet.api.i18n.I18n
 import dev.jaganet.api.i18n.Lang
 import dev.jaganet.api.ConnectionEventReq
 import dev.jaganet.api.ConnectionEventType
+import dev.jaganet.api.CountBy
+import dev.jaganet.api.CreateReferralLinkReq
 import dev.jaganet.api.DayCount
 import dev.jaganet.api.DevPurchaseReq
 import dev.jaganet.api.Device
@@ -20,7 +23,9 @@ import dev.jaganet.api.ErrorBody
 import dev.jaganet.api.ErrorCode
 import dev.jaganet.api.ErrorRes
 import dev.jaganet.api.FreePlan
+import dev.jaganet.api.Funnel
 import dev.jaganet.api.MeRes
+import dev.jaganet.api.MoneyAmount
 import dev.jaganet.api.OkRes
 import dev.jaganet.api.PairRedeemReq
 import dev.jaganet.api.PairingCodeRes
@@ -34,7 +39,14 @@ import dev.jaganet.api.ProPlan
 import dev.jaganet.api.Product
 import dev.jaganet.api.ProductId
 import dev.jaganet.api.Protocols
+import dev.jaganet.api.ReferralDay
+import dev.jaganet.api.ReferralLink
+import dev.jaganet.api.ReferralPeriod
 import dev.jaganet.api.ReferralRes
+import dev.jaganet.api.ReferralStatsRes
+import dev.jaganet.api.ReferredStatus
+import dev.jaganet.api.ReferredUser
+import dev.jaganet.api.RenameReferralLinkReq
 import dev.jaganet.api.RenameDeviceReq
 import dev.jaganet.api.Revenue
 import dev.jaganet.api.Role
@@ -46,6 +58,7 @@ import dev.jaganet.api.StatsBucket
 import dev.jaganet.api.StatsPeriod
 import dev.jaganet.api.StatsRes
 import dev.jaganet.api.TunnelConfig
+import dev.jaganet.api.TopReferrer
 import dev.jaganet.api.TunnelProvisionReq
 import dev.jaganet.api.Usage
 import dev.jaganet.api.User
@@ -98,6 +111,12 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
         var connectedSince: Instant? = null,
     )
 
+    /** A referral link. [weight] scales its made-up daily traffic; new links start at 0. */
+    private class DLink(
+        val id: String, val userId: String, var name: String, val code: String, val main: Boolean, val createdAt: Instant,
+        val weight: Int = 0, var archived: Boolean = false,
+    )
+
     private class Sample(val deviceId: String, val hour: Instant, val rx: Long, val tx: Long)
     private class Session(val deviceId: String, val start: Instant, val end: Instant?, val peak: Long?)
 
@@ -105,6 +124,7 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
     private val devices = mutableListOf<DDevice>()
     private val samples = mutableListOf<Sample>()
     private val sessions = mutableListOf<Session>()
+    private val links = mutableListOf<DLink>()
     private val tokens = mutableMapOf<String, Pair<String, String>>() // token -> (userId, deviceId)
     private val codes = mutableMapOf<String, String>() // email -> sign-in code
     private var pairing: Pair<String, String>? = null // code -> userId
@@ -132,6 +152,11 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
         history(laptop.id, 60e6, sessionsPerDay = 1)
         history(tablet.id, 8e6, sessionsPerDay = 0)
         samples += Sample(samPhone.id, hour(t - 2.days), 5_900_000_000, 1_100_000_000) // ~70 % of 10 GB
+
+        links += DLink(id(), alex.id, "Main link", alex.code, true, alex.createdAt, weight = 2)
+        links += DLink(id(), alex.id, "Instagram", "ALEX-INSTA", false, t - 45.days, weight = 5)
+        links += DLink(id(), alex.id, "YouTube", "ALEX-YT", false, t - 20.days, weight = 3)
+        links += DLink(id(), owner.id, "Main link", owner.code, true, owner.createdAt, weight = 1)
     }
 
     /** Hourly traffic with an evening peak, plus one session a day. */
@@ -213,6 +238,128 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
             peakDownBps = mySessions.mapNotNull { it.peak }.maxOrNull(),
             byDevice = byDevice.entries.sortedByDescending { it.value }.map { DeviceTraffic(it.key, mine.getValue(it.key).name, it.value) },
         )
+    }
+
+    // ------------------------------------------------------------ referral program
+
+    private fun dayOf(t: Instant) = t.epochSeconds / 86400
+    private fun isoDay(day: Long) = Instant.fromEpochSeconds(day * 86400).toString().take(10)
+
+    /** Every user has a main link with their invite code. */
+    private fun linksOf(u: DUser): List<DLink> {
+        if (links.none { it.userId == u.id && it.main }) links.add(0, DLink(id(), u.id, "Main link", u.code, true, u.createdAt))
+        return links.filter { it.userId == u.id && !it.archived }.sortedWith(compareByDescending<DLink> { it.main }.thenBy { it.createdAt })
+    }
+
+    /** Made-up but stable numbers for one link on one day. */
+    private fun linkDay(l: DLink, day: Long): ReferralDay {
+        if (l.weight == 0 || day < dayOf(l.createdAt)) return ReferralDay(isoDay(day), 0, 0, 0)
+        val r = Random(l.code.hashCode() * 31 + day.toInt())
+        val clicks = r.nextInt(l.weight * 4 + 1)
+        val signups = (0 until clicks).count { r.nextInt(9) == 0 }
+        val paid = (0 until signups).count { r.nextInt(3) == 0 }
+        return ReferralDay(isoDay(day), clicks, signups, paid)
+    }
+
+    private fun periodOf(q: String?) = when (q) { "7d" -> ReferralPeriod.D7; "90d" -> ReferralPeriod.D90; "all" -> ReferralPeriod.ALL; else -> ReferralPeriod.D30 }
+
+    private fun firstDay(period: ReferralPeriod, ls: List<DLink>): Long {
+        val today = dayOf(now())
+        return when (period) {
+            ReferralPeriod.D7 -> today - 6
+            ReferralPeriod.D30 -> today - 29
+            ReferralPeriod.D90 -> today - 89
+            ReferralPeriod.ALL -> ls.minOfOrNull { dayOf(it.createdAt) } ?: today
+        }
+    }
+
+    private fun series(ls: List<DLink>, from: Long): List<ReferralDay> = (from..dayOf(now())).map { d ->
+        val days = ls.map { linkDay(it, d) }
+        ReferralDay(isoDay(d), days.sumOf { it.clicks }, days.sumOf { it.signups }, days.sumOf { it.paid })
+    }
+
+    private fun funnel(days: List<ReferralDay>, cur: String, monthly: Long): Funnel {
+        val paid = days.sumOf { it.paid }
+        val purchases = paid + paid / 2
+        return Funnel(
+            clicks = days.sumOf { it.clicks }, visitors = days.sumOf { (it.clicks * 4 + 4) / 5 },
+            signups = days.sumOf { it.signups }, paidUsers = paid, purchases = purchases,
+            revenue = if (purchases > 0) listOf(MoneyAmount(purchases * monthly, cur)) else emptyList(),
+        )
+    }
+
+    /** Where clicks came from and where people signed up, split from the totals. */
+    private fun sources(ls: List<DLink>, from: Long): List<CountBy> {
+        val m = mutableMapOf<String, Int>()
+        for (l in ls) {
+            val clicks = series(listOf(l), from).sumOf { it.clicks }
+            when (l.name) {
+                "Instagram" -> m["instagram.com"] = (m["instagram.com"] ?: 0) + clicks
+                "YouTube" -> m["youtube.com"] = (m["youtube.com"] ?: 0) + clicks
+                else -> {
+                    m["telegram"] = (m["telegram"] ?: 0) + clicks * 2 / 5
+                    m["direct"] = (m["direct"] ?: 0) + clicks - clicks * 2 / 5
+                }
+            }
+        }
+        return m.filterValues { it > 0 }.map { CountBy(it.key, it.value) }.sortedByDescending { it.count }
+    }
+
+    private fun channels(signups: Int): List<CountBy> {
+        val web = signups * 55 / 100
+        val app = signups * 30 / 100
+        return listOf(CountBy("website", web), CountBy("app", app), CountBy("telegram", signups - web - app)).filter { it.count > 0 }.sortedByDescending { it.count }
+    }
+
+    private val demoPeople = listOf("ma***@gmail.com", "ol***@yandex.ru", "Telegram", "jo***@proton.me", "ka***@mail.ru", "de***@gmail.com", "Telegram", "an***@outlook.com")
+
+    private fun recent(ls: List<DLink>, from: Long): List<ReferredUser> {
+        val out = mutableListOf<ReferredUser>()
+        for (d in dayOf(now()) downTo from) {
+            for (l in ls) {
+                val day = linkDay(l, d)
+                repeat(day.signups) { i ->
+                    val n = out.size
+                    val who = demoPeople[n % demoPeople.size]
+                    val channel = if (who == "Telegram") "telegram" else if (n % 3 == 1) "app" else "website"
+                    val status = when { i < day.paid && n % 4 == 3 -> ReferredStatus.LAPSED; i < day.paid -> ReferredStatus.ACTIVE; else -> ReferredStatus.REGISTERED }
+                    val purchases = if (status == ReferredStatus.REGISTERED) 0 else 1 + n % 2
+                    out += ReferredUser(who, l.name, Instant.fromEpochSeconds(d * 86400 + 3600L * (9 + n % 12)).toString(), channel, status, purchases)
+                }
+                if (out.size >= 50) return out
+            }
+        }
+        return out
+    }
+
+    private fun referralStats(u: DUser, period: ReferralPeriod, lang: Lang): ReferralStatsRes {
+        val (cur, monthly, _) = prices(lang)
+        val ls = linksOf(u)
+        val from = firstDay(period, ls)
+        val days = series(ls, from)
+        val totals = funnel(days, cur, monthly)
+        return ReferralStatsRes(
+            period = period, totals = totals, days = days,
+            links = ls.map { l ->
+                ReferralLink(l.id, l.name, l.code, l.main, "https://jaganet.dev/r/${l.code}", "https://t.me/JagaNetBot?start=${l.code}",
+                    l.createdAt.toString(), funnel(series(listOf(l), from), cur, monthly))
+            },
+            sources = sources(ls, from), channels = channels(totals.signups), recent = recent(ls, from),
+            rewardDays = 30, daysEarned = u.daysEarned,
+        )
+    }
+
+    private fun adminReferrals(period: ReferralPeriod, lang: Lang): AdminReferralsRes {
+        val (cur, monthly, _) = prices(lang)
+        val active = links.filter { !it.archived }
+        val from = firstDay(period, active)
+        val days = series(active, from)
+        val totals = funnel(days, cur, monthly)
+        val top = users.mapNotNull { u ->
+            val ls = active.filter { it.userId == u.id }
+            if (ls.isEmpty()) null else TopReferrer(u.email, ls.size, funnel(series(ls, from), cur, monthly))
+        }.filter { it.funnel.clicks > 0 }.sortedByDescending { it.funnel.signups }
+        return AdminReferralsRes(period, totals, days, sources(active, from), channels(totals.signups), top)
     }
 
     // ------------------------------------------------------------ routing
@@ -375,6 +522,42 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
                 err(HttpStatusCode.NotImplemented, ErrorCode.NOT_IMPLEMENTED, "Store verification is not set up yet")
             method == HttpMethod.Get && path == "referrals" ->
                 return ReferralRes(u.code, u.invited, u.subscribed, 30, u.daysEarned, "https://jaganet.dev/r/${u.code}") to ReferralRes.serializer()
+            method == HttpMethod.Get && path == "referrals/stats" -> {
+                val p = periodOf(req.url.parameters["period"])
+                return referralStats(u, p, langOf(req)) to ReferralStatsRes.serializer()
+            }
+            method == HttpMethod.Post && path == "referrals/links" -> {
+                val r = read<CreateReferralLinkReq>(body)
+                val name = r.name.trim()
+                if (name.isEmpty() || name.length > 40) err(HttpStatusCode.BadRequest, ErrorCode.BAD_REQUEST, "Name must be 1 to 40 characters")
+                val custom = r.code?.trim()?.uppercase()?.ifEmpty { null }
+                if (custom != null && !Regex("^[A-Z0-9-]{3,32}$").matches(custom)) err(HttpStatusCode.BadRequest, ErrorCode.BAD_REQUEST, "Code must be 3 to 32 letters, digits or hyphens")
+                if (linksOf(u).size >= 50) err(HttpStatusCode.BadRequest, ErrorCode.BAD_REQUEST, "You can have up to 50 links")
+                val code = custom ?: generateSequence { (1..7).map { "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Random.nextInt(32)] }.joinToString("") }.first { c -> links.none { it.code == c } }
+                if (links.any { it.code == code } || users.any { it.code == code }) err(HttpStatusCode.Conflict, ErrorCode.BAD_REQUEST, "This code is taken")
+                val l = DLink(id(), u.id, name, code, false, now())
+                links += l
+                return ReferralLink(l.id, l.name, l.code, false, "https://jaganet.dev/r/${l.code}", "https://t.me/JagaNetBot?start=${l.code}", l.createdAt.toString(), Funnel()) to ReferralLink.serializer()
+            }
+            method == HttpMethod.Patch && path.startsWith("referrals/links/") -> {
+                val l = links.firstOrNull { it.id == path.removePrefix("referrals/links/") && it.userId == u.id && !it.main && !it.archived }
+                    ?: err(HttpStatusCode.NotFound, ErrorCode.NOT_FOUND, "Link not found")
+                val name = read<RenameReferralLinkReq>(body).name.trim()
+                if (name.isEmpty() || name.length > 40) err(HttpStatusCode.BadRequest, ErrorCode.BAD_REQUEST, "Name must be 1 to 40 characters")
+                l.name = name
+                return ok
+            }
+            method == HttpMethod.Delete && path.startsWith("referrals/links/") -> {
+                val l = links.firstOrNull { it.id == path.removePrefix("referrals/links/") && it.userId == u.id && !it.main && !it.archived }
+                    ?: err(HttpStatusCode.NotFound, ErrorCode.NOT_FOUND, "Link not found")
+                l.archived = true
+                return ok
+            }
+            method == HttpMethod.Get && path == "admin/referrals" -> {
+                if (u.role != Role.OWNER) err(HttpStatusCode.Forbidden, ErrorCode.FORBIDDEN, "Not allowed")
+                val p = periodOf(req.url.parameters["period"])
+                return adminReferrals(p, langOf(req)) to AdminReferralsRes.serializer()
+            }
             method == HttpMethod.Get && path == "admin/overview" -> {
                 if (u.role != Role.OWNER) err(HttpStatusCode.Forbidden, ErrorCode.FORBIDDEN, "Not allowed")
                 return admin(langOf(req)) to AdminOverviewRes.serializer()

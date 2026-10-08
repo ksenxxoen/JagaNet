@@ -75,7 +75,7 @@ function go(hash) { if (location.hash === hash) render(); else location.hash = h
 function renderNav() {
   const langs = `<span class="langs nav">${LANGS.map(([c, name]) => `<button type="button" class="${c === lang ? "on" : ""}" data-lang="${c}" title="${name}" lang="${c}">${c.toUpperCase()}</button>`).join("")}</span>`;
   nav.innerHTML = langs + (store.get("token")
-    ? `<a class="btn secondary small" href="#/account">${t("My account")}</a>`
+    ? `<a class="btn secondary small" href="#/referrals">${t("Referral program")}</a><a class="btn secondary small" href="#/account">${t("My account")}</a>`
     : `<a class="btn secondary small" href="#/signin">${t("Sign in")}</a>`);
   for (const b of nav.querySelectorAll("[data-lang]")) b.onclick = () => setLang(b.dataset.lang);
 }
@@ -175,7 +175,7 @@ function signin() {
     e.preventDefault(); err.textContent = "";
     email = document.getElementById("email").value.trim();
     try {
-      const r = await api("/auth/email/start", { method: "POST", body: { email, referralCode: new URLSearchParams(location.search).get("ref") } });
+      const r = await api("/auth/email/start", { method: "POST", body: { email, referralCode: new URLSearchParams(location.search).get("ref") || store.get("ref") } });
       f1.hidden = true; f2.hidden = false;
       const sent = document.getElementById("sent");
       sent.textContent = t("We sent a code to {email}. It works for 10 minutes.", { email });
@@ -238,6 +238,9 @@ async function account(params) {
   <div class="keys" id="keys">${keys.keys.map(keyCard).join("") || `<div class="card muted">${isPro ? t("You have no keys yet.") : t("Get Pro to receive your personal VPN key.")}</div>`}</div>
   ${isPro || keys.keys.length ? `<p style="margin-top:12px"><button class="btn secondary" id="newkey">${t("New key")}</button></p>` : ""}
 
+  <a class="card refbanner" href="#/referrals"><div><h3>${t("Referral program")}</h3>
+    <p class="muted" style="margin:0">${t("Share your links, see clicks, sign-ups and payments they bring.")}</p></div><span class="btn green small">${t("Open")}</span></a>
+
   <h2>${t("Apps")}</h2>
   <div class="grid3">${downloads()}</div>
   <div class="card" style="margin-top:14px"><div class="row"><div><h3>${t("Sign in to the JagaNet app")}</h3>
@@ -275,6 +278,173 @@ function keyCard(k) {
     </div></div>`;
 }
 
+
+/* ---------------- referral program ---------------- */
+
+const PERIODS = [["7d", "7 days"], ["30d", "30 days"], ["90d", "90 days"], ["all", "All time"]];
+const pct = (a, b) => (b > 0 ? `${Math.round((a / b) * 1000) / 10}`.replace(".", lang === "en" ? "." : ",") + "%" : "-");
+const revenueText = (list) => (list && list.length ? list.map((m) => money(m.minor, m.currency)).join(", ") : "-");
+const sourceName = (k) => (k === "direct" ? t("Direct") : k === "telegram" ? "Telegram" : k);
+const channelName = (k) => ({ website: t("Website"), app: t("App"), telegram: "Telegram" })[k] || k;
+const linkName = (l) => (l.main ? t("Main link") : l.name);
+
+async function copyText(btn, text) {
+  try { await navigator.clipboard.writeText(text); } catch { prompt("", text); return; }
+  const old = btn.textContent; btn.textContent = t("Copied"); setTimeout(() => (btn.textContent = old), 1500);
+}
+
+/** Funnel tiles: the headline numbers with the conversion between steps. */
+function funnelTiles(f) {
+  const tile = (label, value, note) => `<div class="card kpi"><div class="muted">${label}</div><div class="kpi-v">${value}</div>${note ? `<div class="muted kpi-n">${note}</div>` : ""}</div>`;
+  return `<div class="kpis">
+    ${tile(t("Clicks"), f.clicks)}
+    ${tile(t("Unique visitors"), f.visitors)}
+    ${tile(t("Sign-ups"), f.signups, t("{p} of visitors", { p: pct(f.signups, f.visitors) }))}
+    ${tile(t("Paid"), f.paidUsers, t("{p} of sign-ups", { p: pct(f.paidUsers, f.signups) }))}
+    ${tile(t("Purchases"), f.purchases, t("Renewals included"))}
+    ${tile(t("Revenue"), h(revenueText(f.revenue)), t("Website and Telegram payments"))}
+  </div>`;
+}
+
+/**
+ * Daily bar chart in SVG. series: [{key, label, color}]; one series = plain bars,
+ * two = grouped bars with a legend. One axis, recessive grid, hover tooltip per day.
+ */
+function dayChart(days, series, title) {
+  const W = 960, H = 220, L = 34, R = 8, T = 10, B = 26;
+  const max = Math.max(1, ...days.flatMap((d) => series.map((s) => d[s.key])));
+  const step = Math.pow(10, Math.floor(Math.log10(max)));
+  const top = Math.ceil(max / step) * step;
+  const n = days.length, cw = (W - L - R) / n;
+  const bw = Math.max(2, Math.min(18, (cw - 2) / series.length - 2));
+  const y = (v) => T + (H - T - B) * (1 - v / top);
+  const ticks = [0, top / 2, top].map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${L - 6}" y="${y(v) + 4}" class="axis" text-anchor="end">${Math.round(v)}</text>`).join("");
+  const every = Math.ceil(n / 8);
+  const bars = days.map((d, i) => {
+    const x0 = L + i * cw + (cw - series.length * (bw + 2)) / 2;
+    const rects = series.map((s, j) => {
+      const v = d[s.key]; if (!v) return "";
+      const hgt = Math.max(2, y(0) - y(v));
+      return `<rect x="${x0 + j * (bw + 2)}" y="${y(0) - hgt}" width="${bw}" height="${hgt}" rx="${Math.min(4, bw / 2)}" fill="${s.color}"/>`;
+    }).join("");
+    const label = i % every === 0 ? `<text x="${L + i * cw + cw / 2}" y="${H - 8}" class="axis" text-anchor="middle">${h(shortDate(d.day))}</text>` : "";
+    const tip = h(date(d.day)) + "|" + series.map((s) => `${s.label} ${d[s.key]}`).join("|");
+    return `<g class="col" data-tip="${tip}"><rect x="${L + i * cw}" y="${T}" width="${cw}" height="${H - T - B}" class="hit"/>${rects}${label}</g>`;
+  }).join("");
+  const legend = series.length > 1 ? `<div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${s.label}</span>`).join("")}</div>` : "";
+  return `<div class="card chart"><div class="row"><h3>${title}</h3>${legend}</div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${h(title)}" preserveAspectRatio="none">${ticks}<line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" class="base"/>${bars}</svg>
+    <div class="tip" hidden></div></div>`;
+}
+const shortDate = (iso) => { const [, m, d] = iso.split("-").map(Number); return lang === "de" ? `${d}.${m}.` : `${d}.${String(m).padStart(2, "0")}`; };
+
+function wireCharts(root) {
+  for (const c of root.querySelectorAll(".chart")) {
+    const tip = c.querySelector(".tip");
+    for (const g of c.querySelectorAll(".col")) {
+      g.onmouseenter = (e) => {
+        const [head, ...rows] = g.dataset.tip.split("|");
+        tip.innerHTML = `<b>${head}</b>` + rows.map((r) => `<div>${r}</div>`).join("");
+        tip.hidden = false;
+        const box = c.getBoundingClientRect(), r = g.getBoundingClientRect();
+        tip.style.left = Math.min(box.width - 170, Math.max(0, r.left - box.left + r.width / 2 - 80)) + "px";
+      };
+      g.onmouseleave = () => (tip.hidden = true);
+    }
+  }
+}
+
+/** Horizontal bars for small breakdowns (sources, sign-up channels). */
+function breakdown(title, items, name) {
+  if (!items.length) return `<div class="card"><h3>${title}</h3><p class="muted">${t("No data yet.")}</p></div>`;
+  const max = Math.max(...items.map((i) => i.count));
+  return `<div class="card"><h3>${title}</h3>${items.map((i) => `
+    <div class="hbar"><span>${h(name(i.key))}</span><b>${i.count}</b>
+      <div class="track"><div style="width:${Math.max(2, (i.count / max) * 100)}%"></div></div></div>`).join("")}</div>`;
+}
+
+const CLICKS = () => [{ key: "clicks", label: t("Clicks"), color: "#1E6B57" }];
+const CONVERSIONS = () => [{ key: "signups", label: t("Sign-ups"), color: "#1baf7a" }, { key: "paid", label: t("Paid"), color: "#eb6834" }];
+
+async function referrals(params) {
+  if (!store.get("token")) { store.set("afterSignIn", null); return go("#/signin"); }
+  const period = params.get("period") || store.get("refPeriod") || "30d";
+  store.set("refPeriod", period);
+  const me = await api("/me");
+  const owner = me.user.role === "owner" && params.get("view") === "all";
+  const q = (extra) => `#/referrals?period=${period}${extra}`;
+  const tabs = `<div class="chips">${PERIODS.map(([k, l]) => `<a class="chip ${k === period ? "on" : ""}" href="#/referrals?period=${k}${owner ? "&view=all" : ""}">${t(l)}</a>`).join("")}</div>`;
+  const ownerTabs = me.user.role === "owner" ? `<div class="chips"><a class="chip ${owner ? "" : "on"}" href="${q("")}">${t("My links")}</a><a class="chip ${owner ? "on" : ""}" href="${q("&view=all")}">${t("Whole program")}</a></div>` : "";
+
+  if (owner) {
+    const a = await api(`/admin/referrals?period=${period}`);
+    view.innerHTML = `
+    <div class="row"><h1>${t("Referral program")}</h1>${ownerTabs}</div>${tabs}
+    ${funnelTiles(a.totals)}
+    ${dayChart(a.days, CLICKS(), t("Clicks by day"))}
+    ${dayChart(a.days, CONVERSIONS(), t("Sign-ups and payments by day"))}
+    <div class="grid2" style="margin-top:14px">${breakdown(t("Where clicks come from"), a.sources, sourceName)}${breakdown(t("Where people sign up"), a.channels, channelName)}</div>
+    <h2>${t("Top partners")}</h2>
+    <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Partner")}</th><th>${t("Links")}</th><th>${t("Clicks")}</th><th>${t("Sign-ups")}</th><th>${t("Paid")}</th><th>${t("Conversion")}</th><th>${t("Revenue")}</th></tr></thead>
+    <tbody>${a.topReferrers.map((r) => `<tr><td>${h(r.email)}</td><td>${r.links}</td><td>${r.funnel.clicks}</td><td>${r.funnel.signups}</td><td>${r.funnel.paidUsers}</td><td>${pct(r.funnel.paidUsers, r.funnel.signups)}</td><td>${h(revenueText(r.funnel.revenue))}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">${t("No data yet.")}</td></tr>`}</tbody></table></div>`;
+    wireCharts(view);
+    return;
+  }
+
+  const st = await api(`/referrals/stats?period=${period}`);
+  view.innerHTML = `
+  <div class="row"><h1>${t("Referral program")}</h1>${ownerTabs}</div>
+  <p class="muted">${tp(st.rewardDays, "When someone subscribes through your link, you both get {n} day of Pro.|When someone subscribes through your link, you both get {n} days of Pro.")} ${st.daysEarned ? tp(st.daysEarned, "You have earned {n} day.|You have earned {n} days.") : ""}</p>
+  ${tabs}
+  ${funnelTiles(st.totals)}
+  ${dayChart(st.days, CLICKS(), t("Clicks by day"))}
+  ${dayChart(st.days, CONVERSIONS(), t("Sign-ups and payments by day"))}
+
+  <h2>${t("Your links")}</h2>
+  <p class="muted">${t("Make a separate link for each place you share it, so you can see which one works best.")}</p>
+  <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Link")}</th><th>${t("Clicks")}</th><th>${t("Unique visitors")}</th><th>${t("Sign-ups")}</th><th>${t("Paid")}</th><th>${t("Conversion")}</th><th>${t("Revenue")}</th><th></th></tr></thead>
+  <tbody>${st.links.map((l) => `<tr>
+    <td><b>${h(linkName(l))}</b><div class="mono muted small">${h(l.webUrl)}</div>
+      <div class="linkbtns"><button class="btn small secondary" data-copy="${h(l.webUrl)}">${t("Copy link")}</button>${l.telegramUrl ? `<button class="btn small secondary" data-copy="${h(l.telegramUrl)}">${t("Copy Telegram link")}</button>` : ""}</div></td>
+    <td>${l.funnel.clicks}</td><td>${l.funnel.visitors}</td><td>${l.funnel.signups}</td><td>${l.funnel.paidUsers}</td>
+    <td title="${t("Paid of sign-ups")}">${pct(l.funnel.paidUsers, l.funnel.signups)}</td><td>${h(revenueText(l.funnel.revenue))}</td>
+    <td class="actions">${l.main ? "" : `<button class="link" data-rename="${h(l.id)}" data-name="${h(l.name)}">${t("Rename")}</button> <button class="link warnlink" data-archive="${h(l.id)}">${t("Archive")}</button>`}</td>
+  </tr>`).join("")}</tbody></table></div>
+
+  <form id="newlink" class="card newlink"><h3>${t("New link")}</h3>
+    <div class="formrow"><div><label for="ln">${t("Name, for example Instagram")}</label><input id="ln" maxlength="40" required></div>
+    <div><label for="lc">${t("Own code (optional)")}</label><input id="lc" maxlength="32" placeholder="ALEX-INSTA"></div>
+    <button class="btn" type="submit">${t("Create link")}</button></div>
+    <p class="muted small">${t("Tip: add ?utm_source=name to a link to see that source separately.")}</p>
+    <p id="lerr" class="warn"></p></form>
+
+  <div class="grid2" style="margin-top:14px">${breakdown(t("Where clicks come from"), st.sources, sourceName)}${breakdown(t("Where people sign up"), st.channels, channelName)}</div>
+
+  <h2>${t("People you invited")}</h2>
+  <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Who")}</th><th>${t("Link")}</th><th>${t("Joined")}</th><th>${t("Where")}</th><th>${t("Status")}</th><th>${t("Purchases")}</th></tr></thead>
+  <tbody>${st.recent.map((r) => `<tr><td>${h(r.who)}</td><td>${h(r.linkName === "Main link" ? t("Main link") : r.linkName)}</td><td>${h(date(r.joinedAt))}</td><td>${h(channelName(r.channel))}</td>
+    <td><span class="status ${r.status}">${{ registered: t("Signed up"), active: t("Pro active"), lapsed: t("Pro ended") }[r.status]}</span></td><td>${r.purchases}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">${t("No one yet. Share your link to get started.")}</td></tr>`}</tbody></table></div>`;
+
+  wireCharts(view);
+  for (const b of view.querySelectorAll("[data-copy]")) b.onclick = () => copyText(b, b.dataset.copy);
+  for (const b of view.querySelectorAll("[data-rename]")) b.onclick = async () => {
+    const name = prompt(t("New name"), b.dataset.name); if (!name) return;
+    try { await api("/referrals/links/" + b.dataset.rename, { method: "PATCH", body: { name } }); render(); } catch (e) { alert(e.message); }
+  };
+  for (const b of view.querySelectorAll("[data-archive]")) b.onclick = async () => {
+    if (!confirm(t("Archive this link? It stops counting new clicks, its statistics stay."))) return;
+    try { await api("/referrals/links/" + b.dataset.archive, { method: "DELETE" }); render(); } catch (e) { alert(e.message); }
+  };
+  document.getElementById("newlink").onsubmit = async (e) => {
+    e.preventDefault();
+    const err = document.getElementById("lerr"); err.textContent = "";
+    try {
+      await api("/referrals/links", { method: "POST", body: { name: document.getElementById("ln").value, code: document.getElementById("lc").value || null } });
+      render();
+    } catch (x) { err.textContent = x.message; }
+  };
+}
+
 /* ---------------- router ---------------- */
 
 async function render() {
@@ -285,6 +455,7 @@ async function render() {
     if (!site) site = await api("/site").catch(() => ({}));
     if (path === "/signin") return signin();
     if (path === "/account") return await account(params);
+    if (path === "/referrals") return await referrals(params);
     await home();
     if (location.hash === "#download") document.getElementById("download")?.scrollIntoView();
   } catch (e) {
@@ -293,4 +464,9 @@ async function render() {
 }
 
 window.addEventListener("hashchange", () => { if (location.hash !== "#download" && location.hash !== "#pricing") render(); });
+{
+  // A referral link (/r/<code>) lands here with ?ref=<code>; keep it until the person signs up.
+  const ref = new URLSearchParams(location.search).get("ref");
+  if (ref) store.set("ref", ref);
+}
 setLang(new URLSearchParams(location.search).get("lang") || store.get("lang") || "ru");

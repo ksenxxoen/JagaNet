@@ -1,6 +1,14 @@
 package dev.jaganet.server.http
 
 import dev.jaganet.api.CreateOrderReq
+import dev.jaganet.api.CreateReferralLinkReq
+import dev.jaganet.api.Protocols
+import dev.jaganet.api.ReferralPeriod
+import dev.jaganet.api.RenameReferralLinkReq
+import dev.jaganet.api.Role
+import dev.jaganet.server.forbidden
+import io.ktor.server.plugins.origin
+import io.ktor.server.routing.patch
 import dev.jaganet.api.Format
 import dev.jaganet.api.KeysRes
 import dev.jaganet.api.OkRes
@@ -70,6 +78,7 @@ fun Route.salesApi(s: Services) {
 /** The website (static files in resources/web), key links and the test checkout. */
 fun Route.website(s: Services) {
     staticResources("/", "web")
+    referralRedirect(s)
 
     get("/download/android") {
         val apk = s.site.apkFile() ?: throw notFound("The Android app isn't uploaded yet")
@@ -181,4 +190,51 @@ private class Pages(val lang: Lang) {
 ${bot?.let { """<a class="btn" href="https://t.me/${esc(it)}">${t("Back to Telegram")}</a>""" } ?: ""}</div>""")
 
     private fun jsString(v: String) = "'" + v.replace("\\", "\\\\").replace("'", "\\'") + "'"
+}
+
+private fun period(q: String?): ReferralPeriod =
+    ReferralPeriod.entries.firstOrNull { Protocols.json.encodeToString(ReferralPeriod.serializer(), it).trim('"') == q } ?: ReferralPeriod.D30
+
+/** /v1 endpoints of the referral program. */
+fun Route.referralApi(s: Services) {
+    get("/referrals/stats") {
+        val p = call.principal(s)
+        call.respond(s.referrals.stats(p.user.id, period(call.request.queryParameters["period"])))
+    }
+    post("/referrals/links") {
+        val p = call.principal(s)
+        val b = call.receive<CreateReferralLinkReq>()
+        call.respond(s.referrals.createLink(p.user.id, b.name, b.code))
+    }
+    patch("/referrals/links/{id}") {
+        s.referrals.rename(call.principal(s).user.id, call.parameters["id"]!!, call.receive<RenameReferralLinkReq>().name)
+        call.respond(OkRes())
+    }
+    delete("/referrals/links/{id}") {
+        s.referrals.archive(call.principal(s).user.id, call.parameters["id"]!!)
+        call.respond(OkRes())
+    }
+    get("/admin/referrals") {
+        val p = call.principal(s)
+        if (p.user.role != Role.OWNER) throw forbidden()
+        call.respond(s.referrals.admin(period(call.request.queryParameters["period"])))
+    }
+}
+
+/**
+ * A referral link: count the visit, remember nothing about the person but a hashed key
+ * (IP + browser) for unique visitors, then open the website with the code, which it keeps
+ * until sign-up.
+ */
+fun Route.referralRedirect(s: Services) {
+    get("/r/{code}") {
+        val q = call.request.queryParameters
+        val ip = call.request.headers["X-Forwarded-For"]?.substringBefore(',')?.trim() ?: call.request.origin.remoteHost
+        val ua = call.request.headers[HttpHeaders.UserAgent].orEmpty()
+        val referer = call.request.headers[HttpHeaders.Referrer]?.let { runCatching { java.net.URI(it).host }.getOrNull() }
+            ?.removePrefix("www.")?.takeIf { it != java.net.URI(s.ctx.cfg.publicUrl).host }
+        val code = s.referrals.click(call.parameters["code"]!!, "$ip|$ua", "web", q["utm_source"]?.takeIf { it.isNotBlank() } ?: referer)
+        val lang = Lang.of(q["lang"])?.let { "&lang=${it.code}" } ?: ""
+        call.respondRedirect(if (code != null) "/?ref=${java.net.URLEncoder.encode(code, "UTF-8")}$lang" else "/")
+    }
 }

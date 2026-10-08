@@ -79,4 +79,24 @@ internal val telegramStrings: List<S> = listOf(
         "Halte den Schlüssel privat. Wer ihn hat, nutzt dein Abo.",
     ),
     S("Open key page", "Открыть страницу ключа", "Schlüsselseite öffnen"),
+
+    // Referral program
+    S("Invite friends", "Пригласить друзей", "Freunde einladen"),
+    S("🎁 Invite friends", "🎁 Пригласить друзей", "🎁 Freunde einladen"),
+    S(
+        "Invite friends. When someone subscribes through your link, you both get {n} day of Pro.|Invite friends. When someone subscribes through your link, you both get {n} days of Pro.",
+        "Приглашайте друзей. Когда кто-то оформит подписку по вашей ссылке, вы оба получите {n} день Pro.|Приглашайте друзей. Когда кто-то оформит подписку по вашей ссылке, вы оба получите {n} дня Pro.|Приглашайте друзей. Когда кто-то оформит подписку по вашей ссылке, вы оба получите {n} дней Pro.",
+        "Lade Freunde ein. Wenn jemand über deinen Link ein Abo abschließt, bekommt ihr beide {n} Tag Pro.|Lade Freunde ein. Wenn jemand über deinen Link ein Abo abschließt, bekommt ihr beide {n} Tage Pro.",
+    ),
+    S("Your link", "Ваша ссылка", "Dein Link"),
+    S("Link to this bot", "Ссылка на этого бота", "Link zu diesem Bot"),
+    S("Clicks {n}", "Переходы {n}", "Klicks {n}"),
+    S("Sign-ups {n}", "Регистрации {n}", "Anmeldungen {n}"),
+    S("Paid {n}", "Оплатили {n}", "Bezahlt {n}"),
+    S(
+        "Detailed statistics and extra links for each campaign are in your account on the website.",
+        "Подробная статистика и отдельные ссылки для каждой кампании есть в личном кабинете на сайте.",
+        "Detaillierte Statistiken und eigene Links für jede Kampagne findest du in deinem Konto auf der Website.",
+    ),
+    S("Open statistics", "Открыть статистику", "Statistik öffnen"),
 )

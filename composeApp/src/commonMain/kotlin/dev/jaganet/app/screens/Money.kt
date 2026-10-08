@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -32,10 +35,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.jaganet.api.BillingSource
+import dev.jaganet.api.CreateReferralLinkReq
+import dev.jaganet.api.MoneyAmount
 import dev.jaganet.api.PaymentStatus
 import dev.jaganet.api.PlanId
 import dev.jaganet.api.Platform
 import dev.jaganet.api.ProductId
+import dev.jaganet.api.ReferralDay
+import dev.jaganet.api.ReferralLink
+import dev.jaganet.api.ReferralPeriod
+import dev.jaganet.api.ReferralStatsRes
+import dev.jaganet.api.ReferredStatus
+import dev.jaganet.api.ReferredUser
 import dev.jaganet.app.i18n.fBytes
 import dev.jaganet.app.i18n.fDate
 import dev.jaganet.app.i18n.fMoney
@@ -50,19 +61,23 @@ import dev.jaganet.app.ui.ButtonKind
 import dev.jaganet.app.ui.Card
 import dev.jaganet.app.ui.Divider
 import dev.jaganet.app.ui.ErrorNote
+import dev.jaganet.app.ui.Field
 import dev.jaganet.app.ui.Gap
 import dev.jaganet.app.ui.Ic
 import dev.jaganet.app.ui.Icon
 import dev.jaganet.app.ui.Load
 import dev.jaganet.app.ui.Loaded
+import dev.jaganet.app.ui.Progress
 import dev.jaganet.app.ui.Radio
 import dev.jaganet.app.ui.Screen
 import dev.jaganet.app.ui.SectionLabel
+import dev.jaganet.app.ui.Segmented
 import dev.jaganet.app.ui.T
 import dev.jaganet.app.ui.TS
 import dev.jaganet.app.ui.Title
 import dev.jaganet.app.ui.load
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @Composable
 fun PlansScreen(s: AppState) {
@@ -252,37 +267,317 @@ private fun DarkKV(k: String, v: String, modifier: Modifier, mono: Boolean = fal
     T(v, TS.Label, color = Color.White, mono = mono, modifier = Modifier.padding(top = 2.dp))
 }
 
+/* ---------- referral program ---------- */
+
 @Composable
 fun ReferralScreen(s: AppState) {
-    val refs = load(Unit) { s.api.referrals() }
-    var copied by remember { mutableStateOf(false) }
+    var period by remember { mutableStateOf(ReferralPeriod.D30) }
+    var version by remember { mutableStateOf(0) }
+    val stats = load(period, version, s.dataVersion) { s.api.referralStats(period) }
+    val reload: () -> Unit = { version++ }
     Screen(onBack = { s.router.back() }) {
         Gap(8.dp)
         Title(t("Give Pro, get Pro"))
-        Loaded(refs) { r ->
+        (stats as? Load.Ok)?.value?.let { r ->
             T(tp(r.rewardDays, "When a friend subscribes with your code, you both get {n} day of Pro for free.|When a friend subscribes with your code, you both get {n} days of Pro for free."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
-            Gap(20.dp)
-            Card(padding = 16.dp) {
-                T(t("Your code"), TS.Label, color = C.muted)
-                Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    T(r.code, TS.Plan, FontWeight.Medium, mono = true)
-                    Button(if (copied) t("Copied") else t("Copy"), { s.platform.copy(r.code); copied = true }, kind = ButtonKind.Secondary)
+            if (r.daysEarned > 0) T(tp(r.daysEarned, "{n} day of Pro earned|{n} days of Pro earned"), TS.Small, FontWeight.SemiBold, C.green, modifier = Modifier.padding(top = 4.dp))
+        }
+        Gap(18.dp)
+        Segmented(
+            listOf(ReferralPeriod.D7 to t("7 days"), ReferralPeriod.D30 to t("30 days"), ReferralPeriod.D90 to t("90 days"), ReferralPeriod.ALL to t("All time")),
+            period,
+        ) { period = it }
+        Gap(14.dp)
+        Loaded(stats) { r -> ReferralBody(s, r, reload) }
+    }
+}
+
+@Composable
+private fun ReferralBody(s: AppState, r: ReferralStatsRes, reload: () -> Unit) {
+    val f = r.totals
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(
+            listOf(t("Clicks") to f.clicks.toString(), t("Unique visitors") to f.visitors.toString()),
+            listOf(t("Sign-ups") to f.signups.toString(), t("Paid") to f.paidUsers.toString()),
+            listOf(t("Purchases") to f.purchases.toString(), t("Revenue") to fRevenue(f.revenue)),
+        ).forEach { row ->
+            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { (k, v) -> RefTile(k, v, Modifier.weight(1f).fillMaxHeight()) }
+            }
+        }
+        Card(padding = 14.dp) {
+            T(t("Conversion"), TS.Caption, color = C.muted)
+            Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                RefMini(t("Visitors to sign-ups"), pct(f.signups, f.visitors), Modifier.weight(1f), TS.Stat)
+                RefMini(t("Sign-ups to paid"), pct(f.paidUsers, f.signups), Modifier.weight(1f), TS.Stat)
+            }
+        }
+    }
+
+    SectionLabel(t("Clicks per day"))
+    Card(padding = 16.dp) { RefChart(r.days) }
+
+    SectionLabel(t("Your links"))
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        r.links.forEach { RefLinkCard(s, it, reload) }
+    }
+
+    SectionLabel(t("New link"))
+    RefNewLink(s, reload)
+
+    SectionLabel(t("Top sources"))
+    RefCounts(r.sources.map { sourceName(it.key) to it.count })
+
+    SectionLabel(t("Sign-up channels"))
+    RefCounts(r.channels.map { channelName(it.key) to it.count })
+
+    SectionLabel(t("Recent referrals"))
+    RefRecent(r.recent)
+}
+
+@Composable
+private fun RefTile(label: String, value: String, modifier: Modifier) = Card(modifier, padding = 14.dp) {
+    T(label, TS.Caption, color = C.muted, maxLines = 1)
+    T(value, if (value.length > 12) TS.Small else TS.Stat, FontWeight.Medium, mono = true, modifier = Modifier.padding(top = 4.dp), maxLines = 2)
+}
+
+@Composable
+private fun RefMini(label: String, value: String, modifier: Modifier, style: TS = TS.Body) = Column(modifier) {
+    T(label, TS.Caption, color = C.muted, maxLines = 1)
+    T(value, style, FontWeight.Medium, mono = true, modifier = Modifier.padding(top = 2.dp), maxLines = 2)
+}
+
+@Composable
+private fun RefLegend(color: Color, label: String) = Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(color))
+    T(label, TS.Label, color = C.muted)
+}
+
+/** Daily clicks (light bars) with sign-ups (dark part) and days with a payment (dot on top). */
+@Composable
+private fun RefChart(days: List<ReferralDay>) {
+    if (days.isEmpty()) {
+        T(t("No clicks in this period yet."), TS.Small, color = C.muted)
+        return
+    }
+    // Long periods are summed into at most 60 bars so they stay readable on a phone.
+    val per = (days.size + 59) / 60
+    val bars = days.chunked(per).map { c -> ReferralDay(c.first().day, c.sumOf { it.clicks }, c.sumOf { it.signups }, c.sumOf { it.paid }) }
+    val max = bars.maxOf { maxOf(it.clicks, it.signups) }.coerceAtLeast(1)
+    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        RefLegend(C.chartGreen, t("Clicks"))
+        RefLegend(C.green, t("Sign-ups"))
+        RefLegend(C.warn, t("Paid"))
+    }
+    Gap(12.dp)
+    Row(
+        Modifier.fillMaxWidth().height(124.dp).semantics { contentDescription = t("Clicks per day") },
+        horizontalArrangement = Arrangement.spacedBy(if (bars.size > 31) 1.dp else 3.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        bars.forEach { b ->
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Bottom, horizontalAlignment = Alignment.CenterHorizontally) {
+                if (b.paid > 0) Box(Modifier.padding(bottom = 3.dp).size(5.dp).clip(CircleShape).background(C.warn))
+                val h = 108f * b.clicks / max
+                val sh = 108f * b.signups / max
+                Box(
+                    Modifier.fillMaxWidth().height(maxOf(h, sh, 2f).dp).clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
+                        .background(if (b.clicks > 0) C.chartGreen else C.lineSoft),
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    if (b.signups > 0) Box(Modifier.fillMaxWidth().height(sh.coerceAtLeast(2f).dp).background(C.green))
                 }
             }
-            Gap(10.dp)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(t("Invited") to r.invited.toString(), t("Subscribed") to r.subscribed.toString(), t("Earned") to t("{n} d", "n" to r.daysEarned)).forEach { (k, v) ->
-                    Card(Modifier.weight(1f), padding = 14.dp) {
-                        T(k, TS.Caption, color = C.muted)
-                        T(v, TS.Stat, FontWeight.Medium, mono = true, modifier = Modifier.padding(top = 4.dp))
+        }
+    }
+    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        T(fDate(days.first().day), TS.Caption, color = C.muted)
+        T(fDate(days.last().day), TS.Caption, color = C.muted)
+    }
+}
+
+@Composable
+private fun RefLinkCard(s: AppState, l: ReferralLink, reload: () -> Unit) {
+    var copied by remember(l.id) { mutableStateOf<String?>(null) }
+    var renaming by remember(l.id) { mutableStateOf(false) }
+    var newName by remember(l.id) { mutableStateOf(l.name) }
+    var confirmArchive by remember(l.id) { mutableStateOf(false) }
+    val a = rememberAction()
+    val scope = rememberCoroutineScope()
+    val save = {
+        if (newName.isNotBlank() && !a.busy) scope.launch {
+            a.busy = true; a.error = null
+            try {
+                s.api.renameReferralLink(l.id, newName.trim())
+                renaming = false
+                reload()
+            } catch (e: Exception) {
+                a.error = e.message
+            } finally { a.busy = false }
+        }
+    }
+    val f = l.funnel
+    Card(padding = 16.dp) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            T(linkName(l.name), TS.Body, FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f))
+            T(l.code, TS.Label, color = C.muted, mono = true, maxLines = 1)
+        }
+        T(l.webUrl, TS.Caption, color = C.muted, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
+        Gap(12.dp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            RefMini(t("Clicks"), "${f.clicks}", Modifier.weight(1f))
+            RefMini(t("Visitors"), "${f.visitors}", Modifier.weight(1f))
+            RefMini(t("Sign-ups"), "${f.signups}", Modifier.weight(1f))
+        }
+        Gap(8.dp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            RefMini(t("Paid"), "${f.paidUsers}", Modifier.weight(1f))
+            RefMini(t("Purchases"), "${f.purchases}", Modifier.weight(1f))
+            RefMini(t("Revenue"), fRevenue(f.revenue), Modifier.weight(1f))
+        }
+        Gap(14.dp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(if (copied == "web") t("Copied") else t("Copy link"), { s.platform.copy(l.webUrl); copied = "web" }, Modifier.weight(1f), ButtonKind.Secondary)
+            Button(t("Share"), { s.platform.share(t("Join me on JagaNet: {url}", "url" to l.webUrl)) }, Modifier.weight(1f), ButtonKind.Secondary, icon = Ic.Share)
+        }
+        l.telegramUrl?.let { tg ->
+            Gap(8.dp)
+            Button(if (copied == "tg") t("Copied") else t("Copy Telegram link"), { s.platform.copy(tg); copied = "tg" }, Modifier.fillMaxWidth(), ButtonKind.Secondary)
+        }
+        if (!l.main) {
+            when {
+                renaming -> {
+                    Gap(14.dp)
+                    Field(t("Link name"), newName, { newName = it.take(40) }, "Instagram", onDone = { save() })
+                    Gap(10.dp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(t("Cancel"), { renaming = false; newName = l.name; a.error = null }, Modifier.weight(1f), ButtonKind.Secondary)
+                        Button(t("Save"), { save() }, Modifier.weight(1f), ButtonKind.Primary, enabled = newName.isNotBlank(), busy = a.busy)
                     }
                 }
+                confirmArchive -> {
+                    Gap(14.dp)
+                    T(t("Archive this link?"), TS.Body, FontWeight.SemiBold)
+                    T(t("The link stops working and leaves this list."), TS.Label, color = C.muted, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(t("Cancel"), { confirmArchive = false; a.error = null }, Modifier.weight(1f), ButtonKind.Secondary)
+                        Button(t("Archive"), {
+                            scope.launch {
+                                a.busy = true; a.error = null
+                                try {
+                                    s.api.archiveReferralLink(l.id)
+                                    confirmArchive = false
+                                    reload()
+                                } catch (e: Exception) {
+                                    a.error = e.message
+                                } finally { a.busy = false }
+                            }
+                        }, Modifier.weight(1f), ButtonKind.Danger, busy = a.busy)
+                    }
+                }
+                else -> Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(t("Rename"), { renaming = true; newName = l.name }, Modifier.weight(1f), ButtonKind.Ghost)
+                    Button(t("Archive"), { confirmArchive = true }, Modifier.weight(1f), ButtonKind.Danger)
+                }
             }
-            Gap(24.dp)
-            Button(t("Share invite link"), { s.platform.share(t("Join me on JagaNet: {url}", "url" to r.shareUrl)) }, Modifier.fillMaxWidth(), icon = Ic.Share)
+            ErrorNote(a.error)
         }
     }
 }
+
+@Composable
+private fun RefNewLink(s: AppState, reload: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var code by remember { mutableStateOf("") }
+    val a = rememberAction()
+    val scope = rememberCoroutineScope()
+    val create = {
+        if (name.isNotBlank() && !a.busy) scope.launch {
+            a.busy = true; a.error = null
+            try {
+                s.api.createReferralLink(CreateReferralLinkReq(name.trim(), code.trim().ifEmpty { null }))
+                name = ""; code = ""
+                reload()
+            } catch (e: Exception) {
+                a.error = e.message
+            } finally { a.busy = false }
+        }
+    }
+    Card(padding = 16.dp) {
+        T(t("Make a link for each place you share it, to see which works best."), TS.Label, color = C.muted)
+        Gap(12.dp)
+        Field(t("Link name"), name, { name = it.take(40) }, "Instagram")
+        Gap(10.dp)
+        Field(t("Custom code, optional"), code, { v -> code = v.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' || it == '-' }.take(32) }, "INSTA-2026", onDone = { create() })
+        T(t("3 to 32 Latin letters, digits or hyphens."), TS.Caption, color = C.muted, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
+        ErrorNote(a.error)
+        Gap(12.dp)
+        Button(t("Create link"), { create() }, Modifier.fillMaxWidth(), ButtonKind.Primary, icon = Ic.Plus, enabled = name.isNotBlank(), busy = a.busy)
+    }
+}
+
+@Composable
+private fun RefCounts(items: List<Pair<String, Int>>) = Card(padding = 16.dp) {
+    if (items.isEmpty()) T(t("No data for this period."), TS.Small, color = C.muted)
+    val max = items.maxOfOrNull { it.second }?.coerceAtLeast(1) ?: 1
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        items.forEach { (k, n) ->
+            Column {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    T(k, TS.Small, maxLines = 1, modifier = Modifier.weight(1f))
+                    T("$n", TS.Small, mono = true)
+                }
+                Gap(6.dp)
+                Progress(n.toFloat() / max)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RefRecent(list: List<ReferredUser>) {
+    var all by remember { mutableStateOf(false) }
+    val shown = if (all) list else list.take(8)
+    Card {
+        if (list.isEmpty()) T(t("No one has signed up with your links yet."), TS.Small, color = C.muted, modifier = Modifier.padding(16.dp))
+        shown.forEachIndexed { i, u ->
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    T(u.who, TS.Small, FontWeight.SemiBold, maxLines = 1)
+                    T(listOf(linkName(u.linkName), channelName(u.channel), fDate(u.joinedAt)).joinToString(", "), TS.Caption, color = C.muted, maxLines = 2, modifier = Modifier.padding(top = 2.dp))
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    val (label, bg, fg) = when (u.status) {
+                        ReferredStatus.ACTIVE -> Triple(t("Pro active"), C.greenTint, C.greenDark)
+                        ReferredStatus.LAPSED -> Triple(t("Pro ended"), C.lineSoft, C.muted)
+                        ReferredStatus.REGISTERED -> Triple(t("Signed up"), C.lineSoft, C.ink)
+                    }
+                    T(label, TS.Caption, FontWeight.SemiBold, fg, modifier = Modifier.background(bg, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
+                    if (u.purchases > 0) T(tp(u.purchases, "{n} purchase|{n} purchases"), TS.Caption, color = C.muted, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+            if (i < shown.lastIndex) Divider()
+        }
+        if (!all && list.size > shown.size) {
+            Divider()
+            T(
+                t("Show all"), TS.Label, FontWeight.SemiBold, C.green, align = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { all = true }.padding(14.dp),
+            )
+        }
+    }
+}
+
+/** The server names the automatic link "Main link"; the others carry the user's own names. */
+private fun linkName(name: String): String = if (name == "Main link") t("Main link") else name
+
+private fun sourceName(key: String): String = when (key) { "direct" -> t("Direct"); "telegram" -> t("Telegram"); else -> key }
+
+private fun channelName(key: String): String = when (key) { "website" -> t("Website"); "app" -> t("App"); "telegram" -> t("Telegram"); else -> key }
+
+private fun fRevenue(list: List<MoneyAmount>): String = if (list.isEmpty()) "-" else list.joinToString(", ") { fMoney(it.minor, it.currency) }
+
+private fun pct(part: Int, whole: Int): String = if (whole <= 0) "-" else "${(part * 100.0 / whole).roundToInt()}%"
 
 /** The list price in the interface language; falls back to the server's English label. */
 private fun productPrice(p: dev.jaganet.api.Product): String =

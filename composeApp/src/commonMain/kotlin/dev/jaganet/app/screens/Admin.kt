@@ -16,6 +16,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.jaganet.api.AdminOverviewRes
+import dev.jaganet.api.AdminReferralsRes
+import dev.jaganet.api.MoneyAmount
+import dev.jaganet.api.ReferralPeriod
 import dev.jaganet.app.i18n.fBytes
 import dev.jaganet.app.i18n.fDate
 import dev.jaganet.app.i18n.fDuration
@@ -28,7 +31,9 @@ import dev.jaganet.app.ui.Card
 import dev.jaganet.app.ui.Gap
 import dev.jaganet.app.ui.Ic
 import dev.jaganet.app.ui.Icon
+import dev.jaganet.app.ui.Load
 import dev.jaganet.app.ui.Loaded
+import dev.jaganet.app.ui.Loading
 import dev.jaganet.app.ui.Progress
 import dev.jaganet.app.ui.Screen
 import dev.jaganet.app.ui.T
@@ -40,12 +45,70 @@ import kotlin.math.roundToInt
 @Composable
 fun AdminScreen(s: AppState) {
     val data = load(s.dataVersion) { s.api.adminOverview() }
+    // Loaded on its own, so a failure here leaves the rest of the dashboard working.
+    val refs = load(s.dataVersion) { s.api.adminReferrals(ReferralPeriod.D30) }
     Screen(dark = true, onBack = { s.router.back() }) {
         T(t("OWNER ONLY"), TS.Caption, FontWeight.SemiBold, C.alert, letterSpacing = androidx.compose.ui.unit.TextUnit(0.08f, androidx.compose.ui.unit.TextUnitType.Em))
         Title(t("Business"), C.nightText)
         Loaded(data, dark = true) { Body(it) }
+        ReferralCard(refs)
     }
 }
+
+@Composable
+private fun ReferralCard(l: Load<AdminReferralsRes>) {
+    H(t("Referral program"))
+    when (l) {
+        is Load.Loading -> Loading(dark = true)
+        is Load.Failed -> T(l.message, TS.Label, color = C.alertText)
+        is Load.Ok -> {
+            val f = l.value.totals
+            Card(dark = true, padding = 16.dp) {
+                T(t("Last 30 days"), TS.Label, color = C.nightMuted)
+                listOf(
+                    listOf(t("Clicks") to "${f.clicks}", t("Unique visitors") to "${f.visitors}", t("Sign-ups") to "${f.signups}"),
+                    listOf(t("Paid") to "${f.paidUsers}", t("Purchases") to "${f.purchases}", t("Conversion") to pct(f.paidUsers, f.signups)),
+                ).forEach { row ->
+                    Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { (k, v) ->
+                            Column(Modifier.weight(1f)) {
+                                T(k, TS.Caption, color = C.nightMuted, maxLines = 1)
+                                T(v, TS.Stat, color = C.nightText, mono = true, modifier = Modifier.padding(top = 2.dp))
+                            }
+                        }
+                    }
+                }
+                Column(Modifier.padding(top = 12.dp)) {
+                    T(t("Revenue"), TS.Caption, color = C.nightMuted)
+                    T(revenue(f.revenue), TS.Body, color = C.nightText, mono = true, modifier = Modifier.padding(top = 2.dp))
+                }
+            }
+            val top = l.value.topReferrers.take(5)
+            H(t("Top referrers"))
+            Card(dark = true, padding = 16.dp) {
+                if (top.isEmpty()) T(t("No referrals yet."), TS.Small, color = C.nightMuted)
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    top.forEach { r ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(Modifier.weight(1f)) {
+                                T(r.email, TS.Small, color = C.nightText, maxLines = 1)
+                                T(
+                                    t("Sign-ups {signups}, paid {paid}", "signups" to r.funnel.signups, "paid" to r.funnel.paidUsers),
+                                    TS.Caption, color = C.nightMuted, modifier = Modifier.padding(top = 2.dp),
+                                )
+                            }
+                            T(revenue(r.funnel.revenue), TS.Small, color = C.nightText, mono = true, align = TextAlign.End, maxLines = 2)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun revenue(list: List<MoneyAmount>): String = if (list.isEmpty()) "-" else list.joinToString(", ") { fMoney(it.minor, it.currency) }
+
+private fun pct(part: Int, whole: Int): String = if (whole <= 0) "-" else "${(part * 100.0 / whole).roundToInt()}%"
 
 @Composable
 private fun H(text: String) = T(text, TS.Label, FontWeight.SemiBold, C.nightMuted, modifier = Modifier.padding(top = 22.dp, bottom = 10.dp))

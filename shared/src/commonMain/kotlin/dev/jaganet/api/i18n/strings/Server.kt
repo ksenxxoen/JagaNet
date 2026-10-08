@@ -87,4 +87,11 @@ internal val serverStrings: List<S> = listOf(
     S("Payment received", "Оплата получена", "Zahlung erhalten"),
     S("Your VPN key is waiting in the Telegram chat.", "Ваш VPN-ключ ждёт вас в чате Telegram.", "Dein VPN-Schlüssel wartet im Telegram-Chat."),
     S("Back to Telegram", "Вернуться в Telegram", "Zurück zu Telegram"),
+
+    // Referral links
+    S("Name must be 1 to 40 characters", "Название должно быть от 1 до 40 символов", "Der Name muss 1 bis 40 Zeichen lang sein"),
+    S("Code must be 3 to 32 letters, digits or hyphens", "Код должен содержать от 3 до 32 латинских букв, цифр или дефисов", "Der Code muss 3 bis 32 Buchstaben, Ziffern oder Bindestriche haben"),
+    S("You can have up to 50 links", "Можно создать до 50 ссылок", "Du kannst bis zu 50 Links haben"),
+    S("This code is taken", "Этот код уже занят", "Dieser Code ist schon vergeben"),
+    S("Link not found", "Ссылка не найдена", "Link nicht gefunden"),
 )

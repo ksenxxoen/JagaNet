@@ -72,7 +72,7 @@ class Services(val ctx: Ctx) {
     val traffic = Traffic(ctx, ent, tunnels)
     val stats = Stats(ctx)
     val billing = Billing(ctx)
-    val referrals = Referrals(ctx)
+    val referrals = Referrals(ctx) { bot?.username }
     val admin = Admin(ctx)
     val keys = Keys(ctx, tunnels)
     val payments = Payments(ctx, billing, keys)
@@ -210,6 +210,7 @@ fun Application.jaganet(s: Services) {
             post("/billing/google/rtdn") { s.billing.notImplementedStore() }
 
             get("/referrals") { call.respond(s.referrals.get(call.principal(s))) }
+            referralApi(s)
             salesApi(s)
             get("/admin/overview") {
                 call.owner()

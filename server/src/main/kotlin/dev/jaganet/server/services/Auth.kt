@@ -55,11 +55,11 @@ class AuthService(private val ctx: Ctx) {
             val used = sql.one("DELETE FROM otp_codes WHERE email=? AND code_hash=? AND attempts < ? RETURNING referral_code", email, h, OTP_MAX_ATTEMPTS)
                 ?: throw AppError(400, ErrorCode.INVALID_CODE, "Code expired, ask for a new one")
             val user = sql.one("SELECT * FROM users WHERE email=?", email) ?: run {
-                val referrer = used.strOrNull("referral_code")?.let { sql.one("SELECT id FROM users WHERE referral_code=?", it) }
+                val referrer = Referrals.resolve(sql, used.strOrNull("referral_code"))
                 val role = if (ctx.cfg.ownerEmail == email) "owner" else "user"
                 sql.one(
-                    "INSERT INTO users (email, role, referral_code, referred_by) VALUES (?,?,?,?::uuid) RETURNING *",
-                    email, role, Crypto.referralCode(email), referrer?.str("id"),
+                    "INSERT INTO users (email, role, referral_code, referred_by, referral_link_id) VALUES (?,?,?,?::uuid,?::uuid) RETURNING *",
+                    email, role, Crypto.referralCode(email), referrer?.userId, referrer?.linkId,
                 )!!
             }
             createSession(sql, user, device)

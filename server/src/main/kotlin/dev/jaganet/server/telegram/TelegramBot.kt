@@ -4,6 +4,7 @@ import dev.jaganet.api.AccessKey
 import dev.jaganet.api.Format
 import dev.jaganet.api.PlanId
 import dev.jaganet.api.ProductId
+import dev.jaganet.api.ReferralPeriod
 import dev.jaganet.api.i18n.I18n
 import dev.jaganet.api.i18n.Lang
 import dev.jaganet.server.AppError
@@ -15,6 +16,7 @@ import dev.jaganet.server.services.Crypto
 import dev.jaganet.server.services.Keys
 import dev.jaganet.server.services.Order
 import dev.jaganet.server.services.PaidListener
+import dev.jaganet.server.services.Referrals
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -97,11 +99,15 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
             val chat = m["chat"]!!.jsonObject["id"]!!.jsonPrimitive.long
             val text = m["text"]?.jsonPrimitive?.content?.trim().orEmpty()
             val cmd = text.substringBefore(' ').substringBefore('@').lowercase()
-            val who = who(from, chat, referral = text.substringAfter(' ', "").takeIf { cmd == "/start" && it.isNotBlank() })
+            val startCode = text.substringAfter(' ', "").trim().takeIf { cmd == "/start" && it.isNotBlank() }
+            // A referral link opened in Telegram (t.me/<bot>?start=<code>) counts as a click.
+            if (startCode != null) s.referrals.click(startCode, "tg:" + from["id"]!!.jsonPrimitive.long, "telegram", null)
+            val who = who(from, chat, referral = startCode)
             when (cmd) {
                 "/key" -> keyAction(who)
                 "/app" -> appAction(who)
                 "/status" -> statusAction(who)
+                "/invite" -> inviteAction(who)
                 "/language" -> languageAction(who)
                 else -> menu(who)
             }
@@ -116,6 +122,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
                 data == "key" -> keyAction(who)
                 data == "app" -> appAction(who)
                 data == "status" -> statusAction(who)
+                data == "invite" -> inviteAction(who)
                 data == "language" -> languageAction(who)
                 data.startsWith("lang:") -> {
                     val lang = Lang.of(data.removePrefix("lang:")) ?: Lang.DEFAULT
@@ -139,7 +146,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
             appendLine(u.t("Pro gives unlimited data and up to {n} devices. It works in the JagaNet app and in other VPN apps.", "n" to s.billing.plans().pro.deviceLimit))
             if (pro != null) { appendLine(); append(u.t("✅ Your Pro is active until {date}.", "date" to Format.date(pro.toString(), u.lang))) }
         }
-        send(u, text, buyButtons(u) + listOf(listOf(Btn(u.t("🔑 My VPN key"), "key"), Btn(u.t("📱 Get the app"), "app")), listOf(Btn("🌐 " + u.lang.nativeName, "language"))))
+        send(u, text, buyButtons(u) + listOf(listOf(Btn(u.t("🔑 My VPN key"), "key"), Btn(u.t("📱 Get the app"), "app")), listOf(Btn(u.t("🎁 Invite friends"), "invite"), Btn("🌐 " + u.lang.nativeName, "language"))))
     }
 
     private suspend fun languageAction(u: Who) =
@@ -195,6 +202,27 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
             },
             links,
         )
+    }
+
+    /** The user's main referral link and a 30-day summary; details are on the website. */
+    private suspend fun inviteAction(u: Who) {
+        val st = s.referrals.stats(u.userId, ReferralPeriod.D30)
+        val main = st.links.first { it.main }
+        val f = st.totals
+        val text = buildString {
+            appendLine(u.tp(st.rewardDays, "Invite friends. When someone subscribes through your link, you both get {n} day of Pro.|Invite friends. When someone subscribes through your link, you both get {n} days of Pro."))
+            appendLine()
+            appendLine(u.t("Your link"))
+            appendLine(main.webUrl)
+            main.telegramUrl?.let { appendLine(u.t("Link to this bot")); appendLine(it) }
+            appendLine()
+            appendLine(u.t("Last 30 days"))
+            appendLine(u.t("Clicks {n}", "n" to f.clicks))
+            appendLine(u.t("Sign-ups {n}", "n" to f.signups))
+            appendLine(u.t("Paid {n}", "n" to f.paidUsers))
+            append(u.t("Detailed statistics and extra links for each campaign are in your account on the website."))
+        }
+        send(u, text, listOf(listOf(Btn(u.t("Open statistics"), url = "${ctx.cfg.publicUrl.trimEnd('/')}/?lang=${u.lang.code}#/referrals"))))
     }
 
     private suspend fun statusAction(u: Who) {
@@ -260,11 +288,11 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
         val row = ctx.db.tx { sql ->
             sql.one("SELECT id, lang FROM users WHERE telegram_id=?", tgId) ?: run {
                 val email = "tg$tgId@telegram.invalid"
-                val referrer = referral?.uppercase()?.let { sql.one("SELECT id FROM users WHERE referral_code=?", it) }?.str("id")
+                val referrer = Referrals.resolve(sql, referral)
                 sql.one(
-                    """INSERT INTO users (email, referral_code, referred_by, telegram_id) VALUES (?,?,?::uuid,?)
+                    """INSERT INTO users (email, referral_code, referred_by, referral_link_id, telegram_id) VALUES (?,?,?::uuid,?::uuid,?)
                        ON CONFLICT (email) DO UPDATE SET telegram_id=EXCLUDED.telegram_id RETURNING id, lang""",
-                    email, Crypto.referralCode("tg@x"), referrer, tgId,
+                    email, Crypto.referralCode("tg@x"), referrer?.userId, referrer?.linkId, tgId,
                 )!!
             }
         }
@@ -298,6 +326,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
             "key" to "My VPN key",
             "app" to "Get the app",
             "status" to "My subscription",
+            "invite" to "Invite friends",
             "language" to "Language",
         )
     }

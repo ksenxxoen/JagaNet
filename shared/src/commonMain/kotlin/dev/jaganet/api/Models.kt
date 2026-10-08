@@ -217,6 +217,108 @@ data class GoogleVerifyReq(val productId: ProductId, val purchaseToken: String)
 @Serializable
 data class ReferralRes(val code: String, val invited: Int, val subscribed: Int, val rewardDays: Int, val daysEarned: Int, val shareUrl: String)
 
+/* ---------- referral program: links and statistics ---------- */
+
+@Serializable
+enum class ReferralPeriod { @SerialName("7d") D7, @SerialName("30d") D30, @SerialName("90d") D90, @SerialName("all") ALL }
+
+@Serializable
+data class MoneyAmount(val minor: Long, val currency: String)
+
+/** The funnel for a link, a user or the whole program, within a period. */
+@Serializable
+data class Funnel(
+    /** Link opened (website visit or Telegram /start). */
+    val clicks: Int = 0,
+    /** Distinct visitors among the clicks. */
+    val visitors: Int = 0,
+    /** New accounts that came through the link. */
+    val signups: Int = 0,
+    /** Of those, people who paid for the first time in the period. */
+    val paidUsers: Int = 0,
+    /** All paid purchases by referred people in the period, renewals included. */
+    val purchases: Int = 0,
+    /** Website and Telegram payments by referred people, per currency. Store purchases have no amount here. */
+    val revenue: List<MoneyAmount> = emptyList(),
+)
+
+@Serializable
+data class ReferralLink(
+    val id: String,
+    /** "Main link" for the automatic one (translate it), else the user's own name. */
+    val name: String,
+    val code: String,
+    val main: Boolean,
+    val webUrl: String,
+    /** Opens the Telegram bot with this code, when the bot is on. */
+    val telegramUrl: String? = null,
+    val createdAt: String,
+    val funnel: Funnel,
+)
+
+@Serializable
+data class ReferralDay(val day: String, val clicks: Int, val signups: Int, val paid: Int)
+
+@Serializable
+data class CountBy(val key: String, val count: Int)
+
+@Serializable
+enum class ReferredStatus {
+    /** Signed up, never paid. */
+    @SerialName("registered") REGISTERED,
+    /** Has Pro now. */
+    @SerialName("active") ACTIVE,
+    /** Paid before, Pro has ended. */
+    @SerialName("lapsed") LAPSED,
+}
+
+@Serializable
+data class ReferredUser(
+    /** Masked: "al***@gmail.com", or "Telegram". */
+    val who: String,
+    val linkName: String,
+    val joinedAt: String,
+    /** "website", "app" or "telegram". */
+    val channel: String,
+    val status: ReferredStatus,
+    val purchases: Int,
+)
+
+@Serializable
+data class ReferralStatsRes(
+    val period: ReferralPeriod,
+    val totals: Funnel,
+    val days: List<ReferralDay>,
+    val links: List<ReferralLink>,
+    /** Where clicks came from: utm_source or referring site; "direct" when unknown, "telegram" for the bot. */
+    val sources: List<CountBy>,
+    /** Sign-ups by where they signed up: "website", "app", "telegram". */
+    val channels: List<CountBy>,
+    val recent: List<ReferredUser>,
+    val rewardDays: Int,
+    val daysEarned: Int,
+)
+
+@Serializable
+data class CreateReferralLinkReq(val name: String, /** Optional custom code, 3 to 32 letters, digits or "-". */ val code: String? = null)
+
+@Serializable
+data class RenameReferralLinkReq(val name: String)
+
+@Serializable
+data class TopReferrer(val email: String, val links: Int, val funnel: Funnel)
+
+/** Owner view of the whole program. */
+@Serializable
+data class AdminReferralsRes(
+    val period: ReferralPeriod,
+    val totals: Funnel,
+    val days: List<ReferralDay>,
+    val sources: List<CountBy>,
+    val channels: List<CountBy>,
+    val topReferrers: List<TopReferrer>,
+)
+
 /* ---------- owner dashboard ---------- */
 
 @Serializable

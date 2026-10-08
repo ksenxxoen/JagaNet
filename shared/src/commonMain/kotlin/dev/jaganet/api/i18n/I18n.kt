@@ -6,6 +6,7 @@ import dev.jaganet.api.i18n.strings.commonStrings
 import dev.jaganet.api.i18n.strings.devicesStrings
 import dev.jaganet.api.i18n.strings.homeStrings
 import dev.jaganet.api.i18n.strings.moneyStrings
+import dev.jaganet.api.i18n.strings.referralStrings
 import dev.jaganet.api.i18n.strings.serverStrings
 import dev.jaganet.api.i18n.strings.settingsStrings
 import dev.jaganet.api.i18n.strings.statsStrings
@@ -40,7 +41,7 @@ object I18n {
     /** Every text of every product (apps, website, Telegram bot, server pages and errors). */
     val all: List<S> by lazy {
         commonStrings + authStrings + homeStrings + devicesStrings + statsStrings + moneyStrings +
-            settingsStrings + adminStrings + serverStrings + telegramStrings + webStrings
+            settingsStrings + adminStrings + serverStrings + telegramStrings + webStrings + referralStrings
     }
 
     private val tables: Map<Lang, Map<String, String>> by lazy {
