@@ -16,8 +16,6 @@ fun main() {
     val env = mapOf(
         "JAGANET_MODE" to "simulation",
         "OWNER_EMAIL" to "owner@jaganet.dev",
-        "PRICE_MONTHLY_MINOR" to "499",
-        "PRICE_YEARLY_MINOR" to "3999",
     ) + System.getenv()
     val cfg = Config.load(env)
     val pg = Embedded.start(env["SIM_DATA_DIR"]?.let(::File))

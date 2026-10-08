@@ -62,7 +62,7 @@ fun Route.salesApi(s: Services) {
     }
     post("/orders") {
         val p = call.principal(s)
-        call.respond(s.payments.create(p.user.id, call.receive<CreateOrderReq>().productId, Channel.WEB))
+        call.respond(s.payments.create(p.user.id, call.receive<CreateOrderReq>().productId, Channel.WEB, call.apiLang()))
     }
     get("/orders/{id}") { call.respond(s.payments.getFor(call.principal(s).user.id, call.parameters["id"]!!)) }
 }

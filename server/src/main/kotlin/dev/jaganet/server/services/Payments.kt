@@ -5,6 +5,7 @@ import dev.jaganet.api.Format
 import dev.jaganet.api.OrderRes
 import dev.jaganet.api.OrderStatus
 import dev.jaganet.api.ProductId
+import dev.jaganet.api.i18n.Lang
 import dev.jaganet.server.AppError
 import dev.jaganet.server.Ctx
 import dev.jaganet.server.db.Row
@@ -63,19 +64,16 @@ class Payments(private val ctx: Ctx, private val billing: Billing, private val k
     val provider: PaymentProvider? get() = ctx.cfg.paymentProvider?.let { providers[it] }
     val isTest get() = provider?.id == "test"
 
-    private fun price(p: ProductId): Long? = when (p) {
-        ProductId.PRO_MONTHLY -> ctx.cfg.plans.priceMonthlyMinor
-        ProductId.PRO_YEARLY -> ctx.cfg.plans.priceYearlyMinor
-    }
-
-    suspend fun create(userId: String, productId: ProductId, channel: Channel): OrderRes {
+    /** An order in the buyer's currency: rubles for Russian, euros for German and English. */
+    suspend fun create(userId: String, productId: ProductId, channel: Channel, lang: Lang = Lang.DEFAULT): OrderRes {
         val provider = provider ?: throw AppError(501, ErrorCode.NOT_IMPLEMENTED, "Payments are not set up yet")
-        val amount = price(productId) ?: throw AppError(501, ErrorCode.NOT_IMPLEMENTED, "No price set for this plan")
+        val currency = ctx.cfg.plans.currencyFor(lang)
+        val amount = ctx.cfg.plans.price(productId, currency) ?: throw AppError(501, ErrorCode.NOT_IMPLEMENTED, "No price set for this plan")
         val row = ctx.db.run { sql ->
             sql.one(
                 """INSERT INTO orders (user_id, product_id, channel, provider, amount_minor, currency)
                    VALUES (?::uuid,?,?,?,?,?) RETURNING *""",
-                userId, productId.name.lowercase(), channel.id, provider.id, amount, ctx.cfg.plans.currency,
+                userId, productId.name.lowercase(), channel.id, provider.id, amount, currency,
             )!!
         }
         return res(row.toOrder())

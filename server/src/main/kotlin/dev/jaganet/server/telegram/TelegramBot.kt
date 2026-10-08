@@ -148,11 +148,11 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
     private suspend fun buyAction(u: Who, product: String) {
         val id = ProductId.entries.firstOrNull { it.name.equals(product, true) } ?: return menu(u)
         val order = try {
-            s.payments.create(u.userId, id, Channel.TELEGRAM)
+            s.payments.create(u.userId, id, Channel.TELEGRAM, u.lang)
         } catch (e: AppError) {
             return send(u, u.t("Sorry, buying isn't available right now.") + "\n" + translate(u.lang, e.message ?: "", e.args))
         }
-        val price = Format.money(price(id) ?: 0, ctx.cfg.plans.currency, u.lang)
+        val price = Format.money(price(id, u.lang) ?: 0, ctx.cfg.plans.currencyFor(u.lang), u.lang)
         val text = buildString {
             appendLine(u.t("{product} for {price}", "product" to productName(id, u.lang), "price" to price))
             append(u.t("Tap the button to pay. Your VPN key arrives here right after."))
@@ -243,10 +243,10 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
 
     /* ---------------- helpers ---------------- */
 
-    private fun price(id: ProductId) = when (id) { ProductId.PRO_MONTHLY -> ctx.cfg.plans.priceMonthlyMinor; ProductId.PRO_YEARLY -> ctx.cfg.plans.priceYearlyMinor }
+    private fun price(id: ProductId, lang: Lang) = ctx.cfg.plans.let { it.price(id, it.currencyFor(lang)) }
 
     private fun buyButtons(u: Who): List<List<Btn>> = ProductId.entries.sortedByDescending { it.periodDays }.mapNotNull { id ->
-        price(id)?.let { listOf(Btn(u.t("{product} for {price}", "product" to productName(id, u.lang), "price" to Format.money(it, ctx.cfg.plans.currency, u.lang)), data = "buy:${id.name.lowercase()}")) }
+        price(id, u.lang)?.let { listOf(Btn(u.t("{product} for {price}", "product" to productName(id, u.lang), "price" to Format.money(it, ctx.cfg.plans.currencyFor(u.lang), u.lang)), data = "buy:${id.name.lowercase()}")) }
     }
 
     /** Pro expiry, or null on the free plan. */

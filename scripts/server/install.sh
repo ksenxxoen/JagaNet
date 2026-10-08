@@ -221,9 +221,6 @@ TEST_SHOW_SIGNIN_CODES=$SHOW_CODES
 FREE_MONTHLY_GB=10
 FREE_DEVICE_LIMIT=1
 PRO_DEVICE_LIMIT=5
-CURRENCY=USD
-PRICE_MONTHLY_MINOR=499
-PRICE_YEARLY_MINOR=3999
 EOF
   chmod 640 "$ENV_FILE"
 fi
@@ -234,6 +231,12 @@ env_default() { grep -q "^$1=" "$ENV_FILE" || echo "$1=$2" >> "$ENV_FILE"; }
 env_set PROTOCOLS "$PROTOCOL"
 # Website / Telegram checkout. "test" = built-in test checkout, no real money.
 env_default PAYMENT_PROVIDER test
+# Prices in kopecks / cents. Russian pays in rubles, German and English in euros.
+sed -i '/^CURRENCY=/d; /^PRICE_MONTHLY_MINOR=/d; /^PRICE_YEARLY_MINOR=/d' "$ENV_FILE"
+env_default PRICE_RUB_MONTHLY 29900
+env_default PRICE_RUB_YEARLY 249000
+env_default PRICE_EUR_MONTHLY 499
+env_default PRICE_EUR_YEARLY 3999
 env_default DOWNLOADS_DIR "$APP_DIR/downloads"
 if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then env_set TELEGRAM_BOT_TOKEN "$TELEGRAM_BOT_TOKEN"; fi
 mkdir -p "$APP_DIR/downloads" && chmod 755 "$APP_DIR/downloads"

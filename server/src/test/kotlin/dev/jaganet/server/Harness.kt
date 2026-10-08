@@ -37,7 +37,7 @@ fun key(n: Int): String = Base64.getEncoder().encodeToString(ByteArray(32) { n.t
 class Harness(val b: ApplicationTestBuilder) {
     var clock: Instant = Instant.parse("2026-10-15T12:00:00Z")
     val mail = mutableMapOf<String, String>()
-    val cfg = Config.load(mapOf("JAGANET_MODE" to "test", "OWNER_EMAIL" to "owner@test.dev", "EXPOSE_OTP" to "0", "PRICE_MONTHLY_MINOR" to "500", "PRICE_YEARLY_MINOR" to "4800"))
+    val cfg = Config.load(mapOf("JAGANET_MODE" to "test", "OWNER_EMAIL" to "owner@test.dev", "EXPOSE_OTP" to "0", "PRICE_RUB_MONTHLY" to "30000", "PRICE_RUB_YEARLY" to "250000", "PRICE_EUR_MONTHLY" to "500", "PRICE_EUR_YEARLY" to "4800"))
     val drivers = SimulatedDriver.registry { clock }
     val ctx = Ctx(cfg, TestPg.freshDb(), drivers, { e, c -> mail[e] = c }, { clock })
     val services = Services(ctx)

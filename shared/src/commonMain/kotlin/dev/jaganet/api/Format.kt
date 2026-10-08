@@ -87,8 +87,11 @@ object Format {
     /** "$4.99" in English, "4,99 $" in Russian and German. */
     fun money(minor: Long, currency: String, lang: Lang = Lang.EN): String {
         val symbol = when (currency) { "USD" -> "$"; "EUR" -> "€"; "GBP" -> "£"; "RUB" -> "₽"; else -> currency }
-        val whole = minor / 100
         val cents = (minor % 100).toString().padStart(2, '0')
+        // Thousands: "2 490 ₽" in Russian, "1.290,00 €" in German, "1,290.00" in English.
+        val whole = (minor / 100).toString().reversed().chunked(3).joinToString(
+            when (lang) { Lang.RU -> "\u00A0"; Lang.DE -> "."; Lang.EN -> "," },
+        ).reversed()
         return when {
             lang == Lang.EN && symbol.length == 1 -> "$symbol$whole.$cents"
             lang == Lang.EN -> "$whole.$cents $symbol"

@@ -2,6 +2,7 @@ package dev.jaganet.app.demo
 
 import dev.jaganet.api.AdminOverviewRes
 import dev.jaganet.api.BillingSource
+import dev.jaganet.api.Format
 import dev.jaganet.api.i18n.I18n
 import dev.jaganet.api.i18n.Lang
 import dev.jaganet.api.ConnectionEventReq
@@ -219,6 +220,11 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
     private class ApiError(val status: HttpStatusCode, val code: ErrorCode, message: String, val n: Int? = null) : Exception(message)
 
     /** [msg] is an English server message (translation key); [n] the count for plural messages. */
+    private fun langOf(req: HttpRequestData) = Lang.of(req.headers[HttpHeaders.AcceptLanguage]) ?: Lang.DEFAULT
+
+    /** Like the real server: rubles for Russian, euros otherwise. (currency, monthly, yearly) in minor units. */
+    private fun prices(lang: Lang): Triple<String, Long, Long> = if (lang == Lang.RU) Triple("RUB", 29_900L, 249_000L) else Triple("EUR", 499L, 3_999L)
+
     private fun err(status: HttpStatusCode, code: ErrorCode, msg: String, n: Int? = null): Nothing = throw ApiError(status, code, msg, n)
 
     val engine = MockEngine { req -> handle(req) }
@@ -350,10 +356,12 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
                 return stats(u.id, p) to StatsRes.serializer()
             }
             method == HttpMethod.Get && path == "billing/plans" -> return PlansRes(
-                listOf(
-                    Product(ProductId.PRO_YEARLY, "Pro yearly", "year", "$39.99/yr", "jaganet.pro.yearly", "pro_yearly", 3999, "USD"),
-                    Product(ProductId.PRO_MONTHLY, "Pro monthly", "month", "$4.99/mo", "jaganet.pro.monthly", "pro_monthly", 499, "USD"),
-                ),
+                prices(langOf(req)).let { (cur, monthly, yearly) ->
+                    listOf(
+                        Product(ProductId.PRO_YEARLY, "Pro yearly", "year", Format.money(yearly, cur, langOf(req)) + "/yr", "jaganet.pro.yearly", "pro_yearly", yearly, cur),
+                        Product(ProductId.PRO_MONTHLY, "Pro monthly", "month", Format.money(monthly, cur, langOf(req)) + "/mo", "jaganet.pro.monthly", "pro_monthly", monthly, cur),
+                    )
+                },
                 FreePlan(10_000_000_000, 1), ProPlan(5),
             ) to PlansRes.serializer()
             method == HttpMethod.Post && path == "billing/dev/purchase" -> {
@@ -369,20 +377,21 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
                 return ReferralRes(u.code, u.invited, u.subscribed, 30, u.daysEarned, "https://jaganet.dev/r/${u.code}") to ReferralRes.serializer()
             method == HttpMethod.Get && path == "admin/overview" -> {
                 if (u.role != Role.OWNER) err(HttpStatusCode.Forbidden, ErrorCode.FORBIDDEN, "Not allowed")
-                return admin() to AdminOverviewRes.serializer()
+                return admin(langOf(req)) to AdminOverviewRes.serializer()
             }
         }
         err(HttpStatusCode.NotFound, ErrorCode.NOT_FOUND, "Not found")
     }
 
-    private fun admin(): AdminOverviewRes {
+    private fun admin(lang: Lang): AdminOverviewRes {
+        val (cur, pm, py) = prices(lang)
         val paying = 12 + users.count { it.plan == PlanId.PRO && it.source == BillingSource.DEV && it.email != "alex@example.com" }
         val free = 60 + users.count { it.plan == PlanId.FREE }
         val today = now().epochSeconds / 86400
         val week = listOf(2, 1, 3, 1, 0, 2, 3)
         return AdminOverviewRes(
             Revenue(
-                mrrMinor = 9 * 3999 / 12 + 4 * 499L, currency = "USD", paying = paying, free = free,
+                mrrMinor = 9 * py / 12 + 4 * pm, currency = cur, paying = paying, free = free,
                 conversion = paying.toDouble() / (paying + free), newSubsThisWeek = week.sum(), cancelledThisMonth = 3,
                 yearly = 9, monthly = 4, fromReferrals = 2,
                 newPayingLast7Days = week.mapIndexed { i, c -> DayCount(Instant.fromEpochSeconds((today - 6 + i) * 86400).toString().take(10), c) },

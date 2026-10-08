@@ -176,7 +176,8 @@ class BillingTest {
 
         val r = signIn("owner@test.dev").api.adminOverview().revenue
         assertEquals(listOf(1, 1, 1, 1, 1), listOf(r.paying, r.yearly, r.monthly, r.fromReferrals, r.newSubsThisWeek))
-        assertEquals(500L + 4800 / 12, r.mrrMinor)
+        assertEquals(30000L + 250000 / 12, r.mrrMinor)
+        assertEquals("RUB", r.currency)
     }
 
     @Test fun `refuses store purchases until verification is implemented`() = harness {

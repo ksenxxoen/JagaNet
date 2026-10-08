@@ -7,6 +7,7 @@ import dev.jaganet.api.PlansRes
 import dev.jaganet.api.ProPlan
 import dev.jaganet.api.Product
 import dev.jaganet.api.ProductId
+import dev.jaganet.api.i18n.Lang
 import dev.jaganet.server.AppError
 import dev.jaganet.server.Ctx
 import dev.jaganet.server.Mode
@@ -15,13 +16,17 @@ import java.time.Duration
 import java.time.Instant
 
 class Billing(private val ctx: Ctx) {
-    fun plans(): PlansRes {
+    /** Plans with prices in the currency of [lang] (rubles for Russian, euros otherwise). */
+    fun plans(lang: Lang = Lang.DEFAULT): PlansRes {
         val p = ctx.cfg.plans
-        fun price(minor: Long?, per: String) = (minor?.let { Format.money(it, p.currency) } ?: "[PRICE]") + "/$per"
+        val cur = p.currencyFor(lang)
+        val yearly = p.price(ProductId.PRO_YEARLY, cur)
+        val monthly = p.price(ProductId.PRO_MONTHLY, cur)
+        fun price(minor: Long?, per: String) = (minor?.let { Format.money(it, cur, lang) } ?: "-") + "/$per"
         return PlansRes(
             products = listOf(
-                Product(ProductId.PRO_YEARLY, "Pro yearly", "year", price(p.priceYearlyMinor, "yr"), "jaganet.pro.yearly", "pro_yearly", p.priceYearlyMinor, p.currency),
-                Product(ProductId.PRO_MONTHLY, "Pro monthly", "month", price(p.priceMonthlyMinor, "mo"), "jaganet.pro.monthly", "pro_monthly", p.priceMonthlyMinor, p.currency),
+                Product(ProductId.PRO_YEARLY, "Pro yearly", "year", price(yearly, "yr"), "jaganet.pro.yearly", "pro_yearly", yearly, cur),
+                Product(ProductId.PRO_MONTHLY, "Pro monthly", "month", price(monthly, "mo"), "jaganet.pro.monthly", "pro_monthly", monthly, cur),
             ),
             free = FreePlan(p.freeMonthlyBytes, p.freeDeviceLimit),
             pro = ProPlan(p.proDeviceLimit),

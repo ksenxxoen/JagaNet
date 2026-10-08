@@ -19,6 +19,8 @@ class FormatTest {
         assertEquals("5. Oktober 2026", Format.date("2026-10-05T12:00:00Z", Lang.DE))
         assertEquals("1,4 ГБ", Format.bytes(1_384_000_000, Lang.RU))
         assertEquals("39,99 $", Format.money(3999, "USD", Lang.RU))
+        assertEquals("2\u00A0490 ₽", Format.money(249_000, "RUB", Lang.RU))
+        assertEquals("1.290,00 €", Format.money(129_000, "EUR", Lang.DE))
         assertEquals("1 ч 05 мин", Format.duration(3900, Lang.RU))
         assertEquals("21 устройство", I18n.plural(Lang.RU, 21, "{n} device|{n} devices"))
         assertEquals("3 устройства", I18n.plural(Lang.RU, 3, "{n} device|{n} devices"))

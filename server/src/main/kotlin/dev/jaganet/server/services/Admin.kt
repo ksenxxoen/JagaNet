@@ -2,6 +2,8 @@ package dev.jaganet.server.services
 
 import com.sun.management.OperatingSystemMXBean
 import dev.jaganet.api.AdminOverviewRes
+import dev.jaganet.api.ProductId
+import dev.jaganet.api.i18n.Lang
 import dev.jaganet.api.DayCount
 import dev.jaganet.api.Revenue
 import dev.jaganet.api.ServerHealth
@@ -16,7 +18,8 @@ private const val ACTIVE = "status='active' AND started_at <= ? AND expires_at >
 
 /** Owner dashboard. Business numbers from the DB; host numbers from this machine for now. */
 class Admin(private val ctx: Ctx) {
-    suspend fun overview(): AdminOverviewRes = ctx.db.run { sql ->
+    /** Revenue in the owner's language currency (rubles for Russian, euros otherwise). */
+    suspend fun overview(lang: Lang = Lang.DEFAULT): AdminOverviewRes = ctx.db.run { sql ->
         val now = ctx.now()
         fun count(where: String, vararg p: Any?) = sql.one("SELECT count(DISTINCT user_id)::int AS n FROM subscriptions WHERE $where", *p)!!.int("n")
         val paying = count("$ACTIVE AND $PAID", now, now)
@@ -40,7 +43,8 @@ class Admin(private val ctx: Ctx) {
         val last7 = (6 downTo 0).map { today.minusDays(it.toLong()) }.map { DayCount(it.toString(), daily[it] ?: 0) }
 
         val p = ctx.cfg.plans
-        val mrr = monthly * (p.priceMonthlyMinor ?: 0) + yearly * (p.priceYearlyMinor ?: 0) / 12
+        val cur = p.currencyFor(lang)
+        val mrr = monthly * (p.price(ProductId.PRO_MONTHLY, cur) ?: 0) + yearly * (p.price(ProductId.PRO_YEARLY, cur) ?: 0) / 12
 
         // Single-node view for now: the first active server.
         val server = sql.one(
@@ -65,7 +69,7 @@ class Admin(private val ctx: Ctx) {
 
         AdminOverviewRes(
             revenue = Revenue(
-                mrrMinor = mrr, currency = p.currency, paying = paying, free = total - paying,
+                mrrMinor = mrr, currency = cur, paying = paying, free = total - paying,
                 conversion = if (total > 0) paying.toDouble() / total else 0.0,
                 newSubsThisWeek = newSubs, cancelledThisMonth = cancelled, yearly = yearly, monthly = monthly,
                 fromReferrals = fromRef, newPayingLast7Days = last7,

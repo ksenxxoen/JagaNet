@@ -39,7 +39,8 @@ function date(iso) {
 function money(minor, currency) {
   if (minor == null) return "";
   const sym = { USD: "$", EUR: "€", GBP: "£", RUB: "₽" }[currency] || currency;
-  const whole = Math.floor(minor / 100), cents = String(minor % 100).padStart(2, "0");
+  const cents = String(minor % 100).padStart(2, "0");
+  const whole = String(Math.floor(minor / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, { ru: "\u00A0", de: ".", en: "," }[lang]);
   if (lang === "en") return sym.length === 1 ? `${sym}${whole}.${cents}` : `${whole}.${cents} ${sym}`;
   return currency === "RUB" && cents === "00" ? `${whole} ${sym}` : `${whole},${cents} ${sym}`;
 }

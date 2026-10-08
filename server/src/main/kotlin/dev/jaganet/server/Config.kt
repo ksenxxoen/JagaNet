@@ -1,5 +1,8 @@
 package dev.jaganet.server
 
+import dev.jaganet.api.ProductId
+import dev.jaganet.api.i18n.Lang
+
 enum class Mode { PRODUCTION, SIMULATION, TEST }
 
 data class Plans(
@@ -7,11 +10,19 @@ data class Plans(
     val freeDeviceLimit: Int,
     val proDeviceLimit: Int,
     val referralRewardDays: Int,
-    val currency: String,
-    /** List prices in minor units, only for the owner's MRR figure. Store prices are authoritative. */
-    val priceMonthlyMinor: Long?,
-    val priceYearlyMinor: Long?,
-)
+    /** List prices per currency ("RUB", "EUR"). In-app purchases are priced by the stores. */
+    val prices: Map<String, Price>,
+) {
+    /** Russian pays in rubles, German and English in euros. */
+    fun currencyFor(lang: Lang): String = if (lang == Lang.RU) "RUB" else "EUR"
+
+    fun price(product: ProductId, currency: String): Long? = prices[currency]?.let {
+        when (product) { ProductId.PRO_MONTHLY -> it.monthlyMinor; ProductId.PRO_YEARLY -> it.yearlyMinor }
+    }
+}
+
+/** Prices in minor units (kopecks, cents). */
+data class Price(val monthlyMinor: Long, val yearlyMinor: Long)
 
 data class Config(
     val mode: Mode,
@@ -63,9 +74,11 @@ data class Config(
                     freeDeviceLimit = num("FREE_DEVICE_LIMIT", 1).toInt(),
                     proDeviceLimit = num("PRO_DEVICE_LIMIT", 5).toInt(),
                     referralRewardDays = num("REFERRAL_REWARD_DAYS", 30).toInt(),
-                    currency = env["CURRENCY"] ?: "USD",
-                    priceMonthlyMinor = env["PRICE_MONTHLY_MINOR"]?.takeIf { it.isNotBlank() }?.toLong(),
-                    priceYearlyMinor = env["PRICE_YEARLY_MINOR"]?.takeIf { it.isNotBlank() }?.toLong(),
+                    // Minor units: 29900 = 299 ₽, 499 = 4,99 €.
+                    prices = mapOf(
+                        "RUB" to Price(num("PRICE_RUB_MONTHLY", 29_900), num("PRICE_RUB_YEARLY", 249_000)),
+                        "EUR" to Price(num("PRICE_EUR_MONTHLY", 499), num("PRICE_EUR_YEARLY", 3_999)),
+                    ),
                 ),
                 paymentProvider = env["PAYMENT_PROVIDER"]?.takeIf { it.isNotBlank() } ?: "test".takeIf { mode != Mode.PRODUCTION },
                 telegramBotToken = env["TELEGRAM_BOT_TOKEN"]?.takeIf { it.isNotBlank() },

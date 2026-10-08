@@ -50,7 +50,7 @@ class KeysAndSalesTest {
         val a = signIn("web@example.com")
         val order = a.api.createOrder(CreateOrderReq(ProductId.PRO_MONTHLY))
         assertEquals(OrderStatus.PENDING, order.status)
-        assertEquals("$5.00", order.amount)
+        assertEquals("₽300.00", order.amount)
         assertTrue(order.checkoutUrl!!.endsWith("/pay/test/${order.id}"))
         assertEquals(PlanId.FREE, a.api.me().entitlement.plan)
 
@@ -132,10 +132,10 @@ class KeysAndSalesTest {
         val bot = TelegramBot(services, tg)
         bot.handle(message(chat = 9, text = "/start"))
         val ruMenu = tg.sent("sendMessage").last()["reply_markup"].toString()
-        assertTrue("Pro на 1 год за 48,00 $" in ruMenu, ruMenu)
+        assertTrue("Pro на 1 год за 2\u00A0500 ₽" in ruMenu, ruMenu)
         bot.handle(callback(chat = 9, data = "lang:de"))
         val deMenu = tg.sent("sendMessage").last()["reply_markup"].toString()
-        assertTrue("Pro für 1 Jahr für 48,00 $" in deMenu, deMenu)
+        assertTrue("Pro für 1 Jahr für 48,00 €" in deMenu, deMenu)
         bot.handle(message(chat = 9, text = "/status"))
         assertEquals("Kein aktives Abo.", tg.sent("sendMessage").last()["text"]!!.jsonPrimitive.content)
     }
@@ -147,6 +147,9 @@ class KeysAndSalesTest {
             runCatching { c.verifyEmail(dev.jaganet.api.EmailVerifyReq("x@example.com", "123456", DeviceInfo("p", Platform.IOS))) }.exceptionOrNull()!!.message
         assertEquals("Срок действия кода истёк, запросите новый", msg(ru))
         assertEquals("Der Code ist abgelaufen, fordere einen neuen an", msg(de))
+        // Prices follow the language: rubles for Russian, euros for German.
+        assertEquals(listOf("RUB" to 250_000L), ru.plans().products.filter { it.id == ProductId.PRO_YEARLY }.map { it.currency to it.priceMinor })
+        assertEquals(listOf("EUR" to 4_800L), de.plans().products.filter { it.id == ProductId.PRO_YEARLY }.map { it.currency to it.priceMinor })
     }
 
     @Test fun `the bot asks free users to buy before giving a key`() = harness {

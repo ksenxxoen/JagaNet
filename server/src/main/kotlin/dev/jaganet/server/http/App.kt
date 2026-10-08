@@ -198,7 +198,7 @@ fun Application.jaganet(s: Services) {
                 call.respond(s.stats.get(p, period ?: StatsPeriod.WEEK))
             }
 
-            get("/billing/plans") { call.respond(s.billing.plans()) }
+            get("/billing/plans") { call.respond(s.billing.plans(call.apiLang())) }
             post("/billing/dev/purchase") {
                 val p = call.principal(s)
                 s.billing.devPurchase(p, call.receive<DevPurchaseReq>().productId)
@@ -213,7 +213,7 @@ fun Application.jaganet(s: Services) {
             salesApi(s)
             get("/admin/overview") {
                 call.owner()
-                call.respond(s.admin.overview())
+                call.respond(s.admin.overview(call.apiLang()))
             }
         }
     }
