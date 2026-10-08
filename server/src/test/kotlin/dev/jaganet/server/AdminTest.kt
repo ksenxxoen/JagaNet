@@ -127,4 +127,14 @@ class AdminTest {
         assertEquals(30, f.days.size)
         assertEquals(1, f.days.sumOf { it.orders })
     }
+
+    @Test fun `the owner always has Pro and gets a VPN key without paying`() = harness {
+        val o = signIn("owner@test.dev")
+        val e = o.api.me().entitlement
+        assertEquals(dev.jaganet.api.PlanId.PRO, e.plan)
+        assertNull(e.expiresAt)
+        assertNull(e.monthlyDataLimitBytes)
+        ctx.live.paymentProvider = null
+        assertEquals("amneziawg", o.api.createKey().protocol)
+    }
 }

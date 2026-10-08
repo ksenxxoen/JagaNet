@@ -263,7 +263,7 @@ async function account(params) {
     <div class="row"><div>
       <div class="muted">${t("Your plan")}</div>
       <div style="font-size:26px;font-weight:700">${isPro ? "Pro" : t("Free")}</div>
-      <div class="muted">${isPro ? t("Active until {date}", { date: date(e.expiresAt) }) : `${t("{n} GB a month", { n: Math.round(e.monthlyDataLimitBytes / 1e9) })}, ${tp(e.deviceLimit, "{n} device|{n} devices")}`}</div>
+      <div class="muted">${isPro ? (e.expiresAt ? t("Active until {date}", { date: date(e.expiresAt) }) : t("Owner account, no time limit")) : `${t("{n} GB a month", { n: Math.round(e.monthlyDataLimitBytes / 1e9) })}, ${tp(e.deviceLimit, "{n} device|{n} devices")}`}</div>
     </div>
     <div><div class="keyactions">
       ${buyBtn("pro_monthly", "green", t(isPro ? "Extend for a month for {price}" : "Pro for a month for {price}", { price: h(money(p.pro_monthly?.priceMinor, p.pro_monthly?.currency)) }))}

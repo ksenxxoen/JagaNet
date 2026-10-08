@@ -288,7 +288,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
 
     /** Pro expiry, or null on the free plan. */
     private suspend fun isPro(userId: String): Instant? = ctx.db.run { sql ->
-        s.ent.entitlement(sql, userId).takeIf { it.plan == PlanId.PRO }?.expiresAt?.let(Instant::parse)
+        s.ent.entitlement(sql, userId).takeIf { it.plan == PlanId.PRO }?.let { e -> e.expiresAt?.let(Instant::parse) ?: Instant.parse("2999-12-31T00:00:00Z") }
     }
 
     /** The account for this Telegram user (made on first contact) and their language. */

@@ -18,9 +18,16 @@ fun monthStart(t: Instant): Instant = t.atZone(ZoneOffset.UTC).withDayOfMonth(1)
 fun sourceOf(s: String) = BillingSource.valueOf(s.uppercase())
 fun productOf(s: String) = ProductId.entries.firstOrNull { it.name.equals(s, ignoreCase = true) }
 
+/** Devices the owner may connect (test phones, laptops…). */
+private const val OWNER_DEVICES = 20
+
 class Entitlements(private val ctx: Ctx) {
     fun entitlement(sql: Sql, userId: String): Entitlement {
         val p = ctx.live.plans
+        // The owner always has Pro: no payment, no end date, no data limit.
+        if (sql.one("SELECT role FROM users WHERE id=?::uuid", userId)?.str("role") == "owner") {
+            return Entitlement(PlanId.PRO, deviceLimit = maxOf(p.proDeviceLimit, OWNER_DEVICES), monthlyDataLimitBytes = null)
+        }
         // Paid subscriptions first; referral time stacks after paid time.
         val sub = sql.one(
             """SELECT * FROM subscriptions

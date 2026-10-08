@@ -170,4 +170,5 @@ internal val adminWebStrings: List<S> = listOf(
         "Подключена настоящая оплата, поэтому тестовую оплату включить нельзя.",
         "Ein echter Zahlungsdienst ist angebunden, deshalb lassen sich Testzahlungen nicht einschalten.",
     ),
+    S("Owner account, no time limit", "Аккаунт владельца, без срока", "Inhaberkonto, unbefristet"),
 )
