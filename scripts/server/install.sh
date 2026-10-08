@@ -255,7 +255,8 @@ chgrp jaganet "$ENV_FILE" /etc/jaganet
 # The backend adds and removes VPN peers with $TOOL, which needs root: allow exactly that
 # (with a kernel module a capability would do, but userspace AmneziaWG uses a root-only socket).
 TOOL_PATH="$(command -v "$TOOL")"
-printf 'Defaults:jaganet !syslog\njaganet ALL=(root) NOPASSWD: %s\n' "$TOOL_PATH" > /etc/sudoers.d/jaganet.tmp
+# Just the rule: Ubuntu 26.04's sudo (sudo-rs) rejects most "Defaults" options.
+printf 'jaganet ALL=(root) NOPASSWD: %s\n' "$TOOL_PATH" > /etc/sudoers.d/jaganet.tmp
 chmod 440 /etc/sudoers.d/jaganet.tmp
 visudo -cqf /etc/sudoers.d/jaganet.tmp && mv /etc/sudoers.d/jaganet.tmp /etc/sudoers.d/jaganet
 mkdir -p "$APP_DIR/bin"
