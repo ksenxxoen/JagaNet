@@ -15,6 +15,8 @@ wireguard = "1.0.20260102"
 bouncycastle = "1.86"
 qrcodegen = "1.8.0"
 angusMail = "2.0.3"
+jsch = "2.27.3"
+sshd = "2.16.0"
 
 [libraries]
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
@@ -46,6 +48,8 @@ postgres = { module = "org.postgresql:postgresql", version.ref = "postgres" }
 embedded-postgres = { module = "io.zonky.test:embedded-postgres", version.ref = "zonky" }
 angus-mail = { module = "org.eclipse.angus:angus-mail", version.ref = "angusMail" }
 qrcodegen = { module = "io.nayuki:qrcodegen", version.ref = "qrcodegen" }
+jsch = { module = "com.github.mwiede:jsch", version.ref = "jsch" }
+sshd-core = { module = "org.apache.sshd:sshd-core", version.ref = "sshd" }
 logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 
 compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose" }

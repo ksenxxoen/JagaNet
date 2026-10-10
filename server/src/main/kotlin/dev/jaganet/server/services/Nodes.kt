@@ -1,6 +1,9 @@
 package dev.jaganet.server.services
 
 import dev.jaganet.api.AdminNode
+import dev.jaganet.api.InstallState
+import dev.jaganet.api.NodeInstall
+import dev.jaganet.api.NodeSshReq
 import dev.jaganet.api.NodeInstallRes
 import dev.jaganet.api.NodeReq
 import dev.jaganet.api.NodeState
@@ -8,6 +11,7 @@ import dev.jaganet.api.Protocols
 import dev.jaganet.api.ErrorCode
 import dev.jaganet.server.AppError
 import dev.jaganet.server.Ctx
+import dev.jaganet.server.Mode
 import dev.jaganet.server.badRequest
 import dev.jaganet.server.db.Jsonb
 import dev.jaganet.server.db.Row
@@ -16,7 +20,14 @@ import dev.jaganet.server.notFound
 import dev.jaganet.server.protocols.AwgParams
 import dev.jaganet.server.protocols.PeerCounters
 import dev.jaganet.server.unauthorized
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withTimeoutOrNull
@@ -100,6 +111,9 @@ suspend fun readCounters(ctx: Ctx, server: Row, protocol: String): List<PeerCoun
 private const val IFACE_AWG = "awg0"
 private const val IFACE_WG = "wg0"
 private val HOST = Regex("^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$")
+private val USER = Regex("^[a-z_][a-z0-9_.-]{0,31}$")
+private const val LOG_LIMIT = 64 * 1024
+private val ANSI = Regex("\u001B\\[[0-9;]*[A-Za-z]")
 private val IPV4 = Regex("^(25[0-5]|2[0-4]\\d|1?\\d?\\d)(\\.(25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}$")
 
 /**
@@ -112,6 +126,11 @@ private val IPV4 = Regex("^(25[0-5]|2[0-4]\\d|1?\\d?\\d)(\\.(25[0-5]|2[0-4]\\d|1
  */
 class Nodes(private val ctx: Ctx) {
     private val box by lazy { SecretBox("node-keys:${ctx.cfg.authSecret}") }
+    /** How installs reach new machines: SSH, or a stand-in in the simulator and tests. */
+    var runner: RemoteRunner = if (ctx.cfg.mode == Mode.SIMULATION) simulatedRunner() else SshRunner()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** Installs in progress, by node id. */
+    val installs = ConcurrentHashMap<String, Job>()
     private fun hash(token: String) = MessageDigest.getInstance("SHA-256").digest(token.toByteArray()).joinToString("") { "%02x".format(it) }
 
     fun installCommand(token: String): String {
@@ -151,6 +170,7 @@ class Nodes(private val ctx: Ctx) {
             publicIp = field("publicIp"), protocols = protocols.keys.toList(),
             lastReportAt = last?.toString(), cpu = rep?.system?.cpu, memUsed = rep?.system?.memUsed, memTotal = rep?.system?.memTotal,
             rxBps = rep?.rxBps, txBps = rep?.txBps, createdAt = r.instant("created_at").toString(),
+            install = installOf(r)?.copy(log = ""),
         )
     }
 
@@ -217,10 +237,117 @@ class Nodes(private val ctx: Ctx) {
      * another machine: run it there, and the node comes back with the same identity.
      */
     suspend fun newToken(id: String): NodeInstallRes {
+        val token = swapToken(id)
+        return NodeInstallRes(get(id), installCommand(token))
+    }
+
+    private suspend fun swapToken(id: String): String {
         val token = Crypto.newToken()
         val n = ctx.db.run { it.exec("UPDATE servers SET agent_token_hash=? WHERE id=? AND agent_token_hash IS NOT NULL", hash(token), id) }
         if (n == 0) throw notFound("Node not found")
-        return NodeInstallRes(get(id), installCommand(token))
+        return token
+    }
+
+    private fun installOf(r: Row): NodeInstall? = r.jsonOrNull("install")?.let { runCatching { Protocols.decode<NodeInstall>(it) }.getOrNull() }
+
+    suspend fun install(id: String): NodeInstall =
+        ctx.db.run { sql -> sql.one("SELECT install FROM servers WHERE id=? AND agent_token_hash IS NOT NULL", id) }?.let(::installOf)
+            ?: throw notFound("Node not found")
+
+    private suspend fun saveInstall(id: String, i: NodeInstall) {
+        ctx.db.run { it.exec("UPDATE servers SET install=? WHERE id=?", Jsonb(Protocols.encode(i).toString()), id) }
+    }
+
+    /** Installs left "running" by a restart of this server can't finish anymore. */
+    suspend fun failInterrupted() {
+        ctx.db.run { sql ->
+            for (r in sql.query("SELECT id, install FROM servers WHERE install->>'state' = 'running'")) {
+                val i = installOf(r) ?: continue
+                sql.exec(
+                    "UPDATE servers SET install=? WHERE id=?",
+                    Jsonb(Protocols.encode(i.copy(state = InstallState.FAILED, finishedAt = ctx.now().toString(), error = "Stopped: the main server restarted")).toString()),
+                    r.str("id"),
+                )
+            }
+        }
+    }
+
+    /**
+     * Installs the node on a fresh machine over SSH, in the background: a new token (the old
+     * machine, if any, stops serving the node), then install.sh as root. Progress and output
+     * are in [install]. The SSH password or key is used for this run only and never stored.
+     */
+    suspend fun startInstall(id: String, req: NodeSshReq): NodeInstall {
+        val host = req.host.trim().lowercase().trimEnd('.')
+        if (host.isEmpty()) throw badRequest("Enter the server's address")
+        if (!IPV4.matches(host) && !HOST.matches(host)) throw badRequest("Enter the server's address")
+        if (req.port !in 1..65535) throw badRequest("Port must be 1 to 65535")
+        val user = req.user.trim()
+        if (!USER.matches(user)) throw badRequest("Enter the user name, usually root")
+        if (req.password.isNullOrEmpty() && req.privateKey.isNullOrBlank()) throw badRequest("Enter the password or the private key")
+        if (installs[id]?.isActive == true) throw badRequest("An install is already running on this node")
+        val token = swapToken(id)
+        val started = NodeInstall(InstallState.RUNNING, host, startedAt = ctx.now().toString(), step = "Connecting")
+        saveInstall(id, started)
+        val target = req.copy(host = host, user = user)
+        installs[id] = scope.launch { runInstall(id, target, token, started) }
+        return started
+    }
+
+    private suspend fun runInstall(id: String, target: NodeSshReq, token: String, started: NodeInstall) {
+        val log = StringBuilder()
+        val step = java.util.concurrent.atomic.AtomicReference(started.step)
+        val dirty = java.util.concurrent.atomic.AtomicBoolean(false)
+        fun line(raw: String) {
+            val text = raw.replace(ANSI, "").trimEnd()
+            synchronized(log) {
+                log.append(text).append('\n')
+                if (log.length > LOG_LIMIT) log.delete(0, log.length - LOG_LIMIT)
+            }
+            if (text.startsWith("==> ")) step.set(text.removePrefix("==> ").trim())
+            dirty.set(true)
+        }
+        fun current() = started.copy(step = step.get(), log = synchronized(log) { log.toString() })
+        val flusher = scope.launch {
+            while (isActive) {
+                delay(1_500)
+                if (dirty.getAndSet(false)) runCatching { saveInstall(id, current()) }
+            }
+        }
+        val script = javaClass.classLoader.getResource("node/install.sh")?.readText() ?: error("node/install.sh is missing")
+        val env = linkedMapOf("JAGANET_URL" to ctx.cfg.publicUrl.trimEnd('/'), "NODE_TOKEN" to token)
+        val result = try {
+            val code = runner.run(target, script, env, ::line)
+            val registered = ctx.db.run { it.one("SELECT 1 FROM servers WHERE id=? AND registered_at >= ?::timestamptz", id, started.startedAt) } != null
+            when {
+                code == 0 && registered -> current().copy(state = InstallState.DONE, step = null)
+                code == 0 -> current().copy(state = InstallState.FAILED, error = "The install finished, but the node didn't contact this server")
+                else -> current().copy(state = InstallState.FAILED, error = "The install stopped with an error (code {code}). The log below shows where", errorArgs = mapOf("code" to code.toString()))
+            }
+        } catch (e: RemoteFailure) {
+            current().copy(state = InstallState.FAILED, error = e.reason, errorArgs = e.args)
+        } catch (e: Exception) {
+            line("Error: ${e.message}")
+            current().copy(state = InstallState.FAILED, error = "Something went wrong")
+        }
+        flusher.cancel()
+        saveInstall(id, result.copy(finishedAt = ctx.now().toString()))
+        installs.remove(id)
+    }
+
+    /** For the simulator: plays an install and registers the node as if a real machine did. */
+    private fun simulatedRunner() = RemoteRunner { target, _, env, out ->
+        if (target.password == "wrong") throw RemoteFailure("The server didn't accept the user name, password or key")
+        out("Connected to ${target.host}, host key SHA256:simulated")
+        for (s in listOf("Installing system packages", "Installing the VPN (AmneziaWG)", "Registering with the main server", "Configuring the VPN interface", "Starting the node agent")) {
+            out("==> $s"); delay(1_500); out("    done")
+        }
+        val ip = if (IPV4.matches(target.host)) target.host else "203.0.113.10"
+        val token = env.getValue("NODE_TOKEN")
+        register(token, NodeRegisterReq(ip, 51821, Protocols.AMNEZIAWG))
+        report(token, NodeReportReq(Protocols.AMNEZIAWG, emptyList(), NodeSystem(cpu = 0.03, memUsed = 180_000_000, memTotal = 1_000_000_000)))
+        out("JagaNet node is running.")
+        0
     }
 
     private suspend fun get(id: String): AdminNode = list().firstOrNull { it.id == id } ?: throw notFound("Node not found")

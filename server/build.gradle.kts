@@ -27,11 +27,14 @@ dependencies {
     implementation(libs.logback)
     implementation(libs.qrcodegen)
     implementation(libs.angus.mail)
+    // SSH client: the admin panel installs new VPN nodes over SSH.
+    implementation(libs.jsch)
     // Real PostgreSQL binaries from Maven: used by `./gradlew :server:sim` and the tests.
     implementation(libs.embedded.postgres)
 
     testImplementation(kotlin("test"))
     testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.sshd.core)
 }
 
 /** `./gradlew :server:sim` — the whole backend with embedded Postgres, a simulated VPN node and demo data. */

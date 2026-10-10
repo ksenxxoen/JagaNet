@@ -87,7 +87,8 @@ if [ "$PROTOCOL" = amneziawg ]; then CONF_DIR=/etc/amnezia/amneziawg; IFACE=awg0
 echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/90-jaganet.conf
 sysctl -q -p /etc/sysctl.d/90-jaganet.conf
 
-step "Registering with $JAGANET_URL"
+step "Registering with the main server"
+note "$JAGANET_URL"
 REG="$(python3 - "$JAGANET_URL" "$NODE_TOKEN" "$PUBLIC_IP" "$PORT" "$PROTOCOL" <<'PY'
 import json, sys, urllib.request, urllib.error
 url, token, ip, port, proto = sys.argv[1:6]

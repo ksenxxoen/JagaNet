@@ -2,7 +2,9 @@ package dev.jaganet.server
 
 import dev.jaganet.api.AmneziaWG
 import dev.jaganet.api.ErrorCode
+import dev.jaganet.api.InstallState
 import dev.jaganet.api.NodeReq
+import dev.jaganet.api.NodeSshReq
 import dev.jaganet.api.NodeState
 import dev.jaganet.api.Protocols
 import dev.jaganet.api.TunnelProvisionReq
@@ -11,6 +13,8 @@ import dev.jaganet.server.services.NodePeerCounter
 import dev.jaganet.server.services.NodeRegisterReq
 import dev.jaganet.server.services.NodeReportReq
 import dev.jaganet.server.services.NodeSystem
+import dev.jaganet.server.services.RemoteFailure
+import dev.jaganet.server.services.RemoteRunner
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -111,5 +115,65 @@ class NodeTest {
         assertNotNull(owner.adminNodes().nodes.firstOrNull { !it.remote }) // the main server's own VPN is listed too
         val t = tokenOf(owner.newNodeToken(n.id).command)
         assertEquals(ErrorCode.BAD_REQUEST, assertFailsWith<AppError> { services.nodes.register(t, NodeRegisterReq("1.2.3", 51821, "amneziawg")) }.code)
+    }
+
+    @Test fun `the admin panel installs a node over SSH by itself`() = harness {
+        val owner = signIn("owner@test.dev").api
+        val id = owner.createNode(NodeReq("Germany 1", "Nuremberg", "DE")).node.id
+        var seen: NodeSshReq? = null
+        var script = ""
+        // Stands in for SSH: the "machine" runs the script, which registers with the token it got.
+        services.nodes.runner = RemoteRunner { target, text, env, out ->
+            seen = target; script = text
+            assertEquals(cfg.publicUrl.trimEnd('/'), env["JAGANET_URL"])
+            out("Connected to ${target.host}")
+            out("\u001B[1;32m==> Installing the VPN (AmneziaWG)\u001B[0m")
+            services.nodes.register(env["NODE_TOKEN"], NodeRegisterReq(target.host, 51821, "amneziawg"))
+            out("JagaNet node is running.")
+            0
+        }
+        val started = owner.installNode(id, NodeSshReq(" 198.51.100.7 ", password = "pw"))
+        assertEquals(InstallState.RUNNING, started.state)
+        services.nodes.installs[id]?.join()
+        val done = owner.nodeInstall(id)
+        assertEquals(InstallState.DONE, done.state, done.toString())
+        assertEquals("198.51.100.7", seen!!.host)
+        assertTrue(script.startsWith("#!/usr/bin/env bash") && "Registering with the main server" in script)
+        assertTrue("==> Installing the VPN (AmneziaWG)\n" in done.log, done.log) // colours stripped
+        val node = owner.adminNodes().nodes.single { it.id == id }
+        assertEquals(NodeState.ONLINE, node.state)
+        assertEquals("198.51.100.7:51821", node.endpoint)
+        assertEquals(InstallState.DONE, node.install?.state)
+        assertEquals("", node.install?.log) // the list leaves the log out
+
+        // Failures are kept with the reason.
+        services.nodes.runner = RemoteRunner { _, _, _, _ -> throw RemoteFailure("The server didn't accept the user name, password or key") }
+        owner.installNode(id, NodeSshReq("198.51.100.8", password = "bad"))
+        services.nodes.installs[id]?.join()
+        assertEquals("The server didn't accept the user name, password or key", owner.nodeInstall(id).error)
+        services.nodes.runner = RemoteRunner { _, _, _, out -> out("E: Unable to locate package"); 100 }
+        owner.installNode(id, NodeSshReq("198.51.100.8", privateKey = "-----BEGIN OPENSSH PRIVATE KEY-----"))
+        services.nodes.installs[id]?.join()
+        val failed = owner.nodeInstall(id)
+        assertEquals(InstallState.FAILED, failed.state)
+        assertEquals("100", failed.errorArgs["code"])
+        assertTrue("Unable to locate package" in failed.log)
+        // Exit 0 without registering isn't success.
+        services.nodes.runner = RemoteRunner { _, _, _, _ -> 0 }
+        clock = clock.plusSeconds(60)
+        owner.installNode(id, NodeSshReq("198.51.100.8", password = "pw"))
+        services.nodes.installs[id]?.join()
+        assertEquals("The install finished, but the node didn't contact this server", owner.nodeInstall(id).error)
+    }
+
+    @Test fun `install settings are checked`() = harness {
+        val owner = signIn("owner@test.dev").api
+        val id = owner.createNode(NodeReq("X", "Y", "DE")).node.id
+        assertEquals("BAD_REQUEST", code { owner.installNode(id, NodeSshReq("", password = "pw")) })
+        assertEquals("BAD_REQUEST", code { owner.installNode(id, NodeSshReq("1.2.3.4; rm -rf /", password = "pw")) })
+        assertEquals("BAD_REQUEST", code { owner.installNode(id, NodeSshReq("1.2.3.4", user = "root'x", password = "pw")) })
+        assertEquals("BAD_REQUEST", code { owner.installNode(id, NodeSshReq("1.2.3.4")) })
+        assertEquals("NOT_FOUND", code { owner.installNode("n1", NodeSshReq("1.2.3.4", password = "pw")) }) // the main server's own VPN
+        assertEquals("FORBIDDEN", code { signIn("a@example.com").api.installNode(id, NodeSshReq("1.2.3.4", password = "pw")) })
     }
 }

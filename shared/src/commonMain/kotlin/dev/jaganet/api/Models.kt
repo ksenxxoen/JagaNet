@@ -722,6 +722,8 @@ data class AdminNode(
     val rxBps: Long? = null,
     val txBps: Long? = null,
     val createdAt: String,
+    /** The latest automatic install (the list leaves its log out). */
+    val install: NodeInstall? = null,
 )
 
 @Serializable
@@ -745,3 +747,35 @@ data class NodeReq(
 /** A new node or a new token: [command] is run once as root on the node. Shown only now. */
 @Serializable
 data class NodeInstallRes(val node: AdminNode, val command: String)
+
+/** SSH access to a fresh server, used once to install a node and never stored. */
+@Serializable
+data class NodeSshReq(
+    /** IP address or host name of the new server. */
+    val host: String,
+    val port: Int = 22,
+    /** root, or a user with sudo that needs no password. */
+    val user: String = "root",
+    val password: String? = null,
+    /** OpenSSH private key text, without a passphrase. */
+    val privateKey: String? = null,
+)
+
+@Serializable
+enum class InstallState { @SerialName("running") RUNNING, @SerialName("done") DONE, @SerialName("failed") FAILED }
+
+/** An automatic install on a node's machine: progress, output and the result. */
+@Serializable
+data class NodeInstall(
+    val state: InstallState,
+    val host: String,
+    val startedAt: String,
+    val finishedAt: String? = null,
+    /** The step the install script is on, e.g. "Installing the VPN (AmneziaWG)". */
+    val step: String? = null,
+    /** Why it failed, in English (translated on screen), with [errorArgs]. */
+    val error: String? = null,
+    val errorArgs: Map<String, String> = emptyMap(),
+    /** The script's output (the last 64 KB). */
+    val log: String = "",
+)

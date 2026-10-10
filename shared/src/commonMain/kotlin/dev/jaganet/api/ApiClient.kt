@@ -118,6 +118,8 @@ class ApiClient(
     suspend fun createNode(req: NodeReq): NodeInstallRes = post("admin/nodes", req)
     suspend fun updateNode(id: String, req: NodeReq): AdminNode = put("admin/nodes/$id", req)
     suspend fun newNodeToken(id: String): NodeInstallRes = post("admin/nodes/$id/token", OkRes())
+    suspend fun installNode(id: String, req: NodeSshReq): NodeInstall = post("admin/nodes/$id/install", req)
+    suspend fun nodeInstall(id: String): NodeInstall = get("admin/nodes/$id/install")
     suspend fun adminTariffs(): AdminTariffsRes = get("admin/tariffs")
     suspend fun createTariff(req: TariffReq): AdminTariffsRes = post("admin/tariffs", req)
     suspend fun updateTariff(id: String, req: TariffReq): AdminTariffsRes = put("admin/tariffs/$id", req)

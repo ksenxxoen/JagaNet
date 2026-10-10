@@ -790,21 +790,57 @@ async function adminMoney(params, top) {
 }
 
 const NODE_STATES = { waiting: ["warning", "Waiting for install"], online: ["ok", "Online"], offline: ["critical", "No contact"], disabled: ["unknown", "Turned off"] };
-const nodeBadge = (st) => `<span class="lvl ${NODE_STATES[st][0]}"><i></i>${t(NODE_STATES[st][1])}</span>`;
+const INSTALL_STATES = { running: ["warning", "Installing"], done: ["ok", "Installed"], failed: ["critical", "Install failed"] };
+const badge = ([cls, label]) => `<span class="lvl ${cls}"><i></i>${t(label)}</span>`;
+let installTimer = null;
+
+/** SSH access to a fresh server; used once by the main server for the install. */
+const sshFields = (host = "") => `
+  <div class="fields">
+    ${field("xh", t("Server address"), host, 'placeholder="203.0.113.10" autocomplete="off"')}
+    ${field("xp", t("SSH port"), 22, 'type="number" min="1" max="65535" step="1"')}
+    ${field("xu", t("User"), "root", 'autocomplete="off"')}
+    ${field("xw", t("Password"), "", 'type="password" autocomplete="new-password"')}
+    <div class="wide"><label for="xk">${t("Private key, instead of the password")}</label><textarea id="xk" rows="3" class="mono" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></div>
+  </div>
+  <p class="muted small hint">${t("A fresh Ubuntu or Debian server. The password is used once for the install and isn't saved.")}</p>`;
+function sshBody() {
+  const body = { host: val("xh"), port: Number(val("xp")) || 22, user: val("xu") || "root", password: document.getElementById("xw").value || null, privateKey: document.getElementById("xk").value.trim() || null };
+  if (!body.password && !body.privateKey) throw new Error(t("Enter the password or the private key"));
+  return body;
+}
+
+function installCard(n, i) {
+  const text = i.state === "running" ? `${h(t(i.step || "Connecting"))}…`
+    : i.state === "done" ? t("The node is installed and connected.") : `<span class="warn">${h(t(i.error || "Something went wrong", i.errorArgs))}</span>`;
+  return `<div class="card section installcard" data-install="${h(n.id)}">
+    <div class="card-h"><h3>${h(n.name)}, ${h(i.host)}</h3>${badge(INSTALL_STATES[i.state])}</div>
+    <p>${text}</p>
+    ${i.log ? `<pre class="log">${h(i.log)}</pre>` : ""}
+    ${i.state === "running" ? "" : `<div class="actionsrow">${i.state === "failed" ? `<button class="btn" type="button" data-retry="${h(n.id)}">${t("Try again")}</button>` : ""}
+      <button class="btn secondary" type="button" data-close="${h(n.id)}">${t("Close")}</button></div>`}
+  </div>`;
+}
 
 async function nodesPane(command) {
+  clearTimeout(installTimer);
   const pane = document.getElementById("pane");
   const list = (await api("/admin/nodes")).nodes;
   if (!location.hash.startsWith("#/admin")) return;
+  const seenKey = (n) => `install:${n.id}`;
+  const shown = list.filter((n) => n.install && (n.install.state === "running" || store.get(seenKey(n)) !== n.install.startedAt));
+  const installs = await Promise.all(shown.map((n) => api(`/admin/nodes/${encodeURIComponent(n.id)}/install`).catch(() => n.install)));
   const today = localDay(new Date().toISOString());
   const seen = (iso) => (localDay(iso) === today ? clock(iso) : `${shortDate(localDay(iso))} ${clock(iso)}`);
   const loadNote = (x) => (x.rxBps == null ? "" : `${h(bits(x.rxBps))} / ${h(bits(x.txBps))}`);
+  const stateOf = (x) => (x.install?.state === "running" ? badge(INSTALL_STATES.running) : badge(NODE_STATES[x.state]));
   const row = (x) => `<tr class="${x.active ? "" : "muted"}"><td><b>${h(x.name)}</b><div class="muted">${h(x.city)}, ${h(x.countryCode)}${x.remote ? "" : `, ${t("main server")}`}</div></td>
-    <td>${nodeBadge(x.state)}<div class="muted">${x.lastReportAt ? h(seen(x.lastReportAt)) : "&nbsp;"}</div></td><td>${x.peers} / ${x.maxPeers}<div class="muted">${t("{n} online", { n: x.online })}</div></td>
+    <td>${stateOf(x)}<div class="muted">${x.lastReportAt ? h(seen(x.lastReportAt)) : "&nbsp;"}</div></td><td>${x.peers} / ${x.maxPeers}<div class="muted">${t("{n} online", { n: x.online })}</div></td>
     <td><span class="mono">${h(x.endpoint || "-")}</span>${x.hostname && x.publicIp ? `<div class="muted mono">${h(x.publicIp)}</div>` : ""}</td>
     <td>${x.cpu == null ? "-" : percent(x.cpu * 100)}<div class="muted">${loadNote(x) || "&nbsp;"}</div></td>
     <td class="actions">${x.remote ? `<button class="btn secondary small" data-edit="${h(x.id)}">${t("Edit")}</button>` : ""}</td></tr>`;
   pane.innerHTML = `
+  ${shown.map((n, k) => installCard(n, installs[k])).join("")}
   ${command ? `<div class="card section"><h3>${t("Install command")}</h3>
     <p class="muted">${t("Run it as root on a clean Ubuntu or Debian machine. It works once; the node appears here as online in a minute.")}</p>
     <div class="formrow two"><input class="mono" id="cmd" readonly value="${h(command)}"><button class="btn" type="button" id="copycmd">${t("Copy")}</button></div></div>` : ""}
@@ -812,14 +848,14 @@ async function nodesPane(command) {
   <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Node")}</th><th>${t("Status")}</th><th>${t("Devices")}</th>
     <th>${t("Address")}</th><th>${t("Processor")}</th><th></th></tr></thead>
     <tbody>${list.map(row).join("")}</tbody></table></div>
-  <form class="card adminform section" id="nf" hidden></form>`;
+  <form class="card adminform section" id="nf" hidden></form>
+  <form class="card adminform section" id="mf" hidden></form>`;
   if (command) document.getElementById("copycmd").onclick = (e) => copyText(e.target, command);
+  for (const pre of pane.querySelectorAll("pre.log")) pre.scrollTop = pre.scrollHeight;
 
-  const nf = document.getElementById("nf");
-  const openForm = (x) => {
-    const v = x || { name: "", city: "", countryCode: "", maxPeers: 250, active: true, hostname: "" };
-    nf.hidden = false;
-    nf.innerHTML = `<h3>${x ? t("Edit node") : t("New node")}</h3>
+  const nf = document.getElementById("nf"), mf = document.getElementById("mf");
+  const formOpen = () => !nf.hidden || !mf.hidden;
+  const nodeFields = (v) => `
       <div class="fields">
         ${field("nn", t("Name"), v.name, 'required maxlength="60" placeholder="Germany 1"')}
         ${field("nc", t("City"), v.city, 'required maxlength="60" placeholder="Nuremberg"')}
@@ -828,28 +864,118 @@ async function nodesPane(command) {
         ${field("nh", t("Host name"), v.hostname, 'maxlength="200" placeholder="de1.vpn.example.com"')}
         <div><label for="na">${t("Status")}</label><select id="na"><option value="1" ${v.active ? "selected" : ""}>${t("On")}</option><option value="0" ${v.active ? "" : "selected"}>${t("Off")}</option></select></div>
       </div>
-      <p class="muted small hint">${t("With a host name in your own domain, key files keep working after a move: point the name to the new machine's address.")}</p>
-      <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button><button class="btn secondary" type="button" id="ncancel">${t("Cancel")}</button>
-        ${x ? `<button class="btn secondary" type="button" id="nmove">${t("Move to another machine")}</button>` : ""}</div>
+      <p class="muted small hint">${t("With a host name in your own domain, key files keep working after a move: point the name to the new machine's address.")}</p>`;
+  const nodeBody = () => ({ name: val("nn"), city: val("nc"), countryCode: val("nk").toUpperCase(), maxPeers: Number(val("nm")), active: document.getElementById("na").value === "1", hostname: val("nh") || null });
+  const install = (id, ssh) => api(`/admin/nodes/${encodeURIComponent(id)}/install`, { method: "POST", body: ssh });
+
+  // New node: the node's details and, optionally, the server to install it on.
+  const openNew = () => {
+    mf.hidden = true; nf.hidden = false;
+    nf.innerHTML = `<h3>${t("New node")}</h3>${nodeFields({ name: "", city: "", countryCode: "", maxPeers: 250, active: true, hostname: "" })}
+      <h4>${t("Server")}</h4>${sshFields()}
+      <div class="actionsrow"><button class="btn" type="submit">${t("Create and install")}</button><button class="btn secondary" type="button" id="ncancel">${t("Cancel")}</button>
+        <button class="btn secondary" type="button" id="nmanual">${t("Create, I'll install by hand")}</button></div>
       <p class="result" id="nres"></p>`;
     document.getElementById("ncancel").onclick = () => { nf.hidden = true; };
-    const move = document.getElementById("nmove");
-    if (move) move.onclick = () => {
-      if (!confirm(t("A new install command is made and the old one stops working. Run it on the new machine: the node keeps its key, settings and devices."))) return;
-      saveWith(move, "nres", () => api(`/admin/nodes/${encodeURIComponent(x.id)}/token`, { method: "POST" }), (r) => nodesPane(r.command));
+    document.getElementById("nmanual").onclick = (e) => {
+      if (!nf.reportValidity()) return;
+      saveWith(e.target, "nres", () => api("/admin/nodes", { method: "POST", body: nodeBody() }), (r) => nodesPane(r.command));
     };
-    nf.onsubmit = (e) => {
+    nf.onsubmit = async (e) => {
       e.preventDefault();
-      saveWith(nf.querySelector("button[type=submit]"), "nres", () => {
-        const body = { name: val("nn"), city: val("nc"), countryCode: val("nk").toUpperCase(), maxPeers: Number(val("nm")), active: document.getElementById("na").value === "1", hostname: val("nh") || null };
-        return x ? api("/admin/nodes/" + encodeURIComponent(x.id), { method: "PUT", body }) : api("/admin/nodes", { method: "POST", body });
-      }, (r) => nodesPane(r.command));
+      const btn = nf.querySelector("button[type=submit]"), out = document.getElementById("nres");
+      out.className = "result"; out.textContent = "";
+      let ssh;
+      try {
+        if (!val("xh")) throw new Error(t("Enter the server's address"));
+        ssh = sshBody();
+      } catch (x) { out.className = "result warn"; out.textContent = x.message; return; }
+      btn.disabled = true;
+      let created = null;
+      try {
+        created = await api("/admin/nodes", { method: "POST", body: nodeBody() });
+        await install(created.node.id, ssh);
+        nodesPane();
+      } catch (x) {
+        btn.disabled = false;
+        if (!created) { out.className = "result warn"; out.textContent = x.message; return; }
+        // The node exists now; continue in its edit form.
+        await nodesPane();
+        const again = (await api("/admin/nodes")).nodes.find((n) => n.id === created.node.id);
+        if (again) { openEdit(again, ssh.host); const o = document.getElementById("mres"); o.className = "result warn"; o.textContent = x.message; }
+      }
     };
     nf.scrollIntoView({ behavior: "smooth", block: "start" });
     document.getElementById("nn").focus();
   };
-  document.getElementById("newn").onclick = () => openForm(null);
-  for (const b of pane.querySelectorAll("[data-edit]")) b.onclick = () => openForm(list.find((x) => x.id === b.dataset.edit));
+
+  // A node's details, and moving it to another server.
+  const openEdit = (x, host) => {
+    nf.hidden = false; mf.hidden = false;
+    nf.innerHTML = `<h3>${t("Edit node")}</h3>${nodeFields(x)}
+      <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button><button class="btn secondary" type="button" id="ncancel">${t("Cancel")}</button></div>
+      <p class="result" id="nres"></p>`;
+    const used = x.state !== "waiting";
+    mf.innerHTML = `<h3>${used ? t("Move to another server") : t("Install on a server")}</h3>
+      ${used ? `<p class="muted">${t("The node keeps its key, settings and devices. The current machine stops serving it.")}</p>` : ""}
+      ${sshFields(host || "")}
+      <div class="actionsrow"><button class="btn" type="submit">${t("Install")}</button>
+        <button class="btn secondary" type="button" id="nmove">${t("Show the command instead")}</button></div>
+      <p class="result" id="mres"></p>`;
+    document.getElementById("ncancel").onclick = () => { nf.hidden = true; mf.hidden = true; };
+    nf.onsubmit = (e) => {
+      e.preventDefault();
+      saveWith(nf.querySelector("button[type=submit]"), "nres", () => api("/admin/nodes/" + encodeURIComponent(x.id), { method: "PUT", body: nodeBody() }), () => nodesPane());
+    };
+    mf.onsubmit = (e) => {
+      e.preventDefault();
+      if (used && !confirm(t("Move the node to this server? The current machine stops serving it."))) return;
+      saveWith(mf.querySelector("button[type=submit]"), "mres", () => install(x.id, sshBody()), () => nodesPane());
+    };
+    document.getElementById("nmove").onclick = (e) => {
+      if (!confirm(t("A new install command is made and the old one stops working. Run it on the new machine: the node keeps its key, settings and devices."))) return;
+      saveWith(e.target, "mres", () => api(`/admin/nodes/${encodeURIComponent(x.id)}/token`, { method: "POST" }), (r) => nodesPane(r.command));
+    };
+    nf.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById(host ? "xw" : "nn").focus();
+  };
+
+  document.getElementById("newn").onclick = openNew;
+  for (const b of pane.querySelectorAll("[data-edit]")) b.onclick = () => openEdit(list.find((x) => x.id === b.dataset.edit));
+  const wireCards = () => {
+    for (const b of pane.querySelectorAll("[data-close]")) b.onclick = () => {
+      const n = list.find((x) => x.id === b.dataset.close), card = b.closest(".installcard");
+      store.set(seenKey(n), card.dataset.started || n.install.startedAt);
+      card.remove();
+    };
+    for (const b of pane.querySelectorAll("[data-retry]")) b.onclick = () => {
+      const n = list.find((x) => x.id === b.dataset.retry);
+      openEdit(n, n.install?.host);
+    };
+  };
+  wireCards();
+
+  // Live progress: refresh the running installs' cards; redraw everything when one ends.
+  let running = shown.filter((n, k) => installs[k].state === "running");
+  const tick = async () => {
+    if (!document.body.contains(pane) || !location.hash.startsWith("#/admin")) return;
+    let ended = false;
+    for (const n of running) {
+      const i = await api(`/admin/nodes/${encodeURIComponent(n.id)}/install`).catch(() => null);
+      const card = pane.querySelector(`[data-install="${CSS.escape(n.id)}"]`);
+      if (!i || !card) continue;
+      card.outerHTML = installCard(n, i);
+      n.install = i;
+      const pre = pane.querySelector(`[data-install="${CSS.escape(n.id)}"] pre.log`);
+      if (pre) pre.scrollTop = pre.scrollHeight;
+      if (i.state !== "running") ended = true;
+    }
+    wireCards();
+    running = running.filter((n) => n.install.state === "running");
+    if (ended && !formOpen()) return nodesPane();
+    if (running.length) installTimer = setTimeout(tick, 2000);
+  };
+  if (running.length) installTimer = setTimeout(tick, 2000);
 }
 
 async function plansPane(s) {

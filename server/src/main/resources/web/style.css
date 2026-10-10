@@ -131,6 +131,11 @@ input.code { font: 500 20px var(--mono); letter-spacing: .3em; text-align: cente
 .adminform + .adminform { margin-top: var(--gap); }
 .adminform > p.muted { margin-bottom: 16px; }
 .adminform > p.hint { margin: 8px 0 0; }
+.adminform h4 { margin: 24px 0 0; font-size: 14px; line-height: 20px; }
+.fields .wide { grid-column: 1 / -1; }
+.card.installcard { margin: 0 0 16px; }
+pre.log { margin: 12px 0 0; max-height: 320px; overflow: auto; padding: 12px; background: var(--neutral-tint); border-radius: var(--r-ctl);
+  font: 12px/16px var(--mono); white-space: pre-wrap; word-break: break-word; }
 .stack > * + * { margin-top: 16px; }
 label.gap { margin-top: 16px; }
 .gap-s { margin-top: 8px; }
