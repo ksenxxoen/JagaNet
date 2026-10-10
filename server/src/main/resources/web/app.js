@@ -664,7 +664,7 @@ async function status(params) {
     ${lineChart(pts, [{ key: "ping", label: t("Ping"), color: ONE }], t("Ping, ms"), (v) => t("{n} ms", { n: num(v) }), { small: true, width: half })}
     ${lineChart(pts, [{ key: "loss", label: t("Packet loss"), color: ONE }], t("Packet loss, %"), (v) => `${num(v)}%`, { small: true, width: half })}
   </div>
-  ${lineChart(pts, [{ key: "errors", label: t("Errors"), color: DOWN }, { key: "drops", label: t("Drops"), color: UP }], t("Errors and drops"), whole)}
+  ${lineChart(pts, [{ key: "errors", label: t("Errors"), color: DOWN }, { key: "drops", label: t("Lost"), color: UP }], t("Network card errors and lost packets"), whole)}
 
   <div class="h2row"><h2>${t("Resources")}</h2></div>
   ${kpis([
@@ -709,7 +709,7 @@ async function status(params) {
 
 /* ---------------- admin panel (owners) ---------------- */
 
-const ADMIN_TABS = [["money", "Money"], ["plans", "Plans"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"]];
+const ADMIN_TABS = [["money", "Finance"], ["plans", "Plans"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"]];
 const payChannel = (k) => ({ web: t("Website"), telegram: "Telegram", app: t("JagaNet app"), apple: "App Store", google: "Google Play", dev: t("Test payments") })[k] || k;
 const NEW_SUB = C1, RENEWAL = C2;
 
@@ -922,8 +922,7 @@ function alertsPane(s) {
   const pane = document.getElementById("pane"), a = s.alerts;
   pane.innerHTML = `<form class="card adminform" id="af">
     <h3>${t("Who gets server alerts")}</h3>
-    <p class="muted">${t("You get a message when something breaks on the server and when it works again.")}</p>
-    <label for="ae">${t("E-mail addresses, one per line or separated by commas")}</label>
+    <label for="ae">${t("Email")}</label>
     <textarea id="ae" rows="3" placeholder="you@example.com">${h(a.emails.join("\n"))}</textarea>
     ${s.smtp ? "" : `<p class="warn">${t("E-mail is not set up")}. <a href="#/admin?tab=email">${t("Set up e-mail")}</a></p>`}
     <label for="at" class="gap">${t("Telegram chat ids, separated by commas")}</label>
@@ -934,7 +933,6 @@ function alertsPane(s) {
     <p class="result" id="ares"></p></form>
   <form class="card adminform" id="nf">
     <h3>${t("Server channel")}</h3>
-    <p class="muted">${t("From your hosting plan. Used for the channel load and the monthly traffic warning.")}</p>
     <label for="nc">${t("Channel speed, Mbit/s")}</label>
     <input id="nc" inputmode="numeric" value="${h(s.network?.channelMbps ?? "")}" placeholder="1000">
     <label for="nt" class="gap">${t("Traffic per month, GB (empty if unlimited)")}</label>
@@ -968,7 +966,6 @@ function modesPane(s) {
   ${on ? `<div class="notice danger">${t("A test mode is on. Turn it off before real people use the service.")}</div>` : ""}
   <form class="card adminform" id="mf">
     <h3>${t("Test modes")}</h3>
-    <p class="muted">${t("Only for trying the service out yourself.")}</p>
     <label class="toggle"><input type="checkbox" id="mc" ${m.showSignInCodes ? "checked" : ""}><span>${t("Show sign-in codes on screen")}</span></label>
     <p class="danger-text">${t("Anyone can then sign in to any account, yours too, just by typing its e-mail address.")}</p>
     <label class="toggle"><input type="checkbox" id="mp" ${m.testPayments && !s.paymentsConnected ? "checked" : ""} ${s.paymentsConnected ? "disabled" : ""}><span>${t("Test payments")}</span></label>

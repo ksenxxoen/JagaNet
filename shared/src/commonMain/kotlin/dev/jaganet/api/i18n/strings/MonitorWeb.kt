@@ -46,8 +46,8 @@ internal val monitorWebStrings: List<S> = listOf(
     S("{n} ms", "{n} мс", "{n} ms"),
     S("Packet loss", "Потери пакетов", "Paketverlust"),
     S("Packet loss, %", "Потери пакетов, %", "Paketverlust, %"),
-    S("Drops", "Отброшено", "Verworfen"),
-    S("Errors and drops", "Ошибки и отброшенные пакеты", "Fehler und verworfene Pakete"),
+    S("Lost", "Потеряно", "Verloren"),
+    S("Network card errors and lost packets", "Ошибки и потери пакетов на сетевой карте", "Fehler und verlorene Pakete an der Netzwerkkarte"),
 
     // Resources and VPN
     S("Resources", "Ресурсы", "Ressourcen"),

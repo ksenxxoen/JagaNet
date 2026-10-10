@@ -30,7 +30,7 @@ internal val adminWebStrings: List<S> = listOf(
 
     // Admin panel
     S("Admin panel", "Админ-панель", "Adminbereich"),
-    S("Money", "Деньги", "Geld"),
+    S("Finance", "Финансы", "Finanzen"),
     S("E-mail", "Почта", "E-Mail"),
     S("Test modes", "Тестовые режимы", "Testmodi"),
     S("Saved", "Сохранено", "Gespeichert"),
@@ -96,16 +96,6 @@ internal val adminWebStrings: List<S> = listOf(
 
     // Alerts
     S("Who gets server alerts", "Кто получает оповещения о сервере", "Wer Serverwarnungen bekommt"),
-    S(
-        "You get a message when something breaks on the server and when it works again.",
-        "Сообщение приходит, когда на сервере что-то ломается и когда всё снова работает.",
-        "Du bekommst eine Nachricht, wenn auf dem Server etwas kaputtgeht und wenn es wieder funktioniert.",
-    ),
-    S(
-        "E-mail addresses, one per line or separated by commas",
-        "Адреса e-mail, по одному в строке или через запятую",
-        "E-Mail-Adressen, eine pro Zeile oder durch Kommas getrennt",
-    ),
     S("Telegram chat ids, separated by commas", "Номера чатов Telegram через запятую", "Telegram-Chat-IDs, durch Kommas getrennt"),
     S(
         "Send /myid to the bot in a chat to see that chat's id.",
@@ -129,7 +119,6 @@ internal val adminWebStrings: List<S> = listOf(
         "Включён тестовый режим. Отключите его, прежде чем сервисом начнут пользоваться реальные люди.",
         "Ein Testmodus ist an. Schalte ihn aus, bevor echte Menschen den Dienst nutzen.",
     ),
-    S("Only for trying the service out yourself.", "Только чтобы самому опробовать сервис.", "Nur um den Dienst selbst auszuprobieren."),
     S("Show sign-in codes on screen", "Показывать коды входа на экране", "Anmeldecodes auf dem Bildschirm zeigen"),
     S(
         "Anyone can then sign in to any account, yours too, just by typing its e-mail address.",
@@ -149,7 +138,6 @@ internal val adminWebStrings: List<S> = listOf(
     S("Owner account, no time limit", "Аккаунт владельца, без срока", "Inhaberkonto, unbefristet"),
     S("Capacity {speed}", "Канал {speed}", "Kanal {speed}"),
     S("Server channel", "Канал сервера", "Serverkanal"),
-    S("From your hosting plan. Used for the channel load and the monthly traffic warning.", "Из тарифа хостинга. Нужно для загрузки канала и предупреждения о трафике за месяц.", "Aus deinem Hosting-Tarif. Für die Kanalauslastung und die Warnung zum Monatsvolumen."),
     S("Channel speed, Mbit/s", "Скорость канала, Мбит/с", "Kanalgeschwindigkeit, Mbit/s"),
     S("Traffic per month, GB (empty if unlimited)", "Трафик в месяц, ГБ (пусто, если без ограничений)", "Datenvolumen pro Monat, GB (leer, wenn unbegrenzt)"),
     S("Enter a whole number", "Введите целое число", "Gib eine ganze Zahl ein"),
