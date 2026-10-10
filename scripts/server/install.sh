@@ -62,6 +62,9 @@ note "Server: $PUBLIC_IP ($CITY, $COUNTRY)  ·  address: https://$DOMAIN  ·  ne
 
 # ------------------------------------------------------------------ packages
 step "Installing system packages (a few minutes)"
+# The old Caddy repository (cloudsmith) now answers "402 Payment Required" and breaks
+# apt-get update; Caddy comes from Ubuntu itself now.
+rm -f /etc/apt/sources.list.d/caddy-stable.list /usr/share/keyrings/caddy-stable-archive-keyring.gpg
 apt-get update -q
 apt-get install -y -q ca-certificates curl git gnupg iptables python3 software-properties-common sudo iputils-ping \
   postgresql openjdk-21-jdk-headless "linux-headers-$(uname -r)" >/dev/null || \
@@ -303,11 +306,38 @@ SQL
 
 # ------------------------------------------------------------------ HTTPS
 step "Setting up HTTPS (free certificate for $DOMAIN)"
+# 1) Ubuntu's own package, 2) else the official static binary with a systemd unit.
 if ! command -v caddy >/dev/null 2>&1; then
-  curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt > /etc/apt/sources.list.d/caddy-stable.list
-  apt-get update -q >/dev/null && apt-get install -y -q caddy >/dev/null
+  apt-get install -y -q caddy >/dev/null 2>&1 || true
 fi
+if ! command -v caddy >/dev/null 2>&1; then
+  ARCH="$(dpkg --print-architecture)"
+  curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=${ARCH}" -o /usr/bin/caddy
+  chmod 755 /usr/bin/caddy
+  id caddy >/dev/null 2>&1 || useradd --system --home /var/lib/caddy --create-home --shell /usr/sbin/nologin caddy
+  mkdir -p /etc/caddy
+  cat > /etc/systemd/system/caddy.service <<'UNIT'
+[Unit]
+Description=Caddy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=caddy
+Group=caddy
+ExecStart=/usr/bin/caddy run --environ --config /etc/caddy/Caddyfile
+ExecReload=/usr/bin/caddy reload --config /etc/caddy/Caddyfile --force
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload
+fi
+command -v caddy >/dev/null 2>&1 || fail "Couldn't install Caddy (the HTTPS server)."
+mkdir -p /etc/caddy
 cat > /etc/caddy/Caddyfile <<EOF
 $DOMAIN {
 	reverse_proxy 127.0.0.1:4000
