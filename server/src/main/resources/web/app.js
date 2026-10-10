@@ -361,8 +361,8 @@ async function copyText(btn, text) {
 /** Funnel tiles: the headline numbers with the conversion between steps. */
 function funnelTiles(f) {
   return kpis([
-    [t("Clicks"), f.clicks, t("All link opens")],
-    [t("Unique visitors"), f.visitors, t("Different people")],
+    [t("Clicks"), f.clicks, t("Repeat clicks included")],
+    [t("Unique visitors"), f.visitors, t("Repeat clicks not counted")],
     [t("Sign-ups"), f.signups, t("{p} of visitors", { p: pct(f.signups, f.visitors) })],
     [t("Paid"), f.paidUsers, t("{p} of sign-ups", { p: pct(f.paidUsers, f.signups) })],
     [t("Purchases"), f.purchases, t("Renewals included")],
