@@ -18,8 +18,8 @@ class Traffic(private val ctx: Ctx, private val ent: Entitlements, private val t
         val servers = ctx.db.run { it.query("SELECT * FROM servers WHERE active") }
 
         for (server in servers) for (protocol in server.json("protocols").keys) {
-            val driver = ctx.drivers[protocol] ?: continue
-            val counters = driver.readCounters(server.node(protocol))
+            if (ctx.drivers[protocol] == null) continue
+            val counters = readCounters(ctx, server, protocol)
             ctx.db.run { sql ->
                 for (c in counters) {
                     val t = sql.one(

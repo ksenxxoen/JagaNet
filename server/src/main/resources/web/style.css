@@ -130,6 +130,7 @@ input.code { font: 500 20px var(--mono); letter-spacing: .3em; text-align: cente
 .formrow.two { grid-template-columns: 1fr auto; }
 .adminform + .adminform { margin-top: var(--gap); }
 .adminform > p.muted { margin-bottom: 16px; }
+.adminform > p.hint { margin: 8px 0 0; }
 .stack > * + * { margin-top: 16px; }
 label.gap { margin-top: 16px; }
 .gap-s { margin-top: 8px; }

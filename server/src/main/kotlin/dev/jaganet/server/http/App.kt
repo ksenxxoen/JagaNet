@@ -35,6 +35,7 @@ import dev.jaganet.server.services.Finance
 import dev.jaganet.server.services.Keys
 import dev.jaganet.server.services.Settings
 import dev.jaganet.server.services.Tariffs
+import dev.jaganet.server.services.Nodes
 import dev.jaganet.server.services.Payments
 import dev.jaganet.server.services.Site
 import dev.jaganet.server.services.Principal
@@ -78,6 +79,7 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
     val tunnels = Tunnels(ctx, ent)
     val traffic = Traffic(ctx, ent, tunnels)
     val stats = Stats(ctx)
+    val nodes = Nodes(ctx)
     val tariffs = Tariffs(ctx).also { kotlinx.coroutines.runBlocking { it.seedIfEmpty() } }
     val billing = Billing(ctx, tariffs)
     val referrals = Referrals(ctx) { bot?.username }
@@ -143,6 +145,7 @@ fun Application.jaganet(s: Services) {
     routing {
         website(s)
         ownerLoginLink(s)
+        nodeFiles()
         get("/health") {
             call.respond(buildJsonObject {
                 put("ok", true)
@@ -225,6 +228,7 @@ fun Application.jaganet(s: Services) {
 
             monitorApi(s)
             adminApi(s)
+            nodeApi(s)
             get("/referrals") { call.respond(s.referrals.get(call.principal(s))) }
             referralApi(s)
             salesApi(s)

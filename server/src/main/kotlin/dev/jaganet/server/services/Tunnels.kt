@@ -24,7 +24,13 @@ import java.time.Instant
 /** A device counts as online if its peer was seen this recently. */
 private val ONLINE = Duration.ofMinutes(3)
 
-fun Row.node(protocol: String) = ServerNode(str("id"), str("name"), json("protocols")[protocol] as? JsonObject ?: JsonObject(emptyMap()))
+fun Row.node(protocol: String) = ServerNode(
+    str("id"), str("name"), json("protocols")[protocol] as? JsonObject ?: JsonObject(emptyMap()),
+    remote = strOrNull("agent_token_hash") != null,
+)
+
+/** Active and, for a remote node, reporting in. */
+private const val USABLE = "s.active AND (s.agent_token_hash IS NULL OR s.last_report_at > ?)"
 
 class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
     /**
@@ -40,7 +46,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         ctx.drivers[protocol] ?: throw AppError(400, ErrorCode.UNSUPPORTED_PROTOCOL, "Protocol {protocol} is not available", mapOf("protocol" to protocol))
 
     suspend fun servers(): List<ServerLocation> = ctx.db.run { sql ->
-        sql.query("SELECT s.*, (SELECT count(*)::int FROM tunnels t WHERE t.server_id=s.id) AS peers FROM servers s WHERE s.active ORDER BY s.name")
+        sql.query("SELECT s.*, (SELECT count(*)::int FROM tunnels t WHERE t.server_id=s.id) AS peers FROM servers s WHERE $USABLE ORDER BY s.name", ctx.now().minus(NODE_OFFLINE))
             .map { s -> ServerLocation(s.str("id"), s.str("name"), s.str("city"), s.str("country_code"), minOf(1.0, s.int("peers").toDouble() / s.int("max_peers")), usable(s)) }
             .filter { it.protocols.isNotEmpty() }
     }
@@ -80,6 +86,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
                 val oldProto = existing.str("protocol")
                 if (oldServer != null) ctx.drivers[oldProto]?.removePeer(oldServer.node(oldProto), existing.str("peer_key"))
                 sql.exec("DELETE FROM tunnels WHERE device_id=?::uuid", deviceId)
+                ctx.nodeHub.changed(existing.str("server_id"))
             }
 
             val added = driver.addPeer(server.node(req.protocol), deviceId, address, clientParams)
@@ -87,6 +94,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
                 "INSERT INTO tunnels (device_id, server_id, protocol, address, peer_key, client_params) VALUES (?::uuid,?,?,?,?,?)",
                 deviceId, server.str("id"), req.protocol, address, added.peerKey, clientParams,
             )
+            ctx.nodeHub.changed(server.str("id"))
             TunnelConfig(
                 protocol = req.protocol,
                 serverId = server.str("id"),
@@ -101,14 +109,15 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
 
     private fun pickServer(sql: Sql, protocol: String, serverId: String?): Row {
         if (serverId != null) {
-            val s = sql.one("SELECT * FROM servers WHERE id=? AND active", serverId) ?: throw notFound("Server not found")
+            val s = sql.one("SELECT * FROM servers s WHERE s.id=? AND $USABLE", serverId, ctx.now().minus(NODE_OFFLINE)) ?: throw notFound("Server not found")
             if (protocol !in s.json("protocols")) throw AppError(400, ErrorCode.UNSUPPORTED_PROTOCOL, "{server} does not offer {protocol}", mapOf("server" to s.str("name"), "protocol" to protocol))
             return s
         }
         return sql.one(
-            """SELECT s.* FROM servers s WHERE s.active AND (s.protocols -> ?) IS NOT NULL
+            """SELECT s.* FROM servers s WHERE $USABLE AND (s.protocols -> ?) IS NOT NULL
+                  AND (SELECT count(*) FROM tunnels t WHERE t.server_id=s.id) < s.max_peers
                 ORDER BY (SELECT count(*) FROM tunnels t WHERE t.server_id=s.id)::float / s.max_peers LIMIT 1""",
-            protocol,
+            ctx.now().minus(NODE_OFFLINE), protocol,
         ) ?: throw AppError(503, ErrorCode.SERVER_FULL, "No server offers {protocol}", mapOf("protocol" to protocol))
     }
 
@@ -174,6 +183,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
 
     suspend fun revoke(sql: Sql, deviceId: String) {
         val t = sql.one("DELETE FROM tunnels WHERE device_id=?::uuid RETURNING *", deviceId) ?: return
+        ctx.nodeHub.changed(t.str("server_id"))
         val server = sql.one("SELECT * FROM servers WHERE id=?", t.str("server_id")) ?: return
         val proto = t.str("protocol")
         ctx.drivers[proto]?.removePeer(server.node(proto), t.str("peer_key"))

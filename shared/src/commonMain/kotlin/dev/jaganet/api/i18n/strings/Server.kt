@@ -114,4 +114,10 @@ internal val serverStrings: List<S> = listOf(
     S("The mail server refused, {reason}", "Почтовый сервер отказал, {reason}", "Der Mailserver hat abgelehnt, {reason}"),
     S("Test e-mail", "Тестовое письмо", "Test-E-Mail"),
     S("E-mail from your JagaNet server works.", "Почта с вашего сервера JagaNet работает.", "E-Mails von deinem JagaNet-Server funktionieren."),
+    S("The country is a two-letter code, like DE", "Страна указывается двумя буквами, например DE", "Das Land ist ein Code aus zwei Buchstaben, z. B. DE"),
+    S("Enter a host name like de1.vpn.example.com", "Введите имя хоста, например de1.vpn.example.com", "Gib einen Hostnamen wie de1.vpn.example.com ein"),
+    S("Node not found", "Нода не найдена", "Knoten nicht gefunden"),
+    S("This node has room for at most {n} devices", "На этой ноде помещается не больше {n} устройств", "Auf diesem Knoten ist Platz für höchstens {n} Geräte"),
+    S("Unknown protocol", "Неизвестный протокол", "Unbekanntes Protokoll"),
+    S("Invalid address", "Неверный адрес", "Ungültige Adresse"),
 )

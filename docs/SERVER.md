@@ -33,3 +33,33 @@ The control plane and the VPN node can share one Linux machine to start.
 5. Put it behind HTTPS (Caddy, nginx) and set `PUBLIC_URL`.
 
 `PROTOCOLS=amneziawg,wireguard` sets which drivers run and their preference order.
+
+## More VPN nodes (other machines)
+
+The main server stays the control plane; extra machines only run AmneziaWG and a small agent.
+
+1. Admin panel → **Nodes** → **New node**: name, city, two-letter country, device limit and,
+   ideally, a host name in your own domain (`de1.vpn.example.com`, DNS A record to the machine,
+   TTL 300).
+2. Run the shown command as root on a clean Ubuntu/Debian machine (it works once):
+   ```sh
+   curl -fsSL https://<main>/node/install.sh | JAGANET_URL=https://<main> NODE_TOKEN=<token> bash
+   ```
+   It installs AmneziaWG (kernel module, else `amneziawg-go`, else plain WireGuard), registers,
+   writes `awg0.conf`, opens the port and starts `jaganet-node` (`/opt/jaganet-node/agent.py`).
+3. The agent long-polls the peer list (`/v1/node/peers`) and applies changes with `awg set`, and
+   sends traffic counters and load every minute (`/v1/node/report`).
+
+The node's identity (private key, obfuscation, subnet) is kept encrypted on the main server, not
+only on the machine.
+
+**When a node dies.** After 3 minutes without a report it shows "No contact", the status page
+raises an alert and the node gets no new devices.
+- JagaNet app: devices get a fresh config from another node on the next connect.
+- Key files (AmneziaVPN and others): Nodes → Edit → **Move to another machine** gives a new
+  command (the old one stops working). Run it on any new machine: it comes up with the same key,
+  obfuscation and devices. With a host name, point the DNS record to the new address and key
+  files keep working unchanged; without one, the IP in the files is old and users must download
+  them again.
+
+Logs on a node: `journalctl -u jaganet-node`, `awg show`.

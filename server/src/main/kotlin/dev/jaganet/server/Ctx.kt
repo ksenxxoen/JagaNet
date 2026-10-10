@@ -15,6 +15,8 @@ class Ctx(
 ) {
     /** Settings the owner can change in the admin panel; start from the environment. */
     val live = Live(cfg)
+    /** Wakes remote node agents when their peers change. */
+    val nodeHub = dev.jaganet.server.services.NodeHub()
 }
 
 /** Current values of the settings editable at runtime (saved in the settings table). */

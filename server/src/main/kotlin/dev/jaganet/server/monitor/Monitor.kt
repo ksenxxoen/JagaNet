@@ -13,7 +13,8 @@ import dev.jaganet.api.i18n.Lang
 import dev.jaganet.server.Ctx
 import dev.jaganet.server.db.Jsonb
 import dev.jaganet.server.db.Row
-import dev.jaganet.server.services.node
+import dev.jaganet.server.services.NODE_OFFLINE
+import dev.jaganet.server.services.readCounters
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
@@ -36,13 +37,14 @@ private val RULES = mapOf(
     "vpn" to Rule(2), "db" to Rule(2), "https" to Rule(3), "cert" to Rule(1), "bot" to Rule(5),
     "cpu" to Rule(10), "memory" to Rule(5), "disk" to Rule(1),
     "channel" to Rule(5), "net_errors" to Rule(5), "ping" to Rule(3), "dns" to Rule(3), "traffic" to Rule(1),
+    "nodes" to Rule(3),
 )
 
 /** Names used in alert subjects; the same keys the status page translates. */
 private val NAMES = mapOf(
     "vpn" to "VPN", "db" to "Database", "https" to "Website (HTTPS)", "cert" to "Certificate", "bot" to "Telegram bot",
     "cpu" to "Processor", "memory" to "Memory", "disk" to "Disk", "channel" to "Channel load", "net_errors" to "Network errors",
-    "ping" to "Ping and packet loss", "dns" to "DNS", "traffic" to "Monthly traffic",
+    "ping" to "Ping and packet loss", "dns" to "DNS", "traffic" to "Monthly traffic", "nodes" to "VPN nodes",
 )
 
 /**
@@ -113,12 +115,18 @@ class Monitor(
         runCatching {
             val servers = ctx.db.run { it.query("SELECT * FROM servers WHERE active") }
             for (s in servers) for (proto in s.json("protocols").keys) {
-                val driver = ctx.drivers[proto] ?: continue
-                val list = driver.readCounters(s.node(proto))
+                if (ctx.drivers[proto] == null) continue
+                val list = readCounters(ctx, s, proto)
                 peers += list.size
                 online += list.count { c -> c.lastSeenAt?.let { Duration.between(it, now) < Duration.ofMinutes(3) } == true }
             }
         }.onFailure { vpnError = it.message ?: it.javaClass.simpleName }
+
+        // ---- other locations: each remote node's agent reports every minute
+        val remote = runCatching {
+            ctx.db.run { it.query("SELECT name, last_report_at FROM servers WHERE active AND agent_token_hash IS NOT NULL AND protocols <> '{}'::jsonb ORDER BY name") }
+        }.getOrDefault(emptyList())
+        val silent = remote.filter { r -> r.instantOrNull("last_report_at")?.let { Duration.between(it, now) >= NODE_OFFLINE } ?: true }.map { it.str("name") }
 
         // ---- database (also stores the minute)
         val dbOk = runCatching {
@@ -203,6 +211,10 @@ class Monitor(
                     dnsMs > 1000 -> HealthCheck("dns", CheckLevel.WARNING, "Slow, {ms} ms", mapOf("ms" to "$dnsMs"))
                     else -> HealthCheck("dns", CheckLevel.OK, "{ms} ms", mapOf("ms" to "$dnsMs"))
                 },
+            )
+            if (remote.isNotEmpty()) add(
+                if (silent.isEmpty()) HealthCheck("nodes", CheckLevel.OK, "All nodes respond")
+                else HealthCheck("nodes", CheckLevel.CRITICAL, "No contact with {names}", mapOf("names" to silent.joinToString(", "))),
             )
             ctx.live.monthlyTrafficLimitBytes?.let { limit ->
                 val share = monthBytes.toDouble() / limit

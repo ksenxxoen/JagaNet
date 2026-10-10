@@ -12,7 +12,8 @@ import java.time.Instant
 /**
  * Drivers for the WireGuard family. Both manage peers on a local interface via
  * their CLI (needs CAP_NET_ADMIN): `wg` for WireGuard, `awg` (amneziawg-tools)
- * for AmneziaWG. For remote nodes, implement ProtocolDriver over a node-agent API.
+ * for AmneziaWG. Remote nodes apply peers through their agent (services/Nodes.kt), so
+ * here they only get their client parameters.
  */
 abstract class WgFamilyDriver(private val tool: String, private val run: suspend (List<String>) -> String) : ProtocolDriver {
     @Serializable
@@ -37,16 +38,17 @@ abstract class WgFamilyDriver(private val tool: String, private val run: suspend
     override suspend fun addPeer(node: ServerNode, deviceId: String, address: String, clientParams: JsonObject): AddedPeer {
         val s = settings(node)
         val key = Protocols.decode<WireGuard.ClientParams>(clientParams).publicKey
-        run(listOf(tool, "set", s.`interface`, "peer", key, "allowed-ips", "$address/32"))
+        if (!node.remote) run(listOf(tool, "set", s.`interface`, "peer", key, "allowed-ips", "$address/32"))
         return AddedPeer(key, params(s))
     }
 
     override suspend fun removePeer(node: ServerNode, peerKey: String) {
+        if (node.remote) return
         run(listOf(tool, "set", settings(node).`interface`, "peer", peerKey, "remove"))
     }
 
     override suspend fun readCounters(node: ServerNode): List<PeerCounters> =
-        parseDump(run(listOf(tool, "show", settings(node).`interface`, "dump")))
+        if (node.remote) emptyList() else parseDump(run(listOf(tool, "show", settings(node).`interface`, "dump")))
 
     companion object {
         /** `wg|awg show <if> dump`: first line is the interface, then one tab-separated line per peer. */

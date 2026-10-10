@@ -68,4 +68,7 @@ internal val monitorStrings: List<S> = listOf(
     S("Your JagaNet sign-in code {code}", "Код входа в JagaNet {code}", "Dein JagaNet-Anmeldecode {code}"),
     S("Your sign-in code is {code}. It works for 10 minutes.", "Ваш код входа {code}. Он действует 10 минут.", "Dein Anmeldecode ist {code}. Er gilt 10 Minuten."),
     S("If you didn't ask for it, just ignore this e-mail.", "Если вы его не запрашивали, просто проигнорируйте это письмо.", "Wenn du ihn nicht angefordert hast, ignoriere diese E-Mail einfach."),
+    S("All nodes respond", "Все ноды на связи", "Alle Knoten antworten"),
+    S("No contact with {names}", "Нет связи с {names}", "Keine Verbindung zu {names}"),
+    S("VPN nodes", "VPN-ноды", "VPN-Knoten"),
 )

@@ -4,7 +4,13 @@ import kotlinx.serialization.json.JsonObject
 import java.time.Instant
 
 /** A VPN node, with its settings for one protocol (servers.protocols[protocolId]). */
-data class ServerNode(val id: String, val name: String, val settings: JsonObject)
+data class ServerNode(
+    val id: String,
+    val name: String,
+    val settings: JsonObject,
+    /** Runs elsewhere with an agent: its peers are applied there (services/Nodes.kt), not here. */
+    val remote: Boolean = false,
+)
 
 /** Cumulative counters for one peer, as the node sees them. */
 data class PeerCounters(val peerKey: String, val rxBytes: Long, val txBytes: Long, val lastSeenAt: Instant?)

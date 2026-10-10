@@ -679,3 +679,69 @@ data class FinanceRes(
     /** Orders started but not paid in the period (abandoned checkouts). */
     val unpaidOrders: Int,
 )
+
+/* ---------- owner admin panel: VPN nodes (locations) ---------- */
+
+@Serializable
+enum class NodeState {
+    /** Created; the install command hasn't been run yet. */
+    @SerialName("waiting") WAITING,
+    /** The agent reports in. */
+    @SerialName("online") ONLINE,
+    /** No report for a few minutes. */
+    @SerialName("offline") OFFLINE,
+    /** Switched off by the owner: gets no new devices. */
+    @SerialName("disabled") DISABLED,
+}
+
+@Serializable
+data class AdminNode(
+    val id: String,
+    val name: String,
+    val city: String,
+    val countryCode: String,
+    /** False for the VPN on the main server itself. */
+    val remote: Boolean,
+    val state: NodeState,
+    val active: Boolean,
+    val maxPeers: Int,
+    /** Devices and keys on this node. */
+    val peers: Int,
+    /** Of those, seen in the last 3 minutes. */
+    val online: Int,
+    val endpoint: String? = null,
+    val hostname: String? = null,
+    /** The machine's own address, from its last registration. */
+    val publicIp: String? = null,
+    val protocols: List<String> = emptyList(),
+    val lastReportAt: String? = null,
+    /** Latest health from the agent (0..1 and bits per second). */
+    val cpu: Double? = null,
+    val memUsed: Long? = null,
+    val memTotal: Long? = null,
+    val rxBps: Long? = null,
+    val txBps: Long? = null,
+    val createdAt: String,
+)
+
+@Serializable
+data class AdminNodesRes(val nodes: List<AdminNode>)
+
+@Serializable
+data class NodeReq(
+    val name: String,
+    val city: String,
+    /** Two letters, e.g. "DE". */
+    val countryCode: String,
+    val maxPeers: Int = 250,
+    val active: Boolean = true,
+    /**
+     * Optional DNS name for the VPN address, e.g. de1.vpn.example.com. With it, key files
+     * keep working when the node moves to another machine: point the name at the new address.
+     */
+    val hostname: String? = null,
+)
+
+/** A new node or a new token: [command] is run once as root on the node. Shown only now. */
+@Serializable
+data class NodeInstallRes(val node: AdminNode, val command: String)

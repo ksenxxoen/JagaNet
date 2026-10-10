@@ -517,6 +517,7 @@ const LEVELS = { ok: "OK", warning: "Warning", critical: "Problem", unknown: "Un
 const CHECK_NAMES = {
   vpn: "VPN", db: "Database", https: "Website (HTTPS)", cert: "Certificate", bot: "Telegram bot", cpu: "Processor", memory: "Memory",
   disk: "Disk", channel: "Channel load", net_errors: "Network errors", ping: "Ping and packet loss", dns: "DNS", traffic: "Monthly traffic",
+  nodes: "VPN nodes",
 };
 const DOWN = C1, UP = C2, ONE = C1;
 let statusTimer = null;
@@ -709,7 +710,7 @@ async function status(params) {
 
 /* ---------------- admin panel (owners) ---------------- */
 
-const ADMIN_TABS = [["money", "Finance"], ["plans", "Plans"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"]];
+const ADMIN_TABS = [["money", "Finance"], ["plans", "Plans"], ["nodes", "Nodes"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"]];
 const payChannel = (k) => ({ web: t("Website"), telegram: "Telegram", app: t("JagaNet app"), apple: "App Store", google: "Google Play", dev: t("Test payments") })[k] || k;
 const NEW_SUB = C1, RENEWAL = C2;
 
@@ -745,6 +746,7 @@ async function admin(params) {
   const tab = ADMIN_TABS.some(([k]) => k === params.get("tab")) ? params.get("tab") : "money";
   const top = head(t("Admin panel")) + `<nav class="tabs">${ADMIN_TABS.map(([k, l]) => `<a class="${k === tab ? "on" : ""}" href="#/admin?tab=${k}">${t(l)}</a>`).join("")}</nav>`;
   if (tab === "money") return adminMoney(params, top);
+  if (tab === "nodes") { view.innerHTML = top + `<div id="pane"></div>`; return nodesPane(); }
   const s = await api("/admin/settings");
   if (!location.hash.startsWith("#/admin")) return;
   view.innerHTML = top + `<div id="pane"></div>`;
@@ -785,6 +787,69 @@ async function adminMoney(params, top) {
     <td>${r.amount ? h(money(r.amount.minor, r.amount.currency)) : "-"}</td><td>${h(payChannel(r.channel))}</td>
     <td><span class="status ${r.renewal ? "" : "active"}">${r.renewal ? t("Renewal") : t("New subscription")}</span></td></tr>`).join("") || `<tr><td colspan="6" class="muted">${t("No payments in this period.")}</td></tr>`}</tbody></table></div>`;
   wireCharts(view);
+}
+
+const NODE_STATES = { waiting: ["warning", "Waiting for install"], online: ["ok", "Online"], offline: ["critical", "No contact"], disabled: ["unknown", "Turned off"] };
+const nodeBadge = (st) => `<span class="lvl ${NODE_STATES[st][0]}"><i></i>${t(NODE_STATES[st][1])}</span>`;
+
+async function nodesPane(command) {
+  const pane = document.getElementById("pane");
+  const list = (await api("/admin/nodes")).nodes;
+  if (!location.hash.startsWith("#/admin")) return;
+  const today = localDay(new Date().toISOString());
+  const seen = (iso) => (localDay(iso) === today ? clock(iso) : `${shortDate(localDay(iso))} ${clock(iso)}`);
+  const loadNote = (x) => (x.rxBps == null ? "" : `${h(bits(x.rxBps))} / ${h(bits(x.txBps))}`);
+  const row = (x) => `<tr class="${x.active ? "" : "muted"}"><td><b>${h(x.name)}</b><div class="muted">${h(x.city)}, ${h(x.countryCode)}${x.remote ? "" : `, ${t("main server")}`}</div></td>
+    <td>${nodeBadge(x.state)}<div class="muted">${x.lastReportAt ? h(seen(x.lastReportAt)) : "&nbsp;"}</div></td><td>${x.peers} / ${x.maxPeers}<div class="muted">${t("{n} online", { n: x.online })}</div></td>
+    <td><span class="mono">${h(x.endpoint || "-")}</span>${x.hostname && x.publicIp ? `<div class="muted mono">${h(x.publicIp)}</div>` : ""}</td>
+    <td>${x.cpu == null ? "-" : percent(x.cpu * 100)}<div class="muted">${loadNote(x) || "&nbsp;"}</div></td>
+    <td class="actions">${x.remote ? `<button class="btn secondary small" data-edit="${h(x.id)}">${t("Edit")}</button>` : ""}</td></tr>`;
+  pane.innerHTML = `
+  ${command ? `<div class="card section"><h3>${t("Install command")}</h3>
+    <p class="muted">${t("Run it as root on a clean Ubuntu or Debian machine. It works once; the node appears here as online in a minute.")}</p>
+    <div class="formrow two"><input class="mono" id="cmd" readonly value="${h(command)}"><button class="btn" type="button" id="copycmd">${t("Copy")}</button></div></div>` : ""}
+  <div class="toolbar"><span class="muted">${t("A node silent for 3 minutes gets no new devices.")}</span><button class="btn" id="newn">${t("New node")}</button></div>
+  <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Node")}</th><th>${t("Status")}</th><th>${t("Devices")}</th>
+    <th>${t("Address")}</th><th>${t("Processor")}</th><th></th></tr></thead>
+    <tbody>${list.map(row).join("")}</tbody></table></div>
+  <form class="card adminform section" id="nf" hidden></form>`;
+  if (command) document.getElementById("copycmd").onclick = (e) => copyText(e.target, command);
+
+  const nf = document.getElementById("nf");
+  const openForm = (x) => {
+    const v = x || { name: "", city: "", countryCode: "", maxPeers: 250, active: true, hostname: "" };
+    nf.hidden = false;
+    nf.innerHTML = `<h3>${x ? t("Edit node") : t("New node")}</h3>
+      <div class="fields">
+        ${field("nn", t("Name"), v.name, 'required maxlength="60" placeholder="Germany 1"')}
+        ${field("nc", t("City"), v.city, 'required maxlength="60" placeholder="Nuremberg"')}
+        ${field("nk", t("Country code"), v.countryCode, 'required maxlength="2" placeholder="DE"')}
+        ${field("nm", t("Devices at most"), v.maxPeers, 'type="number" min="1" max="65000" step="1" required')}
+        ${field("nh", t("Host name"), v.hostname, 'maxlength="200" placeholder="de1.vpn.example.com"')}
+        <div><label for="na">${t("Status")}</label><select id="na"><option value="1" ${v.active ? "selected" : ""}>${t("On")}</option><option value="0" ${v.active ? "" : "selected"}>${t("Off")}</option></select></div>
+      </div>
+      <p class="muted small hint">${t("With a host name in your own domain, key files keep working after a move: point the name to the new machine's address.")}</p>
+      <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button><button class="btn secondary" type="button" id="ncancel">${t("Cancel")}</button>
+        ${x ? `<button class="btn secondary" type="button" id="nmove">${t("Move to another machine")}</button>` : ""}</div>
+      <p class="result" id="nres"></p>`;
+    document.getElementById("ncancel").onclick = () => { nf.hidden = true; };
+    const move = document.getElementById("nmove");
+    if (move) move.onclick = () => {
+      if (!confirm(t("A new install command is made and the old one stops working. Run it on the new machine: the node keeps its key, settings and devices."))) return;
+      saveWith(move, "nres", () => api(`/admin/nodes/${encodeURIComponent(x.id)}/token`, { method: "POST" }), (r) => nodesPane(r.command));
+    };
+    nf.onsubmit = (e) => {
+      e.preventDefault();
+      saveWith(nf.querySelector("button[type=submit]"), "nres", () => {
+        const body = { name: val("nn"), city: val("nc"), countryCode: val("nk").toUpperCase(), maxPeers: Number(val("nm")), active: document.getElementById("na").value === "1", hostname: val("nh") || null };
+        return x ? api("/admin/nodes/" + encodeURIComponent(x.id), { method: "PUT", body }) : api("/admin/nodes", { method: "POST", body });
+      }, (r) => nodesPane(r.command));
+    };
+    nf.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById("nn").focus();
+  };
+  document.getElementById("newn").onclick = () => openForm(null);
+  for (const b of pane.querySelectorAll("[data-edit]")) b.onclick = () => openForm(list.find((x) => x.id === b.dataset.edit));
 }
 
 async function plansPane(s) {
