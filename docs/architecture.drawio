@@ -6,74 +6,74 @@
         <mxCell id="1" parent="0"/>
 
         <!-- Zones -->
-        <mxCell id="cp" value="Control plane (отдельный VPS)" style="rounded=1;arcSize=4;dashed=1;fillColor=#fbf0dc;strokeColor=#a8670f;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontStyle=1;fontColor=#a8670f;" vertex="1" parent="1">
+        <mxCell id="cp" value="&lt;b&gt;Control plane (отдельный VPS)&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;аккаунты, тарифы, оплата; VPN-трафик сюда не идёт&lt;/font&gt;" style="html=1;rounded=1;arcSize=4;dashed=1;fillColor=#fbf0dc;strokeColor=#a8670f;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontStyle=1;fontColor=#a8670f;" vertex="1" parent="1">
           <mxGeometry x="40" y="230" width="860" height="260" as="geometry"/>
         </mxCell>
-        <mxCell id="dp" value="VPN-ноды" style="rounded=1;arcSize=4;dashed=1;fillColor=#f2f4f7;strokeColor=#7d889b;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontStyle=1;fontColor=#5a6476;" vertex="1" parent="1">
+        <mxCell id="dp" value="&lt;b&gt;VPN-ноды&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;только пропускают трафик пользователей&lt;/font&gt;" style="html=1;rounded=1;arcSize=4;dashed=1;fillColor=#f2f4f7;strokeColor=#7d889b;verticalAlign=top;align=left;spacingLeft=12;spacingTop=6;fontStyle=1;fontColor=#5a6476;" vertex="1" parent="1">
           <mxGeometry x="40" y="570" width="1080" height="170" as="geometry"/>
         </mxCell>
 
         <!-- Clients -->
-        <mxCell id="android" value="Android" style="rounded=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
-          <mxGeometry x="40" y="20" width="160" height="50" as="geometry"/>
+        <mxCell id="android" value="&lt;b&gt;Android&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;приложение, туннель AmneziaWG&lt;/font&gt;" style="html=1;rounded=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="160" height="56" as="geometry"/>
         </mxCell>
-        <mxCell id="ios" value="iOS" style="rounded=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
-          <mxGeometry x="220" y="20" width="160" height="50" as="geometry"/>
+        <mxCell id="ios" value="&lt;b&gt;iOS&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;приложение, Packet Tunnel&lt;/font&gt;" style="html=1;rounded=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
+          <mxGeometry x="220" y="20" width="160" height="56" as="geometry"/>
         </mxCell>
-        <mxCell id="site" value="Сайт" style="rounded=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
-          <mxGeometry x="400" y="20" width="160" height="50" as="geometry"/>
+        <mxCell id="site" value="&lt;b&gt;Сайт&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;покупка, ключи, рефералы&lt;/font&gt;" style="html=1;rounded=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
+          <mxGeometry x="400" y="20" width="160" height="56" as="geometry"/>
         </mxCell>
-        <mxCell id="tg" value="Telegram" style="rounded=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
-          <mxGeometry x="580" y="20" width="160" height="50" as="geometry"/>
+        <mxCell id="tg" value="&lt;b&gt;Telegram&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;пользователи бота&lt;/font&gt;" style="html=1;rounded=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
+          <mxGeometry x="580" y="20" width="160" height="56" as="geometry"/>
         </mxCell>
-        <mxCell id="third" value="AmneziaVPN / WG" style="rounded=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
-          <mxGeometry x="960" y="20" width="160" height="50" as="geometry"/>
+        <mxCell id="third" value="&lt;b&gt;AmneziaVPN / WG&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;чужие приложения по VPN-ключу&lt;/font&gt;" style="html=1;rounded=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
+          <mxGeometry x="960" y="20" width="160" height="56" as="geometry"/>
         </mxCell>
 
         <!-- Entry -->
-        <mxCell id="cdn" value="CDN + резервные домены" style="rounded=1;whiteSpace=wrap;fillColor=#e5f4ec;strokeColor=#1d8457;strokeWidth=2;" vertex="1" parent="1">
-          <mxGeometry x="40" y="130" width="520" height="50" as="geometry"/>
+        <mxCell id="cdn" value="&lt;b&gt;CDN + резервные домены&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;прячет IP сервера, переживает блокировки&lt;/font&gt;" style="html=1;rounded=1;whiteSpace=wrap;fillColor=#e5f4ec;strokeColor=#1d8457;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="130" width="520" height="56" as="geometry"/>
         </mxCell>
-        <mxCell id="tgapi" value="Telegram Bot API" style="rounded=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
-          <mxGeometry x="580" y="130" width="160" height="50" as="geometry"/>
+        <mxCell id="tgapi" value="&lt;b&gt;Telegram Bot API&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;сообщения бота&lt;/font&gt;" style="html=1;rounded=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
+          <mxGeometry x="580" y="130" width="160" height="56" as="geometry"/>
         </mxCell>
 
         <!-- Control plane -->
-        <mxCell id="api" value="API" style="rounded=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
+        <mxCell id="api" value="&lt;b&gt;API&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;вход, заказы, ключи, админка&lt;/font&gt;" style="html=1;rounded=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
           <mxGeometry x="70" y="280" width="200" height="60" as="geometry"/>
         </mxCell>
-        <mxCell id="worker" value="Worker" style="rounded=1;whiteSpace=wrap;fillColor=#e5f4ec;strokeColor=#1d8457;strokeWidth=2;" vertex="1" parent="1">
+        <mxCell id="worker" value="&lt;b&gt;Worker&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;бот, учёт трафика, мониторинг, сверка пиров&lt;/font&gt;" style="html=1;rounded=1;whiteSpace=wrap;fillColor=#e5f4ec;strokeColor=#1d8457;strokeWidth=2;" vertex="1" parent="1">
           <mxGeometry x="300" y="280" width="200" height="60" as="geometry"/>
         </mxCell>
-        <mxCell id="hook" value="Вебхук оплаты" style="rounded=1;whiteSpace=wrap;fillColor=#e5f4ec;strokeColor=#1d8457;strokeWidth=2;" vertex="1" parent="1">
+        <mxCell id="hook" value="&lt;b&gt;Вебхук оплаты&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;оплата → Pro + VPN-ключ&lt;/font&gt;" style="html=1;rounded=1;whiteSpace=wrap;fillColor=#e5f4ec;strokeColor=#1d8457;strokeWidth=2;" vertex="1" parent="1">
           <mxGeometry x="670" y="280" width="200" height="60" as="geometry"/>
         </mxCell>
-        <mxCell id="pg" value="PostgreSQL" style="shape=cylinder3;boundedLbl=1;size=10;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
+        <mxCell id="pg" value="&lt;b&gt;PostgreSQL&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;источник истины: аккаунты, подписки, пиры&lt;/font&gt;" style="html=1;shape=cylinder3;boundedLbl=1;size=10;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
           <mxGeometry x="70" y="390" width="430" height="70" as="geometry"/>
         </mxCell>
-        <mxCell id="backup" value="Бэкапы" style="rounded=1;whiteSpace=wrap;fillColor=#e5f4ec;strokeColor=#1d8457;strokeWidth=2;" vertex="1" parent="1">
+        <mxCell id="backup" value="&lt;b&gt;Бэкапы&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;pg_dump каждую ночь&lt;/font&gt;" style="html=1;rounded=1;whiteSpace=wrap;fillColor=#e5f4ec;strokeColor=#1d8457;strokeWidth=2;" vertex="1" parent="1">
           <mxGeometry x="670" y="395" width="200" height="60" as="geometry"/>
         </mxCell>
 
         <!-- External -->
-        <mxCell id="pay" value="Платёжка" style="rounded=1;whiteSpace=wrap;fillColor=#e5f4ec;strokeColor=#1d8457;strokeWidth=2;" vertex="1" parent="1">
-          <mxGeometry x="960" y="285" width="160" height="50" as="geometry"/>
+        <mxCell id="pay" value="&lt;b&gt;Платёжка&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;принимает деньги&lt;/font&gt;" style="html=1;rounded=1;whiteSpace=wrap;fillColor=#e5f4ec;strokeColor=#1d8457;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="960" y="278" width="160" height="56" as="geometry"/>
         </mxCell>
-        <mxCell id="smtp" value="SMTP" style="rounded=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
-          <mxGeometry x="960" y="345" width="160" height="50" as="geometry"/>
+        <mxCell id="smtp" value="&lt;b&gt;SMTP&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;коды входа, алерты&lt;/font&gt;" style="html=1;rounded=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
+          <mxGeometry x="960" y="343" width="160" height="56" as="geometry"/>
         </mxCell>
-        <mxCell id="store" value="Хранилище" style="rounded=1;whiteSpace=wrap;fillColor=#e5f4ec;strokeColor=#1d8457;strokeWidth=2;" vertex="1" parent="1">
-          <mxGeometry x="960" y="400" width="160" height="50" as="geometry"/>
+        <mxCell id="store" value="&lt;b&gt;Хранилище&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;бэкапы вне VPS&lt;/font&gt;" style="html=1;rounded=1;whiteSpace=wrap;fillColor=#e5f4ec;strokeColor=#1d8457;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="960" y="408" width="160" height="56" as="geometry"/>
         </mxCell>
 
         <!-- Nodes -->
-        <mxCell id="n1" value="&lt;b&gt;FRA-1&lt;/b&gt;&lt;br&gt;awg0 + node-agent" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
+        <mxCell id="n1" value="&lt;b&gt;FRA-1&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;awg0 + node-agent: пиры, счётчики, метрики&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#7d889b;" vertex="1" parent="1">
           <mxGeometry x="70" y="620" width="300" height="90" as="geometry"/>
         </mxCell>
-        <mxCell id="n2" value="&lt;b&gt;NL-1&lt;/b&gt;&lt;br&gt;awg0 + node-agent" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e5f4ec;strokeColor=#1d8457;strokeWidth=2;" vertex="1" parent="1">
+        <mxCell id="n2" value="&lt;b&gt;NL-1&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;запасная страна и провайдер&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e5f4ec;strokeColor=#1d8457;strokeWidth=2;" vertex="1" parent="1">
           <mxGeometry x="430" y="620" width="300" height="90" as="geometry"/>
         </mxCell>
-        <mxCell id="n3" value="&lt;b&gt;Нода N&lt;/b&gt;&lt;br&gt;awg0 + node-agent" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#e5f4ec;strokeColor=#1d8457;strokeWidth=2;" vertex="1" parent="1">
+        <mxCell id="n3" value="&lt;b&gt;Нода N&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot; color=&quot;#5a6476&quot;&gt;добавляется по мере роста&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#e5f4ec;strokeColor=#1d8457;strokeWidth=2;" vertex="1" parent="1">
           <mxGeometry x="790" y="620" width="300" height="90" as="geometry"/>
         </mxCell>
 
