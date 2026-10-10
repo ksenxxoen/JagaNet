@@ -64,7 +64,7 @@ note "Server: $PUBLIC_IP ($CITY, $COUNTRY)  ·  address: https://$DOMAIN  ·  ne
 step "Installing system packages (a few minutes)"
 # The old Caddy repository (cloudsmith) now answers "402 Payment Required" and breaks
 # apt-get update; Caddy comes from Ubuntu itself now.
-for f in $(grep -lr "dl.cloudsmith.io/public/caddy" /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null); do rm -f "$f"; done
+for f in $(grep -lr "dl.cloudsmith.io/public/caddy" /etc/apt/sources.list.d 2>/dev/null); do rm -f "$f"; done
 rm -f /usr/share/keyrings/caddy-stable-archive-keyring.gpg
 apt-get update -q
 apt-get install -y -q ca-certificates curl git gnupg iptables python3 software-properties-common sudo iputils-ping \
