@@ -151,13 +151,13 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
             appendLine()
             append(u.t("It works in the JagaNet app and in other VPN apps."))
             for (t in tariffs) { appendLine(); appendLine(); append("${t.name}, ${period(t, u.lang)}, ${Format.terms(t.deviceLimit, t.monthlyDataLimitBytes, u.lang)}") }
-            if (pro != null) { appendLine(); appendLine(); append(u.t("✅ Your Pro is active until {date}.", "date" to Format.date(pro.toString(), u.lang))) }
+            if (pro != null) { appendLine(); appendLine(); append(u.t("Your Pro is active until {date}.", "date" to Format.date(pro.toString(), u.lang))) }
         }
-        send(u, text, buyButtons(u, tariffs) + listOf(listOf(Btn(u.t("🔑 My VPN key"), "key"), Btn(u.t("📱 Get the app"), "app")), listOf(Btn(u.t("🎁 Invite friends"), "invite"), Btn("🌐 " + u.lang.nativeName, "language"))))
+        send(u, text, buyButtons(u, tariffs) + listOf(listOf(Btn(u.t("My VPN key"), "key"), Btn(u.t("Get the app"), "app")), listOf(Btn(u.t("Invite friends"), "invite"), Btn(u.t("Language") + " " + u.lang.nativeName, "language"))))
     }
 
     private suspend fun languageAction(u: Who) =
-        send(u, u.t("Choose a language"), listOf(Lang.entries.map { Btn((if (it == u.lang) "✓ " else "") + it.nativeName, "lang:${it.code}") }))
+        send(u, u.t("Choose a language"), listOf(Lang.entries.map { Btn(it.nativeName + (if (it == u.lang) " (" + u.t("current") + ")" else ""), "lang:${it.code}") }))
 
     private suspend fun buyAction(u: Who, tariffId: String) {
         val tariff = s.tariffs.onSale(u.lang).firstOrNull { it.id == tariffId }
@@ -187,7 +187,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
         } catch (e: AppError) {
             return send(u, u.t("Couldn't make a key.") + "\n" + translate(u.lang, e.message ?: "", e.args))
         }
-        sendKey(u, key, u.t("🔑 Your VPN key"))
+        sendKey(u, key, u.t("Your VPN key"))
     }
 
     private suspend fun appAction(u: Who) {
@@ -200,7 +200,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
         send(
             u,
             buildString {
-                appendLine(u.t("📱 Install the JagaNet app, tap Sign in with a device code and enter this code"))
+                appendLine(u.t("Install the JagaNet app, tap Sign in with a device code and enter this code"))
                 appendLine()
                 appendLine(pair.code)
                 appendLine()
@@ -243,8 +243,8 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
         if (pro == null) return send(u, u.t("No active subscription."), buyButtons(u))
         send(
             u,
-            u.t("✅ Pro until {date}.", "date" to Format.date(pro.toString(), u.lang)) + "\n" + u.tp(keys, "{n} VPN key|{n} VPN keys"),
-            listOf(listOf(Btn(u.t("🔑 My VPN key"), "key"), Btn(u.t("Extend"), "menu"))),
+            u.t("Pro until {date}.", "date" to Format.date(pro.toString(), u.lang)) + "\n" + u.tp(keys, "{n} VPN key|{n} VPN keys"),
+            listOf(listOf(Btn(u.t("My VPN key"), "key"), Btn(u.t("Extend"), "menu"))),
         )
     }
 
@@ -252,7 +252,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
         val row = ctx.db.run { it.one("SELECT telegram_id, lang FROM users WHERE id=?::uuid", order.userId) } ?: return
         val chat = row.longOrNull("telegram_id") ?: return
         val u = Who(order.userId, chat, Lang.of(row.strOrNull("lang")) ?: Lang.DEFAULT)
-        val head = u.t("✅ Payment received. Pro is active until {date}.", "date" to Format.date(until.toString(), u.lang))
+        val head = u.t("Payment received. Pro is active until {date}.", "date" to Format.date(until.toString(), u.lang))
         if (key == null) return send(u, head + "\n\n" + u.t("Tap /key to get your VPN key."))
         sendKey(u, key, head)
     }

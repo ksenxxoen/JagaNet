@@ -69,34 +69,39 @@ fun SettingsScreen(s: AppState) {
     Screen {
         Title(t("Settings"))
         Gap(16.dp)
-        Card(Modifier.clickable(role = Role.Button) { s.router.go(Route.Account) }, padding = 14.dp) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Box(Modifier.size(40.dp).clip(CircleShape).background(C.ink), contentAlignment = Alignment.Center) {
-                    T(s.user?.email?.take(1)?.uppercase() ?: "?", TS.Body, FontWeight.SemiBold, Color.White)
+        // Account and invites: one card, two rows of the same height.
+        Card {
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 64.dp).clickable(role = Role.Button) { s.router.go(Route.Account) }.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(Modifier.size(36.dp).clip(CircleShape).background(C.lineSoft), contentAlignment = Alignment.Center) {
+                    T(s.user?.email?.take(1)?.uppercase() ?: "?", TS.Body, FontWeight.SemiBold)
                 }
                 Column(Modifier.weight(1f)) {
-                    T(s.user?.email ?: "", TS.Body, FontWeight.SemiBold, maxLines = 1)
+                    T(s.user?.email ?: "", TS.Body, FontWeight.Medium, maxLines = 1)
                     T((me as? Load.Ok)?.value?.entitlement?.let { e ->
                         e.tariffName ?: when (e.plan) { PlanId.FREE -> t("Free"); PlanId.PRO -> t("Pro") }
                     } ?: "", TS.Label, color = C.muted)
                 }
                 Icon(Ic.ChevronRight, C.muted, 18.dp, 2f)
             }
-        }
-        Gap(10.dp)
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(R.card)).background(C.greenTint).clickable(role = Role.Button) { s.router.go(Route.Referral) }.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(Ic.Gift, C.greenDark, 20.dp)
-            T(t("Invite friends"), TS.Small, FontWeight.SemiBold, C.greenDark, modifier = Modifier.weight(1f))
-            Icon(Ic.ChevronRight, C.greenDark, 18.dp, 2f)
+            dev.jaganet.app.ui.Divider()
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 64.dp).clickable(role = Role.Button) { s.router.go(Route.Referral) }.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(Modifier.size(36.dp).clip(CircleShape).background(C.lineSoft), contentAlignment = Alignment.Center) { Icon(Ic.Gift, C.ink, 18.dp) }
+                T(t("Invite friends"), TS.Body, FontWeight.Medium, modifier = Modifier.weight(1f))
+                Icon(Ic.ChevronRight, C.muted, 18.dp, 2f)
+            }
         }
 
         SectionLabel(t("Language"))
         Card {
-            Lang.entries.forEach { lang ->
+            Lang.entries.forEachIndexed { i, lang ->
                 LanguageOption(lang.nativeName, AppLang.current == lang) { s.setLanguage(lang) }
+                if (i < Lang.entries.lastIndex) dev.jaganet.app.ui.Divider()
             }
         }
 
@@ -130,13 +135,14 @@ fun SettingsScreen(s: AppState) {
 
         SectionLabel(t("Help"))
         Card {
-            ListRow(t("Contact support"), value = t("Usually replies in a day"), onClick = { s.platform.openUrl("mailto:support@jaganet.dev") })
+            ListRow(t("Contact support"), t("Usually replies in a day"), onClick = { s.platform.openUrl("mailto:support@jaganet.dev") })
             ListRow(t("Connection log"), onClick = { s.router.go(Route.Logs) })
             ListRow(t("Privacy policy"), onClick = { s.platform.openUrl("https://jaganet.dev/privacy") })
             ListRow(t("Terms of service"), value = "v0.1.0", last = true, onClick = { s.platform.openUrl("https://jaganet.dev/terms") })
         }
         Gap(16.dp)
-        Button(t("Sign out"), { s.signOut() }, Modifier.fillMaxWidth(), ButtonKind.Ghost)
+        Gap(24.dp)
+        Button(t("Sign out"), { s.signOut() }, Modifier.fillMaxWidth(), ButtonKind.Secondary)
     }
 }
 
@@ -147,8 +153,8 @@ fun ProtocolScreen(s: AppState) {
     Screen(onBack = { s.router.back() }) {
         Gap(8.dp)
         Title(t("Protocol"))
-        T(t("How this device talks to the server. Automatic picks the best one both support."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
-        Gap(18.dp)
+        T(t("How this device talks to the server. Automatic picks the best one both support."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 8.dp))
+        Gap(16.dp)
         Loaded(servers) { list ->
             val server = list.firstOrNull { it.id == st.serverId } ?: list.firstOrNull()
             val offered = server?.protocols.orEmpty()
@@ -163,7 +169,7 @@ fun ProtocolScreen(s: AppState) {
                     ) { s.settings.update { it.copy(protocol = id) } }
                 }
             }
-            T(t("Changes apply the next time you connect."), TS.Caption, color = C.muted, modifier = Modifier.padding(top = 10.dp, start = 4.dp))
+            T(t("Changes apply the next time you connect."), TS.Caption, color = C.muted, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
         }
     }
 }
@@ -201,16 +207,16 @@ fun SplitTunnelScreen(s: AppState) {
     Screen(onBack = { s.router.back() }) {
         Gap(8.dp)
         Title(t("Split tunneling"))
-        T(t("Choose which apps use the tunnel. Leave out apps that don’t need protection, like local banking or streaming."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
-        Gap(18.dp)
+        T(t("Choose which apps use the tunnel. Leave out apps that don’t need protection, like local banking or streaming."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 8.dp))
+        Gap(16.dp)
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(SplitMode.ALL to t("All apps use the VPN"), SplitMode.ONLY to t("Only selected apps"), SplitMode.EXCLUDE to t("All except selected apps")).forEach { (mode, label) ->
                 val on = st.split.mode == mode
                 Row(
                     Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(RoundedCornerShape(R.button)).background(C.surface)
-                        .border(if (on) 2.dp else 1.dp, if (on) C.green else C.line, RoundedCornerShape(R.button))
+                        .border(1.dp, if (on) C.primary else C.line, RoundedCornerShape(R.button))
                         .selectable(on, role = Role.RadioButton) { s.settings.update { it.copy(split = it.split.copy(mode = mode)) } }
-                        .padding(horizontal = 14.dp),
+                        .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Radio(on)
@@ -238,8 +244,8 @@ fun SplitTunnelScreen(s: AppState) {
                             }
                             T(app.label, TS.Body, modifier = Modifier.weight(1f))
                             Box(
-                                Modifier.size(22.dp).clip(RoundedCornerShape(6.dp)).background(if (checked) C.green else C.surface)
-                                    .border(2.dp, if (checked) C.green else C.faint, RoundedCornerShape(6.dp)),
+                                Modifier.size(20.dp).clip(RoundedCornerShape(R.button)).background(if (checked) C.primary else C.surface)
+                                    .border(1.dp, if (checked) C.primary else C.faint, RoundedCornerShape(R.button)),
                                 contentAlignment = Alignment.Center,
                             ) { if (checked) Icon(Ic.Check, Color.White, 16.dp, 2.6f) }
                         }
@@ -260,33 +266,23 @@ fun LogsScreen(s: AppState) {
         Gap(8.dp)
         Title(t("Connection log"))
         T(t("Kept only on this device."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 4.dp))
-        Gap(14.dp)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("all" to t("All"), "warn" to t("Warnings"), "error" to t("Errors")).forEach { (k, l) ->
-                val on = filter == k
-                Box(
-                    Modifier.heightIn(min = 36.dp).clip(CircleShape).background(if (on) C.ink else C.surface)
-                        .border(1.dp, if (on) C.ink else C.lineStrong, CircleShape)
-                        .selectable(on, role = Role.Tab) { filter = k }.padding(horizontal = 14.dp),
-                    contentAlignment = Alignment.Center,
-                ) { T(l, TS.Label, FontWeight.Medium, if (on) Color.White else C.ink) }
-            }
-        }
-        Gap(14.dp)
-        Column(Modifier.fillMaxWidth().heightIn(min = 360.dp).clip(RoundedCornerShape(R.tile)).background(C.night).padding(horizontal = 14.dp, vertical = 12.dp)) {
-            if (lines.isEmpty()) T(t("Nothing logged yet. Connect to see tunnel events."), TS.Caption, color = C.nightMuted, mono = true)
+        Gap(16.dp)
+        dev.jaganet.app.ui.Segmented(listOf("all" to t("All"), "warn" to t("Warnings"), "error" to t("Errors")), filter) { filter = it }
+        Gap(16.dp)
+        Column(Modifier.fillMaxWidth().heightIn(min = 360.dp).clip(RoundedCornerShape(R.tile)).background(C.console).padding(horizontal = 16.dp, vertical = 12.dp)) {
+            if (lines.isEmpty()) T(t("Nothing logged yet. Connect to see tunnel events."), TS.Caption, color = C.consoleMuted, code = true)
             lines.forEach { l ->
-                Row(Modifier.padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    T(Format.clockOfDay(l.time), TS.Caption, color = C.faint, mono = true)
-                    T(l.level.name, TS.Caption, FontWeight.Medium, when (l.level) { LogLevel.ERROR -> C.logError; LogLevel.WARN -> C.logWarn; LogLevel.INFO -> C.logInfo }, mono = true, modifier = Modifier.size(width = 44.dp, height = 16.dp))
-                    T(l.msg, TS.Caption, color = C.logText, mono = true)
+                Row(Modifier.padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    T(Format.clockOfDay(l.time), TS.Caption, color = C.consoleMuted, code = true)
+                    T(l.level.name, TS.Caption, FontWeight.Medium, when (l.level) { LogLevel.ERROR -> C.logError; LogLevel.WARN -> C.logWarn; LogLevel.INFO -> C.logInfo }, code = true, modifier = Modifier.size(width = 44.dp, height = 16.dp))
+                    T(l.msg, TS.Caption, color = C.logText, code = true)
                 }
             }
         }
-        Gap(14.dp)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Gap(16.dp)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(t("Copy"), { s.platform.copy(text) }, Modifier.weight(1f), ButtonKind.Secondary)
-            Button(t("Share"), { s.platform.share(text) }, Modifier.weight(1f))
+            Button(t("Share"), { s.platform.share(text) }, Modifier.weight(1f), ButtonKind.Secondary)
         }
     }
 }

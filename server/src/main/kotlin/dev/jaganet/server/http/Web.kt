@@ -143,10 +143,10 @@ private class Pages(val lang: Lang) {
 <html lang="${lang.code}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><title>$title | JagaNet</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"></head>
-<body><header class="top"><a class="logo" href="/"><span class="dot"></span>JagaNet</a>
-<nav class="nav langs">${Lang.entries.joinToString("") { l -> """<a class="${if (l == lang) "on" else ""}" href="?lang=${l.code}" hreflang="${l.code}">${l.code.uppercase()}</a>""" }}</nav></header>
+<body><header class="top"><div class="top-in"><a class="logo" href="/"><img src="/favicon.svg" alt="">JagaNet</a>
+<nav class="nav"><span class="langs">${Lang.entries.joinToString("") { l -> """<a class="${if (l == lang) "on" else ""}" href="?lang=${l.code}" hreflang="${l.code}">${l.code.uppercase()}</a>""" }}</span></nav></div></header>
 <main class="narrow">$body</main></body></html>"""
 
     fun key(k: KeyConfig, token: String, s: Services): String {
@@ -154,8 +154,7 @@ private class Pages(val lang: Lang) {
         val ours = s.site.androidAppUrl()?.let { """<li><a href="${esc(it)}">${t("JagaNet for Android")}</a><br><span class="muted">${t("In our app you just sign in, no key needed")}</span></li>""" } ?: ""
         val others = s.site.otherApps.joinToString("") { (n, u) -> """<li><a href="${esc(u)}" rel="noreferrer">${esc(n)}</a></li>""" }
         return page(t("Your VPN key"), """
-<h1>${t("Your VPN key")}</h1>
-<p class="muted">${esc(k.location)}<br>${esc(keyName(k.name, lang))}</p>
+<div class="head"><div><h1>${t("Your VPN key")}</h1><p class="muted">${esc(keyName(k.name, lang))}, ${esc(k.location)}</p></div></div>
 <div class="card keycard">
   <img class="qr" src="$base/qr.png" alt="${t("QR code of your VPN key")}" width="280" height="280">
   <div class="keyactions">
@@ -169,15 +168,15 @@ private class Pages(val lang: Lang) {
   <li><b>${t("Add the key")}</b><br>${t("Scan the QR code above in the app or import the {file} file.", "file" to Keys.CONFIG_FILE)}</li>
   <li><b>${t("Turn on the VPN")}</b><br>${t("That's all.")}</li>
 </ol>
-<p class="warn">${t("Keep this page private. Anyone with this link can use your subscription. If it leaks, delete the key in your account and make a new one.")}</p>
+<p class="notice bad">${t("Keep this page private. Anyone with this link can use your subscription. If it leaks, delete the key in your account and make a new one.")}</p>
 <textarea id="cfg" hidden>${esc(k.text)}</textarea>
 <script>document.getElementById('copy').onclick=async e=>{await navigator.clipboard.writeText(document.getElementById('cfg').value);e.target.textContent=${jsString(I18n.tr(lang, "Copied"))}};</script>
 """)
     }
 
     fun checkout(id: String, product: String, amount: String, paid: Boolean) = page(t("Payment"), """
-<div class="card center">
-  <span class="tag">${t("TEST PAYMENT")}</span>
+<div class="card signbox center">
+  <span class="tag">${t("Test payment")}</span>
   <h1>${esc(product)}</h1>
   <div class="price">${esc(amount)}</div>
   ${if (paid) """<p class="muted">${t("This order is already paid.")}</p><a class="btn" href="/#/account">${t("Go to my account")}</a>"""
@@ -186,12 +185,12 @@ private class Pages(val lang: Lang) {
 </div>""")
 
     fun paidInTelegram(bot: String?) = page(t("Payment received"), """
-<div class="card center"><div class="big">✓</div><h1>${t("Payment received")}</h1>
+<div class="card signbox center"><h1>${t("Payment received")}</h1>
 <p class="muted">${t("Your VPN key is waiting in the Telegram chat.")}</p>
 ${bot?.let { """<a class="btn" href="https://t.me/${esc(it)}">${t("Back to Telegram")}</a>""" } ?: ""}</div>""")
 
     fun paidInApp() = page(t("Payment received"), """
-<div class="card center"><div class="big">✓</div><h1>${t("Payment received")}</h1>
+<div class="card signbox center"><h1>${t("Payment received")}</h1>
 <p class="muted">${t("Go back to the JagaNet app. Pro is already on.")}</p></div>""")
 
     private fun jsString(v: String) = "'" + v.replace("\\", "\\\\").replace("'", "\\'") + "'"

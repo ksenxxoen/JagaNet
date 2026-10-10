@@ -66,8 +66,8 @@ fun DevicesScreen(s: AppState) {
         Title(t("Devices"))
         Loaded(devices) { d ->
             val withTunnel = d.devices.count { it.tunnelAddress != null }
-            T(tp(d.limit, "{used} of {n} device on your plan|{used} of {n} devices on your plan", "used" to withTunnel), TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
-            Gap(18.dp)
+            T(tp(d.limit, "{used} of {n} device on your plan|{used} of {n} devices on your plan", "used" to withTunnel), TS.Small, color = C.muted, modifier = Modifier.padding(top = 8.dp))
+            Gap(16.dp)
             Card {
                 d.devices.forEachIndexed { i, dev ->
                     DeviceRow(dev, nowMs(), expanded = open == dev.id) { open = if (open == dev.id) null else dev.id }
@@ -88,7 +88,7 @@ fun DevicesScreen(s: AppState) {
             }
         }
         ErrorNote(a.error)
-        Gap(14.dp)
+        Gap(16.dp)
         Button(t("Add device"), {
             scope.launch {
                 a.busy = true
@@ -98,8 +98,8 @@ fun DevicesScreen(s: AppState) {
         }, Modifier.fillMaxWidth(), icon = Ic.Plus, busy = a.busy)
 
         pairing?.let { p ->
-            Gap(18.dp)
-            Card(padding = 18.dp) {
+            Gap(16.dp)
+            Card(padding = 16.dp) {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(
                         Modifier.size(132.dp).border(1.5.dp, C.faint, RoundedCornerShape(10.dp)).padding(8.dp),
@@ -111,7 +111,7 @@ fun DevicesScreen(s: AppState) {
                     Column(Modifier.weight(1f)) {
                         T(t("New device"), TS.Body, FontWeight.SemiBold)
                         T(t("Install {app} on the other device, choose “{button}” and enter this code. It expires in 10 minutes.", "app" to APP_NAME, "button" to t("Sign in with a device code")), TS.Label, color = C.muted, modifier = Modifier.padding(top = 4.dp))
-                        T(t("Need more devices?"), TS.Label, FontWeight.SemiBold, C.green, modifier = Modifier.padding(top = Space.sm).clickable(role = Role.Button) { s.router.go(Route.Plans) })
+                        T(t("Need more devices?"), TS.Small, FontWeight.Medium, C.primary, modifier = Modifier.padding(top = Space.sm).clickable(role = Role.Button) { s.router.go(Route.Plans) })
                     }
                 }
             }
@@ -122,8 +122,8 @@ fun DevicesScreen(s: AppState) {
 @Composable
 private fun DeviceRow(d: Device, now: Long, expanded: Boolean, onMore: () -> Unit) {
     val icon = when (d.platform) { Platform.IOS, Platform.ANDROID -> if (d.name.contains("tablet", true)) Ic.Tablet else Ic.Phone; Platform.DESKTOP, Platform.OTHER -> Ic.Laptop }
-    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        IconTile(icon, if (d.online || d.isCurrent) C.greenTint else C.lineSoft, if (d.online || d.isCurrent) C.green else C.muted)
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        IconTile(icon, C.lineSoft, C.ink)
         Column(Modifier.weight(1f)) {
             T(d.name, TS.Body, FontWeight.SemiBold, maxLines = 1)
             // As in the draft: address, then last contact. The protocol shows when the row is opened.
@@ -135,14 +135,15 @@ private fun DeviceRow(d: Device, now: Long, expanded: Boolean, onMore: () -> Uni
             if (expanded && d.protocol != null) T(t("Protocol: {name}", "name" to t(ProtocolInfo.label(d.protocol!!))), TS.Caption, color = C.muted, modifier = Modifier.padding(top = 2.dp))
         }
         when {
-            d.isCurrent -> T(t("This device"), TS.Caption, FontWeight.SemiBold, C.green, modifier = Modifier.padding(end = 8.dp))
-            else -> T(if (d.online) t("Online") else t("Offline"), TS.Caption, FontWeight.SemiBold, if (d.online) C.green else C.muted)
+            d.isCurrent -> dev.jaganet.app.ui.Badge(t("This device"), C.primaryTint, C.primaryDark)
+            d.online -> dev.jaganet.app.ui.Badge(t("Online"), C.greenTint, C.greenDark)
+            else -> dev.jaganet.app.ui.Badge(t("Offline"))
         }
-        if (!d.isCurrent) {
-            Box(
-                Modifier.size(44.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onMore).semantics { contentDescription = t("More options for {name}", "name" to d.name) },
-                contentAlignment = Alignment.Center,
-            ) { Icon(if (expanded) Ic.Close else Ic.More, C.muted, 20.dp, 2.2f) }
-        }
+        // The menu column is always there, so badges line up in every row.
+        Box(
+            Modifier.size(40.dp).clip(CircleShape)
+                .then(if (d.isCurrent) Modifier else Modifier.clickable(role = Role.Button, onClick = onMore).semantics { contentDescription = t("More options for {name}", "name" to d.name) }),
+            contentAlignment = Alignment.Center,
+        ) { if (!d.isCurrent) Icon(if (expanded) Ic.Close else Ic.More, C.muted, 20.dp, 2.2f) }
     }
 }

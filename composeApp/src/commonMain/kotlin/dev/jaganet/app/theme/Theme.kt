@@ -9,70 +9,87 @@ import androidx.compose.ui.unit.dp
 import jaganet.composeapp.generated.resources.Res
 import jaganet.composeapp.generated.resources.ibm_plex_mono_medium
 import jaganet.composeapp.generated.resources.ibm_plex_mono_regular
-import jaganet.composeapp.generated.resources.ibm_plex_sans_bold
-import jaganet.composeapp.generated.resources.ibm_plex_sans_medium
-import jaganet.composeapp.generated.resources.ibm_plex_sans_regular
-import jaganet.composeapp.generated.resources.ibm_plex_sans_semibold
+import jaganet.composeapp.generated.resources.inter_bold
+import jaganet.composeapp.generated.resources.inter_medium
+import jaganet.composeapp.generated.resources.inter_regular
+import jaganet.composeapp.generated.resources.inter_semibold
 import org.jetbrains.compose.resources.Font
 
 /**
- * Design tokens from the JagaNet canvas. Screens use these names, never raw
- * values, so a re-theme (or dark mode) is a change here only.
+ * Design tokens, after GitLab's Pajamas design system: neutral grays, one blue for
+ * actions and selection, green only for "protected / active / online", 4 dp corners on
+ * controls and 8 dp on panels, 1 dp borders, no shadows. Screens use these names, never
+ * raw values, so a re-theme (or dark mode) is a change here only.
  */
 object C {
-    // Light surfaces (all user-facing screens)
-    val paper = Color(0xFFF4F3EF) // screen background
+    // Surfaces and text
+    val paper = Color(0xFFFBFAFD) // screen background
     val surface = Color(0xFFFFFFFF) // cards, tab bar
-    val ink = Color(0xFF16181A) // primary text, dark buttons
-    val muted = Color(0xFF5C605F) // secondary text (4.5:1 on paper)
-    val faint = Color(0xFF9A9D9B) // radio rings, dashed borders — never body text
-    val line = Color(0xFFE2E0DA) // card borders
-    val lineSoft = Color(0xFFECEAE4) // row dividers, progress tracks, power-button halo
-    val lineStrong = Color(0xFFD6D3CC) // secondary button borders
-    val toggleOff = Color(0xFFC9C6BE)
+    val ink = Color(0xFF1F1E24) // headings, primary text
+    val muted = Color(0xFF626168) // secondary text
+    val faint = Color(0xFF89888D) // input borders, icons at rest, never body text
+    val line = Color(0xFFDCDCDE) // card borders
+    val lineSoft = Color(0xFFECECEF) // row dividers, tracks, selected segment
+    val lineStrong = Color(0xFFBFBFC3) // secondary button borders
+    val toggleOff = Color(0xFFBFBFC3)
 
-    // Brand / state
-    val green = Color(0xFF1E6B57) // protected, primary action, selected
-    val greenDark = Color(0xFF14493B) // text on greenTint
-    val greenTint = Color(0xFFDCEBE4) // Pro badge, connected halo
-    val warn = Color(0xFFB4501A) // "not protected" dot, quota bar
-    val warnText = Color(0xFF9A4312) // "not protected" label, destructive text
+    // Actions and selection
+    val primary = Color(0xFF1F75CB)
+    val primaryDark = Color(0xFF0B5CAD) // text on primaryTint
+    val primaryTint = Color(0xFFE9F3FC)
 
-    // Dark surfaces (owner dashboard, log console)
-    val night = Color(0xFF16181A)
-    val nightCard = Color(0xFF222527)
-    val nightTrack = Color(0xFF33373A)
-    val nightMuted = Color(0xFFB9BCBA)
-    val nightText = Color(0xFFF4F3EF)
-    val chartGreen = Color(0xFF6FA592)
-    val alert = Color(0xFFE0A27E)
-    val alertBg = Color(0xFF3A2A20)
-    val alertText = Color(0xFFF2C9AE)
+    // State
+    val green = Color(0xFF108548) // protected, active, online
+    val greenDark = Color(0xFF24663B) // text on greenTint
+    val greenTint = Color(0xFFECF4EE)
+    val warn = Color(0xFFAB6100) // "not protected" dot, quota bar
+    val warnText = Color(0xFFAE1800) // "not protected" label, destructive text
+    val warnTint = Color(0xFFFDF1DD)
 
-    // Log levels on the dark console
-    val logInfo = Color(0xFF8FCBB5)
-    val logWarn = Color(0xFFF2C46D)
-    val logError = Color(0xFFFF9C6E)
-    val logText = Color(0xFFE8E6E0)
+    // Charts: blue for the main series, a lighter blue for the second one
+    val chart1 = primary
+    val chart2 = Color(0xFF97ACE8)
+
+    // The owner dashboard uses the same light surfaces as every other screen.
+    val night = paper
+    val nightCard = surface
+    val nightTrack = lineSoft
+    val nightMuted = muted
+    val nightText = ink
+    val chartGreen = chart2
+    val alert = warn
+    val alertBg = warnTint
+    val alertText = Color(0xFF8F4700)
+
+    // Connection log console (dark, like a terminal)
+    val console = Color(0xFF1F1E24)
+    val consoleMuted = Color(0xFFBFBFC3)
+    val logInfo = Color(0xFF8FC7FF)
+    val logWarn = Color(0xFFF5D9A8)
+    val logError = Color(0xFFFCB5AA)
+    val logText = Color(0xFFECECEF)
 }
 
+/** Corners: 4 dp for controls, 8 dp for panels. */
 object R {
-    val icon = 10.dp
-    val button = 12.dp
-    val tile = 14.dp
-    val card = 16.dp
-    val hero = 18.dp
+    val icon = 4.dp
+    val button = 4.dp
+    val tile = 8.dp
+    val card = 8.dp
+    val hero = 8.dp
 }
 
+/** A 4 dp grid. */
 object Space {
     val xs = 4.dp
     val sm = 8.dp
     val md = 12.dp
     val lg = 16.dp
-    val gutter = 20.dp
+    val gutter = 16.dp
     val xl = 24.dp
 }
 
+/** Inter for everything; the mono face only for codes and the connection log. */
 class Fonts(val sans: FontFamily, val mono: FontFamily)
 
 val LocalFonts = staticCompositionLocalOf<Fonts> { error("Fonts not provided") }
@@ -80,10 +97,10 @@ val LocalFonts = staticCompositionLocalOf<Fonts> { error("Fonts not provided") }
 @Composable
 fun rememberFonts() = Fonts(
     sans = FontFamily(
-        Font(Res.font.ibm_plex_sans_regular, FontWeight.Normal),
-        Font(Res.font.ibm_plex_sans_medium, FontWeight.Medium),
-        Font(Res.font.ibm_plex_sans_semibold, FontWeight.SemiBold),
-        Font(Res.font.ibm_plex_sans_bold, FontWeight.Bold),
+        Font(Res.font.inter_regular, FontWeight.Normal),
+        Font(Res.font.inter_medium, FontWeight.Medium),
+        Font(Res.font.inter_semibold, FontWeight.SemiBold),
+        Font(Res.font.inter_bold, FontWeight.Bold),
     ),
     mono = FontFamily(
         Font(Res.font.ibm_plex_mono_regular, FontWeight.Normal),

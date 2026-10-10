@@ -5,25 +5,54 @@ it screen by screen; screenshots of the running app come from `./gradlew :compos
 
 ## Design system
 
-All values live in `composeApp/.../theme/Theme.kt`. Screens use token names only.
+The look follows GitLab's Pajamas design system, the same in the app, on the website and in
+the bot. App values live in `composeApp/.../theme/Theme.kt`, web values in
+`server/src/main/resources/web/style.css` (CSS variables). Screens use token names only.
 
 | Token | Value | Use |
 |---|---|---|
-| `paper` | `#F4F3EF` | screen background |
+| `paper` | `#FBFAFD` | screen background |
 | `surface` | `#FFFFFF` | cards, tab bar |
-| `ink` | `#16181A` | text, dark buttons |
-| `muted` | `#5C605F` | secondary text (4.5:1 on paper) |
-| `line` / `lineSoft` / `lineStrong` | `#E2E0DA` / `#ECEAE4` / `#D6D3CC` | borders, dividers, tracks |
-| `green` / `greenDark` / `greenTint` | `#1E6B57` / `#14493B` / `#DCEBE4` | protected, primary, selected |
-| `warn` / `warnText` | `#B4501A` / `#9A4312` | not protected, quota, destructive |
-| `night*`, `chartGreen`, `alert*` | dark palette | owner dashboard, log console |
+| `ink` | `#1F1E24` | headings, main text |
+| `muted` | `#626168` | secondary text |
+| `line` / `lineSoft` / `lineStrong` | `#DCDCDE` / `#ECECEF` / `#BFBFC3` | borders, dividers, selected segment |
+| `primary` / `primaryTint` | `#1F75CB` / `#E9F3FC` | actions, selection, links, charts |
+| `green` / `greenTint` | `#108548` / `#ECF4EE` | protected, active, online only |
+| `warn` / `warnText` / `warnTint` | `#AB6100` / `#AE1800` / `#FDF1DD` | not protected, quota, destructive |
+| `console`, `log*` | dark | the connection log (a terminal) only |
 
-- **Type:** IBM Plex Sans (400/500/600/700) for UI, IBM Plex Mono (400/500) for every number,
-  address and code. Scale: 34 / 28 / 24 / 20 / 15 / 14 / 13 / 12 / 11.
-- **Shape:** radius 10 (icon tiles), 12 (buttons), 14 (stat tiles), 16 (cards), 18 (plan card).
-- **Touch:** controls are ≥ 44 pt, primary buttons 50 pt.
-- **Icons:** 24-grid stroke icons from the canvas (`ui/Icons.kt`), round caps, 1.8 stroke.
-- Fonts are © IBM, SIL Open Font License 1.1.
+- **Type:** Inter (400/500/600/700; GitLab Sans is based on it). Numbers use tabular figures,
+  not a monospaced font. The mono face is only for codes and the connection log.
+- **Grid:** 4 dp / 4 px. Spacing 4, 8, 12, 16, 24, 32.
+- **Shape:** 4 dp corners on controls (buttons, inputs, segments), 8 dp on panels and cards,
+  badges fully rounded. 1 dp borders, no shadows, no gradients.
+- **Controls:** buttons 44 dp in the app, 32 px on the website (40 px on phones); an input and a
+  button in one row have the same height. One blue button per screen area, the rest are white
+  with a gray border.
+- **Icons:** 24-grid stroke icons (`ui/Icons.kt`). No emoji anywhere, the bot included.
+- Inter is © The Inter Project Authors, SIL Open Font License 1.1 (`docs/licenses/Inter-OFL.txt`).
+
+### Symmetry rules
+
+What separates this from generated-looking design is that everything lines up:
+
+- A row of tiles is always full. The website picks the column count from the number of
+  tiles (`evenCols()` in `app.js`: up to 4 in a row, else 4, 3 or 2 that divides the count;
+  a short last row is centered).
+- Tiles in one row have one height and one structure: label, value, note line (kept even when
+  empty). Plan cards share badge line, name, price, four lines of terms and a bottom button.
+- Page heading: title left, actions right, on one line. Section headings the same.
+- Lists are cards of equal rows with dividers; values sit in one column on the right.
+- On phones the top menu becomes one menu button with the same links, full width.
+
+### What was removed (audit)
+
+Warm off-white "paper" with IBM Plex; monospaced numbers, badges and tables; ALL CAPS
+letter-spaced labels; a fake "protected" hero card with a glowing ring; three generic feature
+cards; dark inverted plan cards; tinted promo banners; colored left borders on status cards;
+pill chips with a black active state; two filled button colors side by side; large mixed radii
+(6 to 22); a pricing card alone on its own row; tiles of different heights; nav buttons that
+wrapped into a column on phones; emoji in the bot.
 
 ## Screens
 

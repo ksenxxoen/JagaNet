@@ -44,6 +44,8 @@ import dev.jaganet.app.theme.R
 import dev.jaganet.app.theme.Space
 import dev.jaganet.app.tunnel.ProtocolInfo
 import dev.jaganet.app.tunnel.TunnelStatus
+import dev.jaganet.app.ui.Button
+import dev.jaganet.app.ui.ButtonKind
 import dev.jaganet.app.ui.Card
 import dev.jaganet.app.ui.Gap
 import dev.jaganet.app.ui.Ic
@@ -82,11 +84,11 @@ fun HomeScreen(s: AppState) {
             Brand()
             if (m != null) {
                 if (pro) Pill(t("Pro"), C.greenTint, C.greenDark) { s.router.go(Route.Account) }
-                else Pill(t("Get Pro"), C.ink, Color.White) { s.router.go(Route.Plans) }
+                else Pill(t("Get Pro"), C.primary, Color.White) { s.router.go(Route.Plans) }
             }
         }
 
-        Column(Modifier.fillMaxWidth().padding(top = 44.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             StatusLine(st.status, st.since)
             PowerButton(connected, busy) { if (connected) s.tunnel.disconnect() else if (!busy) s.tunnel.connect() }
             T(
@@ -102,11 +104,11 @@ fun HomeScreen(s: AppState) {
 
         Blocked(s)
 
-        Gap(28.dp)
+        Gap(24.dp)
         if (connected) Connected(s, st.rxBytes + st.txBytes) else LocationCard(s)
 
         if (m != null && !connected) {
-            Gap(10.dp)
+            Gap(Space.sm)
             if (pro) ProCard(m) else FreeCard(s, m)
         }
         if (s.tunnel.engine.simulated) {
@@ -136,20 +138,15 @@ private fun StatusLine(status: TunnelStatus, since: Long?) {
 
 @Composable
 private fun PowerButton(on: Boolean, busy: Boolean, onClick: () -> Unit) {
-    val size = if (on) 196.dp else 184.dp
+    // One size in every state; only the fill changes.
     Box(
-        Modifier.size(size + 28.dp).clip(CircleShape).background(if (on) C.greenTint else C.lineSoft),
+        Modifier.size(184.dp).clip(CircleShape)
+            .background(if (on) C.green else C.surface)
+            .border(1.dp, if (on) C.green else C.lineStrong, CircleShape)
+            .clickable(enabled = !busy, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = if (on) t("Disconnect") else t("Connect") },
         contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            Modifier.size(size).clip(CircleShape)
-                .background(if (on) C.green else Color.White)
-                .border(2.dp, if (on) C.green else C.ink, CircleShape)
-                .clickable(enabled = !busy, role = Role.Button, onClick = onClick)
-                .semantics { contentDescription = if (on) t("Disconnect") else t("Connect") },
-            contentAlignment = Alignment.Center,
-        ) { Icon(Ic.Power, if (on) Color.White else if (busy) C.faint else C.ink, if (on) 64.dp else 60.dp) }
-    }
+    ) { Icon(Ic.Power, if (on) Color.White else if (busy) C.faint else C.ink, 56.dp) }
 }
 
 @Composable
@@ -163,13 +160,13 @@ private fun Blocked(s: AppState) {
     }
     Gap(Space.lg)
     Row(
-        Modifier.fillMaxWidth().background(Color(0xFFF6E7DD), RoundedCornerShape(R.button)).padding(12.dp),
+        Modifier.fillMaxWidth().background(C.warnTint, RoundedCornerShape(R.button)).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Icon(Ic.Warning, C.warnText, 18.dp, 2f)
         T(text, TS.Label, FontWeight.Medium, C.warnText, modifier = Modifier.weight(1f))
-        if (action != null) Pill(action, C.ink, Color.White) { s.router.go(Route.Plans) }
+        if (action != null) Pill(action, C.primary, Color.White) { s.router.go(Route.Plans) }
     }
 }
 
@@ -178,15 +175,15 @@ private fun LocationCard(s: AppState) {
     val servers = load(Unit) { s.api.servers().servers }
     val server = (servers as? Load.Ok)?.value?.let { list -> list.firstOrNull { it.id == s.settings.state.value.serverId } ?: list.firstOrNull() }
     val proto = s.settings.state.value.protocol ?: server?.protocols?.firstOrNull { it in s.tunnel.engine.protocols }
-    Card(padding = 14.dp) {
+    Card(padding = 16.dp) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             IconTile(Ic.Globe)
             Column(Modifier.weight(1f)) {
                 T(t("Server location"), TS.Caption, color = C.muted)
                 T(server?.let { "${it.city}, ${it.countryCode}" } ?: "…", TS.Body, FontWeight.SemiBold)
             }
-            Box(Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button) { s.router.go(Route.Protocol) }.padding(6.dp)) {
-                T(proto?.let(ProtocolInfo::label) ?: "", TS.Caption, color = C.muted)
+            Box(Modifier.clip(RoundedCornerShape(R.button)).clickable(role = Role.Button) { s.router.go(Route.Protocol) }.padding(8.dp)) {
+                T(proto?.let(ProtocolInfo::label) ?: "", TS.Small, color = C.primary)
             }
         }
     }
@@ -195,15 +192,16 @@ private fun LocationCard(s: AppState) {
 @Composable
 private fun Connected(s: AppState, sessionBytes: Long) {
     val cfg = s.tunnel.config
-    Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Two equal tiles; everything else is a line in the card below.
+    Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
         SpeedTile(t("Download"), Ic.ArrowDown, fMbps(s.tunnel.downBps), t("Mbps"), Modifier.weight(1f))
         SpeedTile(t("Upload"), Ic.ArrowUp, fMbps(s.tunnel.upBps), t("Mbps"), Modifier.weight(1f))
-        SpeedTile(t("Protocol"), null, cfg?.protocol?.let(ProtocolInfo::label) ?: "-", "", Modifier.weight(1f), mono = false)
     }
-    Gap(12.dp)
+    Gap(Space.sm)
     Card(padding = 16.dp) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             KV(t("Location"), cfg?.location ?: "-")
+            KV(t("Protocol"), cfg?.protocol?.let(ProtocolInfo::label) ?: "-")
             KV(t("Tunnel address"), cfg?.address?.substringBefore('/') ?: "-", mono = true)
             KV(t("DNS"), cfg?.dns?.joinToString() ?: "-", mono = true)
             KV(t("This session"), fBytes(sessionBytes), mono = true)
@@ -212,14 +210,16 @@ private fun Connected(s: AppState, sessionBytes: Long) {
 }
 
 @Composable
-private fun SpeedTile(label: String, icon: Ic?, value: String, unit: String, modifier: Modifier, mono: Boolean = true) {
-    Column(modifier.fillMaxHeight().heightIn(min = 88.dp).background(Color.White, RoundedCornerShape(R.tile)).border(1.dp, C.line, RoundedCornerShape(R.tile)).padding(12.dp)) {
+private fun SpeedTile(label: String, icon: Ic, value: String, unit: String, modifier: Modifier) {
+    Column(modifier.fillMaxHeight().background(C.surface, RoundedCornerShape(R.tile)).border(1.dp, C.line, RoundedCornerShape(R.tile)).padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (icon != null) Icon(icon, C.muted, 14.dp, 2f)
-            T(label, TS.Caption, color = C.muted)
+            Icon(icon, C.muted, 14.dp, 2f)
+            T(label, TS.Label, color = C.muted)
         }
-        T(value, if (mono) TS.Stat else TS.Body, FontWeight.Medium, mono = mono, modifier = Modifier.padding(top = 4.dp), maxLines = 1)
-        T(unit, TS.Caption, color = C.muted)
+        Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            T(value, TS.Stat, FontWeight.SemiBold, mono = true, maxLines = 1)
+            T(unit, TS.Label, color = C.muted, modifier = Modifier.padding(bottom = 3.dp))
+        }
     }
 }
 
@@ -227,32 +227,21 @@ private fun SpeedTile(label: String, icon: Ic?, value: String, unit: String, mod
 private fun FreeCard(s: AppState, m: MeRes) {
     val limit = m.entitlement.monthlyDataLimitBytes ?: 1
     val left = (limit - m.usage.bytesUsed).coerceAtLeast(0)
-    Card(padding = 14.dp) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            T(t("Free plan"), TS.Small, FontWeight.SemiBold)
-            T(t("{amount} left this month", "amount" to fBytes(left)), TS.Small, color = C.muted)
-        }
+    Card(padding = 16.dp) {
+        T(t("Free plan"), TS.Small, FontWeight.SemiBold)
+        T(t("{amount} left this month", "amount" to fBytes(left)), TS.Label, color = C.muted, modifier = Modifier.padding(top = 4.dp))
         Gap(8.dp)
-        Progress(m.usage.bytesUsed.toFloat() / limit, C.warn)
-        Gap(12.dp)
-        Row(
-            Modifier.fillMaxWidth().heightIn(min = 46.dp).clip(RoundedCornerShape(R.button)).background(C.green)
-                .clickable(role = Role.Button) { s.router.go(Route.Plans) }.padding(horizontal = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically,
-        ) {
-            T(t("Unlimited data, 5 devices"), TS.Small, FontWeight.SemiBold, Color.White)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                T(t("Upgrade"), TS.Small, FontWeight.SemiBold, Color.White)
-                Icon(Ic.ChevronRight, Color.White, 16.dp, 2.2f)
-            }
-        }
+        val used = m.usage.bytesUsed.toFloat() / limit
+        Progress(used, if (used > 0.8f) C.warn else C.primary)
+        Gap(16.dp)
+        Button(t("See plans"), { s.router.go(Route.Plans) }, Modifier.fillMaxWidth(), ButtonKind.Primary)
     }
 }
 
 @Composable
-private fun ProCard(m: MeRes) = Card(padding = 14.dp) {
+private fun ProCard(m: MeRes) = Card(padding = 16.dp) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        T(t("Pro, unlimited data"), TS.Small, FontWeight.SemiBold)
+        T(m.entitlement.tariffName ?: t("Pro"), TS.Small, FontWeight.SemiBold)
         T(if (m.entitlement.autoRenew) t("Renews {date}", "date" to fDate(m.entitlement.expiresAt)) else t("Until {date}", "date" to fDate(m.entitlement.expiresAt)), TS.Small, color = C.muted)
     }
 }

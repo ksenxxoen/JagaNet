@@ -10,7 +10,6 @@ internal val webStrings: List<S> = listOf(
 
     // Landing
     S("Download the app", "Скачать приложение", "App herunterladen"),
-    S("PROTECTED", "ЗАЩИЩЕНО", "GESCHÜTZT"),
     S("Server", "Сервер", "Server"),
     S("Amsterdam, Netherlands", "Амстердам, Нидерланды", "Amsterdam, Niederlande"),
     S("Why JagaNet", "Почему JagaNet", "Warum JagaNet"),
@@ -130,4 +129,20 @@ internal val webStrings: List<S> = listOf(
     S("Go back to the JagaNet app. Pro is already on.", "Вернитесь в приложение JagaNet. Pro уже включён.", "Geh zurück zur JagaNet-App. Pro ist schon aktiv."),
     S("Buy", "Купить", "Kaufen"),
     S("A new purchase starts when the current one ends.", "Новая покупка начнётся, когда закончится текущая.", "Ein neuer Kauf beginnt, wenn der aktuelle endet."),
+    // Redesign
+    S("Menu", "Меню", "Menü"),
+    S("No time limit", "Бессрочно", "Ohne Zeitlimit"),
+    S("Active until", "Действует до", "Aktiv bis"),
+    S("Period", "Период", "Zeitraum"),
+    S("All link opens", "Все открытия ссылки", "Alle Linkaufrufe"),
+    S("Different people", "Разные люди", "Verschiedene Personen"),
+    S("All payments", "Все оплаты", "Alle Zahlungen"),
+    S("Check", "Проверка", "Prüfung"),
+    S("Details", "Подробности", "Details"),
+    S("Right now", "Сейчас", "Gerade jetzt"),
+    S("Devices and keys", "Устройства и ключи", "Geräte und Schlüssel"),
+    S("Active in the last 3 minutes", "Активны за последние 3 минуты", "In den letzten 3 Minuten aktiv"),
+    S("In this period", "За период", "Im Zeitraum"),
+    S("Per month", "В месяц", "Pro Monat"),
+    S("Paid of all orders", "Оплачено из всех заказов", "Bezahlt von allen Bestellungen"),
 )

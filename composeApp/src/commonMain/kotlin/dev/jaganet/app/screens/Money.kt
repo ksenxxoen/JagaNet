@@ -61,6 +61,9 @@ import dev.jaganet.app.state.Route
 import dev.jaganet.app.theme.C
 import dev.jaganet.app.theme.R
 import dev.jaganet.app.ui.Button
+import dev.jaganet.app.theme.Space
+import dev.jaganet.app.ui.ListRow
+import dev.jaganet.app.ui.Badge
 import dev.jaganet.app.ui.ButtonKind
 import dev.jaganet.app.ui.Card
 import dev.jaganet.app.ui.Divider
@@ -111,20 +114,20 @@ fun PlansScreen(s: AppState) {
             ) { Icon(Ic.Close, C.ink, strokeWidth = 2f) }
         }
         T(t("Go Pro.\nNo limits, no ads."), TS.Title, FontWeight.Bold)
-        Gap(18.dp)
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Gap(16.dp)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(t("Full speed, no throttling"), t("Split tunneling and kill switch"), t("Works in other VPN apps too")).forEach {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(Modifier.size(24.dp).clip(CircleShape).background(C.greenTint), contentAlignment = Alignment.Center) { Icon(Ic.Check, C.green, 14.dp, 2.6f) }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) { Icon(Ic.Check, C.green, 16.dp, 2.4f) }
                     T(it, TS.Body)
                 }
             }
         }
-        Gap(22.dp)
+        Gap(24.dp)
         Loaded(plans) { p ->
             // The first tariff is picked until the user chooses.
             val current = if (picked) pick else p.tariffs.firstOrNull()?.id
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (p.tariffs.isEmpty()) T(t("No plans on sale right now."), TS.Small, color = C.muted)
                 p.tariffs.forEach { x ->
                     PlanOption(
@@ -137,7 +140,7 @@ fun PlansScreen(s: AppState) {
             }
             if (!p.paymentsEnabled && p.tariffs.isNotEmpty()) ErrorNote(t("Payments are temporarily unavailable"))
             ErrorNote(a.error)
-            Gap(18.dp)
+            Gap(16.dp)
             val w = waiting
             if (w != null) {
                 Card(padding = 16.dp) {
@@ -145,7 +148,7 @@ fun PlansScreen(s: AppState) {
                     T(t("Payment opens in your browser. Pro turns on here as soon as it goes through."), TS.Label, color = C.muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
                     Button(t("Open payment page"), { open(w) }, Modifier.fillMaxWidth(), ButtonKind.Secondary)
                 }
-                Gap(10.dp)
+                Gap(8.dp)
             }
             Button(if (current == null) t("Continue with Free") else t("Pay"), {
                 val id = current
@@ -159,31 +162,29 @@ fun PlansScreen(s: AppState) {
                     } finally { a.busy = false }
                 }
             }, Modifier.fillMaxWidth(), ButtonKind.Primary, busy = a.busy, enabled = current == null || p.paymentsEnabled)
-            if (w == null) T(t("Payment opens in your browser. Pro turns on here as soon as it goes through."), TS.Caption, color = C.muted, align = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
+            if (w == null) T(t("Payment opens in your browser. Pro turns on here as soon as it goes through."), TS.Caption, color = C.muted, align = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
         }
     }
 }
 
 @Composable
 private fun PlanOption(name: String, sub: String, price: String, on: Boolean, badge: String?, onClick: () -> Unit) {
-    Box {
-        Row(
-            Modifier.fillMaxWidth().heightIn(min = 68.dp).clip(RoundedCornerShape(R.tile)).background(C.surface)
-                .border(if (on) 2.dp else 1.dp, if (on) C.green else C.line, RoundedCornerShape(R.tile))
-                .selectable(on, role = Role.RadioButton, onClick = onClick).padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Radio(on)
-            Column(Modifier.weight(1f)) {
-                T(name, TS.Body, FontWeight.SemiBold)
-                T(sub, TS.Label, color = C.muted)
+    // Every option has the same height and layout: radio, name (with its badge inline), terms, price.
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 80.dp).clip(RoundedCornerShape(R.tile)).background(if (on) C.primaryTint else C.surface)
+            .border(1.dp, if (on) C.primary else C.line, RoundedCornerShape(R.tile))
+            .selectable(on, role = Role.RadioButton, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Radio(on)
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                T(name, TS.Body, FontWeight.SemiBold, maxLines = 1)
+                if (badge != null) Badge(badge, C.primaryTint, C.primaryDark)
             }
-            T(price, TS.Small, FontWeight.Medium, mono = true)
+            T(sub, TS.Label, color = C.muted, modifier = Modifier.padding(top = 2.dp))
         }
-        if (badge != null) T(
-            badge, TS.Tab, FontWeight.Bold, Color.White,
-            modifier = Modifier.align(Alignment.TopEnd).offset(x = (-14).dp, y = (-8).dp).background(C.green, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
-        )
+        T(price, TS.Small, FontWeight.SemiBold, mono = true)
     }
 }
 
@@ -198,31 +199,33 @@ fun AccountScreen(s: AppState) {
         Gap(8.dp)
         Title(t("Account"))
         T(s.user?.email ?: "", TS.Small, color = C.muted, modifier = Modifier.padding(top = 4.dp))
-        Gap(18.dp)
+        Gap(16.dp)
         Loaded(me) { m ->
             val e = m.entitlement
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(R.hero)).background(C.ink).padding(18.dp)) {
+            Card(padding = 16.dp) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    T(t("Current plan"), TS.Label, color = C.nightMuted)
-                    T(t("Active"), TS.Caption, FontWeight.SemiBold, C.ink, modifier = Modifier.background(C.greenTint, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
+                    T(t("Current plan"), TS.Label, color = C.muted)
+                    if (e.plan == PlanId.PRO) Badge(t("Active"), C.greenTint, C.greenDark)
                 }
                 T(
                     when { e.plan == PlanId.FREE -> t("Free"); e.source == BillingSource.REFERRAL -> t("Invite reward"); else -> e.tariffName ?: "Pro" },
-                    TS.Plan, FontWeight.Bold, Color.White, modifier = Modifier.padding(top = 6.dp),
+                    TS.Plan, FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp),
                 )
-                Gap(14.dp)
-                Row {
-                    DarkKV(t("Devices"), "${m.usage.devicesUsed} / ${e.deviceLimit}", Modifier.weight(1f), mono = true)
-                    DarkKV(if (e.autoRenew) t("Renews on") else if (e.expiresAt != null) t("Pro until") else t("Data"), e.expiresAt?.let(::fDate) ?: t("{data} used", "data" to fBytes(m.usage.bytesUsed)), Modifier.weight(1f))
+                Gap(16.dp)
+                Divider()
+                Gap(16.dp)
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    PlanKV(t("Devices"), "${m.usage.devicesUsed} / ${e.deviceLimit}", Modifier.weight(1f))
+                    PlanKV(if (e.expiresAt != null) t("Pro until") else t("Data"), e.expiresAt?.let(::fDate) ?: t("{data} used", "data" to fBytes(m.usage.bytesUsed)), Modifier.weight(1f))
                 }
-                Gap(10.dp)
-                Row {
-                    DarkKV(t("This month"), fBytes(m.usage.bytesUsed), Modifier.weight(1f), mono = true)
-                    DarkKV(t("Billed via"), when (e.source) { BillingSource.APPLE -> t("App Store"); BillingSource.GOOGLE -> t("Google Play"); BillingSource.REFERRAL -> t("Invite reward"); BillingSource.DEV -> t("Simulation"); BillingSource.WEB -> t("Website"); BillingSource.TELEGRAM -> t("Telegram"); BillingSource.APP -> t("JagaNet app"); null -> "-" }, Modifier.weight(1f))
+                Gap(16.dp)
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    PlanKV(t("This month"), fBytes(m.usage.bytesUsed), Modifier.weight(1f))
+                    PlanKV(t("Billed via"), when (e.source) { BillingSource.APPLE -> t("App Store"); BillingSource.GOOGLE -> t("Google Play"); BillingSource.REFERRAL -> t("Invite reward"); BillingSource.DEV -> t("Simulation"); BillingSource.WEB -> t("Website"); BillingSource.TELEGRAM -> t("Telegram"); BillingSource.APP -> t("JagaNet app"); null -> "-" }, Modifier.weight(1f))
                 }
             }
         }
-        Gap(10.dp)
+        Gap(Space.sm)
         Button(t("Change plan"), { s.router.go(Route.Plans) }, Modifier.fillMaxWidth(), ButtonKind.Secondary)
 
         SectionLabel(t("Payment history"))
@@ -230,7 +233,7 @@ fun AccountScreen(s: AppState) {
             Card {
                 if (list.isEmpty()) T(t("No payments yet."), TS.Small, color = C.muted, modifier = Modifier.padding(16.dp))
                 list.forEachIndexed { i, p ->
-                    Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column {
                             T(if (p.source == BillingSource.REFERRAL) t("Invite reward") else p.tariffName ?: "Pro", TS.Small)
                             T(t("{from} to {to}", "from" to fDate(p.startedAt), "to" to fDate(p.expiresAt)), TS.Caption, color = C.muted)
@@ -248,26 +251,26 @@ fun AccountScreen(s: AppState) {
             }
         }
 
-        Gap(14.dp)
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(R.card)).background(C.greenTint).clickable(role = Role.Button) { s.router.go(Route.Referral) }.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                T(t("Invite friends"), TS.Body, FontWeight.SemiBold, C.greenDark)
-                val r = (refs as? Load.Ok)?.value
-                T(if (r != null) t("{n} joined", "n" to r.subscribed) + ", " + tp(r.daysEarned, "{n} day of Pro earned|{n} days of Pro earned") else t("Free Pro time for both of you"), TS.Label, color = C.greenDark, modifier = Modifier.padding(top = 2.dp))
-            }
-            Icon(Ic.ChevronRight, C.greenDark, 18.dp, 2f)
+        SectionLabel(t("Invite friends"))
+        Card {
+            val r = (refs as? Load.Ok)?.value
+            ListRow(
+                t("Referral program"),
+                if (r != null) t("{n} joined", "n" to r.subscribed) + ", " + tp(r.daysEarned, "{n} day of Pro earned|{n} days of Pro earned") else t("Free Pro time for both of you"),
+                last = true, onClick = { s.router.go(Route.Referral) },
+            )
         }
 
-        Gap(20.dp)
-        Button(t("Sign out"), { s.signOut() }, Modifier.fillMaxWidth(), ButtonKind.Ghost)
-        if (!confirmDelete) Button(t("Delete account"), { confirmDelete = true }, Modifier.fillMaxWidth(), ButtonKind.Danger)
+        Gap(Space.xl)
+        // Two equal buttons side by side.
+        if (!confirmDelete) Row(horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
+            Button(t("Sign out"), { s.signOut() }, Modifier.weight(1f), ButtonKind.Secondary)
+            Button(t("Delete account"), { confirmDelete = true }, Modifier.weight(1f), ButtonKind.Danger)
+        }
         else Card(padding = 16.dp) {
             T(t("Delete your account?"), TS.Body, FontWeight.SemiBold)
             T(t("Your devices are disconnected and your data is erased."), TS.Label, color = C.muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(t("Cancel"), { confirmDelete = false }, Modifier.weight(1f), ButtonKind.Secondary)
                 Button(t("Delete"), { scope.launch { runCatching { s.api.deleteAccount() }; s.signOut() } }, Modifier.weight(1f), ButtonKind.Danger)
             }
@@ -276,9 +279,9 @@ fun AccountScreen(s: AppState) {
 }
 
 @Composable
-private fun DarkKV(k: String, v: String, modifier: Modifier, mono: Boolean = false) = Column(modifier) {
-    T(k, TS.Label, color = C.nightMuted)
-    T(v, TS.Label, color = Color.White, mono = mono, modifier = Modifier.padding(top = 2.dp))
+private fun PlanKV(k: String, v: String, modifier: Modifier) = Column(modifier) {
+    T(k, TS.Label, color = C.muted)
+    T(v, TS.Small, FontWeight.Medium, mono = true, modifier = Modifier.padding(top = 4.dp))
 }
 
 /* ---------- referral program ---------- */
@@ -293,14 +296,14 @@ fun ReferralScreen(s: AppState) {
         Gap(8.dp)
         Title(t("Referral program"))
         (stats as? Load.Ok)?.value?.let { r ->
-            if (r.daysEarned > 0) T(tp(r.daysEarned, "{n} day of Pro earned|{n} days of Pro earned"), TS.Small, FontWeight.SemiBold, C.green, modifier = Modifier.padding(top = 4.dp))
+            if (r.daysEarned > 0) T(tp(r.daysEarned, "{n} day of Pro earned|{n} days of Pro earned"), TS.Small, color = C.muted, modifier = Modifier.padding(top = 4.dp))
         }
-        Gap(18.dp)
+        Gap(16.dp)
         Segmented(
             listOf(ReferralPeriod.D7 to t("7 days"), ReferralPeriod.D30 to t("30 days"), ReferralPeriod.D90 to t("90 days"), ReferralPeriod.ALL to t("All time")),
             period,
         ) { period = it }
-        Gap(14.dp)
+        Gap(16.dp)
         Loaded(stats) { r -> ReferralBody(s, r, reload) }
     }
 }
@@ -318,9 +321,9 @@ private fun ReferralBody(s: AppState, r: ReferralStatsRes, reload: () -> Unit) {
                 row.forEach { (k, v) -> RefTile(k, v, Modifier.weight(1f).fillMaxHeight()) }
             }
         }
-        Card(padding = 14.dp) {
+        Card(padding = 16.dp) {
             T(t("Conversion"), TS.Caption, color = C.muted)
-            Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 RefMini(t("Visitors to sign-ups"), pct(f.signups, f.visitors), Modifier.weight(1f), TS.Stat)
                 RefMini(t("Sign-ups to paid"), pct(f.paidUsers, f.signups), Modifier.weight(1f), TS.Stat)
             }
@@ -331,7 +334,7 @@ private fun ReferralBody(s: AppState, r: ReferralStatsRes, reload: () -> Unit) {
     Card(padding = 16.dp) { RefChart(r.days) }
 
     SectionLabel(t("Your links"))
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         r.links.forEach { RefLinkCard(s, it, reload) }
     }
 
@@ -349,7 +352,7 @@ private fun ReferralBody(s: AppState, r: ReferralStatsRes, reload: () -> Unit) {
 }
 
 @Composable
-private fun RefTile(label: String, value: String, modifier: Modifier) = Card(modifier, padding = 14.dp) {
+private fun RefTile(label: String, value: String, modifier: Modifier) = Card(modifier, padding = 16.dp) {
     T(label, TS.Caption, color = C.muted, maxLines = 1)
     T(value, if (value.length > 12) TS.Small else TS.Stat, FontWeight.Medium, mono = true, modifier = Modifier.padding(top = 4.dp), maxLines = 2)
 }
@@ -377,9 +380,9 @@ private fun RefChart(days: List<ReferralDay>) {
     val per = (days.size + 59) / 60
     val bars = days.chunked(per).map { c -> ReferralDay(c.first().day, c.sumOf { it.clicks }, c.sumOf { it.signups }, c.sumOf { it.paid }) }
     val max = bars.maxOf { maxOf(it.clicks, it.signups) }.coerceAtLeast(1)
-    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        RefLegend(C.chartGreen, t("Clicks"))
-        RefLegend(C.green, t("Sign-ups"))
+    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        RefLegend(C.chart2, t("Clicks"))
+        RefLegend(C.chart1, t("Sign-ups"))
         RefLegend(C.warn, t("Paid"))
     }
     Gap(12.dp)
@@ -395,15 +398,15 @@ private fun RefChart(days: List<ReferralDay>) {
                 val sh = 108f * b.signups / max
                 Box(
                     Modifier.fillMaxWidth().height(maxOf(h, sh, 2f).dp).clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
-                        .background(if (b.clicks > 0) C.chartGreen else C.lineSoft),
+                        .background(if (b.clicks > 0) C.chart2 else C.lineSoft),
                     contentAlignment = Alignment.BottomCenter,
                 ) {
-                    if (b.signups > 0) Box(Modifier.fillMaxWidth().height(sh.coerceAtLeast(2f).dp).background(C.green))
+                    if (b.signups > 0) Box(Modifier.fillMaxWidth().height(sh.coerceAtLeast(2f).dp).background(C.chart1))
                 }
             }
         }
     }
-    Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
         T(fDate(days.first().day), TS.Caption, color = C.muted)
         T(fDate(days.last().day), TS.Caption, color = C.muted)
     }
@@ -448,7 +451,7 @@ private fun RefLinkCard(s: AppState, l: ReferralLink, reload: () -> Unit) {
             RefMini(t("Purchases"), "${f.purchases}", Modifier.weight(1f))
             RefMini(t("Revenue"), fRevenue(f.revenue), Modifier.weight(1f))
         }
-        Gap(14.dp)
+        Gap(16.dp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(if (copied == "web") t("Copied") else t("Copy link"), { s.platform.copy(l.webUrl); copied = "web" }, Modifier.weight(1f), ButtonKind.Secondary)
             Button(t("Share"), { s.platform.share(t("Join me on JagaNet: {url}", "url" to l.webUrl)) }, Modifier.weight(1f), ButtonKind.Secondary, icon = Ic.Share)
@@ -460,16 +463,16 @@ private fun RefLinkCard(s: AppState, l: ReferralLink, reload: () -> Unit) {
         if (!l.main) {
             when {
                 renaming -> {
-                    Gap(14.dp)
+                    Gap(16.dp)
                     Field(t("Link name"), newName, { newName = it.take(40) }, "Instagram", onDone = { save() })
-                    Gap(10.dp)
+                    Gap(8.dp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(t("Cancel"), { renaming = false; newName = l.name; a.error = null }, Modifier.weight(1f), ButtonKind.Secondary)
                         Button(t("Save"), { save() }, Modifier.weight(1f), ButtonKind.Primary, enabled = newName.isNotBlank(), busy = a.busy)
                     }
                 }
                 confirmArchive -> {
-                    Gap(14.dp)
+                    Gap(16.dp)
                     T(t("Archive this link?"), TS.Body, FontWeight.SemiBold)
                     T(t("The link stops working and leaves this list."), TS.Label, color = C.muted, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -518,7 +521,7 @@ private fun RefNewLink(s: AppState, reload: () -> Unit) {
     }
     Card(padding = 16.dp) {
         Field(t("Link name"), name, { name = it.take(40) }, "Instagram")
-        Gap(10.dp)
+        Gap(8.dp)
         Field(t("Custom code, optional"), code, { v -> code = v.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' || it == '-' }.take(32) }, "INSTA-2026", onDone = { create() })
         T(t("3 to 32 Latin letters, digits or hyphens."), TS.Caption, color = C.muted, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
         ErrorNote(a.error)
@@ -538,7 +541,7 @@ private fun RefCounts(items: List<Pair<String, Int>>) = Card(padding = 16.dp) {
                     T(k, TS.Small, maxLines = 1, modifier = Modifier.weight(1f))
                     T("$n", TS.Small, mono = true)
                 }
-                Gap(6.dp)
+                Gap(8.dp)
                 Progress(n.toFloat() / max)
             }
         }
@@ -563,7 +566,7 @@ private fun RefRecent(list: List<ReferredUser>) {
                         ReferredStatus.LAPSED -> Triple(t("Pro ended"), C.lineSoft, C.muted)
                         ReferredStatus.REGISTERED -> Triple(t("Signed up"), C.lineSoft, C.ink)
                     }
-                    T(label, TS.Caption, FontWeight.SemiBold, fg, modifier = Modifier.background(bg, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
+                    Badge(label, bg, fg)
                     if (u.purchases > 0) T(tp(u.purchases, "{n} purchase|{n} purchases"), TS.Caption, color = C.muted, modifier = Modifier.padding(top = 4.dp))
                 }
             }
@@ -572,7 +575,7 @@ private fun RefRecent(list: List<ReferredUser>) {
         if (!all && list.size > shown.size) {
             Divider()
             T(
-                t("Show all"), TS.Label, FontWeight.SemiBold, C.green, align = TextAlign.Center,
+                t("Show all"), TS.Small, FontWeight.Medium, C.primary, align = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { all = true }.padding(14.dp),
             )
         }

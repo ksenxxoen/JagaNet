@@ -27,7 +27,7 @@ import dev.jaganet.app.theme.C
 import dev.jaganet.app.theme.LocalFonts
 import dev.jaganet.app.theme.R
 
-/** Labelled text field in the design's card style. */
+/** Labelled text field: label above, 44 dp input with a 1 dp border and 4 dp corners. */
 @Composable
 fun Field(
     label: String,
@@ -40,7 +40,7 @@ fun Field(
 ) {
     val f = LocalFonts.current
     Column(Modifier.fillMaxWidth()) {
-        T(label, TS.Label, FontWeight.Medium, C.muted, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
+        T(label, TS.Small, FontWeight.SemiBold, C.ink, modifier = Modifier.padding(bottom = 8.dp))
         val shape = RoundedCornerShape(R.button)
         BasicTextField(
             value = value,
@@ -48,20 +48,20 @@ fun Field(
             singleLine = true,
             textStyle = TextStyle(
                 fontFamily = if (mono) f.mono else f.sans,
-                fontSize = if (mono) 22.sp else 16.sp,
+                fontSize = if (mono) 20.sp else 15.sp,
                 letterSpacing = if (mono) 4.sp else 0.sp,
                 color = C.ink,
             ),
-            cursorBrush = SolidColor(C.green),
+            cursorBrush = SolidColor(C.primary),
             keyboardOptions = KeyboardOptions(keyboardType = keyboard, imeAction = if (onDone != null) ImeAction.Done else ImeAction.Next),
             keyboardActions = KeyboardActions(onDone = { onDone?.invoke() }),
             modifier = Modifier.fillMaxWidth().semantics { contentDescription = label },
             decorationBox = { inner ->
                 Box(
-                    Modifier.fillMaxWidth().heightIn(min = 52.dp).background(C.surface, shape).border(1.dp, C.lineStrong, shape).padding(horizontal = 14.dp),
+                    Modifier.fillMaxWidth().heightIn(min = 44.dp).background(C.surface, shape).border(1.dp, C.faint, shape).padding(horizontal = 12.dp),
                     contentAlignment = Alignment.CenterStart,
                 ) {
-                    if (value.isEmpty()) T(placeholder, if (mono) TS.Stat else TS.Body, color = C.faint, mono = mono)
+                    if (value.isEmpty()) T(placeholder, if (mono) TS.Stat else TS.Body, color = C.faint, code = mono)
                     inner()
                 }
             },

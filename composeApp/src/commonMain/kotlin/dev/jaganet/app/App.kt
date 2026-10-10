@@ -97,7 +97,7 @@ private fun TabBar(s: AppState) {
             listOf(Route.Home to (Ic.Shield to t("Connect")), Route.Stats to (Ic.Stats to t("Stats")), Route.Devices to (Ic.Devices to t("Devices")), Route.Settings to (Ic.Settings to t("Settings")))
                 .forEach { (route, v) ->
                     val on = s.router.current == route
-                    val color = if (on) C.green else C.muted
+                    val color = if (on) C.primary else C.muted
                     Column(
                         Modifier.widthIn(min = 64.dp).heightIn(min = 48.dp)
                             .clickable(role = Role.Tab) { s.router.go(route) }

@@ -4,7 +4,7 @@ import dev.jaganet.api.i18n.S
 
 /** Owner dashboard (панель владельца / Inhaber-Dashboard). */
 internal val adminStrings: List<S> = listOf(
-    S("OWNER ONLY", "ТОЛЬКО ДЛЯ ВЛАДЕЛЬЦА", "NUR FÜR INHABER"),
+    S("Only the owner sees this.", "Это видит только владелец.", "Nur der Inhaber sieht das."),
     S("Business", "Бизнес", "Business"),
     S("Revenue", "Выручка", "Umsatz"),
     S("Monthly recurring revenue", "Ежемесячная выручка", "Monatlicher Umsatz"),

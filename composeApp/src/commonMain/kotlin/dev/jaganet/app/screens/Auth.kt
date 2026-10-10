@@ -28,6 +28,7 @@ import dev.jaganet.app.i18n.t
 import dev.jaganet.app.state.AppState
 import dev.jaganet.app.state.Route
 import dev.jaganet.app.theme.C
+import dev.jaganet.app.theme.R
 import dev.jaganet.app.theme.Space
 import dev.jaganet.app.ui.Button
 import dev.jaganet.app.ui.ButtonKind
@@ -44,11 +45,11 @@ import dev.jaganet.app.ui.Title
 import kotlinx.coroutines.launch
 
 @Composable
-fun Brand() = Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-    Box(Modifier.size(32.dp).background(C.ink, RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
-        Icon(Ic.Shield, C.paper, 18.dp, 2f)
+fun Brand() = Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Box(Modifier.size(32.dp).background(C.primary, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+        Icon(Ic.Shield, C.surface, 18.dp, 2f)
     }
-    T(APP_NAME, TS.Brand, FontWeight.Bold)
+    T(APP_NAME, TS.Brand, FontWeight.SemiBold)
 }
 
 /** Runs a suspending action with busy + error state. */
@@ -86,7 +87,7 @@ fun SignInScreen(s: AppState) {
         Gap(48.dp)
         Title(t("Private internet,\nno setup."))
         T(t("Sign in with your email. We’ll send a 6-digit code, so there’s no password to remember."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 8.dp))
-        Gap(28.dp)
+        Gap(24.dp)
         Field(t("Email"), email, { email = it }, "you@example.com", KeyboardType.Email, onDone = submit)
         if (showInvite) {
             Gap(Space.md)
@@ -125,11 +126,11 @@ fun VerifyScreen(s: AppState, r: Route.Verify) {
     Screen(onBack = { s.router.back() }) {
         Gap(8.dp)
         Title(t("Check your email"))
-        T(t("We sent a 6-digit code to {email}. It expires in 10 minutes.", "email" to r.email), TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
+        T(t("We sent a 6-digit code to {email}. It expires in 10 minutes.", "email" to r.email), TS.Small, color = C.muted, modifier = Modifier.padding(top = 8.dp))
         if (r.devCode != null) {
             Gap(Space.lg)
-            Box(Modifier.fillMaxWidth().background(C.greenTint, RoundedCornerShape(12.dp)).padding(12.dp)) {
-                T(t("Test mode, your code {code} is filled in for you.", "code" to r.devCode), TS.Label, FontWeight.Medium, C.greenDark)
+            Box(Modifier.fillMaxWidth().background(C.warnTint, RoundedCornerShape(R.button)).padding(12.dp)) {
+                T(t("Test mode, your code {code} is filled in for you.", "code" to r.devCode), TS.Label, FontWeight.Medium, C.alertText)
             }
         }
         Gap(24.dp)
@@ -160,7 +161,7 @@ fun PairScreen(s: AppState) {
     Screen(onBack = { s.router.back() }) {
         Gap(8.dp)
         Title(t("Enter device code"))
-        T(t("On a device that’s already signed in, open Devices and tap Add device. Enter the 6 digits shown there."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 6.dp))
+        T(t("On a device that’s already signed in, open Devices and tap Add device. Enter the 6 digits shown there."), TS.Small, color = C.muted, modifier = Modifier.padding(top = 8.dp))
         Gap(24.dp)
         Field(t("Device code"), code, { v -> code = v.filter(Char::isDigit).take(6) }, "000000", KeyboardType.NumberPassword, mono = true, onDone = submit)
         ErrorNote(a.error)

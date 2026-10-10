@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -59,9 +60,10 @@ import dev.jaganet.app.theme.Space
 
 /* ---------- text ---------- */
 
+/** Type scale on a 4 dp line grid. */
 enum class TS(val size: TextUnit, val line: TextUnit) {
-    Display(34.sp, 40.sp), Title(28.sp, 34.sp), Plan(24.sp, 30.sp), Brand(20.sp, 26.sp), Stat(20.sp, 26.sp),
-    Body(15.sp, 21.sp), Small(14.sp, 20.sp), Label(13.sp, 18.sp), Caption(12.sp, 16.sp), Tab(11.sp, 14.sp),
+    Display(32.sp, 40.sp), Title(24.sp, 32.sp), Plan(20.sp, 28.sp), Brand(18.sp, 24.sp), Stat(20.sp, 28.sp),
+    Body(15.sp, 20.sp), Small(14.sp, 20.sp), Label(13.sp, 16.sp), Caption(12.sp, 16.sp), Tab(11.sp, 16.sp),
 }
 
 @Composable
@@ -70,19 +72,23 @@ fun T(
     style: TS = TS.Body,
     weight: FontWeight = FontWeight.Normal,
     color: Color = C.ink,
+    /** Numbers: tabular figures, so columns of digits line up. */
     mono: Boolean = false,
     modifier: Modifier = Modifier,
     align: TextAlign? = null,
     maxLines: Int = Int.MAX_VALUE,
     letterSpacing: TextUnit = TextUnit.Unspecified,
+    /** Codes and logs: the monospaced face. */
+    code: Boolean = false,
 ) {
     val f = LocalFonts.current
     BasicText(
         text,
         modifier,
         style = TextStyle(
-            fontFamily = if (mono) f.mono else f.sans,
-            fontWeight = if (mono && weight > FontWeight.Medium) FontWeight.Medium else weight,
+            fontFamily = if (code) f.mono else f.sans,
+            fontWeight = if (code && weight > FontWeight.Medium) FontWeight.Medium else weight,
+            fontFeatureSettings = if (mono) "tnum" else null,
             fontSize = style.size,
             lineHeight = style.line,
             color = color,
@@ -96,12 +102,12 @@ fun T(
 
 @Composable
 fun Title(text: String, color: Color = C.ink) =
-    T(text, TS.Title, FontWeight.Bold, color, letterSpacing = (-0.3).sp, modifier = Modifier.semantics { heading() })
+    T(text, TS.Title, FontWeight.SemiBold, color, modifier = Modifier.semantics { heading() })
 
 @Composable
 fun SectionLabel(text: String, dark: Boolean = false) = T(
-    text.uppercase(), TS.Caption, FontWeight.SemiBold, if (dark) C.nightMuted else C.muted,
-    letterSpacing = 0.7.sp, modifier = Modifier.padding(start = 4.dp, top = Space.xl, bottom = Space.sm),
+    text, TS.Small, FontWeight.SemiBold, if (dark) C.nightText else C.ink,
+    modifier = Modifier.padding(top = Space.xl, bottom = Space.sm).semantics { heading() },
 )
 
 /* ---------- layout ---------- */
@@ -164,9 +170,9 @@ fun ListRow(
     trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 56.dp)
+        Modifier.fillMaxWidth().heightIn(min = 52.dp)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
-            .padding(horizontal = Space.lg, vertical = 10.dp),
+            .padding(horizontal = Space.lg, vertical = Space.md),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Space.md),
     ) {
@@ -186,11 +192,12 @@ fun Divider(color: Color = C.lineSoft) = Box(Modifier.fillMaxWidth().height(1.dp
 /* ---------- controls ---------- */
 
 enum class ButtonKind(val bg: Color, val fg: Color, val border: Color?) {
-    Dark(C.ink, Color.White, null),
-    Primary(C.green, Color.White, null),
+    /** The main action of a screen (there is one). */
+    Dark(C.primary, Color.White, null),
+    Primary(C.primary, Color.White, null),
     Secondary(C.surface, C.ink, C.lineStrong),
     Ghost(Color.Transparent, C.ink, null),
-    Danger(Color.Transparent, C.warnText, null),
+    Danger(C.surface, C.warnText, C.lineStrong),
 }
 
 @Composable
@@ -205,7 +212,7 @@ fun Button(
 ) {
     val shape = RoundedCornerShape(R.button)
     Row(
-        modifier.heightIn(min = 50.dp).clip(shape).background(kind.bg)
+        modifier.heightIn(min = 44.dp).clip(shape).background(if (enabled) kind.bg else if (kind.border == null && kind.bg != Color.Transparent) C.lineSoft else kind.bg)
             .then(kind.border?.let { Modifier.border(BorderStroke(1.dp, it), shape) } ?: Modifier)
             .clickable(enabled = enabled && !busy, role = Role.Button, onClick = onClick)
             .padding(horizontal = Space.lg),
@@ -213,61 +220,68 @@ fun Button(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) Icon(icon, kind.fg, 18.dp, 2f)
-        T(if (busy) "…" else label, TS.Body, FontWeight.SemiBold, if (enabled) kind.fg else kind.fg.copy(alpha = 0.45f))
+        T(if (busy) "…" else label, TS.Body, FontWeight.Medium, if (enabled) kind.fg else C.faint)
     }
 }
 
 @Composable
 fun Toggle(value: Boolean, label: String, onChange: (Boolean) -> Unit) {
     Box(
-        Modifier.size(50.dp, 30.dp).clip(CircleShape).background(if (value) C.green else C.toggleOff)
+        Modifier.size(44.dp, 24.dp).clip(CircleShape).background(if (value) C.primary else C.toggleOff)
             .toggleable(value, role = Role.Switch, onValueChange = onChange)
             .semantics { contentDescription = label }
-            .padding(3.dp),
+            .padding(2.dp),
         contentAlignment = if (value) Alignment.CenterEnd else Alignment.CenterStart,
-    ) { Box(Modifier.size(24.dp).clip(CircleShape).background(Color.White)) }
+    ) { Box(Modifier.size(20.dp).clip(CircleShape).background(Color.White)) }
 }
 
 @Composable
 fun <K> Segmented(options: List<Pair<K, String>>, value: K, onChange: (K) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(R.button)).background(C.lineSoft).padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        options.forEach { (k, l) ->
+    // A button group: equal segments, 1 dp borders between them, the chosen one filled gray.
+    val shape = RoundedCornerShape(R.button)
+    Row(Modifier.fillMaxWidth().height(40.dp).clip(shape).border(1.dp, C.lineStrong, shape)) {
+        options.forEachIndexed { i, (k, l) ->
             val on = k == value
+            if (i > 0) Box(Modifier.width(1.dp).fillMaxHeight().background(C.lineStrong))
             Box(
-                Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(9.dp))
-                    .background(if (on) C.ink else Color.Transparent)
+                Modifier.weight(1f).fillMaxHeight()
+                    .background(if (on) C.lineSoft else C.surface)
                     .selectable(on, role = Role.Tab) { onChange(k) },
                 contentAlignment = Alignment.Center,
-            ) { T(l, TS.Label, FontWeight.Medium, if (on) Color.White else C.ink) }
+            ) { T(l, TS.Small, if (on) FontWeight.SemiBold else FontWeight.Normal, C.ink, maxLines = 1) }
         }
     }
 }
 
 @Composable
 fun Radio(on: Boolean) = Box(
-    Modifier.size(22.dp).clip(CircleShape).border(if (on) 7.dp else 2.dp, if (on) C.green else C.faint, CircleShape),
+    Modifier.size(20.dp).clip(CircleShape).border(if (on) 6.dp else 1.dp, if (on) C.primary else C.faint, CircleShape),
 )
 
 @Composable
-fun Progress(value: Float, tone: Color = C.green, track: Color = C.lineSoft) {
-    Box(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(track)) {
-        Box(Modifier.fillMaxWidth(value.coerceIn(0f, 1f)).height(8.dp).clip(RoundedCornerShape(4.dp)).background(tone))
+fun Progress(value: Float, tone: Color = C.primary, track: Color = C.lineSoft) {
+    Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(track)) {
+        Box(Modifier.fillMaxWidth(value.coerceIn(0f, 1f)).height(4.dp).background(tone))
     }
 }
 
 @Composable
 fun Pill(text: String, bg: Color, fg: Color, onClick: (() -> Unit)? = null) = Box(
-    Modifier.heightIn(min = 36.dp).clip(CircleShape).background(bg)
+    Modifier.heightIn(min = 32.dp).clip(RoundedCornerShape(R.button)).background(bg)
         .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
-        .padding(horizontal = 14.dp),
+        .padding(horizontal = 12.dp),
     contentAlignment = Alignment.Center,
-) { T(text, TS.Label, FontWeight.SemiBold, fg) }
+) { T(text, TS.Small, FontWeight.Medium, fg) }
+
+/** Small status label: 20 dp tall, fully rounded, tinted. */
+@Composable
+fun Badge(text: String, bg: Color = C.lineSoft, fg: Color = C.ink) = Box(
+    Modifier.height(20.dp).clip(CircleShape).background(bg).padding(horizontal = 8.dp),
+    contentAlignment = Alignment.Center,
+) { T(text, TS.Caption, FontWeight.Medium, fg, maxLines = 1) }
 
 @Composable
-fun IconTile(icon: Ic, bg: Color = C.lineSoft, fg: Color = C.ink, size: Dp = 40.dp) = Box(
+fun IconTile(icon: Ic, bg: Color = C.lineSoft, fg: Color = C.ink, size: Dp = 36.dp) = Box(
     Modifier.size(size).clip(RoundedCornerShape(R.icon)).background(bg),
     contentAlignment = Alignment.Center,
 ) { Icon(icon, fg, 20.dp) }

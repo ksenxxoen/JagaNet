@@ -5,6 +5,8 @@
 
 const view = document.getElementById("view");
 const nav = document.getElementById("nav");
+const menu = document.getElementById("menu");
+const foot = document.getElementById("foot");
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
@@ -72,13 +74,34 @@ async function api(path, opts = {}) {
 
 function go(hash) { if (location.hash === hash) render(); else location.hash = hash; }
 
+/** Top bar: page links, the language switch and, on phones, a menu button that opens the same links as a list. */
 function renderNav() {
-  const langs = `<span class="langs nav">${LANGS.map(([c, name]) => `<button type="button" class="${c === lang ? "on" : ""}" data-lang="${c}" title="${name}" lang="${c}">${c.toUpperCase()}</button>`).join("")}</span>`;
-  nav.innerHTML = langs + (store.get("token")
-    ? (role === "owner" ? `<a class="btn secondary small" href="#/admin">${t("Admin panel")}</a><a class="btn secondary small" href="#/status">${t("Server status")}</a>` : "") + `<a class="btn secondary small" href="#/referrals">${t("Referral program")}</a><a class="btn secondary small" href="#/account">${t("My account")}</a>`
-    : `<a class="btn secondary small" href="#/signin">${t("Sign in")}</a>`);
+  const here = (location.hash.slice(1) || "/").split("?")[0];
+  const items = store.get("token")
+    ? [...(role === "owner" ? [["/admin", t("Admin panel")], ["/status", t("Server status")]] : []), ["/referrals", t("Referral program")], ["/account", t("My account")]]
+    : [];
+  const link = ([p, l]) => `<a class="item ${p === here ? "on" : ""}" href="#${p}">${l}</a>`;
+  const langs = `<span class="langs">${LANGS.map(([c, name]) => `<button type="button" class="${c === lang ? "on" : ""}" data-lang="${c}" title="${name}" lang="${c}">${c.toUpperCase()}</button>`).join("")}</span>`;
+  const signIn = store.get("token") ? "" : `<a class="btn secondary" href="#/signin">${t("Sign in")}</a>`;
+  const burger = items.length ? `<button class="btn secondary menu-btn" type="button" id="menubtn" aria-label="${t("Menu")}" aria-expanded="false">
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.5"/></svg></button>` : "";
+  nav.innerHTML = items.map(link).join("") + (items.length ? `<span class="sep"></span>` : "") + langs + signIn + burger;
+  menu.className = "menu";
+  menu.innerHTML = items.map(link).join("");
   for (const b of nav.querySelectorAll("[data-lang]")) b.onclick = () => setLang(b.dataset.lang);
+  const mb = document.getElementById("menubtn");
+  if (mb) mb.onclick = () => { const open = menu.classList.toggle("open"); mb.setAttribute("aria-expanded", String(open)); };
+  foot.innerHTML = `<span>© JagaNet</span><nav>${site?.telegramBotUrl ? `<a href="${h(site.telegramBotUrl)}">Telegram</a>` : ""}<a href="#/">${t("Pricing")}</a>${store.get("token") ? `<a href="#/account">${t("My account")}</a>` : `<a href="#/signin">${t("Sign in")}</a>`}</nav>`;
 }
+
+/**
+ * Columns for a row of n tiles so that no row is left half empty:
+ * up to 4 in one row, else the largest of 4, 3, 2 that divides n (a short last row is centered).
+ */
+const evenCols = (n) => (n <= 4 ? Math.max(1, n) : [4, 3, 2].find((c) => n % c === 0) || 4);
+const tiles = (items, cls = "") => `<div class="cards ${cls}" style="--n:${evenCols(items.length)}" data-even="${items.length % 2 === 0}">${items.join("")}</div>`;
+/** Page heading: the title (and a line under it) on the left, actions on the right. */
+const head = (title, sub = "", actions = "") => `<div class="head"><div><h1>${title}</h1>${sub ? `<p class="muted">${sub}</p>` : ""}</div>${actions}</div>`;
 
 /** Buying works unless the server says no payment service is set up. */
 const payOk = () => site?.paymentsEnabled !== false;
@@ -86,66 +109,69 @@ const buyBtn = (tariffId, cls, label) => `<button class="btn ${cls}" ${payOk() ?
 /** A tariff's length: "1 месяц", "7 дней". */
 const period = (x) => (x.durationUnit === "days" ? tp(x.durationValue, "{n} day|{n} days") : tp(x.durationValue, "{n} month|{n} months"));
 const dataText = (bytes) => (bytes == null ? t("Unlimited data") : t("{n} GB a month", { n: Math.round(bytes / 1e9) }));
-const tariffCard = (x, i) => `<div class="card plan ${x.badge || i === 0 ? "best" : ""}">${x.badge ? `<span class="badge">${h(x.badge)}</span>` : ""}
-  <h3>${h(x.name)}</h3><div class="price">${h(money(x.priceMinor, x.currency))}</div>
-  <ul><li>${h(period(x))}</li><li>${tp(x.deviceLimit, "{n} device|{n} devices")}</li><li>${h(dataText(x.monthlyDataLimitBytes))}</li><li>${t("Works in other VPN apps too")}</li></ul>
-  ${buyBtn(x.id, i === 0 ? "green" : "", t("Buy"))}</div>`;
+/** The recommended tariff: the first one with a badge, else the first one. */
+const bestIndex = (list) => Math.max(0, list.findIndex((x) => x.badge));
+/** All plan cards share one structure: badge line, name, price, four lines of terms, a button. */
+const planCard = (name, price, lines, button, badge, best, slot) => `<div class="card plan ${best ? "best" : ""}">
+  ${slot ? `<div class="badge-slot">${badge ? `<span class="badge best">${h(badge)}</span>` : ""}</div>` : ""}
+  <h3>${h(name)}</h3><div class="price">${h(price)}</div>
+  <ul>${lines.map((l) => `<li>${l}</li>`).join("")}</ul>${button}</div>`;
+const tariffCard = (x, best, slot) => planCard(x.name, money(x.priceMinor, x.currency),
+  [h(period(x)), tp(x.deviceLimit, "{n} device|{n} devices"), h(dataText(x.monthlyDataLimitBytes)), t("Works in other VPN apps too")],
+  buyBtn(x.id, best ? "" : "secondary", t("Buy")), x.badge, best, slot);
 const testPayBadge = () => (site?.testPayments ? `<span class="badge test">${t("Test payments, no real money")}</span>` : "");
 
 /* ---------------- landing ---------------- */
 
+const ICONS = {
+  speed: '<path d="M4 14a8 8 0 1 1 16 0" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 14l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  lock: '<rect x="5" y="10" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/>',
+  eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 20L20 4" stroke="currentColor" stroke-width="2"/>',
+};
+const icon = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>`;
+
 async function home() {
   const plans = await api("/billing/plans");
-  const free = plans.free;
+  const free = plans.free, best = bestIndex(plans.tariffs);
+  // A badge line in every card when any card has a badge, so names and prices stay on one line.
+  const slot = plans.tariffs.some((x) => x.badge);
+  const cur = plans.tariffs[0]?.currency || (lang === "ru" ? "RUB" : "EUR");
+  const freeCard = planCard(t("Free"), money(0, cur),
+    [t("No time limit"), tp(free.deviceLimit, "{n} device|{n} devices"), h(t("{n} GB a month", { n: Math.round(free.monthlyDataLimitBytes / 1e9) })), t("JagaNet app")],
+    `<a class="btn secondary" href="#download">${t("Download the app")}</a>`, null, false, slot);
   view.innerHTML = `
   <section class="hero">
-    <div>
-      <h1>${t("A fast and secure VPN.")}</h1>
-      <p class="muted">${t("JagaNet encrypts all your traffic and keeps the internet fast.")}</p>
-      <div class="cta">
-        ${payOk() && plans.tariffs.length ? `<a class="btn green" href="#pricing">${t("Get Pro")}</a>` : ""}
-        <a class="btn secondary" href="#download">${t("Download the app")}</a>
-      </div>
-    </div>
-    <div class="shield" aria-hidden="true">
-      <div class="state">● ${t("PROTECTED")}</div>
-      <div class="ring"></div>
-      <div><div class="muted" style="color:#B8BCBA">${t("Server")}</div><div class="loc">${t("Amsterdam, Netherlands")}</div></div>
+    <h1>${t("A fast and secure VPN.")}</h1>
+    <p>${t("JagaNet encrypts all your traffic and keeps the internet fast.")}</p>
+    <div class="cta">
+      <a class="btn large" href="#pricing">${t("Choose a plan")}</a>
+      <a class="btn secondary large" href="#download">${t("Download the app")}</a>
     </div>
   </section>
 
-  <h2>${t("Why JagaNet")}</h2>
-  <div class="grid3">
-    <div class="card"><h3>${t("Fast")}</h3><p class="muted">${t("Connects in a second and keeps full speed for video, games and calls.")}</p></div>
-    <div class="card"><h3>${t("Secure")}</h3><p class="muted">${t("Modern encryption protects your data on public Wi-Fi, at home and when you travel.")}</p></div>
-    <div class="card"><h3>${t("No logs")}</h3><p class="muted">${t("We don't keep your browsing history and never sell data.")}</p></div>
-  </div>
+  <section class="facts">${tiles([
+    `<div class="fact">${icon("speed")}<h3>${t("Fast")}</h3><p>${t("Connects in a second and keeps full speed for video, games and calls.")}</p></div>`,
+    `<div class="fact">${icon("lock")}<h3>${t("Secure")}</h3><p>${t("Modern encryption protects your data on public Wi-Fi, at home and when you travel.")}</p></div>`,
+    `<div class="fact">${icon("eye")}<h3>${t("No logs")}</h3><p>${t("We don't keep your browsing history and never sell data.")}</p></div>`,
+  ])}</section>
 
-  <h2 id="pricing">${t("Pricing")}</h2>
+  <div class="section-h" id="pricing"><h2>${t("Pricing")}</h2>${site?.testPayments ? testPayBadge() : ""}</div>
   ${payOk() ? "" : `<div class="notice bad">${t("Payments are temporarily unavailable")}</div>`}
-  ${site?.testPayments ? `<p>${testPayBadge()}</p>` : ""}
-  <div class="plans">
-    <div class="card plan"><h3>${t("Free")}</h3><div class="price">${h(money(0, plans.tariffs[0]?.currency || (lang === "ru" ? "RUB" : "EUR")))}</div>
-      <ul><li>${t("{n} GB a month", { n: Math.round(free.monthlyDataLimitBytes / 1e9) })}</li><li>${tp(free.deviceLimit, "{n} device|{n} devices")}</li><li>${t("JagaNet app")}</li></ul>
-      <a class="btn secondary" href="#download">${t("Download the app")}</a></div>
-    ${plans.tariffs.map(tariffCard).join("")}
-  </div>
+  ${tiles([freeCard, ...plans.tariffs.map((x, i) => tariffCard(x, i === best, slot))])}
 
-  <h2 id="download">${t("Get the app")}</h2>
-  <div class="grid3">${downloads()}</div>
-  <footer>© JagaNet <a href="#/signin">${t("Sign in")}</a>${site?.telegramBotUrl ? ` <a href="${h(site.telegramBotUrl)}">Telegram</a>` : ""}</footer>`;
+  <div class="section-h" id="download"><h2>${t("Get the app")}</h2></div>
+  ${downloads()}`;
 }
 
 function downloads() {
   const a = site?.androidAppUrl, i = site?.iosAppUrl, tg = site?.telegramBotUrl;
-  return `
-    <div class="card"><h3>Android</h3><p class="muted">${t("The JagaNet app.")}</p>
-      ${a ? `<a class="btn" href="${h(a)}">${t("Download for Android")}</a>` : `<button class="btn" disabled>${t("Coming soon")}</button>`}</div>
-    <div class="card"><h3>iPhone</h3><p class="muted">${t("The JagaNet app for iOS.")}</p>
-      ${i ? `<a class="btn" href="${h(i)}">${t("Download on the App Store")}</a>` : `<button class="btn" disabled>${t("Coming soon")}</button>`}</div>
-    <div class="card"><h3>${tg ? "Telegram" : t("Other VPN apps")}</h3>
-      ${tg ? `<p class="muted">${t("Buy your key right in Telegram.")}</p><a class="btn" href="${h(tg)}">${t("Open the bot")}</a>`
-           : `<p class="muted">${t("Your Pro key also works in other VPN apps.")}</p><a class="btn secondary" href="https://amnezia.org/downloads" rel="noreferrer">${t("Get AmneziaVPN")}</a>`}</div>`;
+  const soon = `<button class="btn secondary" disabled>${t("Coming soon")}</button>`;
+  return tiles([
+    `<div class="card app-card"><h3>Android</h3><p>${t("The JagaNet app.")}</p>${a ? `<a class="btn secondary" href="${h(a)}">${t("Download for Android")}</a>` : soon}</div>`,
+    `<div class="card app-card"><h3>iPhone</h3><p>${t("The JagaNet app for iOS.")}</p>${i ? `<a class="btn secondary" href="${h(i)}">${t("Download on the App Store")}</a>` : soon}</div>`,
+    tg ? `<div class="card app-card"><h3>Telegram</h3><p>${t("Buy your key right in Telegram.")}</p><a class="btn secondary" href="${h(tg)}">${t("Open the bot")}</a></div>`
+       : `<div class="card app-card"><h3>${t("Other VPN apps")}</h3><p>${t("Your Pro key also works in other VPN apps.")}</p><a class="btn secondary" href="https://amnezia.org/downloads" rel="noreferrer">${t("Get AmneziaVPN")}</a></div>`,
+  ]);
 }
 
 window.buy = async function (tariffId) {
@@ -183,7 +209,7 @@ function signin() {
     <form id="f2" hidden><p id="sent" class="muted"></p><label for="code">${t("Code")}</label>
       <input id="code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required placeholder="000000">
       <button class="btn" type="submit">${t("Sign in")}</button>
-      <p style="margin-top:12px"><button class="link" type="button" id="back">${t("Use another email")}</button></p></form>
+      <p class="center gap-s"><button class="link" type="button" id="back">${t("Use another email")}</button></p></form>
     <p id="err" class="warn"></p>
     ${viaTelegram ? `<div class="or"><span>${t("or")}</span></div>${viaTelegram}` : ""}
   </div>`;
@@ -252,45 +278,48 @@ async function account(params) {
   const [me, keys, plans, pays] = await Promise.all([api("/me"), api("/keys"), api("/billing/plans"), api("/me/payments")]);
   const e = me.entitlement, isPro = e.plan === "pro";
   const sourceName = { web: t("Website"), telegram: "Telegram", app: t("JagaNet app"), apple: "App Store", google: "Google Play", referral: t("Invite reward"), dev: t("Simulation") };
+  const who = me.user.email.endsWith("@telegram.invalid") ? t("Telegram account") : me.user.email;
+  const kv = (k, v) => `<div><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  const until = isPro ? (e.expiresAt ? h(date(e.expiresAt)) : t("Owner account, no time limit")) : t("No time limit");
   view.innerHTML = `
+  ${head(t("My account"), h(who), `<button class="btn secondary" id="logout">${t("Sign out")}</button>`)}
   ${notice}
-  <div class="row"><div><h1>${t("My account")}</h1><p class="muted">${h(me.user.email.endsWith("@telegram.invalid") ? t("Telegram account") : me.user.email)}</p></div>
-    <button class="btn secondary small" id="logout">${t("Sign out")}</button></div>
-
-  <div class="card planbox" style="margin-top:12px">
-    <div class="row"><div>
-      <div class="muted">${t("Your plan")}</div>
-      <div style="font-size:26px;font-weight:700">${isPro ? h(e.tariffName || "Pro") : t("Free")}</div>
-      <div class="muted">${isPro && e.expiresAt ? t("Active until {date}", { date: date(e.expiresAt) }) + "<br>" : ""}${isPro && !e.expiresAt ? t("Owner account, no time limit") + "<br>" : ""}${h(dataText(e.monthlyDataLimitBytes))}, ${tp(e.deviceLimit, "{n} device|{n} devices")}</div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-h"><h3>${t("Your plan")}</h3><span class="status ${isPro ? "active" : ""}">${isPro ? t("Active") : t("Free")}</span></div>
+      <div class="kv">
+        ${kv(t("Plan"), isPro ? h(e.tariffName || "Pro") : t("Free"))}
+        ${kv(t("Active until"), until)}
+        ${kv(t("Devices"), `${me.usage.devicesUsed} / ${e.deviceLimit}`)}
+        ${kv(t("Data"), h(dataText(e.monthlyDataLimitBytes)))}
+      </div>
     </div>
-    <div><div class="keyactions">
-      ${plans.tariffs.map((x, i) => buyBtn(x.id, i === 0 ? "green" : "secondary", t("{product} for {price}", { product: h(x.name), price: h(money(x.priceMinor, x.currency)) }))).join("")}
+    <div class="card">
+      <div class="card-h"><h3>${isPro ? t("Extend") : t("Choose a plan")}</h3>${site?.testPayments ? testPayBadge() : ""}</div>
+      ${plans.tariffs.map((x) => `<div class="buyrow"><div><b>${h(x.name)}</b><div class="muted">${h(period(x))}, ${tp(x.deviceLimit, "{n} device|{n} devices")}</div></div>
+        <span class="price-s">${h(money(x.priceMinor, x.currency))}</span>${buyBtn(x.id, "secondary", t("Buy"))}</div>`).join("") || `<p class="muted">${t("No plans on sale right now.")}</p>`}
+      ${payOk() ? "" : `<p class="paynote warn">${t("Payments are temporarily unavailable")}</p>`}
+      ${isPro && e.expiresAt && plans.tariffs.length ? `<p class="paynote">${t("A new purchase starts when the current one ends.")}</p>` : ""}
     </div>
-    ${isPro && e.expiresAt && plans.tariffs.length ? `<p class="paynote">${t("A new purchase starts when the current one ends.")}</p>` : ""}
-    ${payOk() ? "" : `<p class="paynote">${t("Payments are temporarily unavailable")}</p>`}
-    ${site?.testPayments ? `<p class="paynote">${testPayBadge()}</p>` : ""}</div></div>
   </div>
 
-  <h2>${t("VPN keys")}</h2>
+  <div class="h2row"><h2>${t("VPN keys")}</h2>${isPro || keys.keys.length ? `<button class="btn secondary" id="newkey">${t("New key")}</button>` : ""}</div>
   <p class="muted">${t("A personal key for other VPN apps. Each key counts as one of your devices.")}</p>
   <div class="keys" id="keys">${keys.keys.map(keyCard).join("") || `<div class="card muted">${isPro ? t("You have no keys yet.") : t("Get Pro to receive your personal VPN key.")}</div>`}</div>
-  ${isPro || keys.keys.length ? `<p style="margin-top:12px"><button class="btn secondary" id="newkey">${t("New key")}</button></p>` : ""}
 
-  <a class="card refbanner" href="#/referrals"><div><h3>${t("Referral program")}</h3></div><span class="btn green small">${t("Open")}</span></a>
+  <div class="h2row"><h2>${t("Apps")}</h2></div>
+  ${downloads()}
+  <div class="card section"><div class="card-h"><h3>${t("Sign in to the JagaNet app")}</h3><div id="pair"><button class="btn secondary" id="paircode">${t("Show a code")}</button></div></div>
+    <p class="muted">${t("In the app tap Sign in with a device code and enter the code.")}</p></div>
 
-  <h2>${t("Apps")}</h2>
-  <div class="grid3">${downloads()}</div>
-  <div class="card" style="margin-top:14px"><div class="row"><div><h3>${t("Sign in to the JagaNet app")}</h3>
-    <p class="muted" style="margin:0">${t("In the app tap Sign in with a device code and enter the code.")}</p></div>
-    <div id="pair"><button class="btn secondary" id="paircode">${t("Show a code")}</button></div></div></div>
-
-  ${pays.payments.length ? `<h2>${t("Payments")}</h2><div class="card"><table>${pays.payments.map((x) => `<tr><td>${x.productId === "referral" ? t("Invite reward") : h(x.tariffName || "Pro")}</td><td class="muted">${t("{from} to {to}", { from: date(x.startedAt), to: date(x.expiresAt) })}</td><td class="muted">${h(sourceName[x.source] || x.source)}</td></tr>`).join("")}</table></div>` : ""}`;
+  ${pays.payments.length ? `<div class="h2row"><h2>${t("Payments")}</h2></div><div class="card tablewrap"><table class="data"><thead><tr><th>${t("Plan")}</th><th>${t("Period")}</th><th>${t("Channel")}</th></tr></thead><tbody>
+    ${pays.payments.map((x) => `<tr><td>${x.productId === "referral" ? t("Invite reward") : h(x.tariffName || "Pro")}</td><td>${t("{from} to {to}", { from: date(x.startedAt), to: date(x.expiresAt) })}</td><td>${h(sourceName[x.source] || x.source)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
 
   document.getElementById("logout").onclick = async () => { try { await api("/auth/logout", { method: "POST" }); } catch {} store.set("token", null); renderNav(); go("#/"); };
   const nk = document.getElementById("newkey");
   if (nk) nk.onclick = async () => { nk.disabled = true; try { await api("/keys", { method: "POST" }); render(); } catch (e) { alert(e.message); nk.disabled = false; } };
   document.getElementById("paircode").onclick = async () => {
-    try { const r = await api("/devices/pairing-code", { method: "POST" }); document.getElementById("pair").innerHTML = `<div class="code-big">${h(r.code)}</div><div class="muted">${t("Works for 10 minutes")}</div>`; }
+    try { const r = await api("/devices/pairing-code", { method: "POST" }); document.getElementById("pair").innerHTML = `<div class="code-big" title="${t("Works for 10 minutes")}">${h(r.code)}</div>`; }
     catch (e) { alert(e.message); }
   };
   for (const b of document.querySelectorAll("[data-del]")) b.onclick = async () => {
@@ -303,18 +332,17 @@ function keyCard(k) {
   const withLang = (u) => u + (u.includes("?") ? "&" : "?") + "lang=" + lang;
   return `<div class="card keycard">
     <img class="qr" src="${h(k.qrUrl)}" alt="${t("QR code of your VPN key")}" loading="lazy">
-    <div class="keyinfo">
+    <div>
       <h3>${h(k.name)}</h3>
-      <p class="muted">${h(k.location)}<br>${t("Made on {date}", { date: date(k.createdAt) })}</p>
-      <p class="muted" style="font-size:14px">${t("Scan the QR code in AmneziaVPN or download the file and import it.")}</p>
+      <p class="muted">${h(k.location)}, ${t("Made on {date}", { date: date(k.createdAt) })}</p>
+      <p>${t("Scan the QR code in AmneziaVPN or download the file and import it.")}</p>
       <div class="keyactions">
-        <a class="btn small" href="${h(k.configUrl)}" download>${t("Download file")}</a>
-        <a class="btn secondary small" href="${h(withLang(k.pageUrl))}" target="_blank" rel="noreferrer">${t("Open key link")}</a>
-        <button class="btn danger small" data-del="${h(k.id)}">${t("Delete")}</button>
+        <a class="btn" href="${h(k.configUrl)}" download>${t("Download file")}</a>
+        <a class="btn secondary" href="${h(withLang(k.pageUrl))}" target="_blank" rel="noreferrer">${t("Open key link")}</a>
+        <button class="btn danger" data-del="${h(k.id)}">${t("Delete")}</button>
       </div>
     </div></div>`;
 }
-
 
 /* ---------------- referral program ---------------- */
 
@@ -332,15 +360,14 @@ async function copyText(btn, text) {
 
 /** Funnel tiles: the headline numbers with the conversion between steps. */
 function funnelTiles(f) {
-  const tile = (label, value, note) => `<div class="card kpi"><div class="muted">${label}</div><div class="kpi-v">${value}</div>${note ? `<div class="muted kpi-n">${note}</div>` : ""}</div>`;
-  return `<div class="kpis">
-    ${tile(t("Clicks"), f.clicks)}
-    ${tile(t("Unique visitors"), f.visitors)}
-    ${tile(t("Sign-ups"), f.signups, t("{p} of visitors", { p: pct(f.signups, f.visitors) }))}
-    ${tile(t("Paid"), f.paidUsers, t("{p} of sign-ups", { p: pct(f.paidUsers, f.signups) }))}
-    ${tile(t("Purchases"), f.purchases, t("Renewals included"))}
-    ${tile(t("Revenue"), h(revenueText(f.revenue)), t("Website and Telegram payments"))}
-  </div>`;
+  return kpis([
+    [t("Clicks"), f.clicks, t("All link opens")],
+    [t("Unique visitors"), f.visitors, t("Different people")],
+    [t("Sign-ups"), f.signups, t("{p} of visitors", { p: pct(f.signups, f.visitors) })],
+    [t("Paid"), f.paidUsers, t("{p} of sign-ups", { p: pct(f.paidUsers, f.signups) })],
+    [t("Purchases"), f.purchases, t("Renewals included")],
+    [t("Revenue"), h(revenueText(f.revenue)), t("All payments")],
+  ]);
 }
 
 /**
@@ -364,14 +391,14 @@ function dayChart(days, series, title, fmt = (v) => v) {
     const rects = series.map((s, j) => {
       const v = d[s.key]; if (!v) return "";
       const hgt = Math.max(2, y(0) - y(v));
-      return `<rect x="${x0 + j * (bw + 2)}" y="${y(0) - hgt}" width="${bw}" height="${hgt}" rx="${Math.min(4, bw / 2)}" fill="${s.color}"/>`;
+      return `<rect x="${x0 + j * (bw + 2)}" y="${y(0) - hgt}" width="${bw}" height="${hgt}" rx="1" fill="${s.color}"/>`;
     }).join("");
     const label = i % every === 0 ? `<text x="${L + i * cw + cw / 2}" y="${H - 8}" class="axis" text-anchor="middle">${h(shortDate(d.day))}</text>` : "";
     const tip = h(date(d.day)) + "|" + series.map((s) => h(`${s.label} ${fmt(d[s.key])}`)).join("|");
     return `<g class="col" data-tip="${tip}"><rect x="${L + i * cw}" y="${T}" width="${cw}" height="${H - T - B}" class="hit"/>${rects}${label}</g>`;
   }).join("");
   const legend = series.length > 1 ? `<div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${s.label}</span>`).join("")}</div>` : "";
-  return `<div class="card chart"><div class="row"><h3>${title}</h3>${legend}</div>
+  return `<div class="card chart section"><div class="card-h"><h3>${title}</h3>${legend}</div>
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${h(title)}" preserveAspectRatio="none">${ticks}<line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" class="base"/>${bars}</svg>
     <div class="tip" hidden></div></div>`;
 }
@@ -403,8 +430,10 @@ function breakdown(title, items, name) {
       <div class="track"><div style="width:${Math.max(2, (i.count / max) * 100)}%"></div></div></div>`).join("")}</div>`;
 }
 
-const CLICKS = () => [{ key: "clicks", label: t("Clicks"), color: "#1E6B57" }];
-const CONVERSIONS = () => [{ key: "signups", label: t("Sign-ups"), color: "#1baf7a" }, { key: "paid", label: t("Paid"), color: "#eb6834" }];
+/* Chart colors: one blue for a single series, blue and orange for two (GitLab's data palette). */
+const C1 = "#1f75cb", C2 = "#e9762b";
+const CLICKS = () => [{ key: "clicks", label: t("Clicks"), color: C1 }];
+const CONVERSIONS = () => [{ key: "signups", label: t("Sign-ups"), color: C1 }, { key: "paid", label: t("Paid"), color: C2 }];
 
 async function referrals(params) {
   if (!store.get("token")) { store.set("afterSignIn", null); return go("#/signin"); }
@@ -414,17 +443,17 @@ async function referrals(params) {
   const owner = me.user.role === "owner" && params.get("view") === "all";
   const q = (extra) => `#/referrals?period=${period}${extra}`;
   const tabs = `<div class="chips">${PERIODS.map(([k, l]) => `<a class="chip ${k === period ? "on" : ""}" href="#/referrals?period=${k}${owner ? "&view=all" : ""}">${t(l)}</a>`).join("")}</div>`;
-  const ownerTabs = me.user.role === "owner" ? `<div class="chips"><a class="chip ${owner ? "" : "on"}" href="${q("")}">${t("My links")}</a><a class="chip ${owner ? "on" : ""}" href="${q("&view=all")}">${t("Whole program")}</a></div>` : "";
+  const ownerTabs = me.user.role === "owner" ? `<nav class="tabs"><a class="${owner ? "" : "on"}" href="${q("")}">${t("My links")}</a><a class="${owner ? "on" : ""}" href="${q("&view=all")}">${t("Whole program")}</a></nav>` : "";
 
   if (owner) {
     const a = await api(`/admin/referrals?period=${period}`);
     view.innerHTML = `
-    <div class="row"><h1>${t("Referral program")}</h1>${ownerTabs}</div>${tabs}
+    ${head(t("Referral program"), "", tabs)}${ownerTabs}
     ${funnelTiles(a.totals)}
     ${dayChart(a.days, CLICKS(), t("Clicks by day"))}
     ${dayChart(a.days, CONVERSIONS(), t("Sign-ups and payments by day"))}
-    <div class="grid2" style="margin-top:14px">${breakdown(t("Where clicks come from"), a.sources, sourceName)}${breakdown(t("Where people sign up"), a.channels, channelName)}</div>
-    <h2>${t("Top partners")}</h2>
+    <div class="grid2 section">${breakdown(t("Where clicks come from"), a.sources, sourceName)}${breakdown(t("Where people sign up"), a.channels, channelName)}</div>
+    <div class="h2row"><h2>${t("Top partners")}</h2></div>
     <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Partner")}</th><th>${t("Links")}</th><th>${t("Clicks")}</th><th>${t("Sign-ups")}</th><th>${t("Paid")}</th><th>${t("Conversion")}</th><th>${t("Revenue")}</th></tr></thead>
     <tbody>${a.topReferrers.map((r) => `<tr><td>${h(r.email)}</td><td>${r.links}</td><td>${r.funnel.clicks}</td><td>${r.funnel.signups}</td><td>${r.funnel.paidUsers}</td><td>${pct(r.funnel.paidUsers, r.funnel.signups)}</td><td>${h(revenueText(r.funnel.revenue))}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">${t("No data yet.")}</td></tr>`}</tbody></table></div>`;
     wireCharts(view);
@@ -433,32 +462,30 @@ async function referrals(params) {
 
   const st = await api(`/referrals/stats?period=${period}`);
   view.innerHTML = `
-  <div class="row"><h1>${t("Referral program")}</h1>${ownerTabs}</div>
-  ${st.daysEarned ? `<p class="muted">${tp(st.daysEarned, "You have earned {n} day.|You have earned {n} days.")}</p>` : ""}
-  ${tabs}
+  ${head(t("Referral program"), st.daysEarned ? tp(st.daysEarned, "You have earned {n} day.|You have earned {n} days.") : "", tabs)}${ownerTabs}
   ${funnelTiles(st.totals)}
   ${dayChart(st.days, CLICKS(), t("Clicks by day"))}
   ${dayChart(st.days, CONVERSIONS(), t("Sign-ups and payments by day"))}
 
-  <h2>${t("Your links")}</h2>
+  <div class="h2row"><h2>${t("Your links")}</h2></div>
   <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Link")}</th><th>${t("Clicks")}</th><th>${t("Unique visitors")}</th><th>${t("Sign-ups")}</th><th>${t("Paid")}</th><th>${t("Conversion")}</th><th>${t("Revenue")}</th><th></th></tr></thead>
   <tbody>${st.links.map((l) => `<tr>
-    <td><b>${h(linkName(l))}</b><div class="mono muted small">${h(l.webUrl)}</div>
+    <td class="wrap"><b>${h(linkName(l))}</b><div class="mono muted">${h(l.webUrl)}</div>
       <div class="linkbtns"><button class="btn small secondary" data-copy="${h(l.webUrl)}">${t("Copy link")}</button>${l.telegramUrl ? `<button class="btn small secondary" data-copy="${h(l.telegramUrl)}">${t("Copy Telegram link")}</button>` : ""}</div></td>
     <td>${l.funnel.clicks}</td><td>${l.funnel.visitors}</td><td>${l.funnel.signups}</td><td>${l.funnel.paidUsers}</td>
     <td title="${t("Paid of sign-ups")}">${pct(l.funnel.paidUsers, l.funnel.signups)}</td><td>${h(revenueText(l.funnel.revenue))}</td>
     <td class="actions">${l.main ? "" : `<button class="link" data-rename="${h(l.id)}" data-name="${h(l.name)}">${t("Rename")}</button> <button class="link warnlink" data-archive="${h(l.id)}">${t("Archive")}</button>`}</td>
   </tr>`).join("")}</tbody></table></div>
 
-  <form id="newlink" class="card newlink"><h3>${t("New link")}</h3>
+  <form id="newlink" class="card section"><h3>${t("New link")}</h3>
     <div class="formrow"><div><label for="ln">${t("Name, for example Instagram")}</label><input id="ln" maxlength="40" required></div>
     <div><label for="lc">${t("Own code (optional)")}</label><input id="lc" maxlength="32" placeholder="ALEX-INSTA"></div>
     <button class="btn" type="submit">${t("Create link")}</button></div>
     <p id="lerr" class="warn"></p></form>
 
-  <div class="grid2" style="margin-top:14px">${breakdown(t("Where clicks come from"), st.sources, sourceName)}${breakdown(t("Where people sign up"), st.channels, channelName)}</div>
+  <div class="grid2 section">${breakdown(t("Where clicks come from"), st.sources, sourceName)}${breakdown(t("Where people sign up"), st.channels, channelName)}</div>
 
-  <h2>${t("People you invited")}</h2>
+  <div class="h2row"><h2>${t("People you invited")}</h2></div>
   <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Who")}</th><th>${t("Link")}</th><th>${t("Joined")}</th><th>${t("Where")}</th><th>${t("Status")}</th><th>${t("Purchases")}</th></tr></thead>
   <tbody>${st.recent.map((r) => `<tr><td>${h(r.who)}</td><td>${h(r.linkName === "Main link" ? t("Main link") : r.linkName)}</td><td>${h(date(r.joinedAt))}</td><td>${h(channelName(r.channel))}</td>
     <td><span class="status ${r.status}">${{ registered: t("Signed up"), active: t("Pro active"), lapsed: t("Pro ended") }[r.status]}</span></td><td>${r.purchases}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">${t("No one yet. Share your link to get started.")}</td></tr>`}</tbody></table></div>`;
@@ -491,7 +518,7 @@ const CHECK_NAMES = {
   vpn: "VPN", db: "Database", https: "Website (HTTPS)", cert: "Certificate", bot: "Telegram bot", cpu: "Processor", memory: "Memory",
   disk: "Disk", channel: "Channel load", net_errors: "Network errors", ping: "Ping and packet loss", dns: "DNS", traffic: "Monthly traffic",
 };
-const DOWN = "#1baf7a", UP = "#eb6834", ONE = "#1E6B57";
+const DOWN = C1, UP = C2, ONE = C1;
 let statusTimer = null;
 
 /** 12.5 with the language's decimal separator; whole numbers from 10 up. */
@@ -544,7 +571,7 @@ function niceTop(max) {
  */
 function lineChart(points, series, title, formatY, opts = {}) {
   const pts = points.filter((p) => series.some((s) => p[s.key] != null));
-  if (pts.length < 2) return `<div class="card chart"><h3>${title}</h3><p class="muted">${t("No data yet.")}</p></div>`;
+  if (pts.length < 2) return `<div class="card chart section"><h3>${title}</h3><p class="muted">${t("No data yet.")}</p></div>`;
   const W = Math.max(280, Math.min(1000, (opts.width || view.clientWidth || 960) - 42)), H = opts.small ? 120 : W < 600 ? 180 : 220;
   const T = 10, B = 26, R = 10;
   const max = Math.max(0, ...pts.flatMap((p) => series.map((s) => p[s.key] ?? 0)));
@@ -584,12 +611,14 @@ function lineChart(points, series, title, formatY, opts = {}) {
     return `<g class="col" data-tip="${tip}"><rect x="${a}" y="${T}" width="${Math.max(0.5, b - a)}" height="${H - T - B}" class="hit"/><line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" class="xh"/>${dots}</g>`;
   }).join("");
   const legend = series.length > 1 ? `<div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${s.label}</span>`).join("")}</div>` : "";
-  return `<div class="card chart line"><div class="row"><h3>${title}</h3>${legend}</div>
+  return `<div class="card chart line section"><div class="card-h"><h3>${title}</h3>${legend}</div>
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${h(title)}" preserveAspectRatio="none">${grid}<line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" class="base"/>${lines}${labels}${cols}</svg>
     <div class="tip" hidden></div></div>`;
 }
 
-const kpi = (label, value, note) => `<div class="card kpi"><div class="muted">${label}</div><div class="kpi-v">${value}</div>${note ? `<div class="muted kpi-n">${note}</div>` : ""}</div>`;
+const kpi = (label, value, note) => `<div class="card kpi"><div class="muted">${label}</div><div class="kpi-v">${value}</div><div class="muted kpi-n">${note || "&nbsp;"}</div></div>`;
+/** A full row of number tiles, each with label, value and a note line (kept even when empty, so tiles line up). */
+const kpis = (list) => tiles(list.map(([l, v, n]) => kpi(l, v, n)), "kpis");
 const meter = (part, whole) => `<div class="meter"><div style="width:${Math.min(100, Math.max(1, (part / whole) * 100))}%" class="${part / whole >= 0.9 ? "hot" : ""}"></div></div>`;
 
 async function status(params) {
@@ -614,61 +643,57 @@ async function status(params) {
   const monthTotal = (net.monthRxBytes || 0) + (net.monthTxBytes || 0);
 
   view.innerHTML = `
-  <div class="row"><h1>${t("Server status")}</h1>
-    <div class="chips">${RANGES.map(([k, l]) => `<a class="chip ${k === range ? "on" : ""}" href="#/status?range=${k}">${t(l)}</a>`).join("")}</div></div>
-  <div class="overall ${h(m.overall)}"><i></i><div><b>${t(banner)}</b>
-    <div class="small">${m.checkedAt ? t("Checked at {time}", { time: h(dateTime(m.checkedAt)) }) : t("Not checked yet")}</div></div></div>
+  ${head(t("Server status"), "", `<div class="chips">${RANGES.map(([k, l]) => `<a class="chip ${k === range ? "on" : ""}" href="#/status?range=${k}">${t(l)}</a>`).join("")}</div>`)}
+  <div class="notice ${{ ok: "ok", warning: "bad", critical: "danger" }[m.overall] || ""}"><div class="grow"><b>${t(banner)}</b>
+    <div class="muted">${m.checkedAt ? t("Checked at {time}", { time: h(dateTime(m.checkedAt)) }) : t("Not checked yet")}</div></div></div>
 
-  <div class="checks">${m.checks.map((c) => `<div class="card check ${h(c.level)}"><div class="row"><h3>${t(CHECK_NAMES[c.key] || c.key)}</h3>${levelBadge(c.level)}</div>
-    <p class="muted">${h(t(c.message, c.args))}</p></div>`).join("")}</div>
+  <div class="card tablewrap"><table class="data alerts"><thead><tr><th>${t("Check")}</th><th>${t("Details")}</th><th>${t("Status")}</th></tr></thead>
+    <tbody>${m.checks.map((c) => `<tr><td><b>${t(CHECK_NAMES[c.key] || c.key)}</b></td><td>${h(t(c.message, c.args))}</td><td>${levelBadge(c.level)}</td></tr>`).join("")}</tbody></table></div>
 
-  <h2>${t("Network")}</h2>
-  <div class="kpis k4">
-    ${kpi(t("Download speed"), h(bits(last?.rxBps)))}
-    ${kpi(t("Upload speed"), h(bits(last?.txBps)))}
-    ${kpi(t("Channel load"), last?.utilization == null ? "-" : percent(last.utilization * 100), h(capNote))}
-    ${kpi(t("Traffic this month"), h(bytes(monthTotal)), `${t("Downloaded")} ${h(bytes(net.monthRxBytes || 0))}<br>${t("Uploaded")} ${h(bytes(net.monthTxBytes || 0))}`)}
-  </div>
-  ${net.monthLimitBytes ? `<div class="card limit"><div class="row"><span>${t("{used} of {limit} allowed by the hosting plan", { used: h(bytes(monthTotal)), limit: h(bytes(net.monthLimitBytes)) })}</span><b class="mono">${percent((monthTotal / net.monthLimitBytes) * 100)}</b></div>${meter(monthTotal, net.monthLimitBytes)}</div>` : ""}
-  ${net.iface ? `<p class="muted small">${t("Interface {name}", { name: `<span class="mono">${h(net.iface)}</span>` })}</p>` : ""}
+  <div class="h2row"><h2>${t("Network")}</h2>${net.iface ? `<span class="muted">${t("Interface {name}", { name: `<span class="mono">${h(net.iface)}</span>` })}</span>` : ""}</div>
+  ${kpis([
+    [t("Download speed"), h(bits(last?.rxBps)), t("Right now")],
+    [t("Upload speed"), h(bits(last?.txBps)), t("Right now")],
+    [t("Channel load"), last?.utilization == null ? "-" : percent(last.utilization * 100), h(capNote)],
+    [t("Traffic this month"), h(bytes(monthTotal)), `${t("Downloaded")} ${h(bytes(net.monthRxBytes || 0))}, ${t("Uploaded").toLowerCase()} ${h(bytes(net.monthTxBytes || 0))}`],
+  ])}
+  ${net.monthLimitBytes ? `<div class="card section"><div class="row"><span>${t("{used} of {limit} allowed by the hosting plan", { used: h(bytes(monthTotal)), limit: h(bytes(net.monthLimitBytes)) })}</span><b>${percent((monthTotal / net.monthLimitBytes) * 100)}</b></div>${meter(monthTotal, net.monthLimitBytes)}</div>` : ""}
   ${lineChart(pts, [{ key: "rx", label: t("Download"), color: DOWN }, { key: "tx", label: t("Upload"), color: UP }], t("Throughput"), bits)}
   ${net.capacityMbps ? lineChart(pts, [{ key: "load", label: t("Load"), color: ONE }], t("Channel load, %"), (v) => `${whole(v)}%`, { top: 100 }) : ""}
-  <div class="grid2">
+  <div class="grid2 section">
     ${lineChart(pts, [{ key: "ping", label: t("Ping"), color: ONE }], t("Ping, ms"), (v) => t("{n} ms", { n: num(v) }), { small: true, width: half })}
     ${lineChart(pts, [{ key: "loss", label: t("Packet loss"), color: ONE }], t("Packet loss, %"), (v) => `${num(v)}%`, { small: true, width: half })}
   </div>
   ${lineChart(pts, [{ key: "errors", label: t("Errors"), color: DOWN }, { key: "drops", label: t("Drops"), color: UP }], t("Errors and drops"), whole)}
 
-  <h2>${t("Resources")}</h2>
-  <div class="kpis k3">
-    ${kpi(t("Processor"), last ? percent(last.cpu * 100) : "-")}
-    ${kpi(t("Memory"), last ? percent((last.memUsed / (last.memTotal || 1)) * 100) : "-", last ? t("{used} of {total}", { used: h(bytes(last.memUsed)), total: h(bytes(last.memTotal)) }) : "")}
-    ${kpi(t("Disk free"), last ? h(bytes(last.diskFree)) : "-", last ? t("{used} of {total}", { used: percent((last.diskFree / (last.diskTotal || 1)) * 100), total: h(bytes(last.diskTotal)) }) : "")}
-  </div>
+  <div class="h2row"><h2>${t("Resources")}</h2></div>
+  ${kpis([
+    [t("Processor"), last ? percent(last.cpu * 100) : "-", t("Right now")],
+    [t("Memory"), last ? percent((last.memUsed / (last.memTotal || 1)) * 100) : "-", last ? t("{used} of {total}", { used: h(bytes(last.memUsed)), total: h(bytes(last.memTotal)) }) : ""],
+    [t("Disk free"), last ? h(bytes(last.diskFree)) : "-", last ? t("{used} of {total}", { used: percent((last.diskFree / (last.diskTotal || 1)) * 100), total: h(bytes(last.diskTotal)) }) : ""],
+  ])}
   ${lineChart(pts, [{ key: "cpu", label: t("Processor"), color: DOWN }, { key: "mem", label: t("Memory"), color: UP }], t("Processor and memory, %"), (v) => `${whole(v)}%`, { top: 100 })}
 
-  <h2>VPN</h2>
-  <div class="kpis k3">
-    ${kpi(t("Keys on the server"), last ? last.peers : "-")}
-    ${kpi(t("Connected now"), last ? last.online : "-")}
-  </div>
+  <div class="h2row"><h2>VPN</h2></div>
+  ${kpis([
+    [t("Keys on the server"), last ? last.peers : "-", t("Devices and keys")],
+    [t("Connected now"), last ? last.online : "-", t("Active in the last 3 minutes")],
+  ])}
   ${lineChart(pts, [{ key: "online", label: t("Online"), color: ONE }], t("Devices online"), whole)}
 
-  <h2>${t("Alerts")}</h2>
+  <div class="h2row"><h2>${t("Alerts")}</h2></div>
   <div class="card tablewrap"><table class="data alerts"><thead><tr><th>${t("Level")}</th><th>${t("Message")}</th><th>${t("Started")}</th></tr></thead>
   <tbody>${open.map((a) => `<tr><td>${levelBadge(a.level)}</td><td>${h(t(a.message, a.args))}</td><td>${h(dateTime(a.openedAt))}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">${t("No open alerts.")}</td></tr>`}</tbody></table></div>
-  ${done.length ? `<h3 class="sub">${t("Resolved alerts")}</h3>
+  ${done.length ? `<div class="h2row"><h2>${t("Resolved alerts")}</h2></div>
   <div class="card tablewrap"><table class="data alerts"><thead><tr><th>${t("Level")}</th><th>${t("Message")}</th><th>${t("Started")}</th><th>${t("Ended")}</th><th>${t("Duration")}</th></tr></thead>
   <tbody>${done.map((a) => `<tr><td>${levelBadge(a.level)}</td><td>${h(t(a.message, a.args))}</td><td>${h(dateTime(a.openedAt))}</td><td>${h(dateTime(a.resolvedAt))}</td><td>${h(duration(Date.parse(a.resolvedAt) - Date.parse(a.openedAt)))}</td></tr>`).join("")}</tbody></table></div>` : ""}
 
-  <h2>${t("Notifications")}</h2>
+  <div class="h2row"><h2>${t("Notifications")}</h2><a class="btn secondary" href="#/admin?tab=alerts">${t("Change recipients")}</a></div>
   <div class="card notify">
-    <p class="muted">${t("Where alerts are sent")}</p>
     <div class="nrow"><b>${t("Email")}</b><span>${m.notify.emails.length ? m.notify.emails.map((e) => `<span class="mono">${h(e)}</span>`).join("<br>") : `<span class="muted">${t("No email addresses")}</span>`}</span></div>
-    ${m.notify.emailReady ? "" : `<p class="warn">${t("E-mail sending is not set up yet.")} <a href="#/admin?tab=email">${t("Set up e-mail")}</a></p>`}
+    ${m.notify.emailReady ? "" : `<div class="nrow"><span></span><span class="warn">${t("E-mail sending is not set up yet.")} <a href="#/admin?tab=email">${t("Set up e-mail")}</a></span></div>`}
     <div class="nrow"><b>Telegram</b><span>${tp(m.notify.telegramChats, "{n} Telegram chat|{n} Telegram chats")}</span></div>
-    <div class="row" style="margin-top:12px;justify-content:flex-start"><button class="btn secondary" id="testnote">${t("Send test notification")}</button><span id="testres" class="muted"></span></div>
-    <p class="small" style="margin-top:10px"><a href="#/admin?tab=alerts">${t("Change recipients")}</a></p>
+    <div class="actionsrow"><button class="btn secondary" id="testnote">${t("Send test notification")}</button><span id="testres" class="muted"></span></div>
   </div>`;
 
   wireCharts(view);
@@ -686,7 +711,7 @@ async function status(params) {
 
 const ADMIN_TABS = [["money", "Money"], ["plans", "Plans"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"]];
 const payChannel = (k) => ({ web: t("Website"), telegram: "Telegram", app: t("JagaNet app"), apple: "App Store", google: "Google Play", dev: t("Test payments") })[k] || k;
-const NEW_SUB = "#1baf7a", RENEWAL = "#eb6834";
+const NEW_SUB = C1, RENEWAL = C2;
 
 /** "299" or "4,99" in major units → minor units; NaN when it isn't a price. */
 function toMinor(text) {
@@ -718,43 +743,43 @@ async function admin(params) {
   if (!store.get("token")) return go("#/signin");
   if (role !== "owner") return go("#/account");
   const tab = ADMIN_TABS.some(([k]) => k === params.get("tab")) ? params.get("tab") : "money";
-  const head = `<h1>${t("Admin panel")}</h1>
-    <nav class="tabs">${ADMIN_TABS.map(([k, l]) => `<a class="${k === tab ? "on" : ""}" href="#/admin?tab=${k}">${t(l)}</a>`).join("")}</nav>`;
-  if (tab === "money") return adminMoney(params, head);
+  const top = head(t("Admin panel")) + `<nav class="tabs">${ADMIN_TABS.map(([k, l]) => `<a class="${k === tab ? "on" : ""}" href="#/admin?tab=${k}">${t(l)}</a>`).join("")}</nav>`;
+  if (tab === "money") return adminMoney(params, top);
   const s = await api("/admin/settings");
   if (!location.hash.startsWith("#/admin")) return;
-  view.innerHTML = head + `<div id="pane"></div>`;
+  view.innerHTML = top + `<div id="pane"></div>`;
   ({ plans: plansPane, email: emailPane, alerts: alertsPane, modes: modesPane })[tab](s);
 }
 
-async function adminMoney(params, head) {
+async function adminMoney(params, top) {
   const period = PERIODS.some(([k]) => k === params.get("period")) ? params.get("period") : store.get("finPeriod") || "30d";
   store.set("finPeriod", period);
   const f = await api(`/admin/finance?period=${period}`);
   if (!location.hash.startsWith("#/admin")) return;
   const currencies = [...new Set([...f.revenue, ...f.days.flatMap((d) => d.revenue)].map((m) => m.currency))];
-  const empty = (title) => `<div class="card chart"><h3>${title}</h3><p class="muted">${t("No data yet.")}</p></div>`;
+  const empty = (title) => `<div class="card chart section"><h3>${title}</h3><p class="muted">${t("No data yet.")}</p></div>`;
   const revenueChart = (cur) => dayChart(
     f.days.map((d) => ({ day: d.day, v: (d.revenue.find((m) => m.currency === cur)?.minor || 0) / 100 })),
     [{ key: "v", label: t("Revenue"), color: ONE }], `${t("Revenue by day")}, ${h(cur)}`, (v) => money(Math.round(v * 100), cur));
   const subsSeries = [{ key: "newSubscriptions", label: t("New subscriptions"), color: NEW_SUB }, { key: "renewals", label: t("Renewals"), color: RENEWAL }];
   const who = (email) => (email.endsWith("@telegram.invalid") ? t("Telegram account") : email);
 
-  view.innerHTML = `${head}
-  <div class="chips">${PERIODS.map(([k, l]) => `<a class="chip ${k === period ? "on" : ""}" href="#/admin?tab=money&period=${k}">${t(l)}</a>`).join("")}</div>
-  <div class="kpis k4">
-    ${kpi(t("Revenue"), h(revenueText(f.revenue)))}
-    ${kpi(t("Paid orders"), f.paidOrders)}
-    ${kpi(t("New subscriptions"), f.newSubscriptions)}
-    ${kpi(t("Renewals"), f.renewals)}
-    ${kpi(t("Active subscribers"), f.activeSubscribers, t("Paid Pro right now"))}
-    ${kpi(t("Monthly recurring revenue"), h(revenueText(f.mrr)))}
-    ${kpi(t("Unpaid orders"), f.unpaidOrders, t("Checkouts started but not paid"))}
-  </div>
+  view.innerHTML = `${top}
+  <div class="toolbar"><div class="chips">${PERIODS.map(([k, l]) => `<a class="chip ${k === period ? "on" : ""}" href="#/admin?tab=money&period=${k}">${t(l)}</a>`).join("")}</div></div>
+  ${kpis([
+    [t("Revenue"), h(revenueText(f.revenue)), t("All payments")],
+    [t("Paid orders"), f.paidOrders, t("In this period")],
+    [t("New subscriptions"), f.newSubscriptions, t("In this period")],
+    [t("Renewals"), f.renewals, t("In this period")],
+    [t("Active subscribers"), f.activeSubscribers, t("Paid Pro right now")],
+    [t("Monthly recurring revenue"), h(revenueText(f.mrr)), t("Per month")],
+    [t("Unpaid orders"), f.unpaidOrders, t("Checkouts started but not paid")],
+    [t("Conversion"), f.paidOrders + f.unpaidOrders ? pct(f.paidOrders, f.paidOrders + f.unpaidOrders) : "-", t("Paid of all orders")],
+  ])}
   ${f.days.length && currencies.length ? currencies.map(revenueChart).join("") : empty(t("Revenue by day"))}
   ${f.days.length ? dayChart(f.days, subsSeries, t("New subscriptions and renewals by day")) : empty(t("New subscriptions and renewals by day"))}
-  <div class="grid2" style="margin-top:14px">${breakdown(t("Subscriptions by channel"), f.byChannel, payChannel)}${breakdown(t("Subscriptions by plan"), f.byProduct, (k) => k)}</div>
-  <h2>${t("Recent payments")}</h2>
+  <div class="grid2 section">${breakdown(t("Subscriptions by channel"), f.byChannel, payChannel)}${breakdown(t("Subscriptions by plan"), f.byProduct, (k) => k)}</div>
+  <div class="h2row"><h2>${t("Recent payments")}</h2></div>
   <div class="card tablewrap"><table class="data pays"><thead><tr><th>${t("Date")}</th><th>${t("Email")}</th><th>${t("Plan")}</th><th>${t("Amount")}</th><th>${t("Channel")}</th><th>${t("Type")}</th></tr></thead>
   <tbody>${f.recent.map((r) => `<tr><td>${h(dateTime(r.at))}</td><td>${h(who(r.email))}</td><td>${h(r.product)}</td>
     <td>${r.amount ? h(money(r.amount.minor, r.amount.currency)) : "-"}</td><td>${h(payChannel(r.channel))}</td>
@@ -771,16 +796,15 @@ async function plansPane(s) {
     <td>${h(period(x))}</td><td>${h(money(x.priceRubMinor, "RUB"))}</td><td>${h(money(x.priceEurMinor, "EUR"))}</td>
     <td>${x.deviceLimit}</td><td>${x.trafficGb == null ? t("Unlimited") : t("{n} GB a month", { n: x.trafficGb })}</td>
     <td>${x.sold}</td><td>${x.activeNow}</td><td><span class="status ${x.status === "active" ? "active" : ""}">${STATUS[x.status]}</span></td>
-    <td><button class="btn secondary small" data-edit="${h(x.id)}">${t("Edit")}</button></td></tr>`;
+    <td class="actions"><button class="btn secondary small" data-edit="${h(x.id)}">${t("Edit")}</button></td></tr>`;
   pane.innerHTML = `
-  <div class="row"><h3>${t("Plans")}</h3><button class="btn small" id="newt">${t("New plan")}</button></div>
-  <p class="muted">${t("Changes apply to new purchases only. Bought subscriptions keep their terms.")}</p>
+  <div class="toolbar"><span class="muted">${t("Changes apply to new purchases only. Bought subscriptions keep their terms.")}</span><button class="btn" id="newt">${t("New plan")}</button></div>
   <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Name")}</th><th>${t("Length")}</th><th>${t("Price, rubles")}</th><th>${t("Price, euros")}</th>
     <th>${t("Devices")}</th><th>${t("Data")}</th><th>${t("Sold")}</th><th>${t("Using now")}</th><th>${t("Status")}</th><th></th></tr></thead>
     <tbody>${list.map(row).join("") || `<tr><td colspan="10" class="muted">${t("No plans on sale right now.")}</td></tr>`}</tbody></table></div>
-  <form class="card adminform" id="tf" hidden style="margin-top:14px"></form>
+  <form class="card adminform section" id="tf" hidden></form>
 
-  <form class="card adminform" id="pf" style="margin-top:14px">
+  <form class="card adminform section" id="pf">
     <h3>${t("Free plan and invite rewards")}</h3>
     <div class="fields">
       ${field("fg", t("Free data per month, GB"), p.freeMonthlyGb, whole)}
@@ -902,18 +926,18 @@ function alertsPane(s) {
     <label for="ae">${t("E-mail addresses, one per line or separated by commas")}</label>
     <textarea id="ae" rows="3" placeholder="you@example.com">${h(a.emails.join("\n"))}</textarea>
     ${s.smtp ? "" : `<p class="warn">${t("E-mail is not set up")}. <a href="#/admin?tab=email">${t("Set up e-mail")}</a></p>`}
-    <label for="at" style="margin-top:12px">${t("Telegram chat ids, separated by commas")}</label>
+    <label for="at" class="gap">${t("Telegram chat ids, separated by commas")}</label>
     <input id="at" value="${h(a.telegramChats.join(", "))}" placeholder="123456789">
-    <p class="muted small" style="margin-top:6px">${t("Send /myid to the bot in a chat to see that chat's id.")}</p>
+    <p class="muted small gap-s">${t("Send /myid to the bot in a chat to see that chat's id.")}</p>
     ${s.botEnabled ? "" : `<p class="warn">${t("The Telegram bot is not set up, so alerts can't go to Telegram.")}</p>`}
     <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button><a class="btn secondary" href="#/status">${t("Server status")}</a></div>
     <p class="result" id="ares"></p></form>
-  <form class="card adminform" id="nf" style="margin-top:14px">
+  <form class="card adminform" id="nf">
     <h3>${t("Server channel")}</h3>
     <p class="muted">${t("From your hosting plan. Used for the channel load and the monthly traffic warning.")}</p>
     <label for="nc">${t("Channel speed, Mbit/s")}</label>
     <input id="nc" inputmode="numeric" value="${h(s.network?.channelMbps ?? "")}" placeholder="1000">
-    <label for="nt" style="margin-top:12px">${t("Traffic per month, GB (empty if unlimited)")}</label>
+    <label for="nt" class="gap">${t("Traffic per month, GB (empty if unlimited)")}</label>
     <input id="nt" inputmode="numeric" value="${h(s.network?.monthlyTrafficGb ?? "")}" placeholder="">
     <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button></div>
     <p class="result" id="nres"></p></form>`;
@@ -983,7 +1007,7 @@ async function render() {
     await home();
     if (location.hash === "#download") document.getElementById("download")?.scrollIntoView();
   } catch (e) {
-    view.innerHTML = `<div class="card"><p class="warn">${h(e.message)}</p><button class="btn secondary" onclick="location.reload()">${t("Try again")}</button></div>`;
+    view.innerHTML = `<div class="card signbox center"><p class="warn">${h(e.message)}</p><button class="btn secondary" onclick="location.reload()">${t("Try again")}</button></div>`;
   }
 }
 

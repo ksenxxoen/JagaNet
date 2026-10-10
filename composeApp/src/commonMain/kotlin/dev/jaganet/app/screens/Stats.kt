@@ -53,7 +53,7 @@ import dev.jaganet.app.ui.Title
 import dev.jaganet.app.ui.load
 
 /** Device colours for the "By device" bar; differ in lightness, not hue alone. */
-private val DEVICE_TONES = listOf(C.green, Color(0xFF6FA592), Color(0xFFB9D3C8), C.faint, C.lineStrong)
+private val DEVICE_TONES = listOf(C.chart1, C.chart2, Color(0xFFCBE2F9), C.faint, C.lineStrong)
 
 /** Short weekday name, 0 = Monday. */
 private fun weekdayName(i: Int): String = when (i) {
@@ -67,18 +67,18 @@ fun StatsScreen(s: AppState) {
     val me = load(s.dataVersion) { s.api.me() }
     Screen {
         Title(t("Statistics"))
-        Gap(14.dp)
+        Gap(16.dp)
         Segmented(listOf(StatsPeriod.DAY to t("Day"), StatsPeriod.WEEK to t("Week"), StatsPeriod.MONTH to t("Month")), period) { period = it }
-        Gap(14.dp)
+        Gap(16.dp)
         Loaded(stats) { st -> StatsBody(st) }
 
         SectionLabel(t("Your plan"))
         Loaded(me) { m ->
             Card(padding = 16.dp) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        T(if (m.entitlement.plan == PlanId.PRO) t("Pro") else t("Free"), TS.Body, FontWeight.SemiBold)
-                        T(t("Active"), TS.Caption, FontWeight.SemiBold, C.greenDark, modifier = Modifier.background(C.greenTint, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
+                        T(if (m.entitlement.plan == PlanId.PRO) m.entitlement.tariffName ?: t("Pro") else t("Free"), TS.Body, FontWeight.SemiBold)
+                        dev.jaganet.app.ui.Badge(t("Active"), C.greenTint, C.greenDark)
                     }
                     KV(t("Data"), m.entitlement.monthlyDataLimitBytes?.let { "${fBytes(m.usage.bytesUsed)} / ${fBytes(it)}" } ?: t("Unlimited"))
                     KV(t("Devices"), "${m.usage.devicesUsed} / ${m.entitlement.deviceLimit}", mono = true)
@@ -95,15 +95,15 @@ private fun StatsBody(st: StatsRes) {
     val total = st.totalRxBytes + st.totalTxBytes
     Card(padding = 16.dp) {
         T(when (st.period) { StatsPeriod.DAY -> t("Traffic today"); StatsPeriod.WEEK -> t("Traffic this week"); StatsPeriod.MONTH -> t("Traffic in the last 30 days") }, TS.Label, color = C.muted)
-        T(fBytes(total), TS.Display, FontWeight.Medium, mono = true, modifier = Modifier.padding(top = 4.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(top = 6.dp)) {
-            Legend(C.green, t("Downloaded"), fBytes(st.totalRxBytes))
-            Legend(C.chartGreen, t("Uploaded"), fBytes(st.totalTxBytes))
+        T(fBytes(total), TS.Display, FontWeight.SemiBold, mono = true, modifier = Modifier.padding(top = 4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(top = 8.dp)) {
+            Legend(C.chart1, t("Downloaded"), fBytes(st.totalRxBytes))
+            Legend(C.chart2, t("Uploaded"), fBytes(st.totalTxBytes))
         }
-        Gap(14.dp)
+        Gap(16.dp)
         BarChart(st)
     }
-    Gap(10.dp)
+    Gap(8.dp)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Tile(t("Time protected"), fDuration(st.protectedSeconds), Modifier.weight(1f))
         Tile(t("Sessions"), st.sessions.toString(), Modifier.weight(1f))
@@ -118,7 +118,7 @@ private fun StatsBody(st: StatsRes) {
         SectionLabel(t("By device"))
         val sum = st.byDevice.sumOf { it.bytes }.coerceAtLeast(1)
         Card(padding = 16.dp) {
-            Row(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp))) {
+            Row(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(2.dp))) {
                 st.byDevice.forEachIndexed { i, d ->
                     Box(Modifier.weight(d.bytes.toFloat().coerceAtLeast(1f)).fillMaxHeight().background(DEVICE_TONES[i % DEVICE_TONES.size]))
                 }
@@ -128,7 +128,7 @@ private fun StatsBody(st: StatsRes) {
                 st.byDevice.forEachIndexed { i, d ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Box(Modifier.size(10.dp).clip(CircleShape).background(DEVICE_TONES[i % DEVICE_TONES.size]))
+                            Box(Modifier.size(10.dp).clip(RoundedCornerShape(2.dp)).background(DEVICE_TONES[i % DEVICE_TONES.size]))
                             T(d.name, TS.Small)
                         }
                         T("${d.bytes * 100 / sum}%", TS.Small, mono = true)
@@ -147,9 +147,9 @@ private fun Legend(color: Color, label: String, value: String) = Row(verticalAli
 }
 
 @Composable
-private fun Tile(label: String, value: String, modifier: Modifier) = Card(modifier, padding = 14.dp) {
-    T(label, TS.Caption, color = C.muted)
-    T(value, TS.Stat, FontWeight.Medium, mono = true, modifier = Modifier.padding(top = 4.dp), maxLines = 1)
+private fun Tile(label: String, value: String, modifier: Modifier) = Card(modifier, padding = 16.dp) {
+    T(label, TS.Label, color = C.muted, maxLines = 1)
+    T(value, TS.Stat, FontWeight.SemiBold, mono = true, modifier = Modifier.padding(top = 4.dp), maxLines = 1)
 }
 
 /** Stacked bars: download (dark) under upload (light). */
@@ -166,14 +166,14 @@ private fun BarChart(st: StatsRes) {
             val h = 140f * (b.rxBytes + b.txBytes) / max
             val upH = h * b.txBytes / (b.rxBytes + b.txBytes).coerceAtLeast(1)
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.fillMaxWidth().height(upH.dp).clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)).background(C.chartGreen))
-                Box(Modifier.fillMaxWidth().height((h - upH).coerceAtLeast(if (h > 0) 0f else 2f).dp).background(C.green))
+                Box(Modifier.fillMaxWidth().height(upH.dp).background(C.chart2))
+                Box(Modifier.fillMaxWidth().height((h - upH).coerceAtLeast(if (h > 0) 0f else 2f).dp).background(C.chart1))
                 val label = when (st.period) {
                     StatsPeriod.DAY -> b.start.substring(11, 13)
                     StatsPeriod.WEEK -> weekdayName(dayOfWeek(b.start))
                     StatsPeriod.MONTH -> if (i % 5 == 0) b.start.substring(8, 10).trimStart('0') else ""
                 }
-                T(label, TS.Caption, color = C.muted, align = TextAlign.Center, modifier = Modifier.padding(top = 6.dp), maxLines = 1)
+                T(label, TS.Caption, color = C.muted, align = TextAlign.Center, modifier = Modifier.padding(top = 8.dp), maxLines = 1)
             }
         }
     }

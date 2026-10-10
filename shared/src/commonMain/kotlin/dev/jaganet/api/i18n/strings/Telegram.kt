@@ -20,9 +20,8 @@ internal val telegramStrings: List<S> = listOf(
         "Работает в приложении JagaNet и в других VPN-приложениях.",
         "Es funktioniert in der JagaNet-App und in anderen VPN-Apps.",
     ),
-    S("✅ Your Pro is active until {date}.", "✅ Ваш Pro действует до {date}.", "✅ Dein Pro ist aktiv bis {date}."),
-    S("🔑 My VPN key", "🔑 Мой VPN-ключ", "🔑 Mein VPN-Schlüssel"),
-    S("📱 Get the app", "📱 Скачать приложение", "📱 App holen"),
+    S("Your Pro is active until {date}.", "Ваш Pro действует до {date}.", "Dein Pro ist aktiv bis {date}."),
+    S("current", "текущий", "aktuell"),
     S("Choose a language", "Выберите язык", "Wähle eine Sprache"),
     S("Sorry, buying isn't available right now.", "Извините, покупка сейчас недоступна.", "Kaufen ist gerade leider nicht möglich."),
     S("{product} for {price}", "{product} за {price}", "{product} für {price}"),
@@ -38,11 +37,11 @@ internal val telegramStrings: List<S> = listOf(
         "Du hast noch kein aktives Abo. Wähle einen Tarif.",
     ),
     S("Couldn't make a key.", "Не удалось создать ключ.", "Der Schlüssel konnte nicht erstellt werden."),
-    S("🔑 Your VPN key", "🔑 Ваш VPN-ключ", "🔑 Dein VPN-Schlüssel"),
+    S("Your VPN key", "Ваш VPN-ключ", "Dein VPN-Schlüssel"),
     S(
-        "📱 Install the JagaNet app, tap Sign in with a device code and enter this code",
-        "📱 Установите приложение JagaNet, нажмите «Войти по коду устройства» и введите этот код",
-        "📱 Installiere die JagaNet-App, tippe auf „Mit Gerätecode anmelden“ und gib diesen Code ein",
+        "Install the JagaNet app, tap Sign in with a device code and enter this code",
+        "Установите приложение JagaNet, нажмите «Войти по коду устройства» и введите этот код",
+        "Installiere die JagaNet-App, tippe auf „Mit Gerätecode anmelden“ und gib diesen Code ein",
     ),
     S(
         "The code works for 10 minutes. The app uses this same subscription.",
@@ -55,10 +54,10 @@ internal val telegramStrings: List<S> = listOf(
         "Lieber eine andere App? AmneziaVPN funktioniert mit deinem Schlüssel aus /key.",
     ),
     S("No active subscription.", "Нет активной подписки.", "Kein aktives Abo."),
-    S("✅ Pro until {date}.", "✅ Pro до {date}.", "✅ Pro bis {date}."),
+    S("Pro until {date}.", "Pro до {date}.", "Pro bis {date}."),
     S("{n} VPN key|{n} VPN keys", "{n} VPN-ключ|{n} VPN-ключа|{n} VPN-ключей", "{n} VPN-Schlüssel|{n} VPN-Schlüssel"),
     S("Extend", "Продлить", "Verlängern"),
-    S("✅ Payment received. Pro is active until {date}.", "✅ Оплата получена. Pro действует до {date}.", "✅ Zahlung erhalten. Pro ist aktiv bis {date}."),
+    S("Payment received. Pro is active until {date}.", "Оплата получена. Pro действует до {date}.", "Zahlung erhalten. Pro ist aktiv bis {date}."),
     S("Tap /key to get your VPN key.", "Нажмите /key, чтобы получить VPN-ключ.", "Tippe auf /key, um deinen VPN-Schlüssel zu bekommen."),
     S("That key was deleted. Tap /key for a new one.", "Этот ключ удалён. Нажмите /key, чтобы получить новый.", "Dieser Schlüssel wurde gelöscht. Tippe auf /key für einen neuen."),
     S(
@@ -81,7 +80,6 @@ internal val telegramStrings: List<S> = listOf(
 
     // Referral program
     S("Invite friends", "Пригласить друзей", "Freunde einladen"),
-    S("🎁 Invite friends", "🎁 Пригласить друзей", "🎁 Freunde einladen"),
     S("Your link", "Ваша ссылка", "Dein Link"),
     S("Link to this bot", "Ссылка на этого бота", "Link zu diesem Bot"),
     S("Clicks {n}", "Переходы {n}", "Klicks {n}"),

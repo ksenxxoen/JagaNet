@@ -77,7 +77,7 @@ internal val serverStrings: List<S> = listOf(
 
     // Checkout
     S("Payment", "Оплата", "Zahlung"),
-    S("TEST PAYMENT", "ТЕСТОВАЯ ОПЛАТА", "TESTZAHLUNG"),
+    S("Test payment", "Тестовая оплата", "Testzahlung"),
     S("This order is already paid.", "Этот заказ уже оплачен.", "Diese Bestellung ist bereits bezahlt."),
     S("Go to my account", "В личный кабинет", "Zu meinem Konto"),
     S(
