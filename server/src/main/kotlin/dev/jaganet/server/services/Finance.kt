@@ -14,8 +14,7 @@ import java.time.ZoneOffset
 
 /**
  * The owner's view of money: payments received (website and Telegram orders, per currency),
- * subscriptions bought and renewed on every channel, active subscribers and recurring revenue.
- * Store purchases (App Store, Google Play) are counted, their amounts live in the store consoles.
+ * subscriptions bought and renewed on every channel and tariff, active subscribers and recurring revenue.
  */
 class Finance(private val ctx: Ctx) {
     private fun since(p: ReferralPeriod): Instant = when (p) {
@@ -41,9 +40,9 @@ class Finance(private val ctx: Ctx) {
             "SELECT count(DISTINCT user_id)::int AS n FROM subscriptions WHERE source <> 'referral' AND status='active' AND started_at <= ? AND expires_at > ?",
             now, now,
         )!!.int("n")
-        // Recurring revenue of website / Telegram subscriptions running now: the order's amount per month.
+        // Recurring revenue of subscriptions running now: the order's amount spread over its length, per month (30.44 days).
         val mrr = sql.query(
-            """SELECT o.currency, sum(CASE WHEN o.product_id = 'pro_yearly' THEN o.amount_minor / 12 ELSE o.amount_minor END)::bigint AS total
+            """SELECT o.currency, sum(o.amount_minor * 2629800.0 / greatest(86400, extract(epoch FROM s.expires_at - s.started_at)))::bigint AS total
                  FROM subscriptions s JOIN orders o ON s.external_id = 'order:' || o.id::text
                 WHERE s.status='active' AND s.started_at <= ? AND s.expires_at > ? GROUP BY 1 ORDER BY 1""",
             now, now,
@@ -53,7 +52,7 @@ class Finance(private val ctx: Ctx) {
             from,
         ).map { CountBy(it.str("k"), it.int("n")) }
         val byProduct = sql.query(
-            "SELECT product_id AS k, count(*)::int AS n FROM subscriptions WHERE source <> 'referral' AND created_at >= ? GROUP BY 1 ORDER BY 2 DESC",
+            "SELECT coalesce(tariff_name, 'Pro') AS k, count(*)::int AS n FROM subscriptions WHERE source <> 'referral' AND created_at >= ? GROUP BY 1 ORDER BY 2 DESC",
             from,
         ).map { CountBy(it.str("k"), it.int("n")) }
         val unpaid = sql.one("SELECT count(*)::int AS n FROM orders WHERE status='pending' AND created_at >= ?", from)!!.int("n")
@@ -83,7 +82,7 @@ class Finance(private val ctx: Ctx) {
         }.toList()
 
         val recent = sql.query(
-            """SELECT s.created_at, u.email, s.product_id, s.source, s.is_renewal, o.amount_minor, o.currency
+            """SELECT s.created_at, u.email, coalesce(s.tariff_name, 'Pro') AS tariff, s.source, s.is_renewal, o.amount_minor, o.currency
                  FROM subscriptions s JOIN users u ON u.id = s.user_id
                  LEFT JOIN orders o ON s.external_id = 'order:' || o.id::text
                 WHERE s.source <> 'referral' AND s.created_at >= ? ORDER BY s.created_at DESC LIMIT 100""",
@@ -92,7 +91,7 @@ class Finance(private val ctx: Ctx) {
             PaymentRow(
                 at = r.instant("created_at").toString(),
                 email = r.str("email").let { if (it.endsWith("@telegram.invalid")) "Telegram " + it.removeSuffix("@telegram.invalid").removePrefix("tg") else it },
-                product = r.str("product_id"),
+                product = r.str("tariff"),
                 amount = r.longOrNull("amount_minor")?.let { MoneyAmount(it, r.str("currency")) },
                 channel = r.str("source"),
                 renewal = r.bool("is_renewal"),

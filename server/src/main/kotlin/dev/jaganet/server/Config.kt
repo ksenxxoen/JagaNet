@@ -1,6 +1,5 @@
 package dev.jaganet.server
 
-import dev.jaganet.api.ProductId
 import dev.jaganet.api.i18n.Lang
 
 enum class Mode { PRODUCTION, SIMULATION, TEST }
@@ -10,15 +9,11 @@ data class Plans(
     val freeDeviceLimit: Int,
     val proDeviceLimit: Int,
     val referralRewardDays: Int,
-    /** List prices per currency ("RUB", "EUR"). In-app purchases are priced by the stores. */
+    /** Prices ("RUB", "EUR") of the two tariffs made on first start; after that tariffs live in the database. */
     val prices: Map<String, Price>,
 ) {
     /** Russian pays in rubles, German and English in euros. */
     fun currencyFor(lang: Lang): String = if (lang == Lang.RU) "RUB" else "EUR"
-
-    fun price(product: ProductId, currency: String): Long? = prices[currency]?.let {
-        when (product) { ProductId.PRO_MONTHLY -> it.monthlyMinor; ProductId.PRO_YEARLY -> it.yearlyMinor }
-    }
 }
 
 /** Prices in minor units (kopecks, cents). */

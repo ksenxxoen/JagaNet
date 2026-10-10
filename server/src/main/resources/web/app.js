@@ -80,26 +80,30 @@ function renderNav() {
   for (const b of nav.querySelectorAll("[data-lang]")) b.onclick = () => setLang(b.dataset.lang);
 }
 
-const productTitle = (id) => (id === "pro_yearly" ? t("Pro yearly") : t("Pro monthly"));
 /** Buying works unless the server says no payment service is set up. */
 const payOk = () => site?.paymentsEnabled !== false;
-const buyBtn = (productId, cls, label) => `<button class="btn ${cls}" ${payOk() ? `onclick="buy('${productId}')"` : "disabled"}>${label}</button>`;
+const buyBtn = (tariffId, cls, label) => `<button class="btn ${cls}" ${payOk() ? `onclick="buy('${h(tariffId)}')"` : "disabled"}>${label}</button>`;
+/** A tariff's length: "1 месяц", "7 дней". */
+const period = (x) => (x.durationUnit === "days" ? tp(x.durationValue, "{n} day|{n} days") : tp(x.durationValue, "{n} month|{n} months"));
+const dataText = (bytes) => (bytes == null ? t("Unlimited data") : t("{n} GB a month", { n: Math.round(bytes / 1e9) }));
+const tariffCard = (x, i) => `<div class="card plan ${x.badge || i === 0 ? "best" : ""}">${x.badge ? `<span class="badge">${h(x.badge)}</span>` : ""}
+  <h3>${h(x.name)}</h3><div class="price">${h(money(x.priceMinor, x.currency))}</div>
+  <ul><li>${h(period(x))}</li><li>${tp(x.deviceLimit, "{n} device|{n} devices")}</li><li>${h(dataText(x.monthlyDataLimitBytes))}</li><li>${t("Works in other VPN apps too")}</li></ul>
+  ${buyBtn(x.id, i === 0 ? "green" : "", t("Buy"))}</div>`;
 const testPayBadge = () => (site?.testPayments ? `<span class="badge test">${t("Test payments, no real money")}</span>` : "");
 
 /* ---------------- landing ---------------- */
 
 async function home() {
   const plans = await api("/billing/plans");
-  const free = plans.free, pro = plans.pro;
-  const p = Object.fromEntries(plans.products.map((x) => [x.id, x]));
-  const price = (x) => (x ? h(money(x.priceMinor, x.currency)) : "");
+  const free = plans.free;
   view.innerHTML = `
   <section class="hero">
     <div>
       <h1>${t("A fast and secure VPN.")}</h1>
       <p class="muted">${t("JagaNet encrypts all your traffic and keeps the internet fast.")}</p>
       <div class="cta">
-        ${payOk() ? buyBtn("pro_yearly", "green", t("Get Pro")) : ""}
+        ${payOk() && plans.tariffs.length ? `<a class="btn green" href="#pricing">${t("Get Pro")}</a>` : ""}
         <a class="btn secondary" href="#download">${t("Download the app")}</a>
       </div>
     </div>
@@ -121,15 +125,10 @@ async function home() {
   ${payOk() ? "" : `<div class="notice bad">${t("Payments are temporarily unavailable")}</div>`}
   ${site?.testPayments ? `<p>${testPayBadge()}</p>` : ""}
   <div class="plans">
-    <div class="card plan"><h3>${t("Free")}</h3><div class="price">${h(money(0, p.pro_monthly?.currency || "USD"))}</div>
+    <div class="card plan"><h3>${t("Free")}</h3><div class="price">${h(money(0, plans.tariffs[0]?.currency || (lang === "ru" ? "RUB" : "EUR")))}</div>
       <ul><li>${t("{n} GB a month", { n: Math.round(free.monthlyDataLimitBytes / 1e9) })}</li><li>${tp(free.deviceLimit, "{n} device|{n} devices")}</li><li>${t("JagaNet app")}</li></ul>
       <a class="btn secondary" href="#download">${t("Download the app")}</a></div>
-    <div class="card plan"><h3>${t("Pro monthly")}</h3><div class="price">${price(p.pro_monthly)}</div>
-      <ul><li>${t("Unlimited data")}</li><li>${t("Up to {n} devices", { n: pro.deviceLimit })}</li><li>${t("Works in other VPN apps too")}</li></ul>
-      ${buyBtn("pro_monthly", "", t("Buy for a month"))}</div>
-    <div class="card plan best"><span class="badge">${t("BEST VALUE")}</span><h3>${t("Pro yearly")}</h3><div class="price">${price(p.pro_yearly)}</div>
-      <ul><li>${t("Everything in the monthly plan")}</li><li>${t("About 4 months free")}</li></ul>
-      ${buyBtn("pro_yearly", "green", t("Buy for a year"))}</div>
+    ${plans.tariffs.map(tariffCard).join("")}
   </div>
 
   <h2 id="download">${t("Get the app")}</h2>
@@ -149,10 +148,10 @@ function downloads() {
            : `<p class="muted">${t("Your Pro key also works in other VPN apps.")}</p><a class="btn secondary" href="https://amnezia.org/downloads" rel="noreferrer">${t("Get AmneziaVPN")}</a>`}</div>`;
 }
 
-window.buy = async function (productId) {
-  if (!store.get("token")) { store.set("afterSignIn", productId); return go("#/signin"); }
+window.buy = async function (tariffId) {
+  if (!store.get("token")) { store.set("afterSignIn", tariffId); return go("#/signin"); }
   try {
-    const order = await api("/orders", { method: "POST", body: { productId } });
+    const order = await api("/orders", { method: "POST", body: { tariffId } });
     const u = order.checkoutUrl;
     location.href = u + (u.includes("?") ? "&" : "?") + "lang=" + lang;
   } catch (e) { alert(e.message); }
@@ -252,8 +251,7 @@ async function account(params) {
   }
   const [me, keys, plans, pays] = await Promise.all([api("/me"), api("/keys"), api("/billing/plans"), api("/me/payments")]);
   const e = me.entitlement, isPro = e.plan === "pro";
-  const p = Object.fromEntries(plans.products.map((x) => [x.id, x]));
-  const sourceName = { web: t("Website"), telegram: "Telegram", apple: "App Store", google: "Google Play", referral: t("Invite reward"), dev: t("Simulation") };
+  const sourceName = { web: t("Website"), telegram: "Telegram", app: t("JagaNet app"), apple: "App Store", google: "Google Play", referral: t("Invite reward"), dev: t("Simulation") };
   view.innerHTML = `
   ${notice}
   <div class="row"><div><h1>${t("My account")}</h1><p class="muted">${h(me.user.email.endsWith("@telegram.invalid") ? t("Telegram account") : me.user.email)}</p></div>
@@ -262,13 +260,13 @@ async function account(params) {
   <div class="card planbox" style="margin-top:12px">
     <div class="row"><div>
       <div class="muted">${t("Your plan")}</div>
-      <div style="font-size:26px;font-weight:700">${isPro ? "Pro" : t("Free")}</div>
-      <div class="muted">${isPro ? (e.expiresAt ? t("Active until {date}", { date: date(e.expiresAt) }) : t("Owner account, no time limit")) : `${t("{n} GB a month", { n: Math.round(e.monthlyDataLimitBytes / 1e9) })}, ${tp(e.deviceLimit, "{n} device|{n} devices")}`}</div>
+      <div style="font-size:26px;font-weight:700">${isPro ? h(e.tariffName || "Pro") : t("Free")}</div>
+      <div class="muted">${isPro && e.expiresAt ? t("Active until {date}", { date: date(e.expiresAt) }) + "<br>" : ""}${isPro && !e.expiresAt ? t("Owner account, no time limit") + "<br>" : ""}${h(dataText(e.monthlyDataLimitBytes))}, ${tp(e.deviceLimit, "{n} device|{n} devices")}</div>
     </div>
     <div><div class="keyactions">
-      ${buyBtn("pro_monthly", "green", t(isPro ? "Extend for a month for {price}" : "Pro for a month for {price}", { price: h(money(p.pro_monthly?.priceMinor, p.pro_monthly?.currency)) }))}
-      ${buyBtn("pro_yearly", "secondary", t("For a year for {price}", { price: h(money(p.pro_yearly?.priceMinor, p.pro_yearly?.currency)) }))}
+      ${plans.tariffs.map((x, i) => buyBtn(x.id, i === 0 ? "green" : "secondary", t("{product} for {price}", { product: h(x.name), price: h(money(x.priceMinor, x.currency)) }))).join("")}
     </div>
+    ${isPro && e.expiresAt && plans.tariffs.length ? `<p class="paynote">${t("A new purchase starts when the current one ends.")}</p>` : ""}
     ${payOk() ? "" : `<p class="paynote">${t("Payments are temporarily unavailable")}</p>`}
     ${site?.testPayments ? `<p class="paynote">${testPayBadge()}</p>` : ""}</div></div>
   </div>
@@ -286,7 +284,7 @@ async function account(params) {
     <p class="muted" style="margin:0">${t("In the app tap Sign in with a device code and enter the code.")}</p></div>
     <div id="pair"><button class="btn secondary" id="paircode">${t("Show a code")}</button></div></div></div>
 
-  ${pays.payments.length ? `<h2>${t("Payments")}</h2><div class="card"><table>${pays.payments.map((x) => `<tr><td>${x.productId === "referral" ? t("Invite reward") : productTitle(x.productId)}</td><td class="muted">${t("{from} to {to}", { from: date(x.startedAt), to: date(x.expiresAt) })}</td><td class="muted">${h(sourceName[x.source] || x.source)}</td></tr>`).join("")}</table></div>` : ""}`;
+  ${pays.payments.length ? `<h2>${t("Payments")}</h2><div class="card"><table>${pays.payments.map((x) => `<tr><td>${x.productId === "referral" ? t("Invite reward") : h(x.tariffName || "Pro")}</td><td class="muted">${t("{from} to {to}", { from: date(x.startedAt), to: date(x.expiresAt) })}</td><td class="muted">${h(sourceName[x.source] || x.source)}</td></tr>`).join("")}</table></div>` : ""}`;
 
   document.getElementById("logout").onclick = async () => { try { await api("/auth/logout", { method: "POST" }); } catch {} store.set("token", null); renderNav(); go("#/"); };
   const nk = document.getElementById("newkey");
@@ -686,8 +684,8 @@ async function status(params) {
 
 /* ---------------- admin panel (owners) ---------------- */
 
-const ADMIN_TABS = [["money", "Money"], ["plans", "Plans and prices"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"]];
-const payChannel = (k) => ({ web: t("Website"), telegram: "Telegram", apple: "App Store", google: "Google Play", dev: t("Test payments") })[k] || k;
+const ADMIN_TABS = [["money", "Money"], ["plans", "Plans"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"]];
+const payChannel = (k) => ({ web: t("Website"), telegram: "Telegram", app: t("JagaNet app"), apple: "App Store", google: "Google Play", dev: t("Test payments") })[k] || k;
 const NEW_SUB = "#1baf7a", RENEWAL = "#eb6834";
 
 /** "299" or "4,99" in major units → minor units; NaN when it isn't a price. */
@@ -745,57 +743,100 @@ async function adminMoney(params, head) {
   view.innerHTML = `${head}
   <div class="chips">${PERIODS.map(([k, l]) => `<a class="chip ${k === period ? "on" : ""}" href="#/admin?tab=money&period=${k}">${t(l)}</a>`).join("")}</div>
   <div class="kpis k4">
-    ${kpi(t("Revenue"), h(revenueText(f.revenue)), t("Website and Telegram payments"))}
+    ${kpi(t("Revenue"), h(revenueText(f.revenue)))}
     ${kpi(t("Paid orders"), f.paidOrders)}
     ${kpi(t("New subscriptions"), f.newSubscriptions)}
     ${kpi(t("Renewals"), f.renewals)}
     ${kpi(t("Active subscribers"), f.activeSubscribers, t("Paid Pro right now"))}
-    ${kpi(t("Monthly recurring revenue"), h(revenueText(f.mrr)), t("Website and Telegram subscriptions"))}
+    ${kpi(t("Monthly recurring revenue"), h(revenueText(f.mrr)))}
     ${kpi(t("Unpaid orders"), f.unpaidOrders, t("Checkouts started but not paid"))}
   </div>
   ${f.days.length && currencies.length ? currencies.map(revenueChart).join("") : empty(t("Revenue by day"))}
   ${f.days.length ? dayChart(f.days, subsSeries, t("New subscriptions and renewals by day")) : empty(t("New subscriptions and renewals by day"))}
-  <div class="grid2" style="margin-top:14px">${breakdown(t("Subscriptions by channel"), f.byChannel, payChannel)}${breakdown(t("Subscriptions by plan"), f.byProduct, productTitle)}</div>
+  <div class="grid2" style="margin-top:14px">${breakdown(t("Subscriptions by channel"), f.byChannel, payChannel)}${breakdown(t("Subscriptions by plan"), f.byProduct, (k) => k)}</div>
   <h2>${t("Recent payments")}</h2>
   <div class="card tablewrap"><table class="data pays"><thead><tr><th>${t("Date")}</th><th>${t("Email")}</th><th>${t("Plan")}</th><th>${t("Amount")}</th><th>${t("Channel")}</th><th>${t("Type")}</th></tr></thead>
-  <tbody>${f.recent.map((r) => `<tr><td>${h(dateTime(r.at))}</td><td>${h(who(r.email))}</td><td>${h(productTitle(r.product))}</td>
-    <td>${r.amount ? h(money(r.amount.minor, r.amount.currency)) : r.channel === "apple" || r.channel === "google" ? `<span class="muted">${t("Via the store")}</span>` : "-"}</td><td>${h(payChannel(r.channel))}</td>
+  <tbody>${f.recent.map((r) => `<tr><td>${h(dateTime(r.at))}</td><td>${h(who(r.email))}</td><td>${h(r.product)}</td>
+    <td>${r.amount ? h(money(r.amount.minor, r.amount.currency)) : "-"}</td><td>${h(payChannel(r.channel))}</td>
     <td><span class="status ${r.renewal ? "" : "active"}">${r.renewal ? t("Renewal") : t("New subscription")}</span></td></tr>`).join("") || `<tr><td colspan="6" class="muted">${t("No payments in this period.")}</td></tr>`}</tbody></table></div>`;
   wireCharts(view);
 }
 
-function plansPane(s) {
+async function plansPane(s) {
   const pane = document.getElementById("pane"), p = s.plans;
-  const price = (c, k) => fromMinor(p.prices?.[c]?.[k] ?? 0);
+  const list = (await api("/admin/tariffs")).tariffs;
   const whole = 'type="number" min="0" step="1" inputmode="numeric" required';
-  pane.innerHTML = `<form class="card adminform" id="pf">
-    <h3>${t("Prices")}</h3>
-    <p class="muted">${t("Russian visitors see prices in rubles, German and English visitors in euros.")}</p>
-    <div class="fields">
-      ${field("rm", t("Month, rubles"), price("RUB", "monthlyMinor"), 'inputmode="decimal" required placeholder="299"')}
-      ${field("ry", t("Year, rubles"), price("RUB", "yearlyMinor"), 'inputmode="decimal" required placeholder="2490"')}
-      ${field("em", t("Month, euros"), price("EUR", "monthlyMinor"), 'inputmode="decimal" required placeholder="4,99"')}
-      ${field("ey", t("Year, euros"), price("EUR", "yearlyMinor"), 'inputmode="decimal" required placeholder="39,99"')}
-    </div>
-    <h3>${t("Limits")}</h3>
+  const STATUS = { active: t("On sale"), hidden: t("Hidden"), archived: t("Archived") };
+  const row = (x) => `<tr class="${x.status === "archived" ? "muted" : ""}"><td><button class="link" type="button" data-edit="${h(x.id)}"><b>${h(x.name)}</b></button>${x.badge ? ` <span class="badge">${h(x.badge)}</span>` : ""}</td>
+    <td>${h(period(x))}</td><td>${h(money(x.priceRubMinor, "RUB"))}</td><td>${h(money(x.priceEurMinor, "EUR"))}</td>
+    <td>${x.deviceLimit}</td><td>${x.trafficGb == null ? t("Unlimited") : t("{n} GB a month", { n: x.trafficGb })}</td>
+    <td>${x.sold}</td><td>${x.activeNow}</td><td><span class="status ${x.status === "active" ? "active" : ""}">${STATUS[x.status]}</span></td>
+    <td><button class="btn secondary small" data-edit="${h(x.id)}">${t("Edit")}</button></td></tr>`;
+  pane.innerHTML = `
+  <div class="row"><h3>${t("Plans")}</h3><button class="btn small" id="newt">${t("New plan")}</button></div>
+  <p class="muted">${t("Changes apply to new purchases only. Bought subscriptions keep their terms.")}</p>
+  <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Name")}</th><th>${t("Length")}</th><th>${t("Price, rubles")}</th><th>${t("Price, euros")}</th>
+    <th>${t("Devices")}</th><th>${t("Data")}</th><th>${t("Sold")}</th><th>${t("Using now")}</th><th>${t("Status")}</th><th></th></tr></thead>
+    <tbody>${list.map(row).join("") || `<tr><td colspan="10" class="muted">${t("No plans on sale right now.")}</td></tr>`}</tbody></table></div>
+  <form class="card adminform" id="tf" hidden style="margin-top:14px"></form>
+
+  <form class="card adminform" id="pf" style="margin-top:14px">
+    <h3>${t("Free plan and invite rewards")}</h3>
     <div class="fields">
       ${field("fg", t("Free data per month, GB"), p.freeMonthlyGb, whole)}
       ${field("fd", t("Devices on Free"), p.freeDeviceLimit, whole)}
-      ${field("pd", t("Devices on Pro"), p.proDeviceLimit, whole)}
       ${field("rd", t("Pro days for an invite"), p.referralRewardDays, whole)}
+      ${field("pd", t("Devices during invite reward days"), p.proDeviceLimit, whole)}
     </div>
-    <p class="muted small">${t("New prices apply to new payments. Paid subscriptions keep their end date.")}</p>
     <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button></div>
     <p class="result" id="pres"></p></form>`;
+
+  const tf = document.getElementById("tf");
+  const openForm = (x) => {
+    const v = x || { name: "", durationValue: 1, durationUnit: "months", priceRubMinor: null, priceEurMinor: null, deviceLimit: 5, trafficGb: null, badge: "", sort: list.length + 1, status: "active" };
+    const opt = (o, cur) => Object.entries(o).map(([k, l]) => `<option value="${k}" ${k === cur ? "selected" : ""}>${l}</option>`).join("");
+    tf.hidden = false;
+    tf.innerHTML = `<h3>${x ? t("Edit plan") : t("New plan")}</h3>
+      <div class="fields">
+        ${field("tn", t("Name"), v.name, 'required maxlength="60" placeholder="Pro на месяц"')}
+        ${field("tb", t("Badge"), v.badge, 'maxlength="30" placeholder="Выгодно"')}
+        ${field("tv", t("Length"), v.durationValue, 'type="number" min="1" step="1" required')}
+        <div><label for="tu">&nbsp;</label><select id="tu">${opt({ months: t("Months"), days: t("Days") }, v.durationUnit)}</select></div>
+        ${field("tr", t("Price, rubles"), v.priceRubMinor == null ? "" : fromMinor(v.priceRubMinor), 'inputmode="decimal" required placeholder="299"')}
+        ${field("te", t("Price, euros"), v.priceEurMinor == null ? "" : fromMinor(v.priceEurMinor), 'inputmode="decimal" required placeholder="4,99"')}
+        ${field("td", t("Devices"), v.deviceLimit, 'type="number" min="1" max="100" step="1" required')}
+        ${field("tg", t("Data per month, GB"), v.trafficGb, `type="number" min="1" step="1" placeholder="${h(t("Leave empty for unlimited"))}"`)}
+        ${field("ts", t("Order on the page"), v.sort, 'type="number" step="1" required')}
+        <div><label for="tst">${t("Status")}</label><select id="tst">${opt(STATUS, v.status)}</select></div>
+      </div>
+      <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button><button class="btn secondary" type="button" id="tcancel">${t("Cancel")}</button></div>
+      <p class="result" id="tres"></p>`;
+    document.getElementById("tcancel").onclick = () => { tf.hidden = true; };
+    tf.onsubmit = (e) => {
+      e.preventDefault();
+      saveWith(tf.querySelector("button[type=submit]"), "tres", () => {
+        const body = {
+          name: val("tn"), badge: val("tb") || null, durationValue: Number(val("tv")), durationUnit: document.getElementById("tu").value,
+          priceRubMinor: toMinor(val("tr")), priceEurMinor: toMinor(val("te")), deviceLimit: Number(val("td")),
+          trafficGb: val("tg") ? Number(val("tg")) : null, sort: Number(val("ts")), status: document.getElementById("tst").value,
+        };
+        if (!(body.priceRubMinor > 0) || !(body.priceEurMinor > 0)) throw new Error(t("Enter prices as numbers above zero, for example 299 or 4,99"));
+        return x ? api("/admin/tariffs/" + encodeURIComponent(x.id), { method: "PUT", body }) : api("/admin/tariffs", { method: "POST", body });
+      }, () => plansPane(s));
+    };
+    tf.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById("tn").focus();
+  };
+  document.getElementById("newt").onclick = () => openForm(null);
+  for (const b of pane.querySelectorAll("[data-edit]")) b.onclick = () => openForm(list.find((x) => x.id === b.dataset.edit));
+
   const form = document.getElementById("pf");
   form.onsubmit = (e) => {
     e.preventDefault();
     saveWith(form.querySelector("button[type=submit]"), "pres", () => {
-      const prices = { RUB: { monthlyMinor: toMinor(val("rm")), yearlyMinor: toMinor(val("ry")) }, EUR: { monthlyMinor: toMinor(val("em")), yearlyMinor: toMinor(val("ey")) } };
-      if (Object.values(prices).some((x) => !(x.monthlyMinor > 0) || !(x.yearlyMinor > 0))) throw new Error(t("Enter prices as numbers above zero, for example 299 or 4,99"));
-      const body = { freeMonthlyGb: Number(val("fg")), freeDeviceLimit: Number(val("fd")), proDeviceLimit: Number(val("pd")), referralRewardDays: Number(val("rd")), prices };
+      const body = { freeMonthlyGb: Number(val("fg")), freeDeviceLimit: Number(val("fd")), proDeviceLimit: Number(val("pd")), referralRewardDays: Number(val("rd")) };
       return api("/admin/settings/plans", { method: "PUT", body });
-    }, plansPane);
+    }, (r) => plansPane(r));
   };
 }
 

@@ -94,9 +94,6 @@ class ApiClient(
 
     // billing
     suspend fun plans(): PlansRes = get("billing/plans")
-    suspend fun devPurchase(productId: ProductId): MeRes = post("billing/dev/purchase", DevPurchaseReq(productId))
-    suspend fun appleVerify(req: AppleVerifyReq): MeRes = post("billing/apple/verify", req)
-    suspend fun googleVerify(req: GoogleVerifyReq): MeRes = post("billing/google/verify", req)
 
     // referrals & owner
     // Website / Telegram sales and VPN keys for other apps
@@ -117,6 +114,9 @@ class ApiClient(
     suspend fun saveNetworkSettings(p: NetworkSettings): AdminSettingsRes = put("admin/settings/network", p)
     suspend fun sendTestEmail(to: String): OkRes = post("admin/settings/smtp/test", TestEmailReq(to))
     suspend fun adminFinance(period: ReferralPeriod): FinanceRes = get("admin/finance") { parameter("period", Protocols.json.encodeToString(ReferralPeriod.serializer(), period).trim('"')) }
+    suspend fun adminTariffs(): AdminTariffsRes = get("admin/tariffs")
+    suspend fun createTariff(req: TariffReq): AdminTariffsRes = post("admin/tariffs", req)
+    suspend fun updateTariff(id: String, req: TariffReq): AdminTariffsRes = put("admin/tariffs/$id", req)
     /** range: "1h", "24h", "7d" or "30d". */
     suspend fun adminMonitor(range: String = "24h"): MonitorRes = get("admin/monitor") { parameter("range", range) }
     suspend fun adminTestAlert(): OkRes = post("admin/monitor/test", OkRes())

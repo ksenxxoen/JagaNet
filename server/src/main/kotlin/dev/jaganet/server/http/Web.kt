@@ -13,7 +13,6 @@ import dev.jaganet.api.Format
 import dev.jaganet.api.KeysRes
 import dev.jaganet.api.OkRes
 import dev.jaganet.api.OrderStatus
-import dev.jaganet.api.ProductId
 import dev.jaganet.api.SiteInfo
 import dev.jaganet.api.i18n.I18n
 import kotlinx.serialization.json.JsonObject
@@ -72,7 +71,8 @@ fun Route.salesApi(s: Services) {
     }
     post("/orders") {
         val p = call.principal(s)
-        call.respond(s.payments.create(p.user.id, call.receive<CreateOrderReq>().productId, Channel.WEB, call.apiLang()))
+        val req = call.receive<CreateOrderReq>()
+        call.respond(s.payments.create(p.user.id, req.tariffId, if (req.channel == "app") Channel.APP else Channel.WEB, call.apiLang()))
     }
     get("/orders/{id}") { call.respond(s.payments.getFor(call.principal(s).user.id, call.parameters["id"]!!)) }
 }
@@ -114,7 +114,7 @@ fun Route.website(s: Services) {
         if (!s.payments.isTest) throw notFound()
         val o = s.payments.get(call.parameters["id"]!!) ?: throw notFound("Order not found")
         val lang = call.pageLang()
-        call.respondText(Pages(lang).checkout(o.id, productName(o.productId, lang), Format.money(o.amountMinor, o.currency, lang), o.status == OrderStatus.PAID), ContentType.Text.Html)
+        call.respondText(Pages(lang).checkout(o.id, o.terms.name, Format.money(o.amountMinor, o.currency, lang), o.status == OrderStatus.PAID), ContentType.Text.Html)
     }
     post("/pay/test/{id}") {
         if (!s.payments.isTest) throw notFound()
@@ -124,11 +124,10 @@ fun Route.website(s: Services) {
         when (o.channel) {
             Channel.WEB -> call.respondRedirect("/#/account?order=${o.id}")
             Channel.TELEGRAM -> call.respondText(Pages(call.pageLang()).paidInTelegram(s.bot?.username), ContentType.Text.Html)
+            Channel.APP -> call.respondText(Pages(call.pageLang()).paidInApp(), ContentType.Text.Html)
         }
     }
 }
-
-fun productName(p: ProductId, lang: Lang) = I18n.tr(lang, when (p) { ProductId.PRO_MONTHLY -> "Pro for 1 month"; ProductId.PRO_YEARLY -> "Pro for 1 year" })
 
 /** Keys are stored as "VPN key", "VPN key 2"…; shown in the reader's language. */
 fun keyName(name: String, lang: Lang): String =
@@ -190,6 +189,10 @@ private class Pages(val lang: Lang) {
 <div class="card center"><div class="big">✓</div><h1>${t("Payment received")}</h1>
 <p class="muted">${t("Your VPN key is waiting in the Telegram chat.")}</p>
 ${bot?.let { """<a class="btn" href="https://t.me/${esc(it)}">${t("Back to Telegram")}</a>""" } ?: ""}</div>""")
+
+    fun paidInApp() = page(t("Payment received"), """
+<div class="card center"><div class="big">✓</div><h1>${t("Payment received")}</h1>
+<p class="muted">${t("Go back to the JagaNet app. Pro is already on.")}</p></div>""")
 
     private fun jsString(v: String) = "'" + v.replace("\\", "\\\\").replace("'", "\\'") + "'"
 }

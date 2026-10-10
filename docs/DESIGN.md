@@ -33,7 +33,7 @@ All values live in `composeApp/.../theme/Theme.kt`. Screens use token names only
 | Statistics | `StatsScreen` | Real data from `/v1/stats`. "Avg. speed" became **Avg. throughput**: the server knows bytes over time protected, not line speed |
 | Devices | `DevicesScreen` | Online/offline from the last handshake. ⋯ opens Remove. "Add device" shows the 6-digit pairing code |
 | Settings | `SettingsScreen` | Adds **Protocol** and an **Owner** section (owner only) |
-| Plans / paywall | `PlansScreen` | Prices come from the store at runtime; the server's display prices are placeholders |
+| Plans / paywall | `PlansScreen` | Tariffs from the server; Pay opens our checkout in the browser and the screen waits for the payment |
 | Account & subscription | `AccountScreen` | Delete account asks for confirmation inline |
 | Invite friends | `ReferralScreen` | Reward days are a server setting |
 | Owner dashboard | `AdminScreen` | Live from `/v1/admin/overview`. Warnings are computed (memory, peer slots, traffic) |

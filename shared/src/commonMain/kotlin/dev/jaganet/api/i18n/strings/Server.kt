@@ -18,6 +18,8 @@ internal val serverStrings: List<S> = listOf(
     S("Too many attempts, ask for a new code", "Слишком много попыток, запросите новый код", "Zu viele Versuche, fordere einen neuen Code an"),
     S("Code is wrong or has expired", "Код неверный или устарел", "Der Code ist falsch oder abgelaufen"),
     S("Device not found", "Устройство не найдено", "Gerät nicht gefunden"),
+    S("This plan is no longer on sale", "Этот тариф больше не продаётся", "Dieser Tarif wird nicht mehr verkauft"),
+    S("Tariff not found", "Тариф не найден", "Tarif nicht gefunden"),
     S("Name must be 1 to 60 characters", "Название должно быть от 1 до 60 символов", "Der Name muss 1 bis 60 Zeichen lang sein"),
     S(
         "Your plan allows {n} device|Your plan allows {n} devices",

@@ -3,13 +3,12 @@ package dev.jaganet.server.telegram
 import dev.jaganet.api.AccessKey
 import dev.jaganet.api.Format
 import dev.jaganet.api.PlanId
-import dev.jaganet.api.ProductId
+import dev.jaganet.api.Tariff
 import dev.jaganet.api.ReferralPeriod
 import dev.jaganet.api.i18n.I18n
 import dev.jaganet.api.i18n.Lang
 import dev.jaganet.server.AppError
 import dev.jaganet.server.http.Services
-import dev.jaganet.server.http.productName
 import dev.jaganet.server.http.translate
 import dev.jaganet.server.services.Channel
 import dev.jaganet.server.services.Crypto
@@ -146,28 +145,32 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
 
     private suspend fun menu(u: Who) {
         val pro = isPro(u.userId)
+        val tariffs = s.tariffs.onSale(u.lang)
         val text = buildString {
             appendLine(u.t("JagaNet VPN is fast and secure. It encrypts all your traffic."))
             appendLine()
-            appendLine(u.t("Pro gives unlimited data and up to {n} devices. It works in the JagaNet app and in other VPN apps.", "n" to s.billing.plans().pro.deviceLimit))
-            if (pro != null) { appendLine(); append(u.t("✅ Your Pro is active until {date}.", "date" to Format.date(pro.toString(), u.lang))) }
+            append(u.t("It works in the JagaNet app and in other VPN apps."))
+            for (t in tariffs) { appendLine(); appendLine(); append("${t.name}, ${period(t, u.lang)}, ${Format.terms(t.deviceLimit, t.monthlyDataLimitBytes, u.lang)}") }
+            if (pro != null) { appendLine(); appendLine(); append(u.t("✅ Your Pro is active until {date}.", "date" to Format.date(pro.toString(), u.lang))) }
         }
-        send(u, text, buyButtons(u) + listOf(listOf(Btn(u.t("🔑 My VPN key"), "key"), Btn(u.t("📱 Get the app"), "app")), listOf(Btn(u.t("🎁 Invite friends"), "invite"), Btn("🌐 " + u.lang.nativeName, "language"))))
+        send(u, text, buyButtons(u, tariffs) + listOf(listOf(Btn(u.t("🔑 My VPN key"), "key"), Btn(u.t("📱 Get the app"), "app")), listOf(Btn(u.t("🎁 Invite friends"), "invite"), Btn("🌐 " + u.lang.nativeName, "language"))))
     }
 
     private suspend fun languageAction(u: Who) =
         send(u, u.t("Choose a language"), listOf(Lang.entries.map { Btn((if (it == u.lang) "✓ " else "") + it.nativeName, "lang:${it.code}") }))
 
-    private suspend fun buyAction(u: Who, product: String) {
-        val id = ProductId.entries.firstOrNull { it.name.equals(product, true) } ?: return menu(u)
+    private suspend fun buyAction(u: Who, tariffId: String) {
+        val tariff = s.tariffs.onSale(u.lang).firstOrNull { it.id == tariffId }
+            ?: return send(u, translate(u.lang, "This plan is no longer on sale"), buyButtons(u))
         val order = try {
-            s.payments.create(u.userId, id, Channel.TELEGRAM, u.lang)
+            s.payments.create(u.userId, tariff.id, Channel.TELEGRAM, u.lang)
         } catch (e: AppError) {
             return send(u, u.t("Sorry, buying isn't available right now.") + "\n" + translate(u.lang, e.message ?: "", e.args))
         }
-        val price = Format.money(price(id, u.lang) ?: 0, ctx.live.plans.currencyFor(u.lang), u.lang)
+        val price = Format.money(tariff.priceMinor, tariff.currency, u.lang)
         val text = buildString {
-            appendLine(u.t("{product} for {price}", "product" to productName(id, u.lang), "price" to price))
+            appendLine(u.t("{product} for {price}", "product" to tariff.name, "price" to price))
+            appendLine("${period(tariff, u.lang)}, ${Format.terms(tariff.deviceLimit, tariff.monthlyDataLimitBytes, u.lang)}")
             append(u.t("Tap the button to pay. Your VPN key arrives here right after."))
         }
         val url = order.checkoutUrl?.let { withLang(it, u.lang) }
@@ -280,10 +283,10 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
 
     /* ---------------- helpers ---------------- */
 
-    private fun price(id: ProductId, lang: Lang) = ctx.live.plans.let { it.price(id, it.currencyFor(lang)) }
+    private fun period(t: Tariff, lang: Lang) = Format.period(t.durationValue, t.durationUnit, lang)
 
-    private fun buyButtons(u: Who): List<List<Btn>> = ProductId.entries.sortedByDescending { it.periodDays }.mapNotNull { id ->
-        price(id, u.lang)?.let { listOf(Btn(u.t("{product} for {price}", "product" to productName(id, u.lang), "price" to Format.money(it, ctx.live.plans.currencyFor(u.lang), u.lang)), data = "buy:${id.name.lowercase()}")) }
+    private suspend fun buyButtons(u: Who, tariffs: List<Tariff>? = null): List<List<Btn>> = (tariffs ?: s.tariffs.onSale(u.lang)).map { t ->
+        listOf(Btn(u.t("{product} for {price}", "product" to t.name, "price" to Format.money(t.priceMinor, t.currency, u.lang)), data = "buy:${t.id}"))
     }
 
     /** Pro expiry, or null on the free plan. */

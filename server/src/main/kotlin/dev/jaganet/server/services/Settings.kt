@@ -5,12 +5,9 @@ import dev.jaganet.api.AlertSettings
 import dev.jaganet.api.ModeSettings
 import dev.jaganet.api.NetworkSettings
 import dev.jaganet.api.PlanSettings
-import dev.jaganet.api.PriceSettings
 import dev.jaganet.api.Protocols
 import dev.jaganet.api.SmtpSettings
 import dev.jaganet.server.Ctx
-import dev.jaganet.server.Plans
-import dev.jaganet.server.Price
 import dev.jaganet.server.Smtp
 import dev.jaganet.server.badRequest
 import dev.jaganet.server.db.Jsonb
@@ -24,7 +21,7 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * Settings the owner edits in the admin panel: plans and prices, outgoing e-mail, alert
+ * Settings the owner edits in the admin panel: the free plan and invite rewards, outgoing e-mail, alert
  * recipients and the test modes. Stored in the settings table, applied at once (ctx.live).
  * The SMTP password is stored encrypted.
  */
@@ -47,7 +44,7 @@ class Settings(private val ctx: Ctx) {
         return AdminSettingsRes(
             plans = PlanSettings(
                 freeMonthlyGb = p.freeMonthlyBytes / 1_000_000_000, freeDeviceLimit = p.freeDeviceLimit, proDeviceLimit = p.proDeviceLimit,
-                referralRewardDays = p.referralRewardDays, prices = p.prices.mapValues { (_, v) -> PriceSettings(v.monthlyMinor, v.yearlyMinor) },
+                referralRewardDays = p.referralRewardDays,
             ),
             smtp = ctx.live.smtp?.let { SmtpSettings(it.host, it.port, it.user, null, it.from, it.security) },
             smtpHasPassword = ctx.live.smtp?.password?.isNotEmpty() == true,
@@ -63,10 +60,6 @@ class Settings(private val ctx: Ctx) {
         if (s.freeMonthlyGb !in 0..10_000 || s.freeDeviceLimit !in 0..100 || s.proDeviceLimit !in 1..100 || s.referralRewardDays !in 0..365) {
             throw badRequest("Some values are out of range")
         }
-        for (c in listOf("RUB", "EUR")) {
-            val pr = s.prices[c] ?: throw badRequest("Prices in rubles and euros are required")
-            if (pr.monthlyMinor <= 0 || pr.yearlyMinor <= 0) throw badRequest("Prices must be above zero")
-        }
         apply(s)
         store("plans", Protocols.encode(s))
     }
@@ -74,7 +67,7 @@ class Settings(private val ctx: Ctx) {
     private fun apply(s: PlanSettings) {
         ctx.live.plans = ctx.live.plans.copy(
             freeMonthlyBytes = s.freeMonthlyGb * 1_000_000_000, freeDeviceLimit = s.freeDeviceLimit, proDeviceLimit = s.proDeviceLimit,
-            referralRewardDays = s.referralRewardDays, prices = s.prices.mapValues { (_, v) -> Price(v.monthlyMinor, v.yearlyMinor) },
+            referralRewardDays = s.referralRewardDays,
         )
     }
 

@@ -7,7 +7,6 @@ import dev.jaganet.api.OrderStatus
 import dev.jaganet.api.PairRedeemReq
 import dev.jaganet.api.PlanId
 import dev.jaganet.api.Platform
-import dev.jaganet.api.ProductId
 import dev.jaganet.server.services.Channel
 import dev.jaganet.server.services.Keys
 import dev.jaganet.server.telegram.TelegramApi
@@ -48,7 +47,7 @@ class KeysAndSalesTest {
 
     @Test fun `a website purchase activates Pro and delivers a VPN key that any app can import`() = harness {
         val a = signIn("web@example.com")
-        val order = a.api.createOrder(CreateOrderReq(ProductId.PRO_MONTHLY))
+        val order = a.api.createOrder(CreateOrderReq(tariff(MONTH)))
         assertEquals(OrderStatus.PENDING, order.status)
         assertEquals("₽300.00", order.amount)
         assertTrue(order.checkoutUrl!!.endsWith("/pay/test/${order.id}"))
@@ -61,7 +60,8 @@ class KeysAndSalesTest {
         val e = a.api.me().entitlement
         assertEquals(PlanId.PRO, e.plan)
         assertEquals(BillingSource.WEB, e.source)
-        assertEquals(clock.plus(Duration.ofDays(30)), Instant.parse(e.expiresAt))
+        assertEquals(MONTH, e.tariffName)
+        assertEquals(Instant.parse("2026-11-15T12:00:00Z"), Instant.parse(e.expiresAt))
 
         val key = a.api.keys().keys.single()
         assertEquals("amneziawg", key.protocol)
@@ -78,9 +78,8 @@ class KeysAndSalesTest {
 
         // Paying the same order twice does nothing; a second order stacks after the first.
         assertNull(services.payments.markPaid(order.id))
-        val second = a.api.createOrder(CreateOrderReq(ProductId.PRO_MONTHLY))
-        services.payments.markPaid(second.id)
-        assertEquals(clock.plus(Duration.ofDays(60)), Instant.parse(a.api.me().entitlement.expiresAt))
+        buy(a.api, MONTH)
+        assertEquals(Instant.parse("2026-12-15T12:00:00Z"), Instant.parse(a.api.me().entitlement.expiresAt))
         assertEquals(1, a.api.keys().keys.size)
 
         // Deleting the key kills its link.
@@ -90,7 +89,7 @@ class KeysAndSalesTest {
 
     @Test fun `orders are private to their buyer`() = harness {
         val a = signIn("a@example.com")
-        val o = a.api.createOrder(CreateOrderReq(ProductId.PRO_YEARLY))
+        val o = a.api.createOrder(CreateOrderReq(tariff(YEAR)))
         assertEquals("NOT_FOUND", code { signIn("b@example.com").api.order(o.id) })
     }
 
@@ -102,9 +101,11 @@ class KeysAndSalesTest {
         bot.handle(message(chat = 42, text = "/start"))
         val menu = tg.sent("sendMessage").last()
         assertEquals(42L, menu["chat_id"]!!.jsonPrimitive.content.toLong())
-        assertTrue("buy:pro_yearly" in menu["reply_markup"].toString())
+        val year = tariff(YEAR)
+        assertTrue("buy:$year" in menu["reply_markup"].toString())
+        assertTrue("Pro на год, 12 месяцев, 5 устройств, безлимитный трафик" in menu["text"]!!.jsonPrimitive.content)
 
-        bot.handle(callback(chat = 42, data = "buy:pro_yearly"))
+        bot.handle(callback(chat = 42, data = "buy:$year"))
         val payUrl = tg.sent("sendMessage").last()["reply_markup"]!!.jsonObject["inline_keyboard"]!!.jsonArray[0].jsonArray[0].jsonObject["url"]!!.jsonPrimitive.content
         val orderId = payUrl.substringAfterLast('/').substringBefore('?')
 
@@ -132,10 +133,10 @@ class KeysAndSalesTest {
         val bot = TelegramBot(services, tg)
         bot.handle(message(chat = 9, text = "/start"))
         val ruMenu = tg.sent("sendMessage").last()["reply_markup"].toString()
-        assertTrue("Pro на 1 год за 2\u00A0500 ₽" in ruMenu, ruMenu)
+        assertTrue("Pro на год за 2\u00A0500 ₽" in ruMenu, ruMenu)
         bot.handle(callback(chat = 9, data = "lang:de"))
         val deMenu = tg.sent("sendMessage").last()["reply_markup"].toString()
-        assertTrue("Pro für 1 Jahr für 48,00 €" in deMenu, deMenu)
+        assertTrue("Pro на год für 48,00 €" in deMenu, deMenu)
         bot.handle(message(chat = 9, text = "/status"))
         assertEquals("Kein aktives Abo.", tg.sent("sendMessage").last()["text"]!!.jsonPrimitive.content)
     }
@@ -148,8 +149,8 @@ class KeysAndSalesTest {
         assertEquals("Срок действия кода истёк, запросите новый", msg(ru))
         assertEquals("Der Code ist abgelaufen, fordere einen neuen an", msg(de))
         // Prices follow the language: rubles for Russian, euros for German.
-        assertEquals(listOf("RUB" to 250_000L), ru.plans().products.filter { it.id == ProductId.PRO_YEARLY }.map { it.currency to it.priceMinor })
-        assertEquals(listOf("EUR" to 4_800L), de.plans().products.filter { it.id == ProductId.PRO_YEARLY }.map { it.currency to it.priceMinor })
+        assertEquals(listOf("RUB" to 250_000L), ru.plans().tariffs.filter { it.name == YEAR }.map { it.currency to it.priceMinor })
+        assertEquals(listOf("EUR" to 4_800L), de.plans().tariffs.filter { it.name == YEAR }.map { it.currency to it.priceMinor })
     }
 
     @Test fun `the bot asks free users to buy before giving a key`() = harness {

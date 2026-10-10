@@ -16,9 +16,9 @@ internal val telegramStrings: List<S> = listOf(
         "JagaNet VPN ist schnell und sicher. Es verschlüsselt deinen gesamten Datenverkehr.",
     ),
     S(
-        "Pro gives unlimited data and up to {n} devices. It works in the JagaNet app and in other VPN apps.",
-        "Pro даёт безлимитный трафик и до {n} устройств. Работает в приложении JagaNet и в других VPN-приложениях.",
-        "Pro bietet unbegrenztes Datenvolumen und bis zu {n} Geräte. Es funktioniert in der JagaNet-App und in anderen VPN-Apps.",
+        "It works in the JagaNet app and in other VPN apps.",
+        "Работает в приложении JagaNet и в других VPN-приложениях.",
+        "Es funktioniert in der JagaNet-App und in anderen VPN-Apps.",
     ),
     S("✅ Your Pro is active until {date}.", "✅ Ваш Pro действует до {date}.", "✅ Dein Pro ist aktiv bis {date}."),
     S("🔑 My VPN key", "🔑 Мой VPN-ключ", "🔑 Mein VPN-Schlüssel"),

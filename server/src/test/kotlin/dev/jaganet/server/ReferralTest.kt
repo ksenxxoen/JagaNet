@@ -3,7 +3,6 @@ package dev.jaganet.server
 import dev.jaganet.api.CreateOrderReq
 import dev.jaganet.api.CreateReferralLinkReq
 import dev.jaganet.api.MoneyAmount
-import dev.jaganet.api.ProductId
 import dev.jaganet.api.ReferralPeriod
 import dev.jaganet.api.ReferredStatus
 import dev.jaganet.server.telegram.TelegramBot
@@ -44,7 +43,7 @@ class ReferralTest {
 
         // One visitor signs up with the code, buys a month on the website.
         val sam = signIn("sam@example.com", referral = "alex-insta")
-        val order = sam.api.createOrder(CreateOrderReq(ProductId.PRO_MONTHLY))
+        val order = sam.api.createOrder(CreateOrderReq(tariff(MONTH)))
         services.payments.markPaid(order.id)
         // Someone else signs up through the main link and doesn't pay.
         val main = alex.api.referralStats(ReferralPeriod.D30).links.single { it.main }

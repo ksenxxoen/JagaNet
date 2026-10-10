@@ -63,6 +63,12 @@ class Harness(val b: ApplicationTestBuilder) {
 
     fun client(token: String? = null) = ApiClient("", b.createClient {}, { token })
 
+    suspend fun tariff(name: String): String = services.tariffs.all().first { it.name == name }.id
+
+    /** Buys [name] through the checkout, as the payment service would confirm it. */
+    suspend fun buy(api: ApiClient, name: String = MONTH): dev.jaganet.api.OrderRes =
+        api.createOrder(dev.jaganet.api.CreateOrderReq(tariff(name))).also { services.payments.markPaid(it.id) }
+
     data class Signed(val session: SessionRes, val api: ApiClient)
 
     suspend fun signIn(email: String, device: String = "Phone", referral: String? = null): Signed {
@@ -71,6 +77,10 @@ class Harness(val b: ApplicationTestBuilder) {
         return Signed(s, client(s.token))
     }
 }
+
+/** The two tariffs made on first start. */
+const val MONTH = "Pro на месяц"
+const val YEAR = "Pro на год"
 
 fun harness(block: suspend Harness.() -> Unit) = testApplication { Harness(this).block() }
 

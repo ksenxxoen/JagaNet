@@ -17,13 +17,7 @@ internal val commonStrings: List<S> = listOf(
     // Plans and products
     S("Free", "Бесплатный", "Kostenlos"),
     S("Pro", "Pro", "Pro"),
-    S("Pro monthly", "Pro на месяц", "Pro monatlich"),
-    S("Pro yearly", "Pro на год", "Pro jährlich"),
-    S("Pro for 1 month", "Pro на 1 месяц", "Pro für 1 Monat"),
-    S("Pro for 1 year", "Pro на 1 год", "Pro für 1 Jahr"),
     S("Invite reward", "Награда за приглашение", "Einladungsbonus"),
-    S("{price} a month", "{price} в месяц", "{price} pro Monat"),
-    S("{price} a year", "{price} в год", "{price} pro Jahr"),
     S("{from} to {to}", "с {from} по {to}", "{from} bis {to}"),
     S("Unlimited data", "Безлимитный трафик", "Unbegrenztes Datenvolumen"),
 

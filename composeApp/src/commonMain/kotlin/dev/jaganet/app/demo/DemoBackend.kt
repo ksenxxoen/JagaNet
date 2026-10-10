@@ -11,7 +11,11 @@ import dev.jaganet.api.ConnectionEventType
 import dev.jaganet.api.CountBy
 import dev.jaganet.api.CreateReferralLinkReq
 import dev.jaganet.api.DayCount
-import dev.jaganet.api.DevPurchaseReq
+import dev.jaganet.api.CreateOrderReq
+import dev.jaganet.api.DurationUnit
+import dev.jaganet.api.OrderRes
+import dev.jaganet.api.OrderStatus
+import dev.jaganet.api.Tariff
 import dev.jaganet.api.Device
 import dev.jaganet.api.DeviceTraffic
 import dev.jaganet.api.DevicesRes
@@ -35,9 +39,6 @@ import dev.jaganet.api.PaymentsRes
 import dev.jaganet.api.PlanId
 import dev.jaganet.api.Platform
 import dev.jaganet.api.PlansRes
-import dev.jaganet.api.ProPlan
-import dev.jaganet.api.Product
-import dev.jaganet.api.ProductId
 import dev.jaganet.api.Protocols
 import dev.jaganet.api.ReferralDay
 import dev.jaganet.api.ReferralLink
@@ -99,7 +100,7 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
 
     private class DUser(
         val id: String, val email: String, val role: Role, val createdAt: Instant,
-        var plan: PlanId = PlanId.FREE, var product: ProductId? = null, var source: BillingSource? = null,
+        var plan: PlanId = PlanId.FREE, var tariffName: String? = null, var source: BillingSource? = null,
         var expiresAt: Instant? = null, val code: String,
         val payments: MutableList<Payment> = mutableListOf(),
         var invited: Int = 0, var subscribed: Int = 0, var daysEarned: Int = 0,
@@ -137,10 +138,10 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
     init {
         val t = now()
         val owner = DUser(id(), "owner@jaganet.dev", Role.OWNER, t - 120.days, code = "OWNER-0000")
-        val alex = DUser(id(), "alex@example.com", Role.USER, t - 60.days, PlanId.PRO, ProductId.PRO_YEARLY, BillingSource.DEV,
+        val alex = DUser(id(), "alex@example.com", Role.USER, t - 60.days, PlanId.PRO, "Pro на год", BillingSource.WEB,
             t - 25.days + 365.days, "ALEX-7Q2K", invited = 13, subscribed = 3)
-        alex.payments += Payment(id(), "pro_yearly", BillingSource.DEV, (t - 25.days).toString(), (t - 25.days + 365.days).toString(), PaymentStatus.ACTIVE)
-        alex.payments += Payment(id(), "pro_monthly", BillingSource.DEV, (t - 55.days).toString(), (t - 25.days).toString(), PaymentStatus.EXPIRED)
+        alex.payments += Payment(id(), "t-year", BillingSource.WEB, (t - 25.days).toString(), (t - 25.days + 365.days).toString(), PaymentStatus.ACTIVE, "Pro на год")
+        alex.payments += Payment(id(), "t-month", BillingSource.WEB, (t - 55.days).toString(), (t - 25.days).toString(), PaymentStatus.EXPIRED, "Pro на месяц")
         val sam = DUser(id(), "sam@example.com", Role.USER, t - 20.days, code = "SAM-4F8D")
         users += listOf(owner, alex, sam)
 
@@ -181,7 +182,7 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
 
     private fun entitlement(u: DUser): Entitlement {
         val active = u.plan == PlanId.PRO && (u.expiresAt?.let { it > now() } ?: false)
-        return if (active) Entitlement(PlanId.PRO, u.product, u.source, u.expiresAt.toString(), u.source != BillingSource.REFERRAL, 5, null)
+        return if (active) Entitlement(PlanId.PRO, u.tariffName, u.source, u.expiresAt.toString(), false, 5, null)
         else Entitlement(PlanId.FREE, deviceLimit = 1, monthlyDataLimitBytes = 10_000_000_000)
     }
 
@@ -372,6 +373,13 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
     /** Like the real server: rubles for Russian, euros otherwise. (currency, monthly, yearly) in minor units. */
     private fun prices(lang: Lang): Triple<String, Long, Long> = if (lang == Lang.RU) Triple("RUB", 29_900L, 249_000L) else Triple("EUR", 499L, 3_999L)
 
+    private fun tariffs(lang: Lang): List<Tariff> = prices(lang).let { (cur, monthly, yearly) ->
+        listOf(
+            Tariff("t-year", "Pro на год", 12, DurationUnit.MONTHS, yearly, cur, 5, badge = "Выгодно"),
+            Tariff("t-month", "Pro на месяц", 1, DurationUnit.MONTHS, monthly, cur, 5),
+        )
+    }
+
     private fun err(status: HttpStatusCode, code: ErrorCode, msg: String, n: Int? = null): Nothing = throw ApiError(status, code, msg, n)
 
     val engine = MockEngine { req -> handle(req) }
@@ -502,24 +510,17 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
                 val p = req.url.parameters["period"]?.let { q -> StatsPeriod.entries.firstOrNull { it.name.equals(q, true) } } ?: StatsPeriod.WEEK
                 return stats(u.id, p) to StatsRes.serializer()
             }
-            method == HttpMethod.Get && path == "billing/plans" -> return PlansRes(
-                prices(langOf(req)).let { (cur, monthly, yearly) ->
-                    listOf(
-                        Product(ProductId.PRO_YEARLY, "Pro yearly", "year", Format.money(yearly, cur, langOf(req)) + "/yr", "jaganet.pro.yearly", "pro_yearly", yearly, cur),
-                        Product(ProductId.PRO_MONTHLY, "Pro monthly", "month", Format.money(monthly, cur, langOf(req)) + "/mo", "jaganet.pro.monthly", "pro_monthly", monthly, cur),
-                    )
-                },
-                FreePlan(10_000_000_000, 1), ProPlan(5),
-            ) to PlansRes.serializer()
-            method == HttpMethod.Post && path == "billing/dev/purchase" -> {
-                val product = read<DevPurchaseReq>(body).productId
-                u.plan = PlanId.PRO; u.product = product; u.source = BillingSource.DEV
-                u.expiresAt = now() + product.periodDays.days
-                u.payments.add(0, Payment(id(), product.name.lowercase(), BillingSource.DEV, now().toString(), u.expiresAt.toString(), PaymentStatus.ACTIVE))
-                return me(u) to MeRes.serializer()
+            method == HttpMethod.Get && path == "billing/plans" -> return PlansRes(tariffs(langOf(req)), FreePlan(10_000_000_000, 1), paymentsEnabled = true) to PlansRes.serializer()
+            // Demo: the order is paid at once, no checkout.
+            method == HttpMethod.Post && path == "orders" -> {
+                val x = tariffs(langOf(req)).firstOrNull { it.id == read<CreateOrderReq>(body).tariffId }
+                    ?: err(HttpStatusCode.NotFound, ErrorCode.NOT_FOUND, "This plan is no longer on sale")
+                val start = maxOf(now(), u.expiresAt ?: now())
+                u.plan = PlanId.PRO; u.tariffName = x.name; u.source = BillingSource.APP
+                u.expiresAt = start + (if (x.durationUnit == DurationUnit.DAYS) x.durationValue else x.durationValue * 30).days
+                u.payments.add(0, Payment(id(), x.id, BillingSource.APP, start.toString(), u.expiresAt.toString(), PaymentStatus.ACTIVE, x.name))
+                return OrderRes(id(), x.name, OrderStatus.PAID, Format.money(x.priceMinor, x.currency, langOf(req)), null) to OrderRes.serializer()
             }
-            method == HttpMethod.Post && path.startsWith("billing/") ->
-                err(HttpStatusCode.NotImplemented, ErrorCode.NOT_IMPLEMENTED, "Store verification is not set up yet")
             method == HttpMethod.Get && path == "referrals" ->
                 return ReferralRes(u.code, u.invited, u.subscribed, 30, u.daysEarned, "https://jaganet.dev/r/${u.code}") to ReferralRes.serializer()
             method == HttpMethod.Get && path == "referrals/stats" -> {

@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import dev.jaganet.api.Format
 import dev.jaganet.api.Platform
 import dev.jaganet.api.PlanId
-import dev.jaganet.api.ProductId
 import dev.jaganet.api.i18n.Lang
 import dev.jaganet.api.Role as UserRole
 import dev.jaganet.app.i18n.AppLang
@@ -78,11 +77,7 @@ fun SettingsScreen(s: AppState) {
                 Column(Modifier.weight(1f)) {
                     T(s.user?.email ?: "", TS.Body, FontWeight.SemiBold, maxLines = 1)
                     T((me as? Load.Ok)?.value?.entitlement?.let { e ->
-                        when (e.productId) {
-                            ProductId.PRO_MONTHLY -> t("Pro monthly")
-                            ProductId.PRO_YEARLY -> t("Pro yearly")
-                            null -> when (e.plan) { PlanId.FREE -> t("Free"); PlanId.PRO -> t("Pro") }
-                        }
+                        e.tariffName ?: when (e.plan) { PlanId.FREE -> t("Free"); PlanId.PRO -> t("Pro") }
                     } ?: "", TS.Label, color = C.muted)
                 }
                 Icon(Ic.ChevronRight, C.muted, 18.dp, 2f)

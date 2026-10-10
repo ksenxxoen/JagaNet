@@ -118,9 +118,10 @@ class Seed(private val ctx: Ctx) {
 
     private fun sub(sql: Sql, userId: String, product: String, start: Instant, days: Long, renewal: Boolean = false, status: String = "active", cancelled: Instant? = null) =
         sql.exec(
-            """INSERT INTO subscriptions (user_id, product_id, source, external_id, started_at, expires_at, is_renewal, status, cancelled_at)
-               VALUES (?::uuid,?,'dev',?,?,?,?,?,?)""",
+            """INSERT INTO subscriptions (user_id, product_id, source, external_id, started_at, expires_at, is_renewal, status, cancelled_at, tariff_name)
+               VALUES (?::uuid,?,'dev',?,?,?,?,?,?,?)""",
             userId, product, "seed-$userId-$product-${start.toEpochMilli()}", start, start.plus(Duration.ofDays(days)), renewal, status, cancelled,
+            if (product == "pro_yearly") "Pro на год" else "Pro на месяц",
         )
 
     private suspend fun device(sql: Sql, userId: String, name: String, platform: String, tunnel: Boolean = false, connected: Boolean = false, lastSeen: Instant = now): String {

@@ -100,6 +100,7 @@ class Row(private val m: Map<String, Any?>) {
     fun bool(k: String) = m[k] as Boolean
     fun instant(k: String) = (m[k] as Timestamp).toInstant()
     fun instantOrNull(k: String) = (m[k] as Timestamp?)?.toInstant()
+    fun jsonOrNull(k: String): JsonObject? = if (m[k] == null) null else json(k)
     fun json(k: String): JsonObject = Json.parseToJsonElement((m[k] as PGobject).value ?: "{}") as JsonObject
     fun strings(k: String): List<String> = ((m[k] as java.sql.Array).array as Array<*>).map { it.toString() }
 

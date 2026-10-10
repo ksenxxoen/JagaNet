@@ -1,7 +1,6 @@
 package dev.jaganet.server
 
 import dev.jaganet.api.AmneziaWG
-import dev.jaganet.api.AppleVerifyReq
 import dev.jaganet.api.ConnectionEventReq
 import dev.jaganet.api.ConnectionEventType
 import dev.jaganet.api.DeviceInfo
@@ -10,7 +9,6 @@ import dev.jaganet.api.EmailVerifyReq
 import dev.jaganet.api.PairRedeemReq
 import dev.jaganet.api.PlanId
 import dev.jaganet.api.Platform
-import dev.jaganet.api.ProductId
 import dev.jaganet.api.Protocols
 import dev.jaganet.api.StatsPeriod
 import dev.jaganet.api.TunnelProvisionReq
@@ -147,7 +145,7 @@ class TrafficTest {
         assertNull(a.api.devices().devices[0].tunnelAddress)
         assertEquals("DATA_LIMIT", code { a.api.provisionTunnel(wg(5)) })
 
-        a.api.devPurchase(ProductId.PRO_MONTHLY)
+        buy(a.api)
         assertEquals("OK", code { a.api.provisionTunnel(wg(5)) })
     }
 }
@@ -159,9 +157,10 @@ class BillingTest {
         val sam = signIn("sam@example.com", referral = ref.code)
         assertEquals(PlanId.FREE, sam.api.me().entitlement.plan)
 
-        val m = sam.api.devPurchase(ProductId.PRO_YEARLY)
+        buy(sam.api, YEAR)
+        val m = sam.api.me()
         assertEquals(PlanId.PRO, m.entitlement.plan)
-        assertEquals(ProductId.PRO_YEARLY, m.entitlement.productId)
+        assertEquals(YEAR, m.entitlement.tariffName)
         assertEquals(5, m.entitlement.deviceLimit)
         assertNull(m.entitlement.monthlyDataLimitBytes)
         // Sam: 365 paid days + 30 referral days stacked after them
@@ -171,20 +170,16 @@ class BillingTest {
         alex.api.referrals().let { assertEquals(listOf(1, 1, 30), listOf(it.invited, it.subscribed, it.daysEarned)) }
 
         clock = clock.plusSeconds(1)
-        sam.api.devPurchase(ProductId.PRO_MONTHLY)
+        buy(sam.api, MONTH)
         assertEquals(30, alex.api.referrals().daysEarned)
 
         val r = signIn("owner@test.dev").api.adminOverview().revenue
-        assertEquals(listOf(1, 1, 1, 1, 1), listOf(r.paying, r.yearly, r.monthly, r.fromReferrals, r.newSubsThisWeek))
-        assertEquals(30000L + 250000 / 12, r.mrrMinor)
+        // The month Sam bought starts after the year, so only the year runs now.
+        assertEquals(listOf(1, 1, 0, 1, 1), listOf(r.paying, r.yearly, r.monthly, r.fromReferrals, r.newSubsThisWeek))
+        assertEquals(20848L, r.mrrMinor) // 2500 ₽ a year, per month
         assertEquals("RUB", r.currency)
     }
 
-    @Test fun `refuses store purchases until verification is implemented`() = harness {
-        val a = signIn("s@example.com")
-        assertEquals("SERVICE_UNAVAILABLE", code { a.api.appleVerify(AppleVerifyReq("x")) })
-        assertEquals(PlanId.FREE, a.api.me().entitlement.plan)
-    }
 }
 
 class UnitTest {

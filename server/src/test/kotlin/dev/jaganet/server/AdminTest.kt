@@ -8,9 +8,12 @@ import dev.jaganet.api.LinkLoginReq
 import dev.jaganet.api.ModeSettings
 import dev.jaganet.api.MoneyAmount
 import dev.jaganet.api.Platform
-import dev.jaganet.api.PriceSettings
-import dev.jaganet.api.ProductId
 import dev.jaganet.api.ReferralPeriod
+import dev.jaganet.api.DurationUnit
+import dev.jaganet.api.TariffReq
+import dev.jaganet.api.TariffStatus
+import java.time.Duration
+import java.time.Instant
 import dev.jaganet.api.Role
 import dev.jaganet.api.SmtpSettings
 import dev.jaganet.server.services.Settings
@@ -46,7 +49,7 @@ class AdminTest {
     @Test fun `without a payment service, buying says it is unavailable`() = harness {
         val a = signIn("a@example.com")
         ctx.live.paymentProvider = null
-        assertEquals("SERVICE_UNAVAILABLE", code { a.api.createOrder(CreateOrderReq(ProductId.PRO_MONTHLY)) })
+        assertEquals("SERVICE_UNAVAILABLE", code { a.api.createOrder(CreateOrderReq(tariff(MONTH))) })
         assertFalse(client().site().paymentsEnabled)
     }
 
@@ -82,10 +85,9 @@ class AdminTest {
         assertEquals("FORBIDDEN", code { signIn("a@example.com").api.adminSettings() })
         val o = signIn("owner@test.dev").api
         val st = o.adminSettings()
-        o.savePlanSettings(st.plans.copy(freeMonthlyGb = 5, proDeviceLimit = 7, prices = mapOf("RUB" to PriceSettings(19_900, 199_000), "EUR" to PriceSettings(399, 2_999))))
-        assertEquals(19_900L, client().plans().products.single { it.id == ProductId.PRO_MONTHLY }.priceMinor)
+        o.savePlanSettings(st.plans.copy(freeMonthlyGb = 5, proDeviceLimit = 7))
         assertEquals(5_000_000_000L, client().plans().free.monthlyDataLimitBytes)
-        assertEquals("BAD_REQUEST", code { o.savePlanSettings(st.plans.copy(prices = mapOf("RUB" to PriceSettings(0, 1)))) })
+        assertEquals("BAD_REQUEST", code { o.savePlanSettings(st.plans.copy(freeDeviceLimit = -1)) })
 
         val saved = o.saveSmtpSettings(SmtpSettings("smtp.example.com", 587, "me@example.com", "secret", "me@example.com"))
         assertTrue(saved.smtpHasPassword)
@@ -111,23 +113,54 @@ class AdminTest {
 
     @Test fun `the owner sees money received and subscriptions bought`() = harness {
         val a = signIn("a@example.com")
-        val order = a.api.createOrder(CreateOrderReq(ProductId.PRO_YEARLY))
-        services.payments.markPaid(order.id)
-        a.api.createOrder(CreateOrderReq(ProductId.PRO_MONTHLY)) // left unpaid
-        signIn("b@example.com").api.devPurchase(ProductId.PRO_MONTHLY)
+        buy(a.api, YEAR)
+        a.api.createOrder(CreateOrderReq(tariff(MONTH))) // left unpaid
+        buy(signIn("b@example.com").api, MONTH)
 
         val f = signIn("owner@test.dev").api.adminFinance(ReferralPeriod.D30)
-        assertEquals(listOf(MoneyAmount(250_000, "RUB")), f.revenue)
-        assertEquals(1, f.paidOrders)
+        assertEquals(listOf(MoneyAmount(280_000, "RUB")), f.revenue)
+        assertEquals(2, f.paidOrders)
         assertEquals(2, f.newSubscriptions)
         assertEquals(2, f.activeSubscribers)
-        assertEquals(listOf(MoneyAmount(250_000 / 12, "RUB")), f.mrr)
+        // 2500 ₽ over 365 days plus 300 ₽ over 31 days, per 30.44 days.
+        assertEquals(listOf(MoneyAmount(50_303, "RUB")), f.mrr)
         assertEquals(1, f.unpaidOrders)
-        assertEquals(mapOf("web" to 1, "dev" to 1), f.byChannel.associate { it.key to it.count })
-        assertEquals(MoneyAmount(250_000, "RUB"), f.recent.single { it.channel == "web" }.amount)
-        assertNull(f.recent.single { it.channel == "dev" }.amount)
+        assertEquals(mapOf("web" to 2), f.byChannel.associate { it.key to it.count })
+        assertEquals(mapOf(YEAR to 1, MONTH to 1), f.byProduct.associate { it.key to it.count })
+        assertEquals(MoneyAmount(250_000, "RUB"), f.recent.single { it.product == YEAR }.amount)
         assertEquals(30, f.days.size)
-        assertEquals(1, f.days.sumOf { it.orders })
+        assertEquals(2, f.days.sumOf { it.orders })
+    }
+
+    @Test fun `the owner builds tariffs, and bought ones keep their terms`() = harness {
+        assertEquals("FORBIDDEN", code { signIn("a@example.com").api.adminTariffs() })
+        val o = signIn("owner@test.dev").api
+        val week = TariffReq("Неделя", 7, DurationUnit.DAYS, 9_900, 199, deviceLimit = 2, trafficGb = 50, badge = "Попробуйте", sort = 5)
+        val made = o.createTariff(week).tariffs.single { it.name == "Неделя" }
+        assertEquals(listOf(YEAR, MONTH, "Неделя"), client().plans().tariffs.map { it.name })
+        assertEquals("BAD_REQUEST", code { o.createTariff(week.copy(name = " ")) })
+        assertEquals("BAD_REQUEST", code { o.createTariff(week.copy(priceEurMinor = 0)) })
+
+        val a = signIn("buyer@example.com")
+        buy(a.api, "Неделя")
+        val e = a.api.me().entitlement
+        assertEquals(listOf<Any?>("Неделя", 2, 50_000_000_000L), listOf(e.tariffName, e.deviceLimit, e.monthlyDataLimitBytes))
+        assertEquals(clock.plus(Duration.ofDays(7)), Instant.parse(e.expiresAt))
+
+        // An order placed before a change is paid on the old terms; new buyers get the new ones.
+        val pending = a.api.createOrder(CreateOrderReq(made.id))
+        o.updateTariff(made.id, week.copy(name = "Неделя Плюс", deviceLimit = 4, trafficGb = null, priceRubMinor = 14_900))
+        services.payments.markPaid(pending.id)
+        assertEquals(2, a.api.me().entitlement.deviceLimit)
+        assertEquals(listOf("Неделя", "Неделя"), a.api.payments().payments.map { it.tariffName })
+        assertEquals("₽149.00", a.api.createOrder(CreateOrderReq(made.id)).amount)
+
+        // Archived: off sale, kept with its sales count; nothing is deleted.
+        val archived = o.updateTariff(made.id, week.copy(status = TariffStatus.ARCHIVED)).tariffs.single { it.id == made.id }
+        assertEquals(2, archived.sold)
+        assertEquals(listOf(YEAR, MONTH), client().plans().tariffs.map { it.name })
+        assertEquals("NOT_FOUND", code { a.api.createOrder(CreateOrderReq(made.id)) })
+        assertEquals(2, a.api.me().entitlement.deviceLimit)
     }
 
     @Test fun `the owner always has Pro and gets a VPN key without paying`() = harness {

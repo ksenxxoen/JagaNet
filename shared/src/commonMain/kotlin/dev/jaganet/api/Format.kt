@@ -12,6 +12,17 @@ import kotlin.time.Instant
  * Every function takes the interface language (English if not given).
  */
 object Format {
+    /** A tariff's length: "1 месяц", "12 месяцев", "7 дней". */
+    fun period(value: Int, unit: DurationUnit, lang: Lang = Lang.EN): String = when (unit) {
+        DurationUnit.DAYS -> I18n.plural(lang, value.toLong(), "{n} day|{n} days")
+        DurationUnit.MONTHS -> I18n.plural(lang, value.toLong(), "{n} month|{n} months")
+    }
+
+    /** "5 устройств, безлимитный трафик" or "1 устройство, 50 ГБ в месяц". */
+    fun terms(deviceLimit: Int, monthlyBytes: Long?, lang: Lang = Lang.EN): String =
+        I18n.plural(lang, deviceLimit.toLong(), "{n} device|{n} devices") + ", " +
+            (monthlyBytes?.let { I18n.tr(lang, "{data} a month", "data" to bytes(it, lang)) } ?: I18n.tr(lang, "Unlimited data").replaceFirstChar { it.lowercase() })
+
     private fun oneDecimal(v: Double, lang: Lang): String {
         val r = (v * 10).roundToLong()
         val sep = if (lang == Lang.EN) "." else ","

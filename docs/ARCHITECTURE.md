@@ -90,10 +90,14 @@ verbatim so new AWG versions need no app release.
 times. It never stores destinations, DNS queries or user IPs. The connection log lives only on
 the device.
 
-**Stores.** `recordPaidSubscription()` is the single place a purchase becomes Pro. The
-Apple/Google endpoints deliberately return `501` until receipt verification (App Store Server
-API, Play Developer API) is implemented, so nothing unverified grants Pro. Simulation uses
-`/billing/dev/purchase`, which is disabled in production.
+**Tariffs and payments.** The owner builds tariffs in the admin panel (`services/Tariffs.kt`):
+name, length in days or months, price in rubles and euros, devices, monthly data, badge, order,
+status (on sale, hidden, archived; never deleted). The website, the Telegram bot and the app all
+sell through our own checkout (`POST /v1/orders`, channel `web`, `telegram` or `app`); App Store
+and Google Play purchases are not used. An order freezes the tariff's terms (`orders.terms`), and
+`recordPaidSubscription()`, the single place a payment becomes Pro, copies them onto the
+subscription, so later edits never change what someone already bought. A new purchase starts
+when the current one ends, each with its own terms.
 
 ## App (`composeApp/`)
 

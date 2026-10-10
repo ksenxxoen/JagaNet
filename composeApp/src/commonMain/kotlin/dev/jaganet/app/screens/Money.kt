@@ -19,6 +19,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,14 +40,17 @@ import dev.jaganet.api.CreateReferralLinkReq
 import dev.jaganet.api.MoneyAmount
 import dev.jaganet.api.PaymentStatus
 import dev.jaganet.api.PlanId
-import dev.jaganet.api.Platform
-import dev.jaganet.api.ProductId
+import dev.jaganet.api.CreateOrderReq
+import dev.jaganet.api.Format
+import dev.jaganet.api.OrderRes
+import dev.jaganet.api.OrderStatus
 import dev.jaganet.api.ReferralDay
 import dev.jaganet.api.ReferralLink
 import dev.jaganet.api.ReferralPeriod
 import dev.jaganet.api.ReferralStatsRes
 import dev.jaganet.api.ReferredStatus
 import dev.jaganet.api.ReferredUser
+import dev.jaganet.app.i18n.AppLang
 import dev.jaganet.app.i18n.fBytes
 import dev.jaganet.app.i18n.fDate
 import dev.jaganet.app.i18n.fMoney
@@ -76,16 +80,29 @@ import dev.jaganet.app.ui.T
 import dev.jaganet.app.ui.TS
 import dev.jaganet.app.ui.Title
 import dev.jaganet.app.ui.load
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
 fun PlansScreen(s: AppState) {
     val plans = load(Unit) { s.api.plans() }
-    var pick by remember { mutableStateOf<ProductId?>(ProductId.PRO_YEARLY) }
+    var pick by remember { mutableStateOf<String?>(null) }
+    var picked by remember { mutableStateOf(false) }
+    /** An order waiting for payment in the browser. */
+    var waiting by remember { mutableStateOf<OrderRes?>(null) }
     val a = rememberAction()
     val scope = rememberCoroutineScope()
-    val store = if (s.platform.kind == Platform.IOS) "App Store" else "Google Play"
+    val open = { o: OrderRes -> o.checkoutUrl?.let { u -> s.platform.openUrl(u + (if ('?' in u) "&" else "?") + "lang=" + AppLang.current.code) } }
+    // Pro turns on when the payment service confirms; check the order until then.
+    LaunchedEffect(waiting?.id) {
+        val id = waiting?.id ?: return@LaunchedEffect
+        while (true) {
+            delay(3_000)
+            val o = runCatching { s.api.order(id) }.getOrNull() ?: continue
+            if (o.status == OrderStatus.PAID) { s.invalidate(); s.router.reset(Route.Home); break }
+        }
+    }
     Screen {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             Box(
@@ -96,7 +113,7 @@ fun PlansScreen(s: AppState) {
         T(t("Go Pro.\nNo limits, no ads."), TS.Title, FontWeight.Bold)
         Gap(18.dp)
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            listOf(t("Unlimited data"), t("Up to 5 devices at once"), t("Full speed, no throttling"), t("Split tunneling and kill switch")).forEach {
+            listOf(t("Full speed, no throttling"), t("Split tunneling and kill switch"), t("Works in other VPN apps too")).forEach {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(Modifier.size(24.dp).clip(CircleShape).background(C.greenTint), contentAlignment = Alignment.Center) { Icon(Ic.Check, C.green, 14.dp, 2.6f) }
                     T(it, TS.Body)
@@ -105,46 +122,50 @@ fun PlansScreen(s: AppState) {
         }
         Gap(22.dp)
         Loaded(plans) { p ->
+            // The first tariff is picked until the user chooses.
+            val current = if (picked) pick else p.tariffs.firstOrNull()?.id
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                p.products.forEach { prod ->
-                    val yearly = prod.id == ProductId.PRO_YEARLY
-                    val price = productPrice(prod)
+                if (p.tariffs.isEmpty()) T(t("No plans on sale right now."), TS.Small, color = C.muted)
+                p.tariffs.forEach { x ->
                     PlanOption(
-                        if (yearly) t("Pro yearly") else t("Pro monthly"),
-                        if (yearly) t("Best value, billed yearly") else t("Billed every month"),
-                        if (yearly) t("{price} a year", "price" to price) else t("{price} a month", "price" to price),
-                        pick == prod.id, yearly,
-                    ) { pick = prod.id }
+                        x.name,
+                        Format.period(x.durationValue, x.durationUnit, AppLang.current) + ", " + Format.terms(x.deviceLimit, x.monthlyDataLimitBytes, AppLang.current),
+                        fMoney(x.priceMinor, x.currency), current == x.id, x.badge,
+                    ) { pick = x.id; picked = true }
                 }
-                PlanOption(t("Free"), tp(p.free.deviceLimit, "{data} a month, {n} device|{data} a month, {n} devices", "data" to fBytes(p.free.monthlyDataLimitBytes)), fMoney(0, p.products.firstOrNull()?.currency ?: "USD"), pick == null, false) { pick = null }
+                PlanOption(t("Free"), tp(p.free.deviceLimit, "{data} a month, {n} device|{data} a month, {n} devices", "data" to fBytes(p.free.monthlyDataLimitBytes)), fMoney(0, p.tariffs.firstOrNull()?.currency ?: "RUB"), current == null, null) { pick = null; picked = true }
             }
-        }
-        ErrorNote(a.error)
-        Gap(18.dp)
-        Button(if (pick == null) t("Continue with Free") else t("Subscribe"), {
-            val product = pick
-            if (product == null) s.router.back() else scope.launch {
-                a.busy = true; a.error = null
-                try {
-                    // Simulation: the server pretends the store charged. Real builds use StoreKit / Play Billing,
-                    // then send the receipt to /billing/apple|google/verify (not implemented yet).
-                    s.api.devPurchase(product)
-                    s.invalidate()
-                    s.router.reset(Route.Home)
-                } catch (e: Exception) {
-                    a.error = e.message
-                } finally { a.busy = false }
+            if (!p.paymentsEnabled && p.tariffs.isNotEmpty()) ErrorNote(t("Payments are temporarily unavailable"))
+            ErrorNote(a.error)
+            Gap(18.dp)
+            val w = waiting
+            if (w != null) {
+                Card(padding = 16.dp) {
+                    T(t("Waiting for payment"), TS.Body, FontWeight.SemiBold)
+                    T(t("Payment opens in your browser. Pro turns on here as soon as it goes through."), TS.Label, color = C.muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
+                    Button(t("Open payment page"), { open(w) }, Modifier.fillMaxWidth(), ButtonKind.Secondary)
+                }
+                Gap(10.dp)
             }
-        }, Modifier.fillMaxWidth(), ButtonKind.Primary, busy = a.busy)
-        T(t("Renews automatically. Cancel anytime in your {store} account.", "store" to t(store)), TS.Caption, color = C.muted, align = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally)) {
-            listOf(t("Restore purchase"), t("Terms"), t("Privacy")).forEach { T(it, TS.Caption, FontWeight.Medium, C.green) }
+            Button(if (current == null) t("Continue with Free") else t("Pay"), {
+                val id = current
+                if (id == null) s.router.back() else scope.launch {
+                    a.busy = true; a.error = null
+                    try {
+                        val o = s.api.createOrder(CreateOrderReq(id, channel = "app"))
+                        if (o.status == OrderStatus.PAID) { s.invalidate(); s.router.reset(Route.Home) } else { waiting = o; open(o) }
+                    } catch (e: Exception) {
+                        a.error = e.message
+                    } finally { a.busy = false }
+                }
+            }, Modifier.fillMaxWidth(), ButtonKind.Primary, busy = a.busy, enabled = current == null || p.paymentsEnabled)
+            if (w == null) T(t("Payment opens in your browser. Pro turns on here as soon as it goes through."), TS.Caption, color = C.muted, align = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 10.dp))
         }
     }
 }
 
 @Composable
-private fun PlanOption(name: String, sub: String, price: String, on: Boolean, badge: Boolean, onClick: () -> Unit) {
+private fun PlanOption(name: String, sub: String, price: String, on: Boolean, badge: String?, onClick: () -> Unit) {
     Box {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 68.dp).clip(RoundedCornerShape(R.tile)).background(C.surface)
@@ -159,8 +180,8 @@ private fun PlanOption(name: String, sub: String, price: String, on: Boolean, ba
             }
             T(price, TS.Small, FontWeight.Medium, mono = true)
         }
-        if (badge) T(
-            t("BEST VALUE"), TS.Tab, FontWeight.Bold, Color.White,
+        if (badge != null) T(
+            badge, TS.Tab, FontWeight.Bold, Color.White,
             modifier = Modifier.align(Alignment.TopEnd).offset(x = (-14).dp, y = (-8).dp).background(C.green, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
         )
     }
@@ -171,7 +192,6 @@ fun AccountScreen(s: AppState) {
     val me = load(s.dataVersion) { s.api.me() }
     val payments = load(s.dataVersion) { s.api.payments().payments }
     val refs = load(Unit) { s.api.referrals() }
-    val plans = load(Unit) { s.api.plans() }
     var confirmDelete by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     Screen(onBack = { s.router.back() }) {
@@ -187,7 +207,7 @@ fun AccountScreen(s: AppState) {
                     T(t("Active"), TS.Caption, FontWeight.SemiBold, C.ink, modifier = Modifier.background(C.greenTint, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
                 }
                 T(
-                    when { e.plan == PlanId.FREE -> t("Free"); e.source == BillingSource.REFERRAL -> t("Invite reward"); e.productId == ProductId.PRO_MONTHLY -> t("Pro monthly"); else -> t("Pro yearly") },
+                    when { e.plan == PlanId.FREE -> t("Free"); e.source == BillingSource.REFERRAL -> t("Invite reward"); else -> e.tariffName ?: "Pro" },
                     TS.Plan, FontWeight.Bold, Color.White, modifier = Modifier.padding(top = 6.dp),
                 )
                 Gap(14.dp)
@@ -198,17 +218,12 @@ fun AccountScreen(s: AppState) {
                 Gap(10.dp)
                 Row {
                     DarkKV(t("This month"), fBytes(m.usage.bytesUsed), Modifier.weight(1f), mono = true)
-                    DarkKV(t("Billed via"), when (e.source) { BillingSource.APPLE -> t("App Store"); BillingSource.GOOGLE -> t("Google Play"); BillingSource.REFERRAL -> t("Invite reward"); BillingSource.DEV -> t("Simulation"); BillingSource.WEB -> t("Website"); BillingSource.TELEGRAM -> t("Telegram"); null -> "-" }, Modifier.weight(1f))
+                    DarkKV(t("Billed via"), when (e.source) { BillingSource.APPLE -> t("App Store"); BillingSource.GOOGLE -> t("Google Play"); BillingSource.REFERRAL -> t("Invite reward"); BillingSource.DEV -> t("Simulation"); BillingSource.WEB -> t("Website"); BillingSource.TELEGRAM -> t("Telegram"); BillingSource.APP -> t("JagaNet app"); null -> "-" }, Modifier.weight(1f))
                 }
             }
         }
         Gap(10.dp)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(t("Change plan"), { s.router.go(Route.Plans) }, Modifier.weight(1f), ButtonKind.Secondary)
-            Button(t("Manage in store"), {
-                s.platform.openUrl(if (s.platform.kind == Platform.IOS) "https://apps.apple.com/account/subscriptions" else "https://play.google.com/store/account/subscriptions")
-            }, Modifier.weight(1f), ButtonKind.Secondary)
-        }
+        Button(t("Change plan"), { s.router.go(Route.Plans) }, Modifier.fillMaxWidth(), ButtonKind.Secondary)
 
         SectionLabel(t("Payment history"))
         Loaded(payments) { list ->
@@ -217,7 +232,7 @@ fun AccountScreen(s: AppState) {
                 list.forEachIndexed { i, p ->
                     Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column {
-                            T(if (p.source == BillingSource.REFERRAL) t("Invite reward") else if (p.productId == "pro_yearly") t("Pro yearly") else t("Pro monthly"), TS.Small)
+                            T(if (p.source == BillingSource.REFERRAL) t("Invite reward") else p.tariffName ?: "Pro", TS.Small)
                             T(t("{from} to {to}", "from" to fDate(p.startedAt), "to" to fDate(p.expiresAt)), TS.Caption, color = C.muted)
                             when (p.status) {
                                 PaymentStatus.ACTIVE -> {}
@@ -226,8 +241,7 @@ fun AccountScreen(s: AppState) {
                                 PaymentStatus.REFUNDED -> T(t("Refunded"), TS.Caption, color = C.muted)
                             }
                         }
-                        val price = (plans as? Load.Ok)?.value?.products?.firstOrNull { it.id.name.lowercase() == p.productId }?.let(::productPrice) ?: "-"
-                        T(if (p.source == BillingSource.REFERRAL) t("No charge") else price, TS.Small, mono = true)
+                        if (p.source == BillingSource.REFERRAL) T(t("No charge"), TS.Small, mono = true)
                     }
                     if (i < list.lastIndex) Divider()
                 }
@@ -252,7 +266,7 @@ fun AccountScreen(s: AppState) {
         if (!confirmDelete) Button(t("Delete account"), { confirmDelete = true }, Modifier.fillMaxWidth(), ButtonKind.Danger)
         else Card(padding = 16.dp) {
             T(t("Delete your account?"), TS.Body, FontWeight.SemiBold)
-            T(t("Your devices are disconnected and your data is erased. Store subscriptions must be cancelled in the store."), TS.Label, color = C.muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
+            T(t("Your devices are disconnected and your data is erased."), TS.Label, color = C.muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(t("Cancel"), { confirmDelete = false }, Modifier.weight(1f), ButtonKind.Secondary)
                 Button(t("Delete"), { scope.launch { runCatching { s.api.deleteAccount() }; s.signOut() } }, Modifier.weight(1f), ButtonKind.Danger)
@@ -575,7 +589,3 @@ private fun channelName(key: String): String = when (key) { "website" -> t("Webs
 private fun fRevenue(list: List<MoneyAmount>): String = if (list.isEmpty()) "-" else list.joinToString(", ") { fMoney(it.minor, it.currency) }
 
 private fun pct(part: Int, whole: Int): String = if (whole <= 0) "-" else "${(part * 100.0 / whole).roundToInt()}%"
-
-/** The list price in the interface language; falls back to the server's English label. */
-private fun productPrice(p: dev.jaganet.api.Product): String =
-    if (p.priceMinor != null && p.currency != null) fMoney(p.priceMinor!!, p.currency!!) else p.displayPrice.substringBefore('/')

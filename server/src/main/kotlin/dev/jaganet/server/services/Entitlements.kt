@@ -6,7 +6,6 @@ import dev.jaganet.api.MeRes
 import dev.jaganet.api.Payment
 import dev.jaganet.api.PaymentStatus
 import dev.jaganet.api.PlanId
-import dev.jaganet.api.ProductId
 import dev.jaganet.api.Usage
 import dev.jaganet.server.Ctx
 import dev.jaganet.server.db.Sql
@@ -16,7 +15,6 @@ import java.time.ZoneOffset
 fun monthStart(t: Instant): Instant = t.atZone(ZoneOffset.UTC).withDayOfMonth(1).toLocalDate().atStartOfDay().toInstant(ZoneOffset.UTC)
 
 fun sourceOf(s: String) = BillingSource.valueOf(s.uppercase())
-fun productOf(s: String) = ProductId.entries.firstOrNull { it.name.equals(s, ignoreCase = true) }
 
 /** Devices the owner may connect (test phones, laptops…). */
 private const val OWNER_DEVICES = 20
@@ -28,7 +26,8 @@ class Entitlements(private val ctx: Ctx) {
         if (sql.one("SELECT role FROM users WHERE id=?::uuid", userId)?.str("role") == "owner") {
             return Entitlement(PlanId.PRO, deviceLimit = maxOf(p.proDeviceLimit, OWNER_DEVICES), monthlyDataLimitBytes = null)
         }
-        // Paid subscriptions first; referral time stacks after paid time.
+        // Paid subscriptions first; referral time stacks after paid time. Each purchase keeps
+        // the terms it was bought with; older rows without them get the Pro defaults.
         val sub = sql.one(
             """SELECT * FROM subscriptions
                 WHERE user_id=?::uuid AND status='active' AND started_at <= ? AND expires_at > ?
@@ -39,12 +38,12 @@ class Entitlements(private val ctx: Ctx) {
         val source = sourceOf(sub.str("source"))
         return Entitlement(
             plan = PlanId.PRO,
-            productId = if (source == BillingSource.REFERRAL) null else productOf(sub.str("product_id")),
+            tariffName = if (source == BillingSource.REFERRAL) null else sub.strOrNull("tariff_name") ?: "Pro",
             source = source,
             expiresAt = (last ?: sub.instant("expires_at")).toString(),
-            autoRenew = sub.bool("auto_renew"),
-            deviceLimit = p.proDeviceLimit,
-            monthlyDataLimitBytes = null,
+            autoRenew = false,
+            deviceLimit = sub.longOrNull("device_limit")?.toInt() ?: p.proDeviceLimit,
+            monthlyDataLimitBytes = sub.longOrNull("monthly_bytes"),
         )
     }
 
@@ -79,6 +78,7 @@ class Entitlements(private val ctx: Ctx) {
                 startedAt = r.instant("started_at").toString(),
                 expiresAt = r.instant("expires_at").toString(),
                 status = if (status == PaymentStatus.ACTIVE && r.instant("expires_at") <= ctx.now()) PaymentStatus.EXPIRED else status,
+                tariffName = r.strOrNull("tariff_name") ?: "Pro".takeIf { r.str("source") != "referral" },
             )
         }
     }

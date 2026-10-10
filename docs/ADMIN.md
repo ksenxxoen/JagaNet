@@ -23,7 +23,10 @@ Website `#/admin` (owners only):
 
 - **Money**: revenue per currency, paid orders, new subscriptions, renewals, active subscribers,
   recurring revenue, unpaid checkouts, by channel and plan, daily charts, recent payments.
-- **Plans and prices**: rubles and euros, free plan limits, Pro devices, invite reward.
+- **Plans**: the tariff builder. Any number of tariffs: name, length in days or months, price in
+  rubles and euros, devices, data per month (empty = unlimited), badge, order, status. Changes
+  apply to new purchases only; bought subscriptions keep their terms. Tariffs are archived, not
+  deleted. Below: free plan limits and invite rewards.
 - **E-mail**: SMTP of any provider (Brevo, Mailgun, Postmark, Amazon SES, Gmail, Zoho…), test e-mail.
   The password is stored encrypted.
 - **Alerts**: e-mail recipients and Telegram chat ids (the bot's `/myid` shows a chat's id).

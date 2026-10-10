@@ -10,6 +10,8 @@ import dev.jaganet.api.PlanSettings
 import dev.jaganet.api.ReferralPeriod
 import dev.jaganet.api.Protocols
 import dev.jaganet.api.Role
+import dev.jaganet.api.AdminTariffsRes
+import dev.jaganet.api.TariffReq
 import dev.jaganet.api.SmtpSettings
 import dev.jaganet.api.TestEmailReq
 import dev.jaganet.api.i18n.I18n
@@ -57,6 +59,10 @@ fun Route.adminApi(s: Services) {
         }
         call.respond(OkRes())
     }
+    // Tariff builder. No deleting: archive instead, bought subscriptions keep their terms.
+    get("/admin/tariffs") { call.owner(); call.respond(AdminTariffsRes(s.tariffs.all())) }
+    post("/admin/tariffs") { call.owner(); s.tariffs.create(call.receive<TariffReq>()); call.respond(AdminTariffsRes(s.tariffs.all())) }
+    put("/admin/tariffs/{id}") { call.owner(); s.tariffs.update(call.parameters["id"]!!, call.receive<TariffReq>()); call.respond(AdminTariffsRes(s.tariffs.all())) }
     get("/admin/finance") {
         call.owner()
         val q = call.request.queryParameters["period"]

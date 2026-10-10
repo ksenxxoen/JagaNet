@@ -1,6 +1,5 @@
 package dev.jaganet.server.http
 
-import dev.jaganet.api.DevPurchaseReq
 import dev.jaganet.api.EmailStartReq
 import dev.jaganet.api.EmailStartRes
 import dev.jaganet.api.EmailVerifyReq
@@ -35,6 +34,7 @@ import dev.jaganet.server.monitor.SystemProbe
 import dev.jaganet.server.services.Finance
 import dev.jaganet.server.services.Keys
 import dev.jaganet.server.services.Settings
+import dev.jaganet.server.services.Tariffs
 import dev.jaganet.server.services.Payments
 import dev.jaganet.server.services.Site
 import dev.jaganet.server.services.Principal
@@ -78,13 +78,14 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
     val tunnels = Tunnels(ctx, ent)
     val traffic = Traffic(ctx, ent, tunnels)
     val stats = Stats(ctx)
-    val billing = Billing(ctx)
+    val tariffs = Tariffs(ctx).also { kotlinx.coroutines.runBlocking { it.seedIfEmpty() } }
+    val billing = Billing(ctx, tariffs)
     val referrals = Referrals(ctx) { bot?.username }
     val admin = Admin(ctx)
     val keys = Keys(ctx, tunnels)
     val settings = Settings(ctx)
     val finance = Finance(ctx)
-    val payments = Payments(ctx, billing, keys)
+    val payments = Payments(ctx, billing, keys, tariffs)
     val site = Site(ctx)
     /** Set when TELEGRAM_BOT_TOKEN is configured and the bot started. */
     @Volatile var bot: dev.jaganet.server.telegram.TelegramBot? = null
@@ -221,15 +222,6 @@ fun Application.jaganet(s: Services) {
             }
 
             get("/billing/plans") { call.respond(s.billing.plans(call.apiLang())) }
-            post("/billing/dev/purchase") {
-                val p = call.principal(s)
-                s.billing.devPurchase(p, call.receive<DevPurchaseReq>().productId)
-                call.respond(s.ent.me(p))
-            }
-            post("/billing/apple/verify") { call.principal(s); s.billing.notImplementedStore() }
-            post("/billing/google/verify") { call.principal(s); s.billing.notImplementedStore() }
-            post("/billing/apple/notifications") { s.billing.notImplementedStore() }
-            post("/billing/google/rtdn") { s.billing.notImplementedStore() }
 
             monitorApi(s)
             adminApi(s)

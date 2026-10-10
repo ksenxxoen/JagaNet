@@ -2,7 +2,6 @@ package dev.jaganet.server.services
 
 import com.sun.management.OperatingSystemMXBean
 import dev.jaganet.api.AdminOverviewRes
-import dev.jaganet.api.ProductId
 import dev.jaganet.api.i18n.Lang
 import dev.jaganet.api.DayCount
 import dev.jaganet.api.Revenue
@@ -13,7 +12,9 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.ZoneOffset
 
-private const val PAID = "source IN ('apple','google','dev')"
+private const val PAID = "source <> 'referral'"
+/** Bought for about a year or longer. */
+private const val LONG = "expires_at - started_at >= interval '300 days'"
 private const val ACTIVE = "status='active' AND started_at <= ? AND expires_at > ?"
 
 /** Owner dashboard. Business numbers from the DB; host numbers from this machine for now. */
@@ -23,8 +24,8 @@ class Admin(private val ctx: Ctx) {
         val now = ctx.now()
         fun count(where: String, vararg p: Any?) = sql.one("SELECT count(DISTINCT user_id)::int AS n FROM subscriptions WHERE $where", *p)!!.int("n")
         val paying = count("$ACTIVE AND $PAID", now, now)
-        val yearly = count("$ACTIVE AND $PAID AND product_id='pro_yearly'", now, now)
-        val monthly = count("$ACTIVE AND $PAID AND product_id='pro_monthly'", now, now)
+        val yearly = count("$ACTIVE AND $PAID AND $LONG", now, now)
+        val monthly = count("$ACTIVE AND $PAID AND NOT ($LONG)", now, now)
         val total = sql.one("SELECT count(*)::int AS n FROM users")!!.int("n")
         val fromRef = sql.one(
             """SELECT count(DISTINCT s.user_id)::int AS n FROM subscriptions s JOIN users u ON u.id=s.user_id
@@ -42,9 +43,14 @@ class Admin(private val ctx: Ctx) {
         ).associate { (it["day"] as LocalDate) to it.int("n") }
         val last7 = (6 downTo 0).map { today.minusDays(it.toLong()) }.map { DayCount(it.toString(), daily[it] ?: 0) }
 
-        val p = ctx.live.plans
-        val cur = p.currencyFor(lang)
-        val mrr = monthly * (p.price(ProductId.PRO_MONTHLY, cur) ?: 0) + yearly * (p.price(ProductId.PRO_YEARLY, cur) ?: 0) / 12
+        // Orders paid in the owner's currency, spread per month (30.44 days).
+        val cur = ctx.live.plans.currencyFor(lang)
+        val mrr = sql.one(
+            """SELECT coalesce(sum(o.amount_minor * 2629800.0 / greatest(86400, extract(epoch FROM s.expires_at - s.started_at))), 0)::bigint AS total
+                 FROM subscriptions s JOIN orders o ON s.external_id = 'order:' || o.id::text
+                WHERE s.status='active' AND s.started_at <= ? AND s.expires_at > ? AND o.currency = ?""",
+            now, now, cur,
+        )!!.long("total")
 
         // Single-node view for now: the first active server.
         val server = sql.one(

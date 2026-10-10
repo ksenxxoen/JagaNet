@@ -16,16 +16,10 @@ enum class Platform { @SerialName("ios") IOS, @SerialName("android") ANDROID, @S
 enum class PlanId { @SerialName("free") FREE, @SerialName("pro") PRO }
 
 @Serializable
-enum class ProductId(val periodDays: Int) {
-    @SerialName("pro_monthly") PRO_MONTHLY(30),
-    @SerialName("pro_yearly") PRO_YEARLY(365),
-}
-
-@Serializable
 enum class BillingSource {
     @SerialName("apple") APPLE, @SerialName("google") GOOGLE, @SerialName("referral") REFERRAL, @SerialName("dev") DEV,
-    /** Paid on the website or through the Telegram bot. */
-    @SerialName("web") WEB, @SerialName("telegram") TELEGRAM,
+    /** Paid on the website, through the Telegram bot or from the app (all through our checkout). */
+    @SerialName("web") WEB, @SerialName("telegram") TELEGRAM, @SerialName("app") APP,
 }
 
 @Serializable
@@ -59,7 +53,8 @@ data class SessionRes(val token: String, val user: User, val deviceId: String)
 @Serializable
 data class Entitlement(
     val plan: PlanId,
-    val productId: ProductId? = null,
+    /** The bought tariff's name, as it was when bought; null for the free plan, invite rewards and the owner. */
+    val tariffName: String? = null,
     val source: BillingSource? = null,
     val expiresAt: String? = null,
     val autoRenew: Boolean = false,
@@ -78,7 +73,16 @@ data class MeRes(val user: User, val entitlement: Entitlement, val usage: Usage)
 enum class PaymentStatus { @SerialName("active") ACTIVE, @SerialName("expired") EXPIRED, @SerialName("cancelled") CANCELLED, @SerialName("refunded") REFUNDED }
 
 @Serializable
-data class Payment(val id: String, val productId: String, val source: BillingSource, val startedAt: String, val expiresAt: String, val status: PaymentStatus)
+data class Payment(
+    val id: String,
+    /** "referral" for invite rewards, else the tariff id. */
+    val productId: String,
+    val source: BillingSource,
+    val startedAt: String,
+    val expiresAt: String,
+    val status: PaymentStatus,
+    val tariffName: String? = null,
+)
 
 @Serializable
 data class PaymentsRes(val payments: List<Payment>)
@@ -181,36 +185,34 @@ data class StatsRes(
 /* ---------- billing ---------- */
 
 @Serializable
-data class Product(
-    val id: ProductId,
-    val title: String,
-    val period: String,
-    /** Display only. Real prices always come from the App Store / Play Store. */
-    val displayPrice: String,
-    val appleProductId: String,
-    val googleProductId: String,
-    /** List price in minor units (cents), for formatting in the reader's language. */
-    val priceMinor: Long? = null,
-    val currency: String? = null,
+enum class DurationUnit { @SerialName("days") DAYS, @SerialName("months") MONTHS }
+
+/** A tariff on sale, priced in the reader's currency (rubles for Russian, euros otherwise). */
+@Serializable
+data class Tariff(
+    val id: String,
+    val name: String,
+    val durationValue: Int,
+    val durationUnit: DurationUnit,
+    /** Minor units (kopecks, cents). */
+    val priceMinor: Long,
+    val currency: String,
+    val deviceLimit: Int,
+    /** Per calendar month; null = unlimited. */
+    val monthlyDataLimitBytes: Long? = null,
+    val badge: String? = null,
 )
 
 @Serializable
 data class FreePlan(val monthlyDataLimitBytes: Long, val deviceLimit: Int)
 
 @Serializable
-data class ProPlan(val deviceLimit: Int)
-
-@Serializable
-data class PlansRes(val products: List<Product>, val free: FreePlan, val pro: ProPlan)
-
-@Serializable
-data class DevPurchaseReq(val productId: ProductId)
-
-@Serializable
-data class AppleVerifyReq(val signedTransaction: String)
-
-@Serializable
-data class GoogleVerifyReq(val productId: ProductId, val purchaseToken: String)
+data class PlansRes(
+    val tariffs: List<Tariff>,
+    val free: FreePlan,
+    /** Buying works right now (a payment service is connected). */
+    val paymentsEnabled: Boolean = false,
+)
 
 /* ---------- referrals ---------- */
 
@@ -408,12 +410,12 @@ data class KeysRes(val keys: List<AccessKey>)
 enum class OrderStatus { @SerialName("pending") PENDING, @SerialName("paid") PAID, @SerialName("cancelled") CANCELLED }
 
 @Serializable
-data class CreateOrderReq(val productId: ProductId)
+data class CreateOrderReq(val tariffId: String, /** "web" (default) or "app". */ val channel: String? = null)
 
 @Serializable
 data class OrderRes(
     val id: String,
-    val productId: ProductId,
+    val tariffName: String,
     val status: OrderStatus,
     /** Formatted, e.g. "$4.99". */
     val amount: String,
@@ -530,17 +532,64 @@ data class LinkLoginReq(val token: String, val device: DeviceInfo)
 /* ---------- owner admin panel: settings ---------- */
 
 @Serializable
-data class PriceSettings(val monthlyMinor: Long, val yearlyMinor: Long)
-
-@Serializable
 data class PlanSettings(
     val freeMonthlyGb: Long,
     val freeDeviceLimit: Int,
+    /** Devices during invite reward days. */
     val proDeviceLimit: Int,
     val referralRewardDays: Int,
-    /** "RUB" (Russian) and "EUR" (German, English). */
-    val prices: Map<String, PriceSettings>,
 )
+
+/* ---------- owner admin panel: tariff builder ---------- */
+
+@Serializable
+enum class TariffStatus {
+    /** On sale. */
+    @SerialName("active") ACTIVE,
+    /** Not on sale for now. */
+    @SerialName("hidden") HIDDEN,
+    /** Retired, kept for history. */
+    @SerialName("archived") ARCHIVED,
+}
+
+/** What the owner sends to create or change a tariff. Already bought subscriptions keep their old terms. */
+@Serializable
+data class TariffReq(
+    val name: String,
+    val durationValue: Int,
+    val durationUnit: DurationUnit,
+    val priceRubMinor: Long,
+    val priceEurMinor: Long,
+    val deviceLimit: Int,
+    /** Per calendar month; null = unlimited. */
+    val trafficGb: Long? = null,
+    val badge: String? = null,
+    val sort: Int = 0,
+    val status: TariffStatus = TariffStatus.ACTIVE,
+)
+
+@Serializable
+data class AdminTariff(
+    val id: String,
+    val name: String,
+    val durationValue: Int,
+    val durationUnit: DurationUnit,
+    val priceRubMinor: Long,
+    val priceEurMinor: Long,
+    val deviceLimit: Int,
+    val trafficGb: Long? = null,
+    val badge: String? = null,
+    val sort: Int,
+    val status: TariffStatus,
+    /** Paid subscriptions bought with it, all time. */
+    val sold: Int,
+    /** People using it right now. */
+    val activeNow: Int,
+    val createdAt: String,
+)
+
+@Serializable
+data class AdminTariffsRes(val tariffs: List<AdminTariff>)
 
 @Serializable
 data class SmtpSettings(
@@ -600,7 +649,7 @@ data class FinanceDay(val day: String, val revenue: List<MoneyAmount>, val order
 data class PaymentRow(
     val at: String,
     val email: String,
-    /** "pro_monthly", "pro_yearly" */
+    /** The tariff's name as bought. */
     val product: String,
     /** null for store purchases (the stores report amounts in their own consoles). */
     val amount: MoneyAmount? = null,
@@ -621,8 +670,9 @@ data class FinanceRes(
     val activeSubscribers: Int,
     /** Monthly recurring revenue of active website / Telegram subscriptions, per currency. */
     val mrr: List<MoneyAmount>,
-    /** Paid subscriptions in the period by channel ("web", "telegram", "apple", "google", "dev"). */
+    /** Paid subscriptions in the period by channel ("web", "telegram", "app"). */
     val byChannel: List<CountBy>,
+    /** By tariff name. */
     val byProduct: List<CountBy>,
     val days: List<FinanceDay>,
     val recent: List<PaymentRow>,
