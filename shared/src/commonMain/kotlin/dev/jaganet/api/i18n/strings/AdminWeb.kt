@@ -220,4 +220,6 @@ internal val adminWebStrings: List<S> = listOf(
     S("{a} accounts, {d} devices", "{a} акк., {d} устр.", "{a} Konten, {d} Geräte"),
     S("No rows with a name and a number of devices", "Нет строк с именем и количеством устройств", "Keine Zeilen mit Name und Geräteanzahl"),
     S("Delete the account of {name} and its keys? The keys stop working.", "Удалить аккаунт «{name}» и его ключи? Ключи перестанут работать.", "Konto von {name} und seine Schlüssel löschen? Die Schlüssel funktionieren dann nicht mehr."),
+    S("AmneziaVPN key {n}", "Ключ AmneziaVPN {n}", "AmneziaVPN-Schlüssel {n}"),
+    S("Copy key for AmneziaVPN", "Скопировать ключ для AmneziaVPN", "Schlüssel für AmneziaVPN kopieren"),
 )

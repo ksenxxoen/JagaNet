@@ -17,11 +17,14 @@ class TestAccountsTest {
         val made = owner.createTestAccounts(TestAccountsReq(listOf(TestAccountReq(" Игорь + Таня ", 2), TestAccountReq("Леня", 1)), days = 14)).accounts
         assertEquals(listOf("Игорь + Таня", "Леня"), made.map { it.name })
         assertEquals(listOf(2, 1), made.map { it.keys.size })
+        assertEquals(listOf(2, 1), made.map { it.vpnKeys.size })
+        assertTrue(made[0].vpnKeys.all { it.startsWith("vpn://") })
         assertTrue(made.all { it.email.matches(Regex("^test-[a-z0-9]{8}@jaganet\\.invalid$")) }, made.toString())
         assertEquals(clock.plusSeconds(14 * 86400L).toString(), made[0].expiresAt)
         // The key pages work.
         val page = b.createClient {}.get(made[0].keys[1].substringAfter(cfg.publicUrl.trimEnd('/')))
         assertEquals(200, page.status.value, page.bodyAsText())
+        assertTrue(made[0].vpnKeys[1] in page.bodyAsText().replace("&#39;", "'"))
 
         // Pro with the device count, unlimited data; not counted as sales.
         val ent = services.ctx.db.run { services.ent.entitlement(it, made[0].id) }
@@ -41,5 +44,19 @@ class TestAccountsTest {
         assertEquals("NOT_FOUND", code { owner.deleteTestAccount(made[0].id) })
         assertEquals("BAD_REQUEST", code { owner.createTestAccounts(TestAccountsReq(listOf(TestAccountReq("X", 0)))) })
         assertEquals("BAD_REQUEST", code { owner.createTestAccounts(TestAccountsReq(emptyList())) })
+    }
+}
+
+class VpnLinkTest {
+    @Test fun `the AmneziaVPN key is the config compressed like qCompress`() {
+        val conf = "[Interface]\nPrivateKey = abc\nAddress = 10.8.0.2/32\nJc = 5\n\n[Peer]\nPublicKey = xyz\nEndpoint = 1.2.3.4:51821\nAllowedIPs = 0.0.0.0/0\n"
+        val link = dev.jaganet.server.services.Keys.vpnLink(conf)
+        assertTrue(link.startsWith("vpn://") && '=' !in link && '+' !in link && '/' !in link.removePrefix("vpn://"))
+        val bytes = java.util.Base64.getUrlDecoder().decode(link.removePrefix("vpn://"))
+        assertEquals(conf.toByteArray().size, java.nio.ByteBuffer.wrap(bytes, 0, 4).int)
+        val inflater = java.util.zip.Inflater().apply { setInput(bytes, 4, bytes.size - 4) }
+        val out = ByteArray(4096)
+        val n = inflater.inflate(out)
+        assertEquals(conf, String(out, 0, n))
     }
 }

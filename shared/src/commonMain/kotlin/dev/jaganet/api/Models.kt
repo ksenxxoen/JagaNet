@@ -806,6 +806,8 @@ data class TestAccount(
     /** Key pages, one per device: QR code, config file and setup steps. */
     val keys: List<String>,
     val createdAt: String,
+    /** The same keys as AmneziaVPN "vpn://" text, pasted in the app. */
+    val vpnKeys: List<String> = emptyList(),
 )
 
 @Serializable

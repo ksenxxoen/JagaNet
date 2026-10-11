@@ -998,8 +998,10 @@ function parseTesters(text) {
 function testersCsv(list) {
   const most = Math.max(1, ...list.map((a) => a.keys.length));
   const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
-  const head = [t("Client"), t("Email"), t("Devices"), t("Valid until"), ...Array.from({ length: most }, (_, i) => t("Key {n}", { n: i + 1 }))];
-  const rows = list.map((a) => [a.name, a.email, a.devices, date(localDay(a.expiresAt)), ...a.keys]);
+  const pad = (arr) => Array.from({ length: most }, (_, i) => arr[i] || "");
+  const head = [t("Client"), t("Email"), t("Devices"), t("Valid until"), ...Array.from({ length: most }, (_, i) => t("Key {n}", { n: i + 1 })),
+    ...Array.from({ length: most }, (_, i) => t("AmneziaVPN key {n}", { n: i + 1 }))];
+  const rows = list.map((a) => [a.name, a.email, a.devices, date(localDay(a.expiresAt)), ...pad(a.keys), ...pad(a.vpnKeys || [])]);
   return "﻿" + [head, ...rows].map((r) => r.map(q).join(";")).join("\r\n");
 }
 
@@ -1007,7 +1009,8 @@ async function testersPane() {
   const pane = document.getElementById("pane");
   const list = (await api("/admin/test-accounts")).accounts;
   if (!location.hash.startsWith("#/admin")) return;
-  const links = (a) => a.keys.map((k, i) => `<a href="${h(k)}" target="_blank" rel="noopener">${t("Key {n}", { n: i + 1 })}</a>`).join(" ");
+  const links = (a) => a.keys.map((k, i) => `<a href="${h(k)}" target="_blank" rel="noopener">${t("Key {n}", { n: i + 1 })}</a>`
+    + (a.vpnKeys?.[i] ? ` <button class="link" type="button" data-copy="${h(a.vpnKeys[i])}" title="${h(t("Copy key for AmneziaVPN"))}">vpn://</button>` : "")).join("<br>");
   pane.innerHTML = `
   <form class="card adminform" id="tf">
     <h3>${t("New test accounts")}</h3>
@@ -1048,6 +1051,7 @@ async function testersPane() {
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
+  for (const b of pane.querySelectorAll("[data-copy]")) b.onclick = () => copyText(b, b.dataset.copy);
   for (const b of pane.querySelectorAll("[data-del]")) b.onclick = async () => {
     const a = list.find((x) => x.id === b.dataset.del);
     if (!confirm(t("Delete the account of {name} and its keys? The keys stop working.", { name: a.name }))) return;

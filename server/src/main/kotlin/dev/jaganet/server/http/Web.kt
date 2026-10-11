@@ -162,15 +162,21 @@ private class Pages(val lang: Lang) {
     <button class="btn secondary" id="copy" type="button">${t("Copy config text")}</button>
   </div>
 </div>
+<div class="card section">
+  <h3>${t("Key for AmneziaVPN")}</h3>
+  <p class="muted">${t("In AmneziaVPN tap Add server, then Insert key, and paste it.")}</p>
+  <div class="formrow two"><input class="mono" id="vpnkey" readonly value="${esc(Keys.vpnLink(k.text))}"><button class="btn" id="copykey" type="button">${t("Copy key")}</button></div>
+</div>
 <h2>${t("How to connect")}</h2>
 <ol class="steps">
   <li><b>${t("Install an app")}</b><br>${t("For example one of these apps")}<ul>$ours$others</ul></li>
-  <li><b>${t("Add the key")}</b><br>${t("Scan the QR code above in the app or import the {file} file.", "file" to Keys.CONFIG_FILE)}</li>
+  <li><b>${t("Add the key")}</b><br>${t("Scan the QR code above in the app, paste the key for AmneziaVPN or import the {file} file.", "file" to Keys.CONFIG_FILE)}</li>
   <li><b>${t("Turn on the VPN")}</b><br>${t("That's all.")}</li>
 </ol>
 <p class="notice bad">${t("Keep this page private. Anyone with this link can use your subscription. If it leaks, delete the key in your account and make a new one.")}</p>
 <textarea id="cfg" hidden>${esc(k.text)}</textarea>
-<script>document.getElementById('copy').onclick=async e=>{await navigator.clipboard.writeText(document.getElementById('cfg').value);e.target.textContent=${jsString(I18n.tr(lang, "Copied"))}};</script>
+<script>const cp=(b,v)=>b.onclick=async e=>{await navigator.clipboard.writeText(document.getElementById(v).value);e.target.textContent=${jsString(I18n.tr(lang, "Copied"))}};
+cp(document.getElementById('copy'),'cfg');cp(document.getElementById('copykey'),'vpnkey');</script>
 """)
     }
 

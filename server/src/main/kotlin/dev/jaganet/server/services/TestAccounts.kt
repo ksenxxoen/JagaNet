@@ -24,9 +24,11 @@ class TestAccounts(private val ctx: Ctx, private val keys: Keys, private val tun
         }
         return rows.map { r ->
             val id = r.str("id")
+            val list = keys.list(id)
             TestAccount(
                 id, r.strOrNull("note") ?: "", r.str("email"), r.int("device_limit"), r.instant("expires_at").toString(),
-                keys.list(id).map { it.pageUrl }, r.instant("created_at").toString(),
+                list.map { it.pageUrl }, r.instant("created_at").toString(),
+                list.mapNotNull { k -> keys.config(id, k.id)?.let { Keys.vpnLink(it.text) } },
             )
         }
     }

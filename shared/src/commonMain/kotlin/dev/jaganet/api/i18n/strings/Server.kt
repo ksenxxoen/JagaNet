@@ -62,11 +62,6 @@ internal val serverStrings: List<S> = listOf(
     S("JagaNet for iPhone", "JagaNet для iPhone", "JagaNet für iPhone"),
     S("In our app you just sign in, no key needed", "В нашем приложении достаточно войти, ключ не нужен", "In unserer App meldest du dich einfach an, ohne Schlüssel"),
     S("Add the key", "Добавьте ключ", "Füge den Schlüssel hinzu"),
-    S(
-        "Scan the QR code above in the app or import the {file} file.",
-        "Отсканируйте QR-код выше в приложении или импортируйте файл {file}.",
-        "Scanne den QR-Code oben in der App oder importiere die Datei {file}.",
-    ),
     S("Turn on the VPN", "Включите VPN", "Schalte das VPN ein"),
     S("That's all.", "Готово.", "Fertig."),
     S(

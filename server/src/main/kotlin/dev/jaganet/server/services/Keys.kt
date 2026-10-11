@@ -117,6 +117,23 @@ class Keys(private val ctx: Ctx, private val tunnels: Tunnels) {
     companion object {
         /** Becomes the tunnel's name in AmneziaWG / WireGuard (max 15 characters). */
         const val CONFIG_FILE = "JagaNet.conf"
+
+        /**
+         * The key as AmneziaVPN's "vpn://" text, pasted in the app (Add server, Insert key):
+         * base64url of the config compressed the way Qt's qCompress does (4-byte big-endian
+         * length, then a zlib stream). The app unpacks it and reads it like an imported .conf.
+         */
+        fun vpnLink(configText: String): String {
+            val raw = configText.toByteArray()
+            val deflater = java.util.zip.Deflater(9)
+            deflater.setInput(raw); deflater.finish()
+            val out = ByteArrayOutputStream()
+            out.write(java.nio.ByteBuffer.allocate(4).putInt(raw.size).array())
+            val buf = ByteArray(4096)
+            while (!deflater.finished()) out.write(buf, 0, deflater.deflate(buf))
+            deflater.end()
+            return "vpn://" + Base64.getUrlEncoder().withoutPadding().encodeToString(out.toByteArray())
+        }
         private val random = SecureRandom()
 
         /** A WireGuard key pair (Curve25519), base64 like `wg genkey` / `wg pubkey`. */

@@ -145,4 +145,8 @@ internal val webStrings: List<S> = listOf(
     S("In this period", "За период", "Im Zeitraum"),
     S("Per month", "В месяц", "Pro Monat"),
     S("Paid of all orders", "Оплачено из всех заказов", "Bezahlt von allen Bestellungen"),
+    S("Key for AmneziaVPN", "Ключ для AmneziaVPN", "Schlüssel für AmneziaVPN"),
+    S("In AmneziaVPN tap Add server, then Insert key, and paste it.", "В AmneziaVPN нажмите «Добавить сервер», затем «Вставить ключ» и вставьте его.", "Tippe in AmneziaVPN auf Server hinzufügen, dann auf Schlüssel einfügen, und füge ihn ein."),
+    S("Copy key", "Скопировать ключ", "Schlüssel kopieren"),
+    S("Scan the QR code above in the app, paste the key for AmneziaVPN or import the {file} file.", "Отсканируйте QR-код выше в приложении, вставьте ключ для AmneziaVPN или импортируйте файл {file}.", "Scanne den QR-Code oben in der App, füge den Schlüssel für AmneziaVPN ein oder importiere die Datei {file}."),
 )
