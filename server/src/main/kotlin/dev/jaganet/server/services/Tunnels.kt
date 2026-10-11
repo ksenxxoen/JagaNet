@@ -54,6 +54,15 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
     suspend fun provision(p: Principal, req: TunnelProvisionReq): TunnelConfig = provisionFor(p.user.id, p.deviceId, req)
 
     /** Protocol for server-made keys: the most preferred one any active node offers. */
+    /** Free places for new devices with [protocol] on the servers in use. */
+    suspend fun freePlaces(protocol: String): Int = ctx.db.run { sql ->
+        sql.one(
+            """SELECT coalesce(sum(greatest(s.max_peers - (SELECT count(*) FROM tunnels t WHERE t.server_id=s.id), 0)), 0)::int AS n
+                 FROM servers s WHERE $USABLE AND s.protocols -> ? IS NOT NULL""",
+            ctx.now().minus(NODE_OFFLINE), protocol,
+        )!!.int("n")
+    }
+
     suspend fun defaultProtocol(): String? = servers().flatMap { it.protocols }.toSet().let { offered -> ctx.drivers.ids().firstOrNull { it in offered } }
 
     suspend fun provisionFor(userId: String, deviceId: String, req: TunnelProvisionReq): TunnelConfig {

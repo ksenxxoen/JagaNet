@@ -137,4 +137,10 @@ internal val serverStrings: List<S> = listOf(
     S("Registering with the main server", "Регистрация на основном сервере", "Anmeldung beim Hauptserver"),
     S("Configuring the VPN interface", "Настройка VPN-интерфейса", "VPN-Schnittstelle wird eingerichtet"),
     S("Starting the node agent", "Запуск агента ноды", "Knoten-Agent wird gestartet"),
+    S("Add 1 to 200 accounts at a time", "Добавляйте от 1 до 200 аккаунтов за раз", "Füge 1 bis 200 Konten auf einmal hinzu"),
+    S("The test lasts 1 to 365 days", "Тест длится от 1 до 365 дней", "Der Test dauert 1 bis 365 Tage"),
+    S("Name must be 1 to 80 characters", "Имя: от 1 до 80 символов", "Der Name muss 1 bis 80 Zeichen lang sein"),
+    S("Devices: 1 to 20 per account", "Устройств: от 1 до 20 на аккаунт", "Geräte: 1 bis 20 pro Konto"),
+    S("Account not found", "Аккаунт не найден", "Konto nicht gefunden"),
+    S("Not enough room on the VPN servers: {free} free places, {need} needed", "На VPN-серверах не хватает места. Свободно {free}, нужно {need}", "Nicht genug Platz auf den VPN-Servern. Frei sind {free}, gebraucht {need}"),
 )

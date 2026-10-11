@@ -77,4 +77,5 @@ internal val moneyStrings: List<S> = listOf(
     S("{n} d", "{n} дн.", "{n} T."),
     S("Share invite link", "Поделиться приглашением", "Einladungslink teilen"),
     S("Join me on JagaNet: {url}", "Присоединяйтесь ко мне в JagaNet: {url}", "Komm zu mir auf JagaNet: {url}"),
+    S("Test access", "Тестовый доступ", "Testzugang"),
 )

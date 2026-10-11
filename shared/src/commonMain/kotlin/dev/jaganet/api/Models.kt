@@ -20,6 +20,8 @@ enum class BillingSource {
     @SerialName("apple") APPLE, @SerialName("google") GOOGLE, @SerialName("referral") REFERRAL, @SerialName("dev") DEV,
     /** Paid on the website, through the Telegram bot or from the app (all through our checkout). */
     @SerialName("web") WEB, @SerialName("telegram") TELEGRAM, @SerialName("app") APP,
+    /** Free test access given by the owner. */
+    @SerialName("test") TEST,
 }
 
 @Serializable
@@ -779,3 +781,32 @@ data class NodeInstall(
     /** The script's output (the last 64 KB). */
     val log: String = "",
 )
+
+/* ---------- test accounts (owner) ---------- */
+
+@Serializable
+data class TestAccountReq(
+    /** Who it is for, e.g. "Igor + Tanya". */
+    val name: String,
+    /** Devices allowed; one key link is made per device. */
+    val devices: Int,
+)
+
+@Serializable
+data class TestAccountsReq(val accounts: List<TestAccountReq>, val days: Int = 30)
+
+@Serializable
+data class TestAccount(
+    val id: String,
+    val name: String,
+    /** Made up (…@jaganet.invalid): testers don't sign in, they use the key links. */
+    val email: String,
+    val devices: Int,
+    val expiresAt: String,
+    /** Key pages, one per device: QR code, config file and setup steps. */
+    val keys: List<String>,
+    val createdAt: String,
+)
+
+@Serializable
+data class TestAccountsRes(val accounts: List<TestAccount>)

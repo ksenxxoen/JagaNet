@@ -20,7 +20,7 @@ class Billing(private val ctx: Ctx, private val tariffs: Tariffs) {
      * rules (renewals, referral rewards) live in one place.
      */
     fun recordPaidSubscription(sql: Sql, userId: String, terms: Terms, source: String, externalId: String, startedAt: Instant, expiresAt: Instant) {
-        val isFirstPaid = sql.one("SELECT count(*)::int AS n FROM subscriptions WHERE user_id=?::uuid AND source <> 'referral'", userId)!!.int("n") == 0
+        val isFirstPaid = sql.one("SELECT count(*)::int AS n FROM subscriptions WHERE user_id=?::uuid AND source NOT IN ('referral','test')", userId)!!.int("n") == 0
         sql.exec(
             """INSERT INTO subscriptions (user_id, product_id, source, external_id, started_at, expires_at, is_renewal, auto_renew,
                                           tariff_id, tariff_name, device_limit, monthly_bytes)

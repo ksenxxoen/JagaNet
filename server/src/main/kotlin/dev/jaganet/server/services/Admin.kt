@@ -12,7 +12,7 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.ZoneOffset
 
-private const val PAID = "source <> 'referral'"
+private const val PAID = "source NOT IN ('referral','test')"
 /** Bought for about a year or longer. */
 private const val LONG = "expires_at - started_at >= interval '300 days'"
 private const val ACTIVE = "status='active' AND started_at <= ? AND expires_at > ?"

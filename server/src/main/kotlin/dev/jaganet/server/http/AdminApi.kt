@@ -14,6 +14,8 @@ import dev.jaganet.api.AdminTariffsRes
 import dev.jaganet.api.TariffReq
 import dev.jaganet.api.SmtpSettings
 import dev.jaganet.api.TestEmailReq
+import dev.jaganet.api.TestAccountsReq
+import dev.jaganet.api.TestAccountsRes
 import dev.jaganet.api.i18n.I18n
 import dev.jaganet.server.AppError
 import dev.jaganet.server.badRequest
@@ -26,6 +28,7 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
@@ -60,6 +63,9 @@ fun Route.adminApi(s: Services) {
         call.respond(OkRes())
     }
     // Tariff builder. No deleting: archive instead, bought subscriptions keep their terms.
+    get("/admin/test-accounts") { call.owner(); call.respond(TestAccountsRes(s.testAccounts.list())) }
+    post("/admin/test-accounts") { call.owner(); call.respond(TestAccountsRes(s.testAccounts.create(call.receive<TestAccountsReq>()))) }
+    delete("/admin/test-accounts/{id}") { call.owner(); s.testAccounts.delete(call.parameters["id"]!!); call.respond(OkRes()) }
     get("/admin/tariffs") { call.owner(); call.respond(AdminTariffsRes(s.tariffs.all())) }
     post("/admin/tariffs") { call.owner(); s.tariffs.create(call.receive<TariffReq>()); call.respond(AdminTariffsRes(s.tariffs.all())) }
     put("/admin/tariffs/{id}") { call.owner(); s.tariffs.update(call.parameters["id"]!!, call.receive<TariffReq>()); call.respond(AdminTariffsRes(s.tariffs.all())) }

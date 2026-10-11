@@ -33,11 +33,11 @@ class Finance(private val ctx: Ctx) {
         )
         val subs = sql.one(
             """SELECT count(*) FILTER (WHERE NOT is_renewal)::int AS new, count(*) FILTER (WHERE is_renewal)::int AS renewals
-                 FROM subscriptions WHERE source <> 'referral' AND created_at >= ?""",
+                 FROM subscriptions WHERE source NOT IN ('referral','test') AND created_at >= ?""",
             from,
         )!!
         val active = sql.one(
-            "SELECT count(DISTINCT user_id)::int AS n FROM subscriptions WHERE source <> 'referral' AND status='active' AND started_at <= ? AND expires_at > ?",
+            "SELECT count(DISTINCT user_id)::int AS n FROM subscriptions WHERE source NOT IN ('referral','test') AND status='active' AND started_at <= ? AND expires_at > ?",
             now, now,
         )!!.int("n")
         // Recurring revenue of subscriptions running now: the order's amount spread over its length, per month (30.44 days).
@@ -48,18 +48,18 @@ class Finance(private val ctx: Ctx) {
             now, now,
         ).map { MoneyAmount(it.long("total"), it.str("currency")) }
         val byChannel = sql.query(
-            "SELECT source AS k, count(*)::int AS n FROM subscriptions WHERE source <> 'referral' AND created_at >= ? GROUP BY 1 ORDER BY 2 DESC",
+            "SELECT source AS k, count(*)::int AS n FROM subscriptions WHERE source NOT IN ('referral','test') AND created_at >= ? GROUP BY 1 ORDER BY 2 DESC",
             from,
         ).map { CountBy(it.str("k"), it.int("n")) }
         val byProduct = sql.query(
-            "SELECT coalesce(tariff_name, 'Pro') AS k, count(*)::int AS n FROM subscriptions WHERE source <> 'referral' AND created_at >= ? GROUP BY 1 ORDER BY 2 DESC",
+            "SELECT coalesce(tariff_name, 'Pro') AS k, count(*)::int AS n FROM subscriptions WHERE source NOT IN ('referral','test') AND created_at >= ? GROUP BY 1 ORDER BY 2 DESC",
             from,
         ).map { CountBy(it.str("k"), it.int("n")) }
         val unpaid = sql.one("SELECT count(*)::int AS n FROM orders WHERE status='pending' AND created_at >= ?", from)!!.int("n")
 
         // Daily series: from the first activity for "all time", at most a year.
         val today = LocalDate.ofInstant(now, ZoneOffset.UTC)
-        val first = sql.one("SELECT min(created_at) AS t FROM subscriptions WHERE source <> 'referral'")?.instantOrNull("t")
+        val first = sql.one("SELECT min(created_at) AS t FROM subscriptions WHERE source NOT IN ('referral','test')")?.instantOrNull("t")
         val startAt = if (from == Instant.EPOCH) maxOf(first ?: now, now.minus(Duration.ofDays(365))) else from.plus(Duration.ofDays(1))
         val start = LocalDate.ofInstant(startAt, ZoneOffset.UTC)
         val dayRevenue = sql.query(
@@ -70,7 +70,7 @@ class Finance(private val ctx: Ctx) {
         val daySubs = sql.query(
             """SELECT (created_at AT TIME ZONE 'UTC')::date AS d, count(*) FILTER (WHERE NOT is_renewal)::int AS new,
                       count(*) FILTER (WHERE is_renewal)::int AS renewals
-                 FROM subscriptions WHERE source <> 'referral' AND created_at >= ? GROUP BY 1""",
+                 FROM subscriptions WHERE source NOT IN ('referral','test') AND created_at >= ? GROUP BY 1""",
             startAt,
         ).associateBy { it["d"] as LocalDate }
         val days = generateSequence(start) { it.plusDays(1) }.takeWhile { !it.isAfter(today) }.map { d ->
@@ -85,7 +85,7 @@ class Finance(private val ctx: Ctx) {
             """SELECT s.created_at, u.email, coalesce(s.tariff_name, 'Pro') AS tariff, s.source, s.is_renewal, o.amount_minor, o.currency
                  FROM subscriptions s JOIN users u ON u.id = s.user_id
                  LEFT JOIN orders o ON s.external_id = 'order:' || o.id::text
-                WHERE s.source <> 'referral' AND s.created_at >= ? ORDER BY s.created_at DESC LIMIT 100""",
+                WHERE s.source NOT IN ('referral','test') AND s.created_at >= ? ORDER BY s.created_at DESC LIMIT 100""",
             from,
         ).map { r ->
             PaymentRow(

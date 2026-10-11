@@ -221,7 +221,7 @@ fun AccountScreen(s: AppState) {
                 Gap(16.dp)
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     PlanKV(t("This month"), fBytes(m.usage.bytesUsed), Modifier.weight(1f))
-                    PlanKV(t("Billed via"), when (e.source) { BillingSource.APPLE -> t("App Store"); BillingSource.GOOGLE -> t("Google Play"); BillingSource.REFERRAL -> t("Invite reward"); BillingSource.DEV -> t("Simulation"); BillingSource.WEB -> t("Website"); BillingSource.TELEGRAM -> t("Telegram"); BillingSource.APP -> t("JagaNet app"); null -> "-" }, Modifier.weight(1f))
+                    PlanKV(t("Billed via"), when (e.source) { BillingSource.APPLE -> t("App Store"); BillingSource.GOOGLE -> t("Google Play"); BillingSource.REFERRAL -> t("Invite reward"); BillingSource.DEV -> t("Simulation"); BillingSource.WEB -> t("Website"); BillingSource.TELEGRAM -> t("Telegram"); BillingSource.APP -> t("JagaNet app"); BillingSource.TEST -> t("Test access"); null -> "-" }, Modifier.weight(1f))
                 }
             }
         }

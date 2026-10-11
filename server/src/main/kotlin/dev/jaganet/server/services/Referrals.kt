@@ -99,7 +99,7 @@ class Referrals(private val ctx: Ctx, private val botUsername: () -> String? = {
         val code = sql.one("SELECT referral_code FROM users WHERE id=?::uuid", p.user.id)!!.str("referral_code")
         val r = sql.one(
             """SELECT count(*)::int AS invited,
-                      count(*) FILTER (WHERE EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id=u.id AND s.source <> 'referral'))::int AS subscribed
+                      count(*) FILTER (WHERE EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id=u.id AND s.source NOT IN ('referral','test')))::int AS subscribed
                  FROM users u WHERE u.referred_by=?::uuid""",
             p.user.id,
         )!!
@@ -158,9 +158,9 @@ class Referrals(private val ctx: Ctx, private val botUsername: () -> String? = {
                  (SELECT count(DISTINCT c.visitor) FROM referral_clicks c WHERE c.link_id=l.id AND c.created_at >= ?)::int AS visitors,
                  (SELECT count(*) FROM users u WHERE u.referral_link_id=l.id AND u.created_at >= ?)::int AS signups,
                  (SELECT count(*) FROM users u WHERE u.referral_link_id=l.id
-                     AND (SELECT min(s.created_at) FROM subscriptions s WHERE s.user_id=u.id AND s.source <> 'referral') >= ?)::int AS paid,
+                     AND (SELECT min(s.created_at) FROM subscriptions s WHERE s.user_id=u.id AND s.source NOT IN ('referral','test')) >= ?)::int AS paid,
                  (SELECT count(*) FROM subscriptions s JOIN users u ON u.id=s.user_id
-                   WHERE u.referral_link_id=l.id AND s.source <> 'referral' AND s.created_at >= ?)::int AS purchases
+                   WHERE u.referral_link_id=l.id AND s.source NOT IN ('referral','test') AND s.created_at >= ?)::int AS purchases
                FROM referral_links l JOIN users o ON o.id = l.user_id
               WHERE ${scope.where} ${if (includeArchived) "" else "AND l.archived_at IS NULL"}
               ORDER BY l.main DESC, l.created_at""",
@@ -214,7 +214,7 @@ class Referrals(private val ctx: Ctx, private val botUsername: () -> String? = {
             """SELECT (f.first AT TIME ZONE 'UTC')::date AS d, count(*)::int AS n FROM (
                    SELECT min(s.created_at) AS first FROM subscriptions s JOIN users u ON u.id=s.user_id
                      JOIN referral_links l ON l.id=u.referral_link_id
-                    WHERE s.source <> 'referral' AND ${scope.where} GROUP BY u.id
+                    WHERE s.source NOT IN ('referral','test') AND ${scope.where} GROUP BY u.id
                ) f WHERE f.first >= ? GROUP BY 1""",
             *scope.args.toTypedArray(), startAt,
         ).associate { (it["d"] as LocalDate) to it.int("n") }
@@ -237,7 +237,7 @@ class Referrals(private val ctx: Ctx, private val botUsername: () -> String? = {
 
     private fun recent(sql: Sql, scope: Scope, from: Instant): List<ReferredUser> = sql.query(
         """SELECT u.email, u.created_at, l.name, $CHANNEL AS channel,
-                  (SELECT count(*) FROM subscriptions s WHERE s.user_id=u.id AND s.source <> 'referral')::int AS purchases,
+                  (SELECT count(*) FROM subscriptions s WHERE s.user_id=u.id AND s.source NOT IN ('referral','test'))::int AS purchases,
                   (SELECT max(s.expires_at) FROM subscriptions s WHERE s.user_id=u.id AND s.status='active') AS pro_until
              FROM users u JOIN referral_links l ON l.id=u.referral_link_id
             WHERE u.created_at >= ? AND ${scope.where} ORDER BY u.created_at DESC LIMIT 50""",

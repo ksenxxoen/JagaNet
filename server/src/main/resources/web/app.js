@@ -710,7 +710,7 @@ async function status(params) {
 
 /* ---------------- admin panel (owners) ---------------- */
 
-const ADMIN_TABS = [["money", "Finance"], ["plans", "Plans"], ["nodes", "Nodes"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"]];
+const ADMIN_TABS = [["money", "Finance"], ["plans", "Plans"], ["nodes", "Nodes"], ["testers", "Test accounts"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"]];
 const payChannel = (k) => ({ web: t("Website"), telegram: "Telegram", app: t("JagaNet app"), apple: "App Store", google: "Google Play", dev: t("Test payments") })[k] || k;
 const NEW_SUB = C1, RENEWAL = C2;
 
@@ -747,6 +747,7 @@ async function admin(params) {
   const top = head(t("Admin panel")) + `<nav class="tabs">${ADMIN_TABS.map(([k, l]) => `<a class="${k === tab ? "on" : ""}" href="#/admin?tab=${k}">${t(l)}</a>`).join("")}</nav>`;
   if (tab === "money") return adminMoney(params, top);
   if (tab === "nodes") { view.innerHTML = top + `<div id="pane"></div>`; return nodesPane(); }
+  if (tab === "testers") { view.innerHTML = top + `<div id="pane"></div>`; return testersPane(); }
   const s = await api("/admin/settings");
   if (!location.hash.startsWith("#/admin")) return;
   view.innerHTML = top + `<div id="pane"></div>`;
@@ -976,6 +977,84 @@ async function nodesPane(command) {
     if (running.length) installTimer = setTimeout(tick, 2000);
   };
   if (running.length) installTimer = setTimeout(tick, 2000);
+}
+
+/**
+ * Rows pasted from a spreadsheet: "name, devices" or "number, name, devices, …" per line,
+ * cells split by tabs (Excel, Google Sheets) or semicolons. Lines without a device count are skipped.
+ */
+function parseTesters(text) {
+  const out = [];
+  for (const line of text.split(/\r?\n/)) {
+    const cells = line.split(line.includes("\t") ? "\t" : ";").map((c) => c.trim());
+    const at = cells.length >= 3 && /^\d+$/.test(cells[0]) ? 1 : 0;
+    const name = cells[at], devices = Number(cells[at + 1]);
+    if (name && Number.isInteger(devices) && devices > 0) out.push({ name, devices });
+  }
+  return out;
+}
+
+/** CSV for Excel: semicolons, UTF-8 with BOM, one key link per column. */
+function testersCsv(list) {
+  const most = Math.max(1, ...list.map((a) => a.keys.length));
+  const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+  const head = [t("Client"), t("Email"), t("Devices"), t("Valid until"), ...Array.from({ length: most }, (_, i) => t("Key {n}", { n: i + 1 }))];
+  const rows = list.map((a) => [a.name, a.email, a.devices, date(localDay(a.expiresAt)), ...a.keys]);
+  return "﻿" + [head, ...rows].map((r) => r.map(q).join(";")).join("\r\n");
+}
+
+async function testersPane() {
+  const pane = document.getElementById("pane");
+  const list = (await api("/admin/test-accounts")).accounts;
+  if (!location.hash.startsWith("#/admin")) return;
+  const links = (a) => a.keys.map((k, i) => `<a href="${h(k)}" target="_blank" rel="noopener">${t("Key {n}", { n: i + 1 })}</a>`).join(" ");
+  pane.innerHTML = `
+  <form class="card adminform" id="tf">
+    <h3>${t("New test accounts")}</h3>
+    <p class="muted">${t("Copy the rows from your table (name and number of devices) and paste them here. Each account gets free access and one key link per device; testers don't need to sign in.")}</p>
+    <div class="fields">
+      <div class="wide"><label for="tr">${t("Rows from the table")}</label><textarea id="tr" rows="8" class="mono" placeholder="Игорь + Таня&#9;5&#10;Леня + Лера&#9;3" required></textarea></div>
+      ${field("td", t("Test length, days"), 30, 'type="number" min="1" max="365" step="1" required')}
+      <div><label>&nbsp;</label><div class="muted" id="tcount">&nbsp;</div></div>
+    </div>
+    <div class="actionsrow"><button class="btn" type="submit">${t("Create accounts")}</button></div>
+    <p class="result" id="tres"></p>
+  </form>
+  <div class="h2row"><h2>${t("Test accounts")}</h2>${list.length ? `<button class="btn secondary" id="tcsv">${t("Download table")}</button>` : ""}</div>
+  <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Client")}</th><th>${t("Email")}</th><th>${t("Devices")}</th><th>${t("Valid until")}</th><th>${t("Keys")}</th><th></th></tr></thead>
+    <tbody>${list.map((a) => `<tr><td><b>${h(a.name)}</b></td><td class="mono">${h(a.email)}</td><td>${a.devices}</td><td>${h(date(localDay(a.expiresAt)))}</td>
+      <td class="wrap">${links(a)}</td><td class="actions"><button class="btn secondary small" data-del="${h(a.id)}">${t("Delete")}</button></td></tr>`).join("")
+      || `<tr><td colspan="6" class="muted">${t("No test accounts yet.")}</td></tr>`}</tbody></table></div>`;
+
+  const ta = document.getElementById("tr"), count = document.getElementById("tcount");
+  ta.oninput = () => {
+    const rows = parseTesters(ta.value);
+    count.textContent = rows.length ? t("{a} accounts, {d} devices", { a: rows.length, d: rows.reduce((n, r) => n + r.devices, 0) }) : "";
+  };
+  const form = document.getElementById("tf");
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    saveWith(form.querySelector("button[type=submit]"), "tres", () => {
+      const accounts = parseTesters(ta.value);
+      if (!accounts.length) throw new Error(t("No rows with a name and a number of devices"));
+      return api("/admin/test-accounts", { method: "POST", body: { accounts, days: Number(val("td")) } });
+    }, () => testersPane());
+  };
+  const csv = document.getElementById("tcsv");
+  if (csv) csv.onclick = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([testersCsv(list)], { type: "text/csv;charset=utf-8" }));
+    a.download = "jaganet-test-accounts.csv";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  for (const b of pane.querySelectorAll("[data-del]")) b.onclick = async () => {
+    const a = list.find((x) => x.id === b.dataset.del);
+    if (!confirm(t("Delete the account of {name} and its keys? The keys stop working.", { name: a.name }))) return;
+    b.disabled = true;
+    try { await api("/admin/test-accounts/" + encodeURIComponent(a.id), { method: "DELETE" }); testersPane(); }
+    catch (x) { b.disabled = false; alert(x.message); }
+  };
 }
 
 async function plansPane(s) {
