@@ -13,7 +13,8 @@
 #
 # Options (environment variables):
 #   OWNER_EMAIL=you@example.com   gets the owner dashboard (default: owner@jaganet.dev)
-#   JAGANET_DOMAIN=vpn.example.com  your own domain instead of <ip>.sslip.io
+#   JAGANET_DOMAIN=vpn.example.com  your own domain instead of <ip>.sslip.io (remembered for later
+#                                 updates; its A record must point at this server, Cloudflare "DNS only")
 #   JAGANET_BRANCH=...            git branch to deploy
 #   Optional, written to /etc/jaganet/env when given (all can be changed later in the admin panel):
 #   SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASSWORD SMTP_FROM SMTP_SECURITY   outgoing e-mail
@@ -47,7 +48,19 @@ getent hosts "$(hostname)" >/dev/null 2>&1 || echo "127.0.1.1 $(hostname)" >> /e
 
 PUBLIC_IP="$(curl -4 -fsS https://api.ipify.org || curl -4 -fsS https://ifconfig.me || true)"
 [ -n "$PUBLIC_IP" ] || fail "Couldn't find this server's public IPv4 address."
-DOMAIN="${JAGANET_DOMAIN:-${PUBLIC_IP//./-}.sslip.io}"
+SSLIP_HOST="${PUBLIC_IP//./-}.sslip.io"
+# A domain given once is remembered (PUBLIC_URL); updates without JAGANET_DOMAIN keep it.
+SAVED_DOMAIN="$(sed -n 's|^PUBLIC_URL=https://\([^/]*\)/*$|\1|p' "$ENV_FILE" 2>/dev/null | grep -vE '\.sslip\.io$' | head -1 || true)"
+DOMAIN="${JAGANET_DOMAIN:-${SAVED_DOMAIN:-$SSLIP_HOST}}"
+DOMAIN="$(printf '%s' "$DOMAIN" | tr 'A-Z' 'a-z' | sed 's|^https\?://||; s|/.*||')"
+if [ "$DOMAIN" != "$SSLIP_HOST" ]; then
+  # The domain must point straight at this server, or no certificate can be issued and every
+  # link breaks. Cloudflare's orange cloud (proxy) hides the server's IP: it has to be grey.
+  RESOLVED="$(getent ahostsv4 "$DOMAIN" 2>/dev/null | awk '{print $1; exit}')"
+  [ "$RESOLVED" = "$PUBLIC_IP" ] || fail "$DOMAIN points to ${RESOLVED:-nothing}, not to this server ($PUBLIC_IP).
+  Add a DNS record: type A, name @ (the domain itself), value $PUBLIC_IP.
+  In Cloudflare set Proxy status to \"DNS only\" (grey cloud). Wait a minute, then run this again."
+fi
 WAN_IF="$(ip -4 route show default | awk '{print $5; exit}')"
 # City and country for the app's "Server location" (best effort).
 LOCATION="$(curl -fsS "https://ipinfo.io/$PUBLIC_IP/json" 2>/dev/null | python3 -c '
@@ -389,11 +402,23 @@ UNIT
 fi
 command -v caddy >/dev/null 2>&1 || fail "Couldn't install Caddy (the HTTPS server)."
 mkdir -p /etc/caddy
+# With a domain, the old <ip>.sslip.io address keeps working too: apps and key links handed out
+# before the domain still point there. www.<domain> redirects when its DNS record exists.
+SITES="$DOMAIN"
+[ "$DOMAIN" = "$SSLIP_HOST" ] || SITES="$DOMAIN, $SSLIP_HOST"
 cat > /etc/caddy/Caddyfile <<EOF
-$DOMAIN {
+$SITES {
 	reverse_proxy 127.0.0.1:4000
 }
 EOF
+if [ "$DOMAIN" != "$SSLIP_HOST" ] && [ "$(getent ahostsv4 "www.$DOMAIN" 2>/dev/null | awk '{print $1; exit}')" = "$PUBLIC_IP" ]; then
+  cat >> /etc/caddy/Caddyfile <<EOF
+
+www.$DOMAIN {
+	redir https://$DOMAIN{uri} permanent
+}
+EOF
+fi
 systemctl enable -q caddy
 systemctl restart caddy
 

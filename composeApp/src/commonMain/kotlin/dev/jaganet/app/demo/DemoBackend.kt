@@ -342,7 +342,7 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
         return ReferralStatsRes(
             period = period, totals = totals, days = days,
             links = ls.map { l ->
-                ReferralLink(l.id, l.name, l.code, l.main, "https://boopvpn.com/r/${l.code}", "https://t.me/BoopVPNBot?start=${l.code}",
+                ReferralLink(l.id, l.name, l.code, l.main, "https://boopvpn.app/r/${l.code}", "https://t.me/BoopVPNBot?start=${l.code}",
                     l.createdAt.toString(), funnel(series(listOf(l), from), cur, monthly))
             },
             sources = sources(ls, from), channels = channels(totals.signups), recent = recent(ls, from),
@@ -522,7 +522,7 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
                 return OrderRes(id(), x.name, OrderStatus.PAID, Format.money(x.priceMinor, x.currency, langOf(req)), null) to OrderRes.serializer()
             }
             method == HttpMethod.Get && path == "referrals" ->
-                return ReferralRes(u.code, u.invited, u.subscribed, 30, u.daysEarned, "https://boopvpn.com/r/${u.code}") to ReferralRes.serializer()
+                return ReferralRes(u.code, u.invited, u.subscribed, 30, u.daysEarned, "https://boopvpn.app/r/${u.code}") to ReferralRes.serializer()
             method == HttpMethod.Get && path == "referrals/stats" -> {
                 val p = periodOf(req.url.parameters["period"])
                 return referralStats(u, p, langOf(req)) to ReferralStatsRes.serializer()
@@ -538,7 +538,7 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
                 if (links.any { it.code == code } || users.any { it.code == code }) err(HttpStatusCode.Conflict, ErrorCode.BAD_REQUEST, "This code is taken")
                 val l = DLink(id(), u.id, name, code, false, now())
                 links += l
-                return ReferralLink(l.id, l.name, l.code, false, "https://boopvpn.com/r/${l.code}", "https://t.me/BoopVPNBot?start=${l.code}", l.createdAt.toString(), Funnel()) to ReferralLink.serializer()
+                return ReferralLink(l.id, l.name, l.code, false, "https://boopvpn.app/r/${l.code}", "https://t.me/BoopVPNBot?start=${l.code}", l.createdAt.toString(), Funnel()) to ReferralLink.serializer()
             }
             method == HttpMethod.Patch && path.startsWith("referrals/links/") -> {
                 val l = links.firstOrNull { it.id == path.removePrefix("referrals/links/") && it.userId == u.id && !it.main && !it.archived }
