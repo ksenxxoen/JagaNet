@@ -358,7 +358,7 @@ curl -fsS http://127.0.0.1:4000/health >/dev/null || { journalctl -u jaganet -n 
 NODE_JSON="$(python3 -c "
 import json, sys
 p, port, key, iface, obf = sys.argv[1:6]
-node = {'endpoint': '$PUBLIC_IP:' + port, 'publicKey': key, 'interface': iface}
+node = {'endpoint': '$PUBLIC_IP:' + port, 'publicIp': '$PUBLIC_IP', 'port': int(port), 'publicKey': key, 'interface': iface}
 if p == 'amneziawg': node['obfuscation'] = json.loads(obf)
 print(json.dumps({p: node}))
 " "$PROTOCOL" "$PORT" "$NODE_PUB" "$IFACE" "$OBFUSCATION_JSON")"
@@ -366,6 +366,11 @@ sudo -u postgres psql -q -d jaganet -v node="$NODE_JSON" -v city="$CITY" -v cc="
 INSERT INTO servers (id, name, city, country_code, subnet, protocols, max_peers)
 VALUES ('node-1', :'city', :'city', :'cc', '10.8.0.0/24', :'node'::jsonb, 250)
 ON CONFLICT (id) DO UPDATE SET protocols = EXCLUDED.protocols, city = EXCLUDED.city, country_code = EXCLUDED.country_code;
+-- A host name set in the admin panel stays in the key files' address.
+UPDATE servers s SET protocols = (
+  SELECT jsonb_object_agg(k, CASE WHEN v ? 'port' THEN v || jsonb_build_object('endpoint', s.endpoint_host || ':' || (v->>'port')) ELSE v END)
+  FROM jsonb_each(s.protocols) AS e(k, v))
+WHERE s.id = 'node-1' AND s.endpoint_host IS NOT NULL;
 SQL
 
 # ------------------------------------------------------------------ HTTPS

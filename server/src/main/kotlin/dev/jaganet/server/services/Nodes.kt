@@ -225,9 +225,17 @@ class Nodes(private val ctx: Ctx) {
         if (protocols.isEmpty()) return
         val updated = JsonObject(protocols.mapValues { (_, v) ->
             val o = v as? JsonObject ?: return@mapValues v
-            val ip = (o["publicIp"] as? JsonPrimitive)?.content ?: return@mapValues v
-            val port = (o["port"] as? JsonPrimitive)?.content ?: return@mapValues v
-            JsonObject(o + ("endpoint" to JsonPrimitive("${s.strOrNull("endpoint_host") ?: ip}:$port")))
+            // The main server's row (written by its installer) may only hold "ip:port": take both
+            // from there and keep them, so the name can be cleared again later.
+            val current = (o["endpoint"] as? JsonPrimitive)?.content
+            val ip = (o["publicIp"] as? JsonPrimitive)?.content
+                ?: current?.substringBeforeLast(':')?.takeIf { IPV4.matches(it) } ?: return@mapValues v
+            val port = (o["port"] as? JsonPrimitive)?.content ?: current?.substringAfterLast(':')?.takeIf { it.toIntOrNull() != null } ?: return@mapValues v
+            JsonObject(o + mapOf(
+                "endpoint" to JsonPrimitive("${s.strOrNull("endpoint_host") ?: ip}:$port"),
+                "publicIp" to JsonPrimitive(ip),
+                "port" to JsonPrimitive(port.toInt()),
+            ))
         })
         sql.exec("UPDATE servers SET protocols=? WHERE id=?", Jsonb(updated.toString()), id)
     }

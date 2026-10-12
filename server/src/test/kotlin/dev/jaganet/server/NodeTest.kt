@@ -206,4 +206,23 @@ class NodeTest {
         assertEquals("BAD_REQUEST", code { owner.moveNodeDevices(id, "n1") })
         assertEquals(2, owner.adminNodes().nodes.single { it.id == id }.peers)
     }
+
+    @Test fun `the main server takes a host name too and can drop it again`() = harness {
+        val owner = signIn("owner@test.dev").api
+        val made = owner.createTestAccounts(dev.jaganet.api.TestAccountsReq(listOf(dev.jaganet.api.TestAccountReq("Igor", 1)))).accounts.single()
+        // As the installer writes it: only "ip:port".
+        services.ctx.db.run {
+            it.exec("UPDATE servers SET protocols = jsonb_set(protocols, '{amneziawg,endpoint}', '\"151.243.177.167:51985\"') WHERE id='n1'")
+        }
+        val raw = b.createClient {}
+        val conf = made.keys[0].substringAfter(cfg.publicUrl.trimEnd('/')) + "/BoopVPN.conf"
+        assertTrue("Endpoint = 151.243.177.167:51985" in raw.get(conf).bodyAsText())
+
+        owner.updateNode("n1", NodeReq("Amsterdam", "Amsterdam", "NL", maxPeers = 5, hostname = "nl1.boopvpn.app"))
+        assertTrue("Endpoint = nl1.boopvpn.app:51985" in raw.get(conf).bodyAsText())
+        assertEquals("151.243.177.167", owner.adminNodes().nodes.single { it.id == "n1" }.publicIp)
+
+        owner.updateNode("n1", NodeReq("Amsterdam", "Amsterdam", "NL", maxPeers = 5))
+        assertTrue("Endpoint = 151.243.177.167:51985" in raw.get(conf).bodyAsText())
+    }
 }

@@ -863,10 +863,10 @@ async function nodesPane(command) {
         ${field("nc", t("City"), v.city, 'required maxlength="60" placeholder="Nuremberg"')}
         ${field("nk", t("Country code"), v.countryCode, 'required maxlength="2" placeholder="DE"')}
         ${field("nm", t("Devices at most"), v.maxPeers, 'type="number" min="1" max="65000" step="1" required')}
-        ${local ? "" : field("nh", t("Host name"), v.hostname, 'maxlength="200" placeholder="de1.vpn.example.com"')}
+        ${field("nh", t("Host name"), v.hostname, 'maxlength="200" placeholder="de1.vpn.example.com"')}
         <div><label for="na">${t("Status")}</label><select id="na"><option value="1" ${v.active ? "selected" : ""}>${t("On")}</option><option value="0" ${v.active ? "" : "selected"}>${t("Off")}</option></select></div>
       </div>
-      ${local ? "" : `<p class="muted small hint">${t("With a host name in your own domain, key files keep working after a move: point the name to the new machine's address.")}</p>`}`;
+      <p class="muted small hint">${t("With a host name in your own domain, key files keep working after a move: point the name to the new machine's address.")}</p>`;
   const nodeBody = () => ({ name: val("nn"), city: val("nc"), countryCode: val("nk").toUpperCase(), maxPeers: Number(val("nm")), active: document.getElementById("na").value === "1", hostname: document.getElementById("nh") ? val("nh") || null : null });
   const install = (id, ssh) => api(`/admin/nodes/${encodeURIComponent(id)}/install`, { method: "POST", body: ssh });
 
