@@ -18,6 +18,6 @@ command -v tcpdump >/dev/null || apt-get install -y -q tcpdump >/dev/null 2>&1
 timeout 40 tcpdump -ni any -c 400 "udp port ${PORT}" 2>/dev/null > /tmp/boop-cap.txt
 IN=$(grep -c "> [0-9.]*\.${PORT}:" /tmp/boop-cap.txt); OUT=$(grep -c " [0-9.]*\.${PORT} >" /tmp/boop-cap.txt)
 echo "packets in: $IN   packets out: $OUT"
-grep "> [0-9.]*\.${PORT}:" /tmp/boop-cap.txt | awk '{print $3}' | sed 's/\.[0-9]*$//' | sort | uniq -c | sort -rn | head -5
+grep "> [0-9.]*\.${PORT}:" /tmp/boop-cap.txt | grep -o "IP [0-9.]* >" | awk '{print $2}' | sed 's/\.[0-9]*$//' | sort | uniq -c | sort -rn | head -5
 echo "== 6. After the test"
 awg show awg0 dump 2>/dev/null | tail -n +2 | awk '{if ($5>0) h++} END {print "peers with handshake:", h+0}'
