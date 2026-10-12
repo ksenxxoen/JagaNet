@@ -1,6 +1,6 @@
 #!/bin/bash
 # Connects to a VPN key like a phone would, from this machine, and reports the result.
-#   curl -fsSL …/client-test.sh | sudo bash -s -- https://<site>/k/<token>
+#   curl -fsSL …/client-test.sh | sudo bash -s -- <key link https://<site>/k/<token> or a vpn:// key>
 # Needs amneziawg-go and awg (any Boop server or node has them). Changes nothing permanent:
 # the test interface lives in its own network namespace and is removed at the end.
 set -u
@@ -10,7 +10,12 @@ cleanup() { [ -n "$PID" ] && kill "$PID" 2>/dev/null; ip netns del $NS 2>/dev/nu
 cleanup; trap cleanup EXIT
 DIR=$(mktemp -d)
 
-curl -fsS "${LINK%/}/BoopVPN.conf" -o "$DIR/full.conf" || { echo "Couldn't download the key"; exit 1; }
+case "$LINK" in
+  vpn://*) # an AmneziaVPN key: base64url(4-byte length + zlib(config))
+    python3 -c 'import sys, zlib, base64; v = sys.argv[1][6:]; sys.stdout.write(zlib.decompress(base64.urlsafe_b64decode(v + "=" * (-len(v) % 4))[4:]).decode())' \
+      "$LINK" > "$DIR/full.conf" || { echo "Couldn't read the vpn:// key"; exit 1; } ;;
+  *) curl -fsS "${LINK%/}/BoopVPN.conf" -o "$DIR/full.conf" || { echo "Couldn't download the key"; exit 1; } ;;
+esac
 ADDR=$(sed -n 's/^Address *= *//p' "$DIR/full.conf" | cut -d, -f1)
 EP=$(sed -n 's/^Endpoint *= *//p' "$DIR/full.conf")
 echo "key: address $ADDR, server $EP"
