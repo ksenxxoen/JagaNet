@@ -1,5 +1,6 @@
 package dev.jaganet.server.services
 
+import dev.jaganet.api.KeyActivity
 import dev.jaganet.api.TestAccount
 import dev.jaganet.api.TestAccountsReq
 import dev.jaganet.api.ErrorCode
@@ -25,10 +26,20 @@ class TestAccounts(private val ctx: Ctx, private val keys: Keys, private val tun
         return rows.map { r ->
             val id = r.str("id")
             val list = keys.list(id)
+            val stats = ctx.db.run { sql ->
+                sql.query(
+                    """SELECT d.id, t.last_seen_at,
+                         coalesce((SELECT sum(s.rx_bytes) FROM traffic_samples s WHERE s.device_id = d.id), 0)::bigint AS rx,
+                         coalesce((SELECT sum(s.tx_bytes) FROM traffic_samples s WHERE s.device_id = d.id), 0)::bigint AS tx
+                       FROM devices d LEFT JOIN tunnels t ON t.device_id = d.id WHERE d.user_id = ?::uuid""",
+                    id,
+                ).associate { it.str("id") to KeyActivity(it.instantOrNull("last_seen_at")?.toString(), it.long("rx"), it.long("tx")) }
+            }
             TestAccount(
                 id, r.strOrNull("note") ?: "", r.str("email"), r.int("device_limit"), r.instant("expires_at").toString(),
                 list.map { it.pageUrl }, r.instant("created_at").toString(),
                 list.mapNotNull { k -> keys.config(id, k.id)?.let { Keys.vpnLink(it.text) } },
+                list.map { stats[it.id] ?: KeyActivity() },
             )
         }
     }

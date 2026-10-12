@@ -64,6 +64,7 @@ object AmneziaWG {
         "KeepaliveTimeout", "MaxHandshakeAttempts", "RandomTrailers", "DisableCookies",
     )
     val KEYS = SERVER_SIDE + CLIENT_SIDE
+    private val OPTIONAL_ZERO = setOf("S3", "S4")
 
     /** Returned in TunnelConfig.params. */
     @Serializable
@@ -92,7 +93,9 @@ object AmneziaWG {
             appendLine("Address = $address")
             if (dns.isNotEmpty()) appendLine("DNS = ${dns.joinToString(", ")}")
             appendLine("MTU = $mtu")
-            KEYS.filter { it in p.obfuscation }.forEach { appendLine("$it = ${p.obfuscation[it]}") }
+            // Empty values and zero S3/S4 (the defaults) are left out: older AmneziaWG apps don't know those keys.
+            KEYS.filter { k -> p.obfuscation[k].let { v -> !v.isNullOrBlank() && !(k in OPTIONAL_ZERO && v.trim() == "0") } }
+                .forEach { appendLine("$it = ${p.obfuscation[it]}") }
             extraInterfaceLines.forEach { appendLine(it) }
             appendLine()
             appendLine("[Peer]")

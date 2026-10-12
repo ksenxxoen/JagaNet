@@ -222,4 +222,8 @@ internal val adminWebStrings: List<S> = listOf(
     S("Delete the account of {name} and its keys? The keys stop working.", "Удалить аккаунт «{name}» и его ключи? Ключи перестанут работать.", "Konto von {name} und seine Schlüssel löschen? Die Schlüssel funktionieren dann nicht mehr."),
     S("AmneziaVPN key {n}", "Ключ AmneziaVPN {n}", "AmneziaVPN-Schlüssel {n}"),
     S("Copy key for AmneziaVPN", "Скопировать ключ для AmneziaVPN", "Schlüssel für AmneziaVPN kopieren"),
+    S("never connected", "не подключался", "nie verbunden"),
+    S("Connected", "Подключались", "Verbunden"),
+    S("{a} of {b}", "{a} из {b}", "{a} von {b}"),
+    S("Next to each key is the last time it reached the server and the data used. \"Never connected\" means the device never got through to the server. The key wasn't added, the app can't do AmneziaWG (the plain WireGuard app can't), or the network blocks it.", "Рядом с каждым ключом видно, когда он последний раз связывался с сервером и сколько трафика использовал. «Не подключался» значит, что устройство ни разу не достучалось до сервера. Ключ не добавлен, приложение не умеет AmneziaWG (обычный WireGuard не умеет) или сеть его блокирует.", "Neben jedem Schlüssel steht, wann er zuletzt den Server erreicht hat und wie viele Daten er genutzt hat. „Nie verbunden“ heißt, das Gerät ist nie bis zum Server durchgekommen. Der Schlüssel wurde nicht hinzugefügt, die App kann kein AmneziaWG (die normale WireGuard-App kann es nicht) oder das Netz blockiert es."),
 )

@@ -19,6 +19,7 @@ class TestAccountsTest {
         assertEquals(listOf(2, 1), made.map { it.keys.size })
         assertEquals(listOf(2, 1), made.map { it.vpnKeys.size })
         assertTrue(made[0].vpnKeys.all { it.startsWith("vpn://") })
+        assertEquals(listOf(null, null), made[0].activity.map { it.lastSeenAt }) // nobody connected yet
         assertTrue(made.all { it.email.matches(Regex("^test-[a-z0-9]{8}@jaganet\\.invalid$")) }, made.toString())
         assertEquals(clock.plusSeconds(14 * 86400L).toString(), made[0].expiresAt)
         // The key pages work.
@@ -58,5 +59,16 @@ class VpnLinkTest {
         val out = ByteArray(4096)
         val n = inflater.inflate(out)
         assertEquals(conf, String(out, 0, n))
+    }
+}
+
+class QuickConfigTest {
+    @Test fun `zero S3 and S4 and empty values stay out of client configs`() {
+        val p = dev.jaganet.api.AmneziaWG.ServerParams("pub", "1.2.3.4:51821", listOf("0.0.0.0/0"), 25, mapOf("Jc" to "7", "S1" to "10", "S3" to "0", "S4" to "0", "I1" to ""))
+        val text = dev.jaganet.api.AmneziaWG.quickConfig("priv", "10.8.0.2/32", listOf("1.1.1.1"), 1280, p)
+        assertTrue("Jc = 7" in text && "S1 = 10" in text, text)
+        assertTrue("S3" !in text && "S4" !in text && "I1" !in text, text)
+        val q = p.copy(obfuscation = mapOf("S3" to "20"))
+        assertTrue("S3 = 20" in dev.jaganet.api.AmneziaWG.quickConfig("priv", "10.8.0.2/32", emptyList(), 1280, q))
     }
 }

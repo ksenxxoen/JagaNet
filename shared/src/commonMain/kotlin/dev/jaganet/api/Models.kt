@@ -808,6 +808,16 @@ data class TestAccount(
     val createdAt: String,
     /** The same keys as AmneziaVPN "vpn://" text, pasted in the app. */
     val vpnKeys: List<String> = emptyList(),
+    /** Per key, in the same order: has it ever reached the server, and how much it used. */
+    val activity: List<KeyActivity> = emptyList(),
+)
+
+@Serializable
+data class KeyActivity(
+    /** Last handshake with the server; null = this key never connected. */
+    val lastSeenAt: String? = null,
+    val rxBytes: Long = 0,
+    val txBytes: Long = 0,
 )
 
 @Serializable

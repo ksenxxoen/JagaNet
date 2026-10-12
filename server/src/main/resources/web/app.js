@@ -1009,8 +1009,14 @@ async function testersPane() {
   const pane = document.getElementById("pane");
   const list = (await api("/admin/test-accounts")).accounts;
   if (!location.hash.startsWith("#/admin")) return;
+  const today = localDay(new Date().toISOString());
+  const when = (iso) => (localDay(iso) === today ? clock(iso) : `${shortDate(localDay(iso))} ${clock(iso)}`);
+  const act = (x) => !x ? "" : !x.lastSeenAt ? `<span class="warn">${t("never connected")}</span>`
+    : `<span class="muted">${h(when(x.lastSeenAt))}, ${h(bytes(x.rxBytes + x.txBytes))}</span>`;
   const links = (a) => a.keys.map((k, i) => `<a href="${h(k)}" target="_blank" rel="noopener">${t("Key {n}", { n: i + 1 })}</a>`
-    + (a.vpnKeys?.[i] ? ` <button class="link" type="button" data-copy="${h(a.vpnKeys[i])}" title="${h(t("Copy key for AmneziaVPN"))}">vpn://</button>` : "")).join("<br>");
+    + (a.vpnKeys?.[i] ? ` <button class="link" type="button" data-copy="${h(a.vpnKeys[i])}" title="${h(t("Copy key for AmneziaVPN"))}">vpn://</button>` : "")
+    + ` ${act(a.activity?.[i])}`).join("<br>");
+  const used = (a) => (a.activity || []).filter((x) => x.lastSeenAt).length;
   pane.innerHTML = `
   <form class="card adminform" id="tf">
     <h3>${t("New test accounts")}</h3>
@@ -1024,10 +1030,12 @@ async function testersPane() {
     <p class="result" id="tres"></p>
   </form>
   <div class="h2row"><h2>${t("Test accounts")}</h2>${list.length ? `<button class="btn secondary" id="tcsv">${t("Download table")}</button>` : ""}</div>
-  <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Client")}</th><th>${t("Email")}</th><th>${t("Devices")}</th><th>${t("Valid until")}</th><th>${t("Keys")}</th><th></th></tr></thead>
+  <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Client")}</th><th>${t("Email")}</th><th>${t("Devices")}</th><th>${t("Valid until")}</th><th>${t("Connected")}</th><th>${t("Keys")}</th><th></th></tr></thead>
     <tbody>${list.map((a) => `<tr><td><b>${h(a.name)}</b></td><td class="mono">${h(a.email)}</td><td>${a.devices}</td><td>${h(date(localDay(a.expiresAt)))}</td>
+      <td>${used(a) === 0 ? `<span class="warn">${t("{a} of {b}", { a: 0, b: a.keys.length })}</span>` : t("{a} of {b}", { a: used(a), b: a.keys.length })}</td>
       <td class="wrap">${links(a)}</td><td class="actions"><button class="btn secondary small" data-del="${h(a.id)}">${t("Delete")}</button></td></tr>`).join("")
-      || `<tr><td colspan="6" class="muted">${t("No test accounts yet.")}</td></tr>`}</tbody></table></div>`;
+      || `<tr><td colspan="7" class="muted">${t("No test accounts yet.")}</td></tr>`}</tbody></table></div>
+  ${list.length ? `<p class="muted small hint">${t("Next to each key is the last time it reached the server and the data used. \"Never connected\" means the device never got through to the server. The key wasn't added, the app can't do AmneziaWG (the plain WireGuard app can't), or the network blocks it.")}</p>` : ""}`;
 
   const ta = document.getElementById("tr"), count = document.getElementById("tcount");
   ta.oninput = () => {
