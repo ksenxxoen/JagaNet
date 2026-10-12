@@ -822,3 +822,10 @@ data class KeyActivity(
 
 @Serializable
 data class TestAccountsRes(val accounts: List<TestAccount>)
+
+/** Moves every device of a node to another node (e.g. when the node's address is blocked). */
+@Serializable
+data class MoveDevicesReq(val to: String)
+
+@Serializable
+data class MoveDevicesRes(val moved: Int)

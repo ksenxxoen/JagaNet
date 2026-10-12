@@ -139,4 +139,6 @@ internal val serverStrings: List<S> = listOf(
     S("Account not found", "Аккаунт не найден", "Konto nicht gefunden"),
     S("Not enough room on the VPN servers: {free} free places, {need} needed", "На VPN-серверах не хватает места. Свободно {free}, нужно {need}", "Nicht genug Platz auf den VPN-Servern. Frei sind {free}, gebraucht {need}"),
     S("Enter an address", "Введите адрес", "Gib eine Adresse ein"),
+    S("Choose another node", "Выберите другую ноду", "Wähle einen anderen Knoten"),
+    S("Not enough room on {name}: {free} free places, {need} needed", "На «{name}» не хватает места. Свободно {free}, нужно {need}", "Nicht genug Platz auf {name}. Frei sind {free}, gebraucht {need}"),
 )

@@ -84,6 +84,44 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         return n
     }
 
+    /**
+     * Moves every device of node [fromId] to node [toId]: a new address there, the peer added
+     * there and removed here. Key links then give the new node's settings (devices with key
+     * files add their key again; the JagaNet app follows on its next connect). All or nothing.
+     */
+    suspend fun moveDevices(fromId: String, toId: String): Int {
+        if (fromId == toId) throw badRequest("Choose another node")
+        val moved = ctx.db.tx { sql ->
+            val from = sql.one("SELECT * FROM servers WHERE id=?", fromId) ?: throw notFound("Node not found")
+            val to = sql.one("SELECT * FROM servers WHERE id=?", toId) ?: throw notFound("Node not found")
+            val tunnels = sql.query("SELECT * FROM tunnels WHERE server_id=? ORDER BY created_at FOR UPDATE", fromId)
+            val used = sql.query("SELECT address FROM tunnels WHERE server_id=?", toId).map { it.str("address") }.toMutableList()
+            val free = to.int("max_peers") - used.size
+            if (tunnels.size > free) {
+                throw AppError(400, ErrorCode.BAD_REQUEST, "Not enough room on {name}: {free} free places, {need} needed", mapOf("name" to to.str("name"), "free" to maxOf(free, 0), "need" to tunnels.size))
+            }
+            for (proto in tunnels.map { it.str("protocol") }.distinct()) if (proto !in to.json("protocols")) {
+                throw AppError(400, ErrorCode.UNSUPPORTED_PROTOCOL, "{server} does not offer {protocol}", mapOf("server" to to.str("name"), "protocol" to proto))
+            }
+            for (t in tunnels) {
+                val proto = t.str("protocol")
+                val driver = driver(proto)
+                val address = Ipam.allocate(to.str("subnet"), used) ?: throw AppError(503, ErrorCode.SERVER_FULL, "Server is full")
+                used += address
+                driver.addPeer(to.node(proto), t.str("device_id"), address, t.json("client_params"))
+                runCatching { driver.removePeer(from.node(proto), t.str("peer_key")) }
+                sql.exec(
+                    "UPDATE tunnels SET server_id=?, address=?, last_rx=0, last_tx=0 WHERE device_id=?::uuid",
+                    toId, address, t.str("device_id"),
+                )
+            }
+            tunnels.size
+        }
+        ctx.nodeHub.changed(fromId)
+        ctx.nodeHub.changed(toId)
+        return moved
+    }
+
     suspend fun defaultProtocol(): String? = servers().flatMap { it.protocols }.toSet().let { offered -> ctx.drivers.ids().firstOrNull { it in offered } }
 
     suspend fun provisionFor(userId: String, deviceId: String, req: TunnelProvisionReq): TunnelConfig {

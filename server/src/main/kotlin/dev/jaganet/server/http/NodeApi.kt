@@ -1,6 +1,8 @@
 package dev.jaganet.server.http
 
 import dev.jaganet.api.AdminNodesRes
+import dev.jaganet.api.MoveDevicesReq
+import dev.jaganet.api.MoveDevicesRes
 import dev.jaganet.api.NodeReq
 import dev.jaganet.api.NodeSshReq
 import dev.jaganet.api.OkRes
@@ -38,6 +40,10 @@ fun Route.nodeApi(s: Services) {
     put("/admin/nodes/{id}") { call.owner(); call.respond(s.nodes.update(call.parameters["id"]!!, call.receive<NodeReq>())) }
     post("/admin/nodes/{id}/token") { call.owner(); call.respond(s.nodes.newToken(call.parameters["id"]!!)) }
     post("/admin/nodes/{id}/install") { call.owner(); call.respond(s.nodes.startInstall(call.parameters["id"]!!, call.receive<NodeSshReq>())) }
+    post("/admin/nodes/{id}/move-devices") {
+        call.owner()
+        call.respond(MoveDevicesRes(s.tunnels.moveDevices(call.parameters["id"]!!, call.receive<MoveDevicesReq>().to)))
+    }
     get("/admin/nodes/{id}/install") { call.owner(); call.respond(s.nodes.install(call.parameters["id"]!!)) }
 }
 

@@ -839,7 +839,7 @@ async function nodesPane(command) {
     <td>${stateOf(x)}<div class="muted">${x.lastReportAt ? h(seen(x.lastReportAt)) : "&nbsp;"}</div></td><td>${x.peers} / ${x.maxPeers}<div class="muted">${t("{n} online", { n: x.online })}</div></td>
     <td><span class="mono">${h(x.endpoint || "-")}</span>${x.hostname && x.publicIp ? `<div class="muted mono">${h(x.publicIp)}</div>` : ""}</td>
     <td>${x.cpu == null ? "-" : percent(x.cpu * 100)}<div class="muted">${loadNote(x) || "&nbsp;"}</div></td>
-    <td class="actions">${x.remote ? `<button class="btn secondary small" data-edit="${h(x.id)}">${t("Edit")}</button>` : ""}</td></tr>`;
+    <td class="actions"><button class="btn secondary small" data-edit="${h(x.id)}">${t("Edit")}</button></td></tr>`;
   pane.innerHTML = `
   ${shown.map((n, k) => installCard(n, installs[k])).join("")}
   ${command ? `<div class="card section"><h3>${t("Install command")}</h3>
@@ -850,28 +850,29 @@ async function nodesPane(command) {
     <th>${t("Address")}</th><th>${t("Processor")}</th><th></th></tr></thead>
     <tbody>${list.map(row).join("")}</tbody></table></div>
   <form class="card adminform section" id="nf" hidden></form>
-  <form class="card adminform section" id="mf" hidden></form>`;
+  <form class="card adminform section" id="mf" hidden></form>
+  <form class="card adminform section" id="vf" hidden></form>`;
   if (command) document.getElementById("copycmd").onclick = (e) => copyText(e.target, command);
   for (const pre of pane.querySelectorAll("pre.log")) pre.scrollTop = pre.scrollHeight;
 
-  const nf = document.getElementById("nf"), mf = document.getElementById("mf");
-  const formOpen = () => !nf.hidden || !mf.hidden;
-  const nodeFields = (v) => `
+  const nf = document.getElementById("nf"), mf = document.getElementById("mf"), vf = document.getElementById("vf");
+  const formOpen = () => !nf.hidden || !mf.hidden || !vf.hidden;
+  const nodeFields = (v, local) => `
       <div class="fields">
         ${field("nn", t("Name"), v.name, 'required maxlength="60" placeholder="Germany 1"')}
         ${field("nc", t("City"), v.city, 'required maxlength="60" placeholder="Nuremberg"')}
         ${field("nk", t("Country code"), v.countryCode, 'required maxlength="2" placeholder="DE"')}
         ${field("nm", t("Devices at most"), v.maxPeers, 'type="number" min="1" max="65000" step="1" required')}
-        ${field("nh", t("Host name"), v.hostname, 'maxlength="200" placeholder="de1.vpn.example.com"')}
+        ${local ? "" : field("nh", t("Host name"), v.hostname, 'maxlength="200" placeholder="de1.vpn.example.com"')}
         <div><label for="na">${t("Status")}</label><select id="na"><option value="1" ${v.active ? "selected" : ""}>${t("On")}</option><option value="0" ${v.active ? "" : "selected"}>${t("Off")}</option></select></div>
       </div>
-      <p class="muted small hint">${t("With a host name in your own domain, key files keep working after a move: point the name to the new machine's address.")}</p>`;
-  const nodeBody = () => ({ name: val("nn"), city: val("nc"), countryCode: val("nk").toUpperCase(), maxPeers: Number(val("nm")), active: document.getElementById("na").value === "1", hostname: val("nh") || null });
+      ${local ? "" : `<p class="muted small hint">${t("With a host name in your own domain, key files keep working after a move: point the name to the new machine's address.")}</p>`}`;
+  const nodeBody = () => ({ name: val("nn"), city: val("nc"), countryCode: val("nk").toUpperCase(), maxPeers: Number(val("nm")), active: document.getElementById("na").value === "1", hostname: document.getElementById("nh") ? val("nh") || null : null });
   const install = (id, ssh) => api(`/admin/nodes/${encodeURIComponent(id)}/install`, { method: "POST", body: ssh });
 
   // New node: the node's details and, optionally, the server to install it on.
   const openNew = () => {
-    mf.hidden = true; nf.hidden = false;
+    mf.hidden = true; vf.hidden = true; nf.hidden = false;
     nf.innerHTML = `<h3>${t("New node")}</h3>${nodeFields({ name: "", city: "", countryCode: "", maxPeers: 250, active: true, hostname: "" })}
       <h4>${t("Server")}</h4>${sshFields()}
       <div class="actionsrow"><button class="btn" type="submit">${t("Create and install")}</button><button class="btn secondary" type="button" id="ncancel">${t("Cancel")}</button>
@@ -912,28 +913,43 @@ async function nodesPane(command) {
 
   // A node's details, and moving it to another server.
   const openEdit = (x, host) => {
-    nf.hidden = false; mf.hidden = false;
-    nf.innerHTML = `<h3>${t("Edit node")}</h3>${nodeFields(x)}
+    nf.hidden = false; mf.hidden = !x.remote;
+    nf.innerHTML = `<h3>${t("Edit node")}</h3>${nodeFields(x, !x.remote)}
       <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button><button class="btn secondary" type="button" id="ncancel">${t("Cancel")}</button></div>
       <p class="result" id="nres"></p>`;
     const used = x.state !== "waiting";
-    mf.innerHTML = `<h3>${used ? t("Move to another server") : t("Install on a server")}</h3>
+    if (x.remote) mf.innerHTML = `<h3>${used ? t("Move to another server") : t("Install on a server")}</h3>
       ${used ? `<p class="muted">${t("The node keeps its key, settings and devices. The current machine stops serving it.")}</p>` : ""}
       ${sshFields(host || "")}
       <div class="actionsrow"><button class="btn" type="submit">${t("Install")}</button>
         <button class="btn secondary" type="button" id="nmove">${t("Show the command instead")}</button></div>
       <p class="result" id="mres"></p>`;
-    document.getElementById("ncancel").onclick = () => { nf.hidden = true; mf.hidden = true; };
+    document.getElementById("ncancel").onclick = () => { nf.hidden = true; mf.hidden = true; vf.hidden = true; };
+    // All devices of this node to another one (its address is blocked, it is retired…).
+    const targets = list.filter((n) => n.id !== x.id && n.active && n.protocols.length);
+    vf.hidden = false;
+    vf.innerHTML = `<h3>${t("Move devices")}</h3>
+      <p class="muted">${t("{n} devices on this node. Key links switch to the chosen node at once: people with key files add their key again from the same link, the JagaNet app follows on its next connect.", { n: x.peers })}</p>
+      ${targets.length ? `<div class="formrow two"><select id="vt">${targets.map((n) => `<option value="${h(n.id)}">${h(n.name)}, ${h(n.city)} (${n.peers} / ${n.maxPeers})</option>`).join("")}</select>
+        <button class="btn" type="submit" ${x.peers ? "" : "disabled"}>${t("Move all devices")}</button></div>` : `<p class="muted">${t("There is no other working node to move them to.")}</p>`}
+      <p class="result" id="vres"></p>`;
+    vf.onsubmit = (e) => {
+      e.preventDefault();
+      const to = targets.find((n) => n.id === document.getElementById("vt").value);
+      if (!confirm(t("Move all {n} devices of {from} to {to}?", { n: x.peers, from: x.name, to: to.name }))) return;
+      saveWith(vf.querySelector("button[type=submit]"), "vres", () => api(`/admin/nodes/${encodeURIComponent(x.id)}/move-devices`, { method: "POST", body: { to: to.id } }), () => nodesPane());
+    };
     nf.onsubmit = (e) => {
       e.preventDefault();
       saveWith(nf.querySelector("button[type=submit]"), "nres", () => api("/admin/nodes/" + encodeURIComponent(x.id), { method: "PUT", body: nodeBody() }), () => nodesPane());
     };
+    if (!x.remote) mf.innerHTML = "";
     mf.onsubmit = (e) => {
       e.preventDefault();
       if (used && !confirm(t("Move the node to this server? The current machine stops serving it."))) return;
       saveWith(mf.querySelector("button[type=submit]"), "mres", () => install(x.id, sshBody()), () => nodesPane());
     };
-    document.getElementById("nmove").onclick = (e) => {
+    if (x.remote) document.getElementById("nmove").onclick = (e) => {
       if (!confirm(t("A new install command is made and the old one stops working. Run it on the new machine: the node keeps its key, settings and devices."))) return;
       saveWith(e.target, "mres", () => api(`/admin/nodes/${encodeURIComponent(x.id)}/token`, { method: "POST" }), (r) => nodesPane(r.command));
     };

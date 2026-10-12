@@ -91,12 +91,18 @@ class Keys(private val ctx: Ctx, private val tunnels: Tunnels) {
         // The node's current settings (port, obfuscation profile), not the ones from the day
         // the key was made: after a node changes them, importing the key again is enough.
         val stored = Protocols.decode<TunnelConfig>(r.json("config"))
-        val t = sql.one("SELECT server_id, protocol FROM tunnels WHERE device_id=?::uuid", r.str("device_id"))
+        val t = sql.one("SELECT server_id, protocol, address FROM tunnels WHERE device_id=?::uuid", r.str("device_id"))
         val server = t?.let { sql.one("SELECT * FROM servers WHERE id=?", it.str("server_id")) }
         val current = if (t != null && server != null && t.str("protocol") == stored.protocol)
             ctx.drivers[stored.protocol]?.currentParams(server.node(stored.protocol))
         else null
-        r to (current?.let { stored.copy(params = it, mtu = server!!.int("mtu"), dns = server.strings("dns")) } ?: stored)
+        // The device may have moved to another node: its address and location there.
+        r to (current?.let {
+            stored.copy(
+                params = it, mtu = server!!.int("mtu"), dns = server.strings("dns"), serverId = server.str("id"),
+                address = "${t!!.str("address")}/32", location = "${server.str("city")}, ${server.str("country_code").trim()}",
+            )
+        } ?: stored)
     }?.let { (r, cfg) ->
         KeyConfig(r.str("name"), cfg.location, cfg.protocol, configText(decrypt(r.str("private_key_enc")), cfg))
     }

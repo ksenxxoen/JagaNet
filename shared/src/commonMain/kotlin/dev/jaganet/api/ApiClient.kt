@@ -120,6 +120,7 @@ class ApiClient(
     suspend fun newNodeToken(id: String): NodeInstallRes = post("admin/nodes/$id/token", OkRes())
     suspend fun installNode(id: String, req: NodeSshReq): NodeInstall = post("admin/nodes/$id/install", req)
     suspend fun nodeInstall(id: String): NodeInstall = get("admin/nodes/$id/install")
+    suspend fun moveNodeDevices(id: String, to: String): MoveDevicesRes = post("admin/nodes/$id/move-devices", MoveDevicesReq(to))
     suspend fun testAccounts(): TestAccountsRes = get("admin/test-accounts")
     suspend fun createTestAccounts(req: TestAccountsReq): TestAccountsRes = post("admin/test-accounts", req)
     suspend fun deleteTestAccount(id: String): OkRes = delete("admin/test-accounts/$id")

@@ -15,6 +15,7 @@ import dev.jaganet.server.services.NodeReportReq
 import dev.jaganet.server.services.NodeSystem
 import dev.jaganet.server.services.RemoteFailure
 import dev.jaganet.server.services.RemoteRunner
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -176,5 +177,33 @@ class NodeTest {
         assertEquals("BAD_REQUEST", code { owner.installNode(id, NodeSshReq("1.2.3.4")) })
         assertEquals("NOT_FOUND", code { owner.installNode("n1", NodeSshReq("1.2.3.4", password = "pw")) }) // the main server's own VPN
         assertEquals("FORBIDDEN", code { signIn("a@example.com").api.installNode(id, NodeSshReq("1.2.3.4", password = "pw")) })
+    }
+
+    @Test fun `all devices of a blocked node move to another node and their key links follow`() = harness {
+        val owner = signIn("owner@test.dev").api
+        val made = owner.createTestAccounts(dev.jaganet.api.TestAccountsReq(listOf(dev.jaganet.api.TestAccountReq("Igor", 2)))).accounts.single()
+        val id = owner.createNode(NodeReq("Germany 1", "Nuremberg", "DE")).node.id
+        services.nodes.runner = RemoteRunner { target, _, env, _ ->
+            services.nodes.register(env["NODE_TOKEN"], NodeRegisterReq(target.host, 40701, "amneziawg")); 0
+        }
+        owner.installNode(id, NodeSshReq("45.148.118.88", password = "pw"))
+        services.nodes.installs[id]?.join()
+        val raw = b.createClient {}
+        val conf = made.keys[0].substringAfter(cfg.publicUrl.trimEnd('/')) + "/JagaNet.conf"
+        assertTrue("Endpoint = n1:51821" in raw.get(conf).bodyAsText())
+
+        assertEquals("BAD_REQUEST", code { owner.moveNodeDevices("n1", "n1") })
+        assertEquals(2, owner.moveNodeDevices("n1", id).moved)
+        val nodes = owner.adminNodes().nodes
+        assertEquals(0, nodes.single { it.id == "n1" }.peers)
+        assertEquals(2, nodes.single { it.id == id }.peers)
+        val after = raw.get(conf).bodyAsText()
+        assertTrue("Endpoint = 45.148.118.88:40701" in after && "Address = 10.8.0.2/32" in after && "HeaderProtectionKey" in after, after)
+        assertEquals(2, services.ctx.db.run { it.one("SELECT count(*)::int AS n FROM tunnels WHERE server_id=?", id)!!.int("n") })
+
+        // Not enough room: nothing moves.
+        owner.updateNode("n1", NodeReq("Node 1", "Testville", "DE", maxPeers = 1))
+        assertEquals("BAD_REQUEST", code { owner.moveNodeDevices(id, "n1") })
+        assertEquals(2, owner.adminNodes().nodes.single { it.id == id }.peers)
     }
 }
