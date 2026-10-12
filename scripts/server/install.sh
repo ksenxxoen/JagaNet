@@ -196,7 +196,11 @@ conf, profile, newkey, addr, port, subnet, wan, proto = sys.argv[1:9]
 old = open(conf).read() if os.path.exists(conf) else ""
 m = re.search(r'^PrivateKey\s*=\s*(\S+)', old, re.M)
 priv = m.group(1) if m else newkey            # the node's identity never changes
-peers = old[old.index("[Peer]"):] if "[Peer]" in old else ""
+# Peers as saved by the old interface, with only the keys every version understands (the old
+# kernel module wrote "AdvancedSecurity = off" per peer, which amneziawg-go rejects).
+keep = ("PublicKey", "PresharedKey", "AllowedIPs", "Endpoint", "PersistentKeepalive")
+peers = "\n".join(l for l in (old[old.index("[Peer]"):] if "[Peer]" in old else "").splitlines()
+                  if not l.strip() or l.strip() == "[Peer]" or l.split("=")[0].strip() in keep) + "\n"
 lines = ["[Interface]", f"PrivateKey = {priv}", f"Address = {addr}", f"ListenPort = {port}",
          # Peers are added by the backend at runtime; SaveConfig keeps them across clean restarts.
          "SaveConfig = true",
@@ -221,6 +225,8 @@ if [ -f "/etc/systemd/system/awg-quick@$IFACE.service.d/jaganet.conf" ]; then
   rm -rf "/etc/systemd/system/awg-quick@$IFACE.service.d"
   systemctl daemon-reload
 fi
+# A file saved by the old kernel module has "AdvancedSecurity" per peer: amneziawg-go rejects it.
+sed -i '/^AdvancedSecurity[[:space:]]*=/d' "$CONF"
 systemctl enable -q "$TOOL-quick@$IFACE"
 systemctl restart "$TOOL-quick@$IFACE" || {
   journalctl -u "$TOOL-quick@$IFACE" -n 40 --no-pager -o cat
