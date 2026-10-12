@@ -15,7 +15,9 @@ trap 'fail "Stopped at line $LINENO: $BASH_COMMAND"' ERR
 [ "$(id -u)" = 0 ] || fail "Run this as root (or with sudo)."
 [ -n "${JAGANET_URL:-}" ] && [ -n "${NODE_TOKEN:-}" ] || fail "JAGANET_URL and NODE_TOKEN are missing. Copy the whole command from the admin panel."
 JAGANET_URL="${JAGANET_URL%/}"
-PORT="${NODE_PORT:-51821}"
+# A random UDP port (not WireGuard's well-known 51820/51821). A node moving to a new machine
+# keeps its old port: the main server answers the registration with it.
+PORT="${NODE_PORT:-$(shuf -i 20000-50000 -n 1)}"
 NODE_DIR=/etc/jaganet-node
 APP_DIR=/opt/jaganet-node
 mkdir -p "$NODE_DIR" "$APP_DIR" && chmod 700 "$NODE_DIR"
@@ -36,17 +38,14 @@ note "Address $PUBLIC_IP, network interface $WAN_IF"
 # Main server reachable and the token valid? (Before spending minutes on the build.)
 curl -fsS --max-time 15 "$JAGANET_URL/health" >/dev/null || fail "Can't reach $JAGANET_URL from this server."
 
-step "Installing the VPN (AmneziaWG)"
+step "Installing the VPN (AmneziaWG 3.1)"
 PROTOCOL=amneziawg
-if ! command -v awg >/dev/null 2>&1 || ! modprobe amneziawg 2>/dev/null; then
-  add-apt-repository -y ppa:amnezia/ppa >/dev/null 2>&1 || true
-  apt-get update -q >/dev/null || true
-  apt-get install -y -q amneziawg-tools >/dev/null 2>&1 || true
-  apt-get install -y -q amneziawg >/dev/null 2>&1 || true
-fi
+# AmneziaWG 3.1 gets through mobile networks that cut older AmneziaWG; it needs current
+# amneziawg-tools and amneziawg-go, built from source (the PPA kernel module lags behind).
 GO_DIR="$APP_DIR/go"
-build_awg_userspace() {
-  apt-get install -y -q build-essential >/dev/null
+AWG_STAMP="$APP_DIR/awg-userspace.txt"
+build_awg_userspace() { # builds in a temp dir; installs only if everything built
+  apt-get install -y -q build-essential >/dev/null || return 1
   case "$(uname -m)" in x86_64) GOARCH=amd64 ;; aarch64) GOARCH=arm64 ;; *) return 1 ;; esac
   # Small servers need swap to compile.
   MEM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
@@ -57,26 +56,28 @@ build_awg_userspace() {
       && echo '/swapfile none swap sw 0 0' >> /etc/fstab || true
   fi
   if [ ! -x "$GO_DIR/bin/go" ]; then
-    GOVER="$(curl -fsS 'https://go.dev/VERSION?m=text' | head -1)"
+    GOVER="$(curl -fsS 'https://go.dev/VERSION?m=text' | head -1)" || return 1
     rm -rf "$GO_DIR" && mkdir -p "$GO_DIR"
-    curl -fsSL "https://dl.google.com/go/$GOVER.linux-$GOARCH.tar.gz" | tar -xz -C "$GO_DIR" --strip-components=1
+    curl -fsSL "https://dl.google.com/go/$GOVER.linux-$GOARCH.tar.gz" | tar -xz -C "$GO_DIR" --strip-components=1 || return 1
   fi
   local b; b="$(mktemp -d)"
-  if ! command -v awg-quick >/dev/null 2>&1; then
-    git clone -q --depth 1 https://github.com/amnezia-vpn/amneziawg-tools.git "$b/tools"
-    make -s -C "$b/tools/src" >/dev/null
-    make -s -C "$b/tools/src" install WITH_WGQUICK=yes WITH_SYSTEMDUNITS=yes >/dev/null
-  fi
-  git clone -q --depth 1 https://github.com/amnezia-vpn/amneziawg-go.git "$b/go"
-  ( cd "$b/go" && PATH="$GO_DIR/bin:$PATH" GOTOOLCHAIN=local go build -o /usr/bin/amneziawg-go . )
+  git clone -q --depth 1 https://github.com/amnezia-vpn/amneziawg-tools.git "$b/tools" || return 1
+  git clone -q --depth 1 https://github.com/amnezia-vpn/amneziawg-go.git "$b/go" || return 1
+  make -s -C "$b/tools/src" >/dev/null || return 1
+  ( cd "$b/go" && PATH="$GO_DIR/bin:$PATH" GOTOOLCHAIN=local go build -o "$b/amneziawg-go" . ) || return 1
+  apt-get remove -y -q amneziawg amneziawg-dkms amneziawg-tools >/dev/null 2>&1 || true
+  make -s -C "$b/tools/src" install WITH_WGQUICK=yes WITH_SYSTEMDUNITS=yes >/dev/null || return 1
+  install -m 755 "$b/amneziawg-go" /usr/bin/amneziawg-go
+  systemctl daemon-reload
+  echo "amneziawg-tools $(git -C "$b/tools" rev-parse --short HEAD), amneziawg-go $(git -C "$b/go" rev-parse --short HEAD), built $(date -u +%F)" > "$AWG_STAMP"
   rm -rf "$b"
-  [ -x /usr/bin/amneziawg-go ]
 }
-if command -v awg >/dev/null 2>&1 && modprobe amneziawg 2>/dev/null; then
-  note "AmneziaWG kernel module loaded."
-elif [ -c /dev/net/tun ] && { command -v amneziawg-go >/dev/null 2>&1 || build_awg_userspace; } \
-     && command -v awg-quick >/dev/null 2>&1; then
-  note "Using AmneziaWG userspace version (amneziawg-go); the kernel module isn't available here."
+if [ -c /dev/net/tun ] && { [ ! -f "$AWG_STAMP" ] || [ -n "${AWG_REBUILD:-}" ] || ! command -v amneziawg-go >/dev/null 2>&1 || ! command -v awg-quick >/dev/null 2>&1; }; then
+  build_awg_userspace || note "Couldn't build AmneziaWG 3.1 here."
+fi
+if [ -f "$AWG_STAMP" ] && command -v amneziawg-go >/dev/null 2>&1 && command -v awg-quick >/dev/null 2>&1; then
+  printf 'install amneziawg /bin/false\n' > /etc/modprobe.d/jaganet-amneziawg.conf
+  note "AmneziaWG 3.1: $(cat "$AWG_STAMP")"
 else
   PROTOCOL=wireguard
   note "AmneziaWG couldn't be installed here; using plain WireGuard."
@@ -105,6 +106,7 @@ PY
 umask 077
 echo "$REG" > "$NODE_DIR/node.json"
 umask 022
+PORT="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["port"])' "$NODE_DIR/node.json")"
 
 step "Configuring the VPN interface"
 mkdir -p "$CONF_DIR" && chmod 700 "$CONF_DIR"
@@ -120,9 +122,13 @@ print("ListenPort = %d" % node["port"])
 print("PostUp = iptables -t nat -A POSTROUTING -s %s -o %s -j MASQUERADE; iptables -A FORWARD -i %%i -j ACCEPT; iptables -A FORWARD -o %%i -j ACCEPT" % (sub, wan))
 print("PostDown = iptables -t nat -D POSTROUTING -s %s -o %s -j MASQUERADE; iptables -D FORWARD -i %%i -j ACCEPT; iptables -D FORWARD -o %%i -j ACCEPT" % (sub, wan))
 for k, v in node.get("obfuscation", {}).items():
-    print("%s = %s" % (k, v))
+    if k not in ("I1", "I2", "I3", "I4", "I5"):  # client-only: the first-packet signature
+        print("%s = %s" % (k, v))
 PY
 chmod 600 "$CONF_DIR/$IFACE.conf"
+# An older install ran the kernel module: take it out so the userspace AmneziaWG 3.1 starts.
+systemctl stop "$TOOL-quick@$IFACE" 2>/dev/null || true
+modprobe -r amneziawg 2>/dev/null || true
 systemctl enable -q "$TOOL-quick@$IFACE"
 systemctl restart "$TOOL-quick@$IFACE" || {
   journalctl -u "$TOOL-quick@$IFACE" -n 40 --no-pager -o cat

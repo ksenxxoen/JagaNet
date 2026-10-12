@@ -35,6 +35,13 @@ interface ProtocolDriver {
 
     suspend fun readCounters(node: ServerNode): List<PeerCounters>
 
+    /**
+     * TunnelConfig.params for a peer on this node with the node's current settings (endpoint,
+     * obfuscation), or null if the driver can't tell. Key links use it, so a changed node
+     * profile reaches devices that import their key again.
+     */
+    fun currentParams(node: ServerNode): JsonObject? = null
+
     /** Optional hook: a device reported connect/disconnect (the simulator uses it). */
     fun onConnectionEvent(node: ServerNode, peerKey: String, connected: Boolean) {}
 }

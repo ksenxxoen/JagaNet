@@ -64,6 +64,10 @@ fun serve(ctx: Ctx, collectEveryMs: Long, wait: Boolean = true) {
             }
         }
         launch {
+            runCatching { services.tunnels.resyncLocalPeers() }
+                .onSuccess { log.info("VPN peers in place: {}", it) }.onFailure { log.error("peer sync failed", it) }
+        }
+        launch {
             while (true) {
                 delay(collectEveryMs)
                 runCatching { services.traffic.collect() }.onFailure { log.error("traffic collection failed", it) }

@@ -63,6 +63,27 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         )!!.int("n")
     }
 
+    /**
+     * Puts every device of this machine's own VPN back into its interface (idempotent). Runs at
+     * startup, so peers survive an interface that was rebuilt or reconfigured. Returns how many.
+     */
+    suspend fun resyncLocalPeers(): Int {
+        val rows = ctx.db.run { sql ->
+            sql.query(
+                """SELECT t.*, s.id AS sid FROM tunnels t JOIN servers s ON s.id = t.server_id
+                    WHERE s.agent_token_hash IS NULL""",
+            ).map { t -> t to sql.one("SELECT * FROM servers WHERE id=?", t.str("sid"))!! }
+        }
+        var n = 0
+        for ((t, server) in rows) {
+            val proto = t.str("protocol")
+            val driver = ctx.drivers[proto] ?: continue
+            runCatching { driver.addPeer(server.node(proto), t.str("device_id"), t.str("address"), t.json("client_params")) }
+                .onSuccess { n++ }
+        }
+        return n
+    }
+
     suspend fun defaultProtocol(): String? = servers().flatMap { it.protocols }.toSet().let { offered -> ctx.drivers.ids().firstOrNull { it in offered } }
 
     suspend fun provisionFor(userId: String, deviceId: String, req: TunnelProvisionReq): TunnelConfig {

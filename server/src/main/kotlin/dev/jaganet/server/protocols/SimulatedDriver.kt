@@ -52,6 +52,8 @@ class SimulatedDriver(
         return AddedPeer(key, buildParams(node.settings))
     }
 
+    override fun currentParams(node: ServerNode): JsonObject? = buildParams(node.settings)
+
     override suspend fun removePeer(node: ServerNode, peerKey: String) {
         peers.remove(peerKey)
     }

@@ -86,9 +86,18 @@ class Keys(private val ctx: Ctx, private val tunnels: Tunnels) {
     suspend fun config(userId: String, id: String): KeyConfig? = configWhere("k.device_id=?::uuid AND k.user_id=?::uuid", id, userId)
 
     private suspend fun configWhere(cond: String, vararg args: Any?): KeyConfig? = ctx.db.run { sql ->
-        sql.one("SELECT k.*, d.name FROM access_keys k JOIN devices d ON d.id = k.device_id WHERE $cond AND d.removed_at IS NULL", *args)
-    }?.let { r ->
-        val cfg = Protocols.decode<TunnelConfig>(r.json("config"))
+        val r = sql.one("SELECT k.*, d.name FROM access_keys k JOIN devices d ON d.id = k.device_id WHERE $cond AND d.removed_at IS NULL", *args)
+            ?: return@run null
+        // The node's current settings (port, obfuscation profile), not the ones from the day
+        // the key was made: after a node changes them, importing the key again is enough.
+        val stored = Protocols.decode<TunnelConfig>(r.json("config"))
+        val t = sql.one("SELECT server_id, protocol FROM tunnels WHERE device_id=?::uuid", r.str("device_id"))
+        val server = t?.let { sql.one("SELECT * FROM servers WHERE id=?", it.str("server_id")) }
+        val current = if (t != null && server != null && t.str("protocol") == stored.protocol)
+            ctx.drivers[stored.protocol]?.currentParams(server.node(stored.protocol))
+        else null
+        r to (current?.let { stored.copy(params = it, mtu = server!!.int("mtu"), dns = server.strings("dns")) } ?: stored)
+    }?.let { (r, cfg) ->
         KeyConfig(r.str("name"), cfg.location, cfg.protocol, configText(decrypt(r.str("private_key_enc")), cfg))
     }
 

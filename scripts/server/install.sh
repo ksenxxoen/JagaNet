@@ -73,48 +73,57 @@ apt-get install -y -q ca-certificates curl git gnupg iptables python3 software-p
   postgresql openjdk-21-jdk-headless >/dev/null
 
 # ------------------------------------------------------------------ VPN
-step "Installing the VPN (AmneziaWG)"
+step "Installing the VPN (AmneziaWG 3.1)"
 PROTOCOL=amneziawg
-# 1) the kernel module from the Amnezia PPA (fastest), 2) else amneziawg-go, the userspace
-# version, built from source (works on any kernel), 3) else plain WireGuard.
-if ! command -v awg >/dev/null 2>&1 || ! modprobe amneziawg 2>/dev/null; then
-  add-apt-repository -y ppa:amnezia/ppa >/dev/null 2>&1 || true
-  apt-get update -q >/dev/null || true
-  apt-get install -y -q amneziawg-tools >/dev/null 2>&1 || true
-  apt-get install -y -q amneziawg >/dev/null 2>&1 || true
-fi
+# AmneziaWG 3.1 (a first packet that looks like DNS, encrypted headers, random trailers) is
+# what gets through mobile networks that cut older AmneziaWG after the first handshake. It needs
+# current amneziawg-tools and amneziawg-go, built from source: the same userspace VPN the
+# AmneziaVPN app runs on the servers it installs. The PPA kernel module lags behind, so it is
+# switched off (earlier versions of this installer used it).
 GO_DIR=/opt/jaganet/go
-build_awg_userspace() {
-  apt-get install -y -q build-essential >/dev/null
+AWG_STAMP=/opt/jaganet/awg-userspace.txt
+AWG_V3=""
+build_awg_userspace() { # builds in a temp dir; installs only if everything built
+  apt-get install -y -q build-essential >/dev/null || return 1
   case "$(uname -m)" in x86_64) GOARCH=amd64 ;; aarch64) GOARCH=arm64 ;; *) return 1 ;; esac
   if [ ! -x "$GO_DIR/bin/go" ]; then
-    GOVER="$(curl -fsS 'https://go.dev/VERSION?m=text' | head -1)"
+    GOVER="$(curl -fsS 'https://go.dev/VERSION?m=text' | head -1)" || return 1
     rm -rf "$GO_DIR" && mkdir -p "$GO_DIR"
-    curl -fsSL "https://dl.google.com/go/$GOVER.linux-$GOARCH.tar.gz" | tar -xz -C "$GO_DIR" --strip-components=1
+    curl -fsSL "https://dl.google.com/go/$GOVER.linux-$GOARCH.tar.gz" | tar -xz -C "$GO_DIR" --strip-components=1 || return 1
   fi
   local b; b="$(mktemp -d)"
-  if ! command -v awg-quick >/dev/null 2>&1; then
-    git clone -q --depth 1 https://github.com/amnezia-vpn/amneziawg-tools.git "$b/tools"
-    make -s -C "$b/tools/src" >/dev/null
-    make -s -C "$b/tools/src" install WITH_WGQUICK=yes WITH_SYSTEMDUNITS=yes >/dev/null
-  fi
-  git clone -q --depth 1 https://github.com/amnezia-vpn/amneziawg-go.git "$b/go"
-  ( cd "$b/go" && PATH="$GO_DIR/bin:$PATH" GOTOOLCHAIN=local go build -o /usr/bin/amneziawg-go . )
+  git clone -q --depth 1 https://github.com/amnezia-vpn/amneziawg-tools.git "$b/tools" || return 1
+  git clone -q --depth 1 https://github.com/amnezia-vpn/amneziawg-go.git "$b/go" || return 1
+  make -s -C "$b/tools/src" >/dev/null || return 1
+  ( cd "$b/go" && PATH="$GO_DIR/bin:$PATH" GOTOOLCHAIN=local go build -o "$b/amneziawg-go" . ) || return 1
+  # Built: now replace the distro packages (their awg would shadow ours) and install.
+  apt-get remove -y -q amneziawg amneziawg-dkms amneziawg-tools >/dev/null 2>&1 || true
+  make -s -C "$b/tools/src" install WITH_WGQUICK=yes WITH_SYSTEMDUNITS=yes >/dev/null || return 1
+  install -m 755 "$b/amneziawg-go" /usr/bin/amneziawg-go
+  systemctl daemon-reload
+  echo "amneziawg-tools $(git -C "$b/tools" rev-parse --short HEAD), amneziawg-go $(git -C "$b/go" rev-parse --short HEAD), built $(date -u +%F)" > "$AWG_STAMP"
   rm -rf "$b"
-  # Runs as an if-condition, where bash ignores errors: check the result explicitly.
-  [ -x /usr/bin/amneziawg-go ]
 }
-if command -v awg >/dev/null 2>&1 && modprobe amneziawg 2>/dev/null; then
-  note "AmneziaWG kernel module loaded."
-elif [ -c /dev/net/tun ] && { command -v amneziawg-go >/dev/null 2>&1 || build_awg_userspace; } \
-     && command -v awg-quick >/dev/null 2>&1; then
-  note "Using AmneziaWG userspace version (amneziawg-go); the kernel module isn't available here."
-else
+if [ -c /dev/net/tun ]; then
+  if [ ! -f "$AWG_STAMP" ] || [ -n "${AWG_REBUILD:-}" ] || ! command -v amneziawg-go >/dev/null 2>&1 || ! command -v awg-quick >/dev/null 2>&1; then
+    note "Building AmneziaWG from source (a few minutes)."
+    build_awg_userspace || note "Couldn't build AmneziaWG 3.1 here."
+  fi
+  if [ -f "$AWG_STAMP" ] && command -v amneziawg-go >/dev/null 2>&1 && command -v awg-quick >/dev/null 2>&1; then
+    AWG_V3=1
+    # Never let awg-quick pick the (older) kernel module again.
+    printf 'install amneziawg /bin/false\n' > /etc/modprobe.d/jaganet-amneziawg.conf
+    note "AmneziaWG 3.1: $(cat "$AWG_STAMP")"
+  fi
+fi
+if [ -z "$AWG_V3" ] && ! [ -f /etc/amnezia/amneziawg/awg0.conf ]; then
   PROTOCOL=wireguard
   note "AmneziaWG couldn't be installed on this server; using plain WireGuard instead."
   note "(The apps fall back to it automatically.)"
   apt-get install -y -q wireguard-tools >/dev/null
   modprobe wireguard
+elif [ -z "$AWG_V3" ]; then
+  note "Keeping the AmneziaWG version that is already installed."
 fi
 
 # IP forwarding, so VPN clients reach the internet.
@@ -150,33 +159,58 @@ note "Commit $(git -C "$APP_DIR/src" rev-parse --short HEAD) built."
 # ------------------------------------------------------------------ VPN interface
 step "Configuring the VPN interface"
 if [ "$PROTOCOL" = amneziawg ]; then
-  CONF_DIR=/etc/amnezia/amneziawg; IFACE=awg0; TOOL=awg; PORT=$AWG_PORT
+  CONF_DIR=/etc/amnezia/amneziawg; IFACE=awg0; TOOL=awg
 else
-  CONF_DIR=/etc/wireguard; IFACE=wg0; TOOL=wg; PORT=$WG_PORT
+  CONF_DIR=/etc/wireguard; IFACE=wg0; TOOL=wg
 fi
+CONF="$CONF_DIR/$IFACE.conf"
+# The full AmneziaWG profile, client-only keys (I1…) included; the server's file leaves those out.
+PROFILE="$CONF_DIR/$IFACE.profile.json"
 mkdir -p "$CONF_DIR" && chmod 700 "$CONF_DIR"
-if [ ! -f "$CONF_DIR/$IFACE.conf" ]; then
-  PRIV="$($TOOL genkey)"
-  {
-    echo "[Interface]"
-    echo "PrivateKey = $PRIV"
-    echo "Address = $NODE_ADDR"
-    echo "ListenPort = $PORT"
-    # Peers are added by the backend at runtime; SaveConfig keeps them across clean restarts.
-    echo "SaveConfig = true"
-    echo "PostUp = iptables -t nat -A POSTROUTING -s $SUBNET -o $WAN_IF -j MASQUERADE; iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT"
-    echo "PostDown = iptables -t nat -D POSTROUTING -s $SUBNET -o $WAN_IF -j MASQUERADE; iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT"
-    if [ "$PROTOCOL" = amneziawg ]; then
-      # Fresh obfuscation profile (S1, S2, H1-H4 must match on clients: the backend sends them).
-      # Only the keys every AmneziaWG version understands, with single-value headers, so it
-      # works whatever version the distro packages ship.
-      java -cp "$APP_DIR/server/lib/*" dev.jaganet.server.protocols.AwgParamsKt \
-        | grep -E '^(Jc|Jmin|Jmax|S1|S2|H1|H2|H3|H4) = ' \
-        | sed -E 's/^(H[1-4] = [0-9]+)-[0-9]+$/\1/'
-    fi
-  } > "$CONF_DIR/$IFACE.conf"
-  chmod 600 "$CONF_DIR/$IFACE.conf"
+JAVA_CP="$APP_DIR/server/lib/*"
+NEW_PROFILE=""
+if [ "$PROTOCOL" = amneziawg ] && [ -n "$AWG_V3" ] && { [ ! -f "$PROFILE" ] || ! grep -q '^HeaderProtectionKey' "$CONF" 2>/dev/null; }; then
+  NEW_PROFILE=1
 fi
+if [ ! -f "$CONF" ] || [ -n "$NEW_PROFILE" ]; then
+  if [ -f "$CONF" ]; then
+    note "Switching the VPN to AmneziaWG 3.1 (new port and profile, same server key and devices)."
+    note "Devices with key files need to add their key again: the same key link gives the new settings."
+    # Stopping writes the current peers into the file (SaveConfig); they are kept below.
+    systemctl stop "$TOOL-quick@$IFACE" 2>/dev/null || true
+    cp "$CONF" "$CONF.bak-$(date +%Y%m%d%H%M%S)"
+  fi
+  modprobe -r amneziawg 2>/dev/null || true
+  if [ "$PROTOCOL" = amneziawg ] && [ -n "$AWG_V3" ]; then
+    java -cp "$JAVA_CP" dev.jaganet.server.protocols.AwgParamsKt json > "$PROFILE.new"
+    mv "$PROFILE.new" "$PROFILE" && chmod 600 "$PROFILE"
+    PORT="$(java -cp "$JAVA_CP" dev.jaganet.server.protocols.AwgParamsKt port)"
+  elif [ "$PROTOCOL" = amneziawg ]; then
+    PORT=$AWG_PORT
+  else
+    PORT=$WG_PORT
+  fi
+  python3 - "$CONF" "$PROFILE" "$($TOOL genkey)" "$NODE_ADDR" "$PORT" "$SUBNET" "$WAN_IF" "$PROTOCOL" <<'PY'
+import json, os, re, sys
+conf, profile, newkey, addr, port, subnet, wan, proto = sys.argv[1:9]
+old = open(conf).read() if os.path.exists(conf) else ""
+m = re.search(r'^PrivateKey\s*=\s*(\S+)', old, re.M)
+priv = m.group(1) if m else newkey            # the node's identity never changes
+peers = old[old.index("[Peer]"):] if "[Peer]" in old else ""
+lines = ["[Interface]", f"PrivateKey = {priv}", f"Address = {addr}", f"ListenPort = {port}",
+         # Peers are added by the backend at runtime; SaveConfig keeps them across clean restarts.
+         "SaveConfig = true",
+         f"PostUp = iptables -t nat -A POSTROUTING -s {subnet} -o {wan} -j MASQUERADE; iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT",
+         f"PostDown = iptables -t nat -D POSTROUTING -s {subnet} -o {wan} -j MASQUERADE; iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT"]
+if proto == "amneziawg" and os.path.exists(profile):
+    client_only = {"I1", "I2", "I3", "I4", "I5"}
+    lines += [f"{k} = {v}" for k, v in json.load(open(profile)).items() if k not in client_only]
+with open(conf, "w") as f:
+    f.write("\n".join(lines) + "\n\n" + peers)
+os.chmod(conf, 0o600)
+PY
+fi
+PORT="$(awk -F' *= *' '/^ListenPort/ {print $2; exit}' "$CONF")"
 # An earlier run fell back to WireGuard: switch that interface off (same VPN subnet).
 if [ "$PROTOCOL" = amneziawg ] && systemctl is-enabled -q wg-quick@wg0 2>/dev/null; then
   systemctl disable -q --now wg-quick@wg0 || true
@@ -190,10 +224,13 @@ fi
 systemctl enable -q "$TOOL-quick@$IFACE"
 systemctl restart "$TOOL-quick@$IFACE" || {
   journalctl -u "$TOOL-quick@$IFACE" -n 40 --no-pager -o cat
-  fail "The VPN interface didn't start (log above)."
+  fail "The VPN interface didn't start (log above). The previous config is saved next to $CONF (.bak-…)."
 }
-NODE_PUB="$(grep -m1 '^PrivateKey' "$CONF_DIR/$IFACE.conf" | awk '{print $3}' | $TOOL pubkey)"
-OBFUSCATION_JSON="$(python3 - "$CONF_DIR/$IFACE.conf" <<'PY'
+NODE_PUB="$(grep -m1 '^PrivateKey' "$CONF" | awk '{print $3}' | $TOOL pubkey)"
+if [ "$PROTOCOL" = amneziawg ] && [ -f "$PROFILE" ]; then
+  OBFUSCATION_JSON="$(cat "$PROFILE")"
+else
+  OBFUSCATION_JSON="$(python3 - "$CONF" <<'PY'
 import json, re, sys
 keys = {"Jc","Jmin","Jmax","S1","S2","S3","S4","H1","H2","H3","H4","I1","I2","I3","I4","I5","HeaderProtectionKey"}
 out = {}
@@ -203,6 +240,7 @@ for line in open(sys.argv[1]):
 print(json.dumps(out))
 PY
 )"
+fi
 
 # ------------------------------------------------------------------ database
 step "Setting up the database"

@@ -209,15 +209,18 @@ class UnitTest {
         assertEquals(profile, Protocols.decode<AmneziaWG.ServerParams>(added.params).obfuscation)
     }
 
-    @Test fun `generated AmneziaWG profiles follow the spec's constraints`() = repeat(200) {
+    @Test fun `generated AmneziaWG profiles are AmneziaWG 3_1 like AmneziaVPN's`() = repeat(200) {
         val p = AwgParams.generate()
         val (s1, s2) = p["S1"]!!.toInt() to p["S2"]!!.toInt()
         assertTrue(s1 >= 12 && s2 >= 12 && s1 + 56 != s2)
         assertTrue(p["Jmin"]!!.toInt() <= p["Jmax"]!!.toInt() && p["Jmax"]!!.toInt() < 1280)
-        val ranges = (1..4).map { p["H$it"]!!.split('-').map(String::toLong) }
-        ranges.forEach { (lo, hi) -> assertTrue(lo in 5..hi && hi <= 0xFFFFFFFFL) }
-        ranges.sortedBy { it[0] }.zipWithNext().forEach { (a, b) -> assertTrue(a[1] < b[0], "H ranges overlap: $ranges") }
+        assertEquals(listOf("1", "2", "3", "4"), (1..4).map { p["H$it"] }) // headers are encrypted instead
+        assertEquals(32, java.util.Base64.getDecoder().decode(p["HeaderProtectionKey"]).size)
+        assertEquals(AwgParams.DNS_SIGNATURE, p["I1"])
+        assertEquals("on", p["RandomTrailers"])
+        assertTrue(!AwgParams.isLegacy(p) && AwgParams.isLegacy(mapOf("Jc" to "7", "S1" to "125")))
         assertTrue(p.keys.all { it in AmneziaWG.KEYS })
+        assertTrue(AwgParams.port().let { it in 20000..60200 && it !in 51800..51900 })
     }
 
     @Test fun `wireguard driver issues the right wg commands`() = kotlinx.coroutines.runBlocking {

@@ -364,20 +364,23 @@ class Nodes(private val ctx: Ctx) {
             val s = bySql(sql, token)
             val (pub, enc) = s.str("node_key_enc").split(':', limit = 2)
             val iface = if (req.protocol == Protocols.AMNEZIAWG) IFACE_AWG else IFACE_WG
-            // Keep the obfuscation profile across re-installs: clients already have it.
+            // Keep the obfuscation profile across re-installs (clients already have it), unless it
+            // predates AmneziaWG 3.1: then a new one, and the clients' key links update with it.
             val old = s.json("protocols")[req.protocol] as? JsonObject
             val obfuscation: Map<String, String> = if (req.protocol != Protocols.AMNEZIAWG) emptyMap()
             else (old?.get("obfuscation") as? JsonObject)?.mapValues { (it.value as JsonPrimitive).content }
+                ?.takeUnless { AwgParams.isLegacy(it) }
                 ?: AwgParams.generate()
-                    // Only the keys every AmneziaWG version understands, with single-value headers.
-                    .filterKeys { it in setOf("Jc", "Jmin", "Jmax", "S1", "S2", "H1", "H2", "H3", "H4") }
-                    .mapValues { (k, v) -> if (k.startsWith("H")) v.substringBefore('-') else v }
+            // A node keeps its port on a new machine (key files and firewalls know it), unless the
+            // profile is being replaced anyway: then the new machine's random port.
+            val keptProfile = (old?.get("obfuscation") as? JsonObject)?.let { o -> !AwgParams.isLegacy(o.mapValues { (it.value as JsonPrimitive).content }) } == true
+            val port = (old?.get("port") as? JsonPrimitive)?.content?.toIntOrNull()?.takeIf { keptProfile || req.protocol != Protocols.AMNEZIAWG } ?: req.port
             val node = buildJsonObject {
-                put("endpoint", "${s.strOrNull("endpoint_host") ?: req.publicIp}:${req.port}")
+                put("endpoint", "${s.strOrNull("endpoint_host") ?: req.publicIp}:$port")
                 put("publicKey", pub)
                 put("interface", iface)
                 put("publicIp", req.publicIp)
-                put("port", req.port)
+                put("port", port)
                 if (obfuscation.isNotEmpty()) put("obfuscation", JsonObject(obfuscation.mapValues { JsonPrimitive(it.value) }))
             }
             // Counters start again from zero on the new machine.
@@ -389,7 +392,7 @@ class Nodes(private val ctx: Ctx) {
             val subnet = s.str("subnet")
             val prefix = subnet.substringAfter('/')
             val first = subnet.substringBefore('/').split('.').let { "${it[0]}.${it[1]}.${it[2]}.${it[3].toInt() + 1}" }
-            NodeRegisterRes(req.protocol, box.decrypt(enc), iface, "$first/$prefix", subnet, req.port, obfuscation) to s.str("id")
+            NodeRegisterRes(req.protocol, box.decrypt(enc), iface, "$first/$prefix", subnet, port, obfuscation) to s.str("id")
         }
         ctx.nodeHub.changed(id)
         return res

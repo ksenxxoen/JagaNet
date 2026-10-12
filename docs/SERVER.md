@@ -72,3 +72,20 @@ raises an alert and the node gets no new devices.
   them again.
 
 Logs on a node: `journalctl -u jaganet-node`, `awg show`.
+
+## AmneziaWG 3.1
+
+Servers run AmneziaWG 3.1, the profile the AmneziaVPN app installs on its own servers: the first
+packet of each handshake looks like a DNS answer (I1), message headers are encrypted
+(HeaderProtectionKey), packets get random trailers and padding, and the UDP port is random.
+AmneziaWG 1.0 profiles (junk sizes and headers only, port 51821) are recognized by some mobile
+networks: the first handshake gets through, then the connection is cut.
+
+- The installer builds the current `amneziawg-tools` and `amneziawg-go` from source (the PPA
+  kernel module lags behind and is switched off) and records the versions in
+  `/opt/jaganet/awg-userspace.txt`. `AWG_REBUILD=1` builds them again.
+- An older server is switched over on the next installer run: same server key, same devices, a
+  new profile and port (the old config is kept as `awg0.conf.bak-…`). Key links show the new
+  settings at once; devices with key files add their key again from the same link. The JagaNet
+  app picks the new settings up on its next connect.
+- The full profile, client-only keys included, is in `/etc/amnezia/amneziawg/awg0.profile.json`.

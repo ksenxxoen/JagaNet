@@ -35,6 +35,8 @@ abstract class WgFamilyDriver(private val tool: String, private val run: suspend
 
     override fun parseClientParams(raw: JsonObject) = Protocols.encode(Protocols.decode<WireGuard.ClientParams>(raw))
 
+    override fun currentParams(node: ServerNode): JsonObject? = runCatching { params(settings(node)) }.getOrNull()
+
     override suspend fun addPeer(node: ServerNode, deviceId: String, address: String, clientParams: JsonObject): AddedPeer {
         val s = settings(node)
         val key = Protocols.decode<WireGuard.ClientParams>(clientParams).publicKey

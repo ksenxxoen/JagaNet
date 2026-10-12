@@ -51,15 +51,16 @@ class NodeTest {
 
         // The install script registers over HTTP; a wrong token is refused.
         val raw = b.createClient {}
-        suspend fun register(t: String, ip: String) = raw.post("/v1/node/register") {
+        suspend fun register(t: String, ip: String, port: Int = 51821) = raw.post("/v1/node/register") {
             header("Authorization", "Bearer $t"); contentType(ContentType.Application.Json)
-            setBody("""{"publicIp":"$ip","port":51821,"protocol":"amneziawg"}""")
+            setBody("""{"publicIp":"$ip","port":$port,"protocol":"amneziawg"}""")
         }
         assertEquals(HttpStatusCode.Unauthorized, register("x".repeat(43), "203.0.113.5").status)
         val reg = register(token, "203.0.113.5")
         assertEquals(HttpStatusCode.OK, reg.status)
         val body = reg.bodyAsText()
         assertTrue("\"address\":\"10.8.0.1/24\"" in body && "\"privateKey\":" in body && "\"S1\":" in body, body)
+        assertTrue("\"HeaderProtectionKey\":" in body && "\"I1\":" in body, body) // AmneziaWG 3.1
 
         val node = owner.adminNodes().nodes.single { it.id == id }
         assertEquals(NodeState.ONLINE, node.state)
@@ -94,7 +95,7 @@ class NodeTest {
         owner.updateNode(id, NodeReq("Germany 1", "Nuremberg", "DE", hostname = "de1.vpn.example.com"))
         val moved = owner.newNodeToken(id)
         assertEquals(HttpStatusCode.Unauthorized, register(token, "198.51.100.9").status) // the old token is gone
-        assertEquals(HttpStatusCode.OK, register(tokenOf(moved.command), "198.51.100.9").status)
+        assertEquals(HttpStatusCode.OK, register(tokenOf(moved.command), "198.51.100.9", port = 33333).status) // keeps 51821
         val after = owner.adminNodes().nodes.single { it.id == id }
         assertEquals(NodeState.ONLINE, after.state)
         assertEquals("de1.vpn.example.com:51821", after.endpoint)
