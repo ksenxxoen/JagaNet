@@ -221,7 +221,7 @@ fun AccountScreen(s: AppState) {
                 Gap(16.dp)
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     PlanKV(t("This month"), fBytes(m.usage.bytesUsed), Modifier.weight(1f))
-                    PlanKV(t("Billed via"), when (e.source) { BillingSource.APPLE -> t("App Store"); BillingSource.GOOGLE -> t("Google Play"); BillingSource.REFERRAL -> t("Invite reward"); BillingSource.DEV -> t("Simulation"); BillingSource.WEB -> t("Website"); BillingSource.TELEGRAM -> t("Telegram"); BillingSource.APP -> t("JagaNet app"); BillingSource.TEST -> t("Test access"); null -> "-" }, Modifier.weight(1f))
+                    PlanKV(t("Billed via"), when (e.source) { BillingSource.APPLE -> t("App Store"); BillingSource.GOOGLE -> t("Google Play"); BillingSource.REFERRAL -> t("Invite reward"); BillingSource.DEV -> t("Simulation"); BillingSource.WEB -> t("Website"); BillingSource.TELEGRAM -> t("Telegram"); BillingSource.APP -> t("Boop app"); BillingSource.TEST -> t("Test access"); null -> "-" }, Modifier.weight(1f))
                 }
             }
         }
@@ -454,7 +454,7 @@ private fun RefLinkCard(s: AppState, l: ReferralLink, reload: () -> Unit) {
         Gap(16.dp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(if (copied == "web") t("Copied") else t("Copy link"), { s.platform.copy(l.webUrl); copied = "web" }, Modifier.weight(1f), ButtonKind.Secondary)
-            Button(t("Share"), { s.platform.share(t("Join me on JagaNet: {url}", "url" to l.webUrl)) }, Modifier.weight(1f), ButtonKind.Secondary, icon = Ic.Share)
+            Button(t("Share"), { s.platform.share(t("Join me on Boop: {url}", "url" to l.webUrl)) }, Modifier.weight(1f), ButtonKind.Secondary, icon = Ic.Share)
         }
         l.telegramUrl?.let { tg ->
             Gap(8.dp)

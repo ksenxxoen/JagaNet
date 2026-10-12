@@ -4,7 +4,7 @@ import dev.jaganet.api.i18n.S
 
 /** The website (server/src/main/resources/web/app.js). */
 internal val webStrings: List<S> = listOf(
-    S("JagaNet VPN", "JagaNet VPN", "JagaNet VPN"),
+    S("Boop VPN", "Boop VPN", "Boop VPN"),
     S("Please sign in again", "Пожалуйста, войдите снова", "Bitte melde dich erneut an"),
     S("My account", "Личный кабинет", "Mein Konto"),
 
@@ -12,14 +12,14 @@ internal val webStrings: List<S> = listOf(
     S("Download the app", "Скачать приложение", "App herunterladen"),
     S("Server", "Сервер", "Server"),
     S("Amsterdam, Netherlands", "Амстердам, Нидерланды", "Amsterdam, Niederlande"),
-    S("Why JagaNet", "Почему JagaNet", "Warum JagaNet"),
+    S("Why Boop", "Почему Boop", "Warum Boop"),
     S("Fast", "Быстрый", "Schnell"),
     S("Pricing", "Тарифы", "Preise"),
-    S("JagaNet app", "Приложение JagaNet", "JagaNet-App"),
-    S("The JagaNet app.", "Приложение JagaNet.", "Die JagaNet-App."),
+    S("Boop app", "Приложение Boop", "Boop-App"),
+    S("The Boop app.", "Приложение Boop.", "Die Boop-App."),
     S("Download for Android", "Скачать для Android", "Für Android herunterladen"),
     S("Coming soon", "Скоро", "Bald verfügbar"),
-    S("The JagaNet app for iOS.", "Приложение JagaNet для iOS.", "Die JagaNet-App für iOS."),
+    S("The Boop app for iOS.", "Приложение Boop для iOS.", "Die Boop-App für iOS."),
     S("Download on the App Store", "Скачать в App Store", "Im App Store laden"),
     S(
         "Buy your key right in Telegram.",
@@ -45,7 +45,7 @@ internal val webStrings: List<S> = listOf(
     S("Get Pro to receive your personal VPN key.", "Оформите Pro, чтобы получить личный VPN-ключ.", "Hol dir Pro, um deinen persönlichen VPN-Schlüssel zu bekommen."),
     S("New key", "Новый ключ", "Neuer Schlüssel"),
     S("Apps", "Приложения", "Apps"),
-    S("Sign in to the JagaNet app", "Вход в приложение JagaNet", "In der JagaNet-App anmelden"),
+    S("Sign in to the Boop app", "Вход в приложение Boop", "In der Boop-App anmelden"),
     S("In the app tap Sign in with a device code and enter the code.", "В приложении нажмите «Войти по коду устройства» и введите код.", "Tippe in der App auf „Mit Gerätecode anmelden“ und gib den Code ein."),
     S("Show a code", "Показать код", "Code anzeigen"),
     S("Payments", "Платежи", "Zahlungen"),
@@ -62,9 +62,9 @@ internal val webStrings: List<S> = listOf(
     // Landing: speed and security
     S("A fast and secure VPN.", "Быстрый и безопасный VPN.", "Ein schnelles und sicheres VPN."),
     S(
-        "JagaNet encrypts all your traffic and keeps the internet fast.",
-        "JagaNet шифрует весь ваш трафик и не замедляет интернет.",
-        "JagaNet verschlüsselt deinen gesamten Datenverkehr und hält das Internet schnell.",
+        "Boop encrypts all your traffic and keeps the internet fast.",
+        "Boop шифрует весь ваш трафик и не замедляет интернет.",
+        "Boop verschlüsselt deinen gesamten Datenverkehr und hält das Internet schnell.",
     ),
     S(
         "Connects in a second and keeps full speed for video, games and calls.",
@@ -126,7 +126,7 @@ internal val webStrings: List<S> = listOf(
     S("No one yet. Share your link to get started.", "Пока никого. Поделитесь ссылкой, чтобы начать.", "Noch niemand. Teile deinen Link, um loszulegen."),
     S("New name", "Новое название", "Neuer Name"),
     S("Archive this link? It stops counting new clicks, its statistics stay.", "Архивировать ссылку? Новые переходы не будут засчитываться, статистика сохранится.", "Diesen Link archivieren? Neue Klicks werden nicht mehr gezählt, die Statistik bleibt."),
-    S("Go back to the JagaNet app. Pro is already on.", "Вернитесь в приложение JagaNet. Pro уже включён.", "Geh zurück zur JagaNet-App. Pro ist schon aktiv."),
+    S("Go back to the Boop app. Pro is already on.", "Вернитесь в приложение Boop. Pro уже включён.", "Geh zurück zur Boop-App. Pro ist schon aktiv."),
     S("Buy", "Купить", "Kaufen"),
     S("A new purchase starts when the current one ends.", "Новая покупка начнётся, когда закончится текущая.", "Ein neuer Kauf beginnt, wenn der aktuelle endet."),
     // Redesign

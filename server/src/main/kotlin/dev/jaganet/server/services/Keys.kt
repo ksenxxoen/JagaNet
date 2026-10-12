@@ -30,7 +30,7 @@ data class KeyConfig(val name: String, val location: String, val protocol: Strin
  * VPN keys for people who bought on the website or in Telegram: a config made on the
  * server that any AmneziaWG / WireGuard app imports (file, link or QR code).
  * Each key is a device of the user, so plan device limits and data quotas apply as usual.
- * The JagaNet app does not use these: it makes its own key on the phone.
+ * The Boop VPN app does not use these: it makes its own key on the phone.
  */
 class Keys(private val ctx: Ctx, private val tunnels: Tunnels) {
     private val b64 = Base64.getEncoder()
@@ -131,7 +131,7 @@ class Keys(private val ctx: Ctx, private val tunnels: Tunnels) {
 
     companion object {
         /** Becomes the tunnel's name in AmneziaWG / WireGuard (max 15 characters). */
-        const val CONFIG_FILE = "JagaNet.conf"
+        const val CONFIG_FILE = "BoopVPN.conf"
 
         /**
          * The key as AmneziaVPN's "vpn://" text, pasted in the app (Add server, Insert key):

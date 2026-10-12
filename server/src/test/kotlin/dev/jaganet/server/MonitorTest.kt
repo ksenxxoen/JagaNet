@@ -77,7 +77,7 @@ class MonitorTest {
         assertTrue(sent.isEmpty(), "two bad minutes are not an alert yet")
         minute(m, p)
         assertEquals(1, sent.size)
-        assertTrue(sent[0].subject.startsWith("[JagaNet] Проблема"), sent[0].subject)
+        assertTrue(sent[0].subject.startsWith("[Boop VPN] Проблема"), sent[0].subject)
         assertTrue("1.1.1.1" in sent[0].text && "30" in sent[0].text, sent[0].text)
         repeat(5) { minute(m, p) }
         assertEquals(1, sent.size, "no repeats while it lasts")
@@ -86,7 +86,7 @@ class MonitorTest {
         p.loss = 0.0
         repeat(2) { minute(m, p) }
         assertEquals(2, sent.size)
-        assertTrue(sent[1].subject.startsWith("[JagaNet] Исправлено"), sent[1].subject)
+        assertTrue(sent[1].subject.startsWith("[Boop VPN] Исправлено"), sent[1].subject)
         assertTrue(m.overview("1h").alerts.single().resolvedAt != null)
     }
 

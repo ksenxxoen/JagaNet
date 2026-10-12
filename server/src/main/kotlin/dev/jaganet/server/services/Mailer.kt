@@ -45,7 +45,7 @@ class EmailSender(private val smtp: Smtp) {
     suspend fun send(to: List<String>, subject: String, text: String) = withContext(Dispatchers.IO) {
         if (to.isEmpty()) return@withContext
         val msg = MimeMessage(session).apply {
-            setFrom(InternetAddress(smtp.from, "JagaNet"))
+            setFrom(InternetAddress(smtp.from, "Boop VPN"))
             to.forEach { addRecipient(Message.RecipientType.TO, InternetAddress(it)) }
             setSubject(subject, "UTF-8")
             setText(text, "UTF-8")
@@ -62,7 +62,7 @@ class LiveMailer(private val smtp: () -> Smtp?) : Mailer {
         val s = smtp() ?: error("e-mail is not set up")
         EmailSender(s).send(
             listOf(email),
-            I18n.tr(lang, "Your JagaNet sign-in code {code}", "code" to code),
+            I18n.tr(lang, "Your Boop sign-in code {code}", "code" to code),
             I18n.tr(lang, "Your sign-in code is {code}. It works for 10 minutes.", "code" to code) + "\n\n" +
                 I18n.tr(lang, "If you didn't ask for it, just ignore this e-mail."),
         )

@@ -25,7 +25,7 @@ fun main() {
     println(
         """
         |
-        |JagaNet simulation on http://localhost:${cfg.port}
+        |Boop simulation on http://localhost:${cfg.port}
         |  protocols: ${ctx.drivers.ids().joinToString()}
         |  accounts (sign in with the email; the code is printed here and returned by the API):
         |    alex@example.com   Pro yearly, 2 other devices, 30 days of history

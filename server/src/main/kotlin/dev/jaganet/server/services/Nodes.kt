@@ -346,7 +346,7 @@ class Nodes(private val ctx: Ctx) {
         val token = env.getValue("NODE_TOKEN")
         register(token, NodeRegisterReq(ip, 51821, Protocols.AMNEZIAWG))
         report(token, NodeReportReq(Protocols.AMNEZIAWG, emptyList(), NodeSystem(cpu = 0.03, memUsed = 180_000_000, memTotal = 1_000_000_000)))
-        out("JagaNet node is running.")
+        out("Boop node is running.")
         0
     }
 

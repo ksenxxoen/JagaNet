@@ -28,7 +28,7 @@ class TestAccountsTest {
         assertTrue(made[0].vpnKeys[1] in page.bodyAsText().replace("&#39;", "'"))
 
         // The node changes its port and profile: the same key link gives the new settings.
-        val confUrl = made[0].keys[0].substringAfter(cfg.publicUrl.trimEnd('/')) + "/JagaNet.conf"
+        val confUrl = made[0].keys[0].substringAfter(cfg.publicUrl.trimEnd('/')) + "/BoopVPN.conf"
         val before = b.createClient {}.get(confUrl).bodyAsText()
         services.ctx.db.run { it.exec("UPDATE servers SET protocols = jsonb_set(jsonb_set(protocols, '{amneziawg,endpoint}', '\"n1:40701\"'), '{amneziawg,obfuscation}', '{\"Jc\":\"5\",\"HeaderProtectionKey\":\"abc\"}') WHERE id='n1'") }
         val after = b.createClient {}.get(confUrl).bodyAsText()

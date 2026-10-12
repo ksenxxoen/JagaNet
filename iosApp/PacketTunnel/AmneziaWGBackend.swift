@@ -26,7 +26,7 @@ final class AmneziaWGBackend: TunnelBackend {
         peer.allowedIPs = (params["allowedIps"] as? [String] ?? ["0.0.0.0/0"]).compactMap(IPAddressRange.init(from:))
         peer.persistentKeepAlive = (params["persistentKeepalive"] as? NSNumber)?.uint16Value
 
-        let tunnel = TunnelConfiguration(name: "JagaNet", interface: iface, peers: [peer])
+        let tunnel = TunnelConfiguration(name: "Boop", interface: iface, peers: [peer])
         let adapter = WireGuardAdapter(with: provider) { _, message in NSLog("[awg] %@", message) }
         self.adapter = adapter
         try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in

@@ -84,7 +84,7 @@ fun Route.website(s: Services) {
 
     get("/download/android") {
         val apk = s.site.apkFile() ?: throw notFound("The Android app isn't uploaded yet")
-        call.response.header(HttpHeaders.ContentDisposition, ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, "JagaNet.apk").toString())
+        call.response.header(HttpHeaders.ContentDisposition, ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, "Boop.apk").toString())
         call.respondFile(apk)
     }
 
@@ -98,6 +98,12 @@ fun Route.website(s: Services) {
     get("/k/{token}") {
         val k = call.key()
         call.respondText(Pages(call.pageLang()).key(k, call.parameters["token"]!!, s), ContentType.Text.Html)
+    }
+    // The file's old name (before the rename to Boop VPN): links already sent keep working.
+    get("/k/{token}/JagaNet.conf") {
+        val k = call.key()
+        call.response.header(HttpHeaders.ContentDisposition, ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, Keys.CONFIG_FILE).toString())
+        call.respondText(k.text, ContentType.Application.OctetStream)
     }
     get("/k/{token}/${Keys.CONFIG_FILE}") {
         val k = call.key()
@@ -141,17 +147,17 @@ private class Pages(val lang: Lang) {
 
     private fun page(title: String, body: String) = """<!doctype html>
 <html lang="${lang.code}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex"><title>$title | JagaNet</title>
+<meta name="robots" content="noindex"><title>$title | Boop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"></head>
-<body><header class="top"><div class="top-in"><a class="logo" href="/"><img src="/favicon.svg" alt="">JagaNet</a>
+<body><header class="top"><div class="top-in"><a class="logo" href="/"><img src="/favicon.svg" alt="">Boop</a>
 <nav class="nav"><span class="langs">${Lang.entries.joinToString("") { l -> """<a class="${if (l == lang) "on" else ""}" href="?lang=${l.code}" hreflang="${l.code}">${l.code.uppercase()}</a>""" }}</span></nav></div></header>
 <main class="narrow">$body</main></body></html>"""
 
     fun key(k: KeyConfig, token: String, s: Services): String {
         val base = "/k/" + esc(token)
-        val ours = s.site.androidAppUrl()?.let { """<li><a href="${esc(it)}">${t("JagaNet for Android")}</a><br><span class="muted">${t("In our app you just sign in, no key needed")}</span></li>""" } ?: ""
+        val ours = s.site.androidAppUrl()?.let { """<li><a href="${esc(it)}">${t("Boop for Android")}</a><br><span class="muted">${t("In our app you just sign in, no key needed")}</span></li>""" } ?: ""
         val others = s.site.otherApps.joinToString("") { (n, u) -> """<li><a href="${esc(u)}" rel="noreferrer">${esc(n)}</a></li>""" }
         return page(t("Your VPN key"), """
 <div class="head"><div><h1>${t("Your VPN key")}</h1><p class="muted">${esc(keyName(k.name, lang))}, ${esc(k.location)}</p></div></div>
@@ -197,7 +203,7 @@ ${bot?.let { """<a class="btn" href="https://t.me/${esc(it)}">${t("Back to Teleg
 
     fun paidInApp() = page(t("Payment received"), """
 <div class="card signbox center"><h1>${t("Payment received")}</h1>
-<p class="muted">${t("Go back to the JagaNet app. Pro is already on.")}</p></div>""")
+<p class="muted">${t("Go back to the Boop app. Pro is already on.")}</p></div>""")
 
     private fun jsString(v: String) = "'" + v.replace("\\", "\\\\").replace("'", "\\'") + "'"
 }

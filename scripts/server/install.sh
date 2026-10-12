@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# JagaNet server installer: one command on a fresh Ubuntu 22.04 / 24.04 server (KVM), as root.
+# Boop VPN server installer: one command on a fresh Ubuntu 22.04 / 24.04 server (KVM), as root.
 #
 #   curl -fsSL https://raw.githubusercontent.com/ksenxxoen/JagaNet/claude/adoring-brown-s8fqex/scripts/server/install.sh | bash
 #
@@ -7,7 +7,7 @@
 #   - AmneziaWG (the VPN, default protocol) with a fresh obfuscation profile
 #     (falls back to plain WireGuard if the AmneziaWG kernel module can't be built)
 #   - PostgreSQL (database)
-#   - the JagaNet backend, built from source, as a systemd service
+#   - the Boop VPN backend, built from source, as a systemd service
 #   - Caddy with a free HTTPS certificate on <ip>.sslip.io (no domain needed)
 # Safe to run again: finished steps are skipped, the backend is rebuilt and restarted.
 #
@@ -131,7 +131,7 @@ echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/90-jaganet.conf
 sysctl -q -p /etc/sysctl.d/90-jaganet.conf
 
 # ------------------------------------------------------------------ build the backend
-step "Building the JagaNet backend (first time: 5-10 minutes)"
+step "Building the Boop VPN backend (first time: 5-10 minutes)"
 # Small servers (1-2 GB RAM) need swap for the build.
 MEM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
 SWAP_MB=$(awk '/SwapTotal/ {print int($2/1024)}' /proc/meminfo)
@@ -259,7 +259,7 @@ if [ ! -f "$ENV_FILE" ]; then
   sudo -u postgres psql -q -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='jaganet') THEN CREATE ROLE jaganet LOGIN PASSWORD '$DB_PASS'; ELSE ALTER ROLE jaganet PASSWORD '$DB_PASS'; END IF; END \$\$;"
   sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='jaganet'" | grep -q 1 || sudo -u postgres createdb -O jaganet jaganet
   cat > "$ENV_FILE" <<EOF
-# JagaNet backend settings. After changes: systemctl restart jaganet
+# Boop VPN backend settings. After changes: systemctl restart jaganet
 PORT=4000
 DATABASE_URL=jdbc:postgresql://127.0.0.1:5432/jaganet
 DATABASE_USER=jaganet
@@ -318,7 +318,7 @@ printf '#!/bin/sh\nexec sudo -n %s "$@"\n' "$TOOL_PATH" > "$APP_DIR/bin/$TOOL"
 chmod 755 "$APP_DIR/bin/$TOOL"
 cat > /etc/systemd/system/jaganet.service <<EOF
 [Unit]
-Description=JagaNet backend
+Description=Boop VPN backend
 After=network-online.target postgresql.service $TOOL-quick@$IFACE.service
 Wants=network-online.target
 

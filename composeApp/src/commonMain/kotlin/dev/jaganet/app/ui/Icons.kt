@@ -22,6 +22,8 @@ private fun rect(x: Float, y: Float, w: Float, h: Float, rx: Float) =
 /** Stroke icons from the design canvas (24×24 grid, round caps). */
 enum class Ic(vararg val paths: String) {
     Shield("M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6l8-3z"),
+    /** The Boop VPN mark: a ripple ring and a dot. */
+    Boop(circle(12f, 12f, 7f), circle(12f, 12f, 2.2f)),
     Power("M12 3v8", "M6.3 6.8a8 8 0 1 0 11.4 0"),
     Stats("M5 20v-6M12 20V5M19 20v-10"),
     Devices(rect(2f, 4f, 14f, 10f, 1.5f), "M6 18h6", rect(17f, 8f, 5f, 12f, 1f)),

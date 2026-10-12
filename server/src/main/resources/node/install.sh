@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# JagaNet VPN node: installs AmneziaWG and the node agent, then registers with the main server.
+# Boop VPN node: installs AmneziaWG and the node agent, then registers with the main server.
 # Run the exact command shown in the admin panel (Nodes) as root on a fresh Ubuntu or Debian server:
 #   curl -fsSL https://<main server>/node/install.sh | JAGANET_URL=https://<main server> NODE_TOKEN=<token> bash
 # Running it again is safe. The node's identity (key, settings, devices) lives on the main
@@ -150,7 +150,7 @@ WAN_IF=$WAN_IF
 EOF
 cat > /etc/systemd/system/jaganet-node.service <<EOF
 [Unit]
-Description=JagaNet node agent
+Description=Boop node agent
 After=network-online.target $TOOL-quick@$IFACE.service
 Wants=network-online.target
 

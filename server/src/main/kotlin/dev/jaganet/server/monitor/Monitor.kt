@@ -346,7 +346,7 @@ class Monitor(
 
     private suspend fun notify(subject: String, text: String) {
         log.warn("alert: $subject | ${text.lines().first()}")
-        for (s in sinks()) runCatching { s.send("[JagaNet] $subject", text) }.onFailure { log.error("alert delivery failed", it) }
+        for (s in sinks()) runCatching { s.send("[Boop VPN] $subject", text) }.onFailure { log.error("alert delivery failed", it) }
     }
 
     suspend fun testAlert() = notify(t("Test notification"), t("Alerts from your server reach you here.") + "\n" + ctx.cfg.publicUrl.trimEnd('/') + "/#/status")

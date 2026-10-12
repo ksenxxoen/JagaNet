@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""JagaNet node agent.
+"""Boop node agent.
 
 Keeps the VPN interface's peers equal to the main server's list (a long poll wakes it at once
 when a device is added or removed) and reports peer counters and machine health every minute.
@@ -125,7 +125,7 @@ def report_loop():
 
 
 if __name__ == "__main__":
-    log("JagaNet node agent: %s on %s, main server %s" % (PROTOCOL, IFACE, URL))
+    log("Boop node agent: %s on %s, main server %s" % (PROTOCOL, IFACE, URL))
     threading.Thread(target=report_loop, daemon=True).start()
     try:
         sync_loop()

@@ -25,7 +25,7 @@ import io.ktor.serialization.kotlinx.json.json
 class ApiException(val status: Int, val code: ErrorCode, message: String) : Exception(message)
 
 /**
- * Typed client for the JagaNet REST API. The app passes an engine-specific
+ * Typed client for the Boop VPN REST API. The app passes an engine-specific
  * HttpClient (OkHttp, Darwin, Java); tests pass the Ktor test client.
  */
 class ApiClient(

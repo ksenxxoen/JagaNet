@@ -87,7 +87,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
     /**
      * Moves every device of node [fromId] to node [toId]: a new address there, the peer added
      * there and removed here. Key links then give the new node's settings (devices with key
-     * files add their key again; the JagaNet app follows on its next connect). All or nothing.
+     * files add their key again; the Boop VPN app follows on its next connect). All or nothing.
      */
     suspend fun moveDevices(fromId: String, toId: String): Int {
         if (fromId == toId) throw badRequest("Choose another node")

@@ -11,14 +11,14 @@ internal val telegramStrings: List<S> = listOf(
     S("My subscription", "Моя подписка", "Mein Abo"),
 
     S(
-        "JagaNet VPN is fast and secure. It encrypts all your traffic.",
-        "JagaNet VPN быстрый и безопасный. Он шифрует весь ваш трафик.",
-        "JagaNet VPN ist schnell und sicher. Es verschlüsselt deinen gesamten Datenverkehr.",
+        "Boop VPN is fast and secure. It encrypts all your traffic.",
+        "Boop VPN быстрый и безопасный. Он шифрует весь ваш трафик.",
+        "Boop VPN ist schnell und sicher. Es verschlüsselt deinen gesamten Datenverkehr.",
     ),
     S(
-        "It works in the JagaNet app and in other VPN apps.",
-        "Работает в приложении JagaNet и в других VPN-приложениях.",
-        "Es funktioniert in der JagaNet-App und in anderen VPN-Apps.",
+        "It works in the Boop app and in other VPN apps.",
+        "Работает в приложении Boop и в других VPN-приложениях.",
+        "Es funktioniert in der Boop-App und in anderen VPN-Apps.",
     ),
     S("Your Pro is active until {date}.", "Ваш Pro действует до {date}.", "Dein Pro ist aktiv bis {date}."),
     S("current", "текущий", "aktuell"),
@@ -39,9 +39,9 @@ internal val telegramStrings: List<S> = listOf(
     S("Couldn't make a key.", "Не удалось создать ключ.", "Der Schlüssel konnte nicht erstellt werden."),
     S("Your VPN key", "Ваш VPN-ключ", "Dein VPN-Schlüssel"),
     S(
-        "Install the JagaNet app, tap Sign in with a device code and enter this code",
-        "Установите приложение JagaNet, нажмите «Войти по коду устройства» и введите этот код",
-        "Installiere die JagaNet-App, tippe auf „Mit Gerätecode anmelden“ und gib diesen Code ein",
+        "Install the Boop app, tap Sign in with a device code and enter this code",
+        "Установите приложение Boop, нажмите «Войти по коду устройства» и введите этот код",
+        "Installiere die Boop-App, tippe auf „Mit Gerätecode anmelden“ und gib diesen Code ein",
     ),
     S(
         "The code works for 10 minutes. The app uses this same subscription.",
@@ -61,9 +61,9 @@ internal val telegramStrings: List<S> = listOf(
     S("Tap /key to get your VPN key.", "Нажмите /key, чтобы получить VPN-ключ.", "Tippe auf /key, um deinen VPN-Schlüssel zu bekommen."),
     S("That key was deleted. Tap /key for a new one.", "Этот ключ удалён. Нажмите /key, чтобы получить новый.", "Dieser Schlüssel wurde gelöscht. Tippe auf /key für einen neuen."),
     S(
-        "1. Install AmneziaVPN (button below) or our JagaNet app.",
-        "1. Установите AmneziaVPN (кнопка ниже) или наше приложение JagaNet.",
-        "1. Installiere AmneziaVPN (Button unten) oder unsere JagaNet-App.",
+        "1. Install AmneziaVPN (button below) or our Boop app.",
+        "1. Установите AmneziaVPN (кнопка ниже) или наше приложение Boop.",
+        "1. Installiere AmneziaVPN (Button unten) oder unsere Boop-App.",
     ),
     S(
         "2. Scan this QR code in the app from another screen or import the {file} file below.",

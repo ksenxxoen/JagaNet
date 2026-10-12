@@ -1,4 +1,4 @@
-// JagaNet website: landing page, sign in, account (buy, VPN keys, apps).
+// Boop website: landing page, sign in, account (buy, VPN keys, apps).
 // Plain JS, no build step. Talks to the same backend as the apps (/v1).
 // Texts: t(english) looks up the current language's table from /v1/i18n/<lang>.
 "use strict";
@@ -53,7 +53,7 @@ async function setLang(code, rerender = true) {
   document.cookie = `lang=${lang}; path=/; max-age=31536000; samesite=lax`;
   document.documentElement.lang = lang;
   dict = lang === "en" ? {} : await fetch(`/v1/i18n/${lang}`).then((r) => r.json()).catch(() => ({}));
-  document.title = t("JagaNet VPN");
+  document.title = t("Boop VPN");
   if (rerender) render();
 }
 
@@ -91,7 +91,7 @@ function renderNav() {
   for (const b of nav.querySelectorAll("[data-lang]")) b.onclick = () => setLang(b.dataset.lang);
   const mb = document.getElementById("menubtn");
   if (mb) mb.onclick = () => { const open = menu.classList.toggle("open"); mb.setAttribute("aria-expanded", String(open)); };
-  foot.innerHTML = `<span>© JagaNet</span><nav>${site?.telegramBotUrl ? `<a href="${h(site.telegramBotUrl)}">Telegram</a>` : ""}<a href="#/">${t("Pricing")}</a>${store.get("token") ? `<a href="#/account">${t("My account")}</a>` : `<a href="#/signin">${t("Sign in")}</a>`}</nav>`;
+  foot.innerHTML = `<span>© Boop</span><nav>${site?.telegramBotUrl ? `<a href="${h(site.telegramBotUrl)}">Telegram</a>` : ""}<a href="#/">${t("Pricing")}</a>${store.get("token") ? `<a href="#/account">${t("My account")}</a>` : `<a href="#/signin">${t("Sign in")}</a>`}</nav>`;
 }
 
 /**
@@ -137,12 +137,12 @@ async function home() {
   const slot = plans.tariffs.some((x) => x.badge);
   const cur = plans.tariffs[0]?.currency || (lang === "ru" ? "RUB" : "EUR");
   const freeCard = planCard(t("Free"), money(0, cur),
-    [t("No time limit"), tp(free.deviceLimit, "{n} device|{n} devices"), h(t("{n} GB a month", { n: Math.round(free.monthlyDataLimitBytes / 1e9) })), t("JagaNet app")],
+    [t("No time limit"), tp(free.deviceLimit, "{n} device|{n} devices"), h(t("{n} GB a month", { n: Math.round(free.monthlyDataLimitBytes / 1e9) })), t("Boop app")],
     `<a class="btn secondary" href="#download">${t("Download the app")}</a>`, null, false, slot);
   view.innerHTML = `
   <section class="hero">
     <h1>${t("A fast and secure VPN.")}</h1>
-    <p>${t("JagaNet encrypts all your traffic and keeps the internet fast.")}</p>
+    <p>${t("Boop encrypts all your traffic and keeps the internet fast.")}</p>
     <div class="cta">
       <a class="btn large" href="#pricing">${t("Choose a plan")}</a>
       <a class="btn secondary large" href="#download">${t("Download the app")}</a>
@@ -167,8 +167,8 @@ function downloads() {
   const a = site?.androidAppUrl, i = site?.iosAppUrl, tg = site?.telegramBotUrl;
   const soon = `<button class="btn secondary" disabled>${t("Coming soon")}</button>`;
   return tiles([
-    `<div class="card app-card"><h3>Android</h3><p>${t("The JagaNet app.")}</p>${a ? `<a class="btn secondary" href="${h(a)}">${t("Download for Android")}</a>` : soon}</div>`,
-    `<div class="card app-card"><h3>iPhone</h3><p>${t("The JagaNet app for iOS.")}</p>${i ? `<a class="btn secondary" href="${h(i)}">${t("Download on the App Store")}</a>` : soon}</div>`,
+    `<div class="card app-card"><h3>Android</h3><p>${t("The Boop app.")}</p>${a ? `<a class="btn secondary" href="${h(a)}">${t("Download for Android")}</a>` : soon}</div>`,
+    `<div class="card app-card"><h3>iPhone</h3><p>${t("The Boop app for iOS.")}</p>${i ? `<a class="btn secondary" href="${h(i)}">${t("Download on the App Store")}</a>` : soon}</div>`,
     tg ? `<div class="card app-card"><h3>Telegram</h3><p>${t("Buy your key right in Telegram.")}</p><a class="btn secondary" href="${h(tg)}">${t("Open the bot")}</a></div>`
        : `<div class="card app-card"><h3>${t("Other VPN apps")}</h3><p>${t("Your Pro key also works in other VPN apps.")}</p><a class="btn secondary" href="https://amnezia.org/downloads" rel="noreferrer">${t("Get AmneziaVPN")}</a></div>`,
   ]);
@@ -277,7 +277,7 @@ async function account(params) {
   }
   const [me, keys, plans, pays] = await Promise.all([api("/me"), api("/keys"), api("/billing/plans"), api("/me/payments")]);
   const e = me.entitlement, isPro = e.plan === "pro";
-  const sourceName = { web: t("Website"), telegram: "Telegram", app: t("JagaNet app"), apple: "App Store", google: "Google Play", referral: t("Invite reward"), dev: t("Simulation") };
+  const sourceName = { web: t("Website"), telegram: "Telegram", app: t("Boop app"), apple: "App Store", google: "Google Play", referral: t("Invite reward"), dev: t("Simulation") };
   const who = me.user.email.endsWith("@telegram.invalid") ? t("Telegram account") : me.user.email;
   const kv = (k, v) => `<div><div class="k">${k}</div><div class="v">${v}</div></div>`;
   const until = isPro ? (e.expiresAt ? h(date(e.expiresAt)) : t("Owner account, no time limit")) : t("No time limit");
@@ -309,7 +309,7 @@ async function account(params) {
 
   <div class="h2row"><h2>${t("Apps")}</h2></div>
   ${downloads()}
-  <div class="card section"><div class="card-h"><h3>${t("Sign in to the JagaNet app")}</h3><div id="pair"><button class="btn secondary" id="paircode">${t("Show a code")}</button></div></div>
+  <div class="card section"><div class="card-h"><h3>${t("Sign in to the Boop app")}</h3><div id="pair"><button class="btn secondary" id="paircode">${t("Show a code")}</button></div></div>
     <p class="muted">${t("In the app tap Sign in with a device code and enter the code.")}</p></div>
 
   ${pays.payments.length ? `<div class="h2row"><h2>${t("Payments")}</h2></div><div class="card tablewrap"><table class="data"><thead><tr><th>${t("Plan")}</th><th>${t("Period")}</th><th>${t("Channel")}</th></tr></thead><tbody>
@@ -711,7 +711,7 @@ async function status(params) {
 /* ---------------- admin panel (owners) ---------------- */
 
 const ADMIN_TABS = [["money", "Finance"], ["plans", "Plans"], ["nodes", "Nodes"], ["testers", "Test accounts"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"]];
-const payChannel = (k) => ({ web: t("Website"), telegram: "Telegram", app: t("JagaNet app"), apple: "App Store", google: "Google Play", dev: t("Test payments") })[k] || k;
+const payChannel = (k) => ({ web: t("Website"), telegram: "Telegram", app: t("Boop app"), apple: "App Store", google: "Google Play", dev: t("Test payments") })[k] || k;
 const NEW_SUB = C1, RENEWAL = C2;
 
 /** "299" or "4,99" in major units → minor units; NaN when it isn't a price. */
@@ -929,7 +929,7 @@ async function nodesPane(command) {
     const targets = list.filter((n) => n.id !== x.id && n.active && n.protocols.length);
     vf.hidden = false;
     vf.innerHTML = `<h3>${t("Move devices")}</h3>
-      <p class="muted">${t("{n} devices on this node. Key links switch to the chosen node at once: people with key files add their key again from the same link, the JagaNet app follows on its next connect.", { n: x.peers })}</p>
+      <p class="muted">${t("{n} devices on this node. Key links switch to the chosen node at once: people with key files add their key again from the same link, the Boop app follows on its next connect.", { n: x.peers })}</p>
       ${targets.length ? `<div class="formrow two"><select id="vt">${targets.map((n) => `<option value="${h(n.id)}">${h(n.name)}, ${h(n.city)} (${n.peers} / ${n.maxPeers})</option>`).join("")}</select>
         <button class="btn" type="submit" ${x.peers ? "" : "disabled"}>${t("Move all devices")}</button></div>` : `<p class="muted">${t("There is no other working node to move them to.")}</p>`}
       <p class="result" id="vres"></p>`;
@@ -1178,7 +1178,7 @@ function emailPane(s) {
         ${[["starttls", "STARTTLS"], ["ssl", "SSL/TLS"], ["none", t("None")]].map(([k, l]) => `<option value="${k}" ${k === sec ? "selected" : ""}>${l}</option>`).join("")}</select></div>
       ${field("su", t("User name"), m.user, 'autocomplete="off"')}
       ${field("sw", t("Password"), "", `type="password" autocomplete="new-password" placeholder="${s.smtpHasPassword ? h(t("saved")) : ""}"`)}
-      ${field("sf2", t("Sender address"), m.from, 'placeholder="JagaNet &lt;no-reply@example.com&gt;" required')}
+      ${field("sf2", t("Sender address"), m.from, 'placeholder="Boop &lt;no-reply@example.com&gt;" required')}
     </div>
     ${s.smtpHasPassword ? `<p class="muted small">${t("Leave the password empty to keep the saved one.")}</p>` : ""}
     <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button>

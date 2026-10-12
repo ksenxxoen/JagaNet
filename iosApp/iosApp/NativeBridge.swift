@@ -123,11 +123,11 @@ final class NativeBridge: NSObject, IosNativeBridge {
     private func configure(_ m: NETunnelProviderManager, killSwitch: Bool, location: String? = nil) {
         let p = NETunnelProviderProtocol()
         p.providerBundleIdentifier = (Bundle.main.bundleIdentifier ?? "dev.jaganet.app") + ".PacketTunnel"
-        p.serverAddress = location ?? "JagaNet"
+        p.serverAddress = location ?? "Boop VPN"
         // Closest iOS equivalent of a kill switch: everything goes through the tunnel while it's on.
         p.includeAllNetworks = killSwitch
         m.protocolConfiguration = p
-        m.localizedDescription = "JagaNet"
+        m.localizedDescription = "Boop VPN"
         m.isEnabled = true
     }
 

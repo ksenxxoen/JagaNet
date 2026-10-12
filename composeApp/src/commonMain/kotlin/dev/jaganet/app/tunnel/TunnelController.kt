@@ -30,7 +30,7 @@ object ProtocolInfo {
     fun description(id: String): String = when (id) {
         "amneziawg" -> t("WireGuard speed, disguised so networks that block VPNs can’t spot it.")
         "wireguard" -> t("Plain WireGuard. Slightly lighter, but easy for censors to detect.")
-        "jaga-custom" -> t("Example of a custom protocol plugged into JagaNet.")
+        "jaga-custom" -> t("Example of a custom protocol plugged into Boop.")
         else -> t("Custom protocol")
     }
 }

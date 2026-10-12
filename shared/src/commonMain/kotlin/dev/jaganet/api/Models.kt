@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
 /*
- * The JagaNet API contract, shared by the server and the apps.
+ * The Boop VPN API contract, shared by the server and the apps.
  * Times are ISO-8601 strings; byte counts are Long; rates are bits per second.
  */
 
@@ -385,7 +385,7 @@ data class OkRes(val ok: Boolean = true)
 /* ---------- VPN keys (website / Telegram purchases) ---------- */
 
 /**
- * A server-generated VPN config for apps other than JagaNet (AmneziaVPN, AmneziaWG, WireGuard).
+ * A server-generated VPN config for apps other than Boop VPN (AmneziaVPN, AmneziaWG, WireGuard).
  * The link URLs carry a secret token: whoever has one can use the key.
  */
 @Serializable

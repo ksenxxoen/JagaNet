@@ -92,7 +92,7 @@ class AndroidPlatform private constructor(
     }
 
     override fun copy(text: String) {
-        context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("JagaNet", text))
+        context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Boop", text))
     }
 
     override fun openUrl(url: String) {

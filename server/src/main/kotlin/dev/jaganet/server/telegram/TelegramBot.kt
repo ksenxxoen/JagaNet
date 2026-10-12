@@ -147,9 +147,9 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
         val pro = isPro(u.userId)
         val tariffs = s.tariffs.onSale(u.lang)
         val text = buildString {
-            appendLine(u.t("JagaNet VPN is fast and secure. It encrypts all your traffic."))
+            appendLine(u.t("Boop VPN is fast and secure. It encrypts all your traffic."))
             appendLine()
-            append(u.t("It works in the JagaNet app and in other VPN apps."))
+            append(u.t("It works in the Boop app and in other VPN apps."))
             for (t in tariffs) { appendLine(); appendLine(); append("${t.name}, ${period(t, u.lang)}, ${Format.terms(t.deviceLimit, t.monthlyDataLimitBytes, u.lang)}") }
             if (pro != null) { appendLine(); appendLine(); append(u.t("Your Pro is active until {date}.", "date" to Format.date(pro.toString(), u.lang))) }
         }
@@ -193,14 +193,14 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
     private suspend fun appAction(u: Who) {
         val pair = s.auth.createPairingCodeFor(u.userId)
         val links = buildList {
-            s.site.androidAppUrl()?.let { add(listOf(Btn(u.t("JagaNet for Android"), url = it))) }
-            s.site.iosAppUrl()?.let { add(listOf(Btn(u.t("JagaNet for iPhone"), url = it))) }
+            s.site.androidAppUrl()?.let { add(listOf(Btn(u.t("Boop for Android"), url = it))) }
+            s.site.iosAppUrl()?.let { add(listOf(Btn(u.t("Boop for iPhone"), url = it))) }
             s.site.otherApps.forEach { (n, url) -> add(listOf(Btn(n, url = url))) }
         }
         send(
             u,
             buildString {
-                appendLine(u.t("Install the JagaNet app, tap Sign in with a device code and enter this code"))
+                appendLine(u.t("Install the Boop app, tap Sign in with a device code and enter this code"))
                 appendLine()
                 appendLine(pair.code)
                 appendLine()
@@ -264,7 +264,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
             appendLine(head)
             appendLine()
             appendLine(u.t("How to connect"))
-            appendLine(u.t("1. Install AmneziaVPN (button below) or our JagaNet app."))
+            appendLine(u.t("1. Install AmneziaVPN (button below) or our Boop app."))
             appendLine(u.t("2. Scan this QR code in the app from another screen or import the {file} file below.", "file" to Keys.CONFIG_FILE))
             appendLine(u.t("3. Connect."))
             appendLine()
@@ -273,7 +273,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
         val buttons = buildList {
             add(listOf(Btn(u.t("Open key page"), url = withLang(key.pageUrl, u.lang))))
             s.site.otherApps.forEach { (n, url) -> add(listOf(Btn(n, url = url))) }
-            s.site.androidAppUrl()?.let { add(listOf(Btn(u.t("JagaNet for Android"), url = it))) }
+            s.site.androidAppUrl()?.let { add(listOf(Btn(u.t("Boop for Android"), url = it))) }
         }
         api.call("sendPhoto", buildJsonObject { put("chat_id", u.chat); put("caption", caption); put("reply_markup", keyboard(buttons)) },
             Upload("photo", "jaganet-key.png", "image/png", Keys.qrPng(cfg.text)))

@@ -46,8 +46,9 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun Brand() = Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    Box(Modifier.size(32.dp).background(C.primary, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-        Icon(Ic.Shield, C.surface, 18.dp, 2f)
+    // The Boop VPN mark (same as the launcher icon and the website's favicon).
+    Box(Modifier.size(32.dp).background(androidx.compose.ui.graphics.Color(0xFFFF4F79), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+        Icon(Ic.Boop, androidx.compose.ui.graphics.Color.White, 20.dp, 2.2f)
     }
     T(APP_NAME, TS.Brand, FontWeight.SemiBold)
 }

@@ -48,7 +48,7 @@ internal val homeStrings: List<S> = listOf(
     // Protocols
     S("WireGuard speed, disguised so networks that block VPNs can’t spot it.", "Скорость WireGuard и маскировка от сетей, которые блокируют VPN.", "WireGuard-Tempo, getarnt vor Netzen, die VPNs blockieren."),
     S("Plain WireGuard. Slightly lighter, but easy for censors to detect.", "Обычный WireGuard. Чуть легче, но цензорам легко его распознать.", "Normales WireGuard. Etwas schlanker, aber für Zensoren leicht zu erkennen."),
-    S("Example of a custom protocol plugged into JagaNet.", "Пример своего протокола, подключённого к JagaNet.", "Beispiel für ein eigenes Protokoll in JagaNet."),
+    S("Example of a custom protocol plugged into Boop.", "Пример своего протокола, подключённого к Boop.", "Beispiel für ein eigenes Protokoll in Boop."),
     S("Custom protocol", "Свой протокол", "Eigenes Protokoll"),
 
     // Connect errors

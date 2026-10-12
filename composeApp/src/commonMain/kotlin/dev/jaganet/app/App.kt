@@ -52,8 +52,8 @@ import dev.jaganet.app.ui.Icon
 import dev.jaganet.app.ui.T
 import dev.jaganet.app.ui.TS
 
-/** Product name in one place: the drafts called it "Burrow", the project is JagaNet. */
-const val APP_NAME = "JagaNet"
+/** Product name in one place: the drafts called it "Burrow", the product is Boop VPN. */
+const val APP_NAME = "Boop"
 
 @Composable
 fun App(platform: AppPlatform) {

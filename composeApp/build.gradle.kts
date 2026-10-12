@@ -69,7 +69,7 @@ compose.desktop {
         mainClass = "dev.jaganet.app.MainKt"
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Deb)
-            packageName = "JagaNet Simulator"
+            packageName = "Boop VPN Simulator"
             packageVersion = "0.1.0"
         }
     }

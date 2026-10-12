@@ -56,7 +56,7 @@ fun Route.adminApi(s: Services) {
         val smtp = s.ctx.live.smtp ?: throw AppError(503, ErrorCode.SERVICE_UNAVAILABLE, "E-mail is not set up")
         val lang = call.apiLang()
         try {
-            EmailSender(smtp).send(listOf(to), "[JagaNet] " + I18n.tr(lang, "Test e-mail"), I18n.tr(lang, "E-mail from your JagaNet server works."))
+            EmailSender(smtp).send(listOf(to), "[Boop] " + I18n.tr(lang, "Test e-mail"), I18n.tr(lang, "E-mail from your Boop server works."))
         } catch (e: Exception) {
             throw AppError(502, ErrorCode.SERVICE_UNAVAILABLE, "The mail server refused, {reason}", mapOf("reason" to (e.message ?: e.javaClass.simpleName).take(200)))
         }

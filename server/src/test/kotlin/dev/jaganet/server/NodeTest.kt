@@ -131,7 +131,7 @@ class NodeTest {
             out("Connected to ${target.host}")
             out("\u001B[1;32m==> Installing the VPN (AmneziaWG)\u001B[0m")
             services.nodes.register(env["NODE_TOKEN"], NodeRegisterReq(target.host, 51821, "amneziawg"))
-            out("JagaNet node is running.")
+            out("Boop node is running.")
             0
         }
         val started = owner.installNode(id, NodeSshReq(" 198.51.100.7 ", password = "pw"))
@@ -189,7 +189,7 @@ class NodeTest {
         owner.installNode(id, NodeSshReq("45.148.118.88", password = "pw"))
         services.nodes.installs[id]?.join()
         val raw = b.createClient {}
-        val conf = made.keys[0].substringAfter(cfg.publicUrl.trimEnd('/')) + "/JagaNet.conf"
+        val conf = made.keys[0].substringAfter(cfg.publicUrl.trimEnd('/')) + "/BoopVPN.conf"
         assertTrue("Endpoint = n1:51821" in raw.get(conf).bodyAsText())
 
         assertEquals("BAD_REQUEST", code { owner.moveNodeDevices("n1", "n1") })

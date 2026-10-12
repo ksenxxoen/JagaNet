@@ -1,4 +1,4 @@
-# JagaNet
+# Boop VPN
 
 A VPN app for iPhone and Android with one shared backend, written in Kotlin end to end.
 
