@@ -37,7 +37,7 @@ private val RULES = mapOf(
     "vpn" to Rule(2), "db" to Rule(2), "https" to Rule(3), "cert" to Rule(1), "bot" to Rule(5),
     "cpu" to Rule(10), "memory" to Rule(5), "disk" to Rule(1),
     "channel" to Rule(5), "net_errors" to Rule(5), "ping" to Rule(3), "dns" to Rule(3), "traffic" to Rule(1),
-    "nodes" to Rule(3),
+    "nodes" to Rule(3), "blocklist" to Rule(1),
 )
 
 /** Names used in alert subjects; the same keys the status page translates. */
@@ -45,6 +45,7 @@ private val NAMES = mapOf(
     "vpn" to "VPN", "db" to "Database", "https" to "Website (HTTPS)", "cert" to "Certificate", "bot" to "Telegram bot",
     "cpu" to "Processor", "memory" to "Memory", "disk" to "Disk", "channel" to "Channel load", "net_errors" to "Network errors",
     "ping" to "Ping and packet loss", "dns" to "DNS", "traffic" to "Monthly traffic", "nodes" to "VPN nodes",
+    "blocklist" to "Block lists",
 )
 
 /**
@@ -65,6 +66,8 @@ class Monitor(
     private val botAlive: () -> Instant? = { null },
     private val botEnabled: Boolean = false,
     private val lang: Lang = Lang.DEFAULT,
+    /** Roskomnadzor and throttled-range lists (cheburcheck.ru's sources); null = not checked. */
+    private val blocklists: dev.jaganet.server.services.Blocklists? = null,
 ) {
     private val log = LoggerFactory.getLogger("monitor")
     private val bad = ConcurrentHashMap<String, Int>()
@@ -126,6 +129,24 @@ class Monitor(
         val remote = runCatching {
             ctx.db.run { it.query("SELECT name, last_report_at FROM servers WHERE active AND agent_token_hash IS NOT NULL AND protocols <> '{}'::jsonb ORDER BY name") }
         }.getOrDefault(emptyList())
+        // ---- VPN addresses on Russian block lists (see Blocklists)
+        val listed = mutableListOf<Pair<String, dev.jaganet.server.services.BlocklistHit>>()
+        var addressesChecked = 0
+        val lists = blocklists
+        if (lists != null && lists.loaded) runCatching {
+            val rows = ctx.db.run { it.query("SELECT name, protocols FROM servers WHERE active ORDER BY name") }
+            for (r in rows) {
+                val hosts = r.json("protocols").values.mapNotNull { v ->
+                    val o = v as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                    (o["publicIp"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                        ?: (o["endpoint"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.substringBeforeLast(':')?.removePrefix("[")?.removeSuffix("]")
+                }.distinct()
+                for (h in hosts) for (hit in lists.checkHost(h)) {
+                    addressesChecked++
+                    if (hit.listed) listed += r.str("name") to hit
+                }
+            }
+        }
         val silent = remote.filter { r -> r.instantOrNull("last_report_at")?.let { Duration.between(it, now) >= NODE_OFFLINE } ?: true }.map { it.str("name") }
 
         // ---- database (also stores the minute)
@@ -216,6 +237,20 @@ class Monitor(
                 if (silent.isEmpty()) HealthCheck("nodes", CheckLevel.OK, "All nodes respond")
                 else HealthCheck("nodes", CheckLevel.CRITICAL, "No contact with {names}", mapOf("names" to silent.joinToString(", "))),
             )
+            if (addressesChecked > 0) {
+                fun who(list: List<Pair<String, dev.jaganet.server.services.BlocklistHit>>) = list.joinToString(", ") { (n, h) -> "$n (${h.ip})" }
+                val rkn = listed.filter { it.second.rknSubnets.isNotEmpty() }
+                add(
+                    when {
+                        rkn.isNotEmpty() -> HealthCheck("blocklist", CheckLevel.CRITICAL, "On the Roskomnadzor block list: {nodes}", mapOf("nodes" to who(rkn)))
+                        listed.isNotEmpty() -> HealthCheck(
+                            "blocklist", CheckLevel.WARNING, "In ranges throttled in Russia ({providers}): {nodes}",
+                            mapOf("nodes" to who(listed), "providers" to listed.flatMap { it.second.providers }.distinct().joinToString(", ")),
+                        )
+                        else -> HealthCheck("blocklist", CheckLevel.OK, "{n} VPN addresses checked, none on the lists", mapOf("n" to "$addressesChecked"))
+                    },
+                )
+            }
             ctx.live.monthlyTrafficLimitBytes?.let { limit ->
                 val share = monthBytes.toDouble() / limit
                 add(HealthCheck("traffic", level(share, 0.8, 0.95), "{used} of {limit} this month", mapOf("used" to bytes(monthBytes), "limit" to bytes(limit))))

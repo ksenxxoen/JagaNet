@@ -63,6 +63,13 @@ fun serve(ctx: Ctx, collectEveryMs: Long, wait: Boolean = true) {
                 delay(60_000)
             }
         }
+        if (ctx.cfg.monitor.enabled) launch {
+            // Russian block lists (cheburcheck.ru's sources): every 12 hours, sooner after a failed download.
+            while (true) {
+                val ok = runCatching { services.blocklists.refresh() }.getOrDefault(false)
+                delay(if (ok) 12 * 3_600_000L else 600_000L)
+            }
+        }
         launch {
             runCatching { services.tunnels.resyncLocalPeers() }
                 .onSuccess { log.info("VPN peers in place: {}", it) }.onFailure { log.error("peer sync failed", it) }

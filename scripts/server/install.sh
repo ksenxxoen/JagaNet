@@ -225,6 +225,8 @@ if [ -f "/etc/systemd/system/awg-quick@$IFACE.service.d/jaganet.conf" ]; then
   rm -rf "/etc/systemd/system/awg-quick@$IFACE.service.d"
   systemctl daemon-reload
 fi
+# The internet interface may be renamed (or the server moved): NAT always goes out the current one.
+sed -i -E "s/(-s [0-9.\/]+ -o )[^ ]+( -j MASQUERADE)/\1$WAN_IF\2/g" "$CONF"
 # A file saved by the old kernel module has "AdvancedSecurity" per peer: amneziawg-go rejects it.
 sed -i '/^AdvancedSecurity[[:space:]]*=/d' "$CONF"
 systemctl enable -q "$TOOL-quick@$IFACE"
@@ -279,6 +281,10 @@ env_set() { # KEY VALUE: replace or add a setting
 }
 env_default() { grep -q "^$1=" "$ENV_FILE" || echo "$1=$2" >> "$ENV_FILE"; }
 env_set PROTOCOLS "$PROTOCOL"
+# The address follows the server: a new IP (or JAGANET_DOMAIN) means new links everywhere.
+if [ -n "${JAGANET_DOMAIN:-}" ] || grep -qE '^PUBLIC_URL=https://[0-9-]+\.sslip\.io/?$' "$ENV_FILE"; then
+  env_set PUBLIC_URL "https://$DOMAIN"
+fi
 # Real mode by default: no sign-in codes on screen, no test checkout. The admin panel can turn
 # test modes on deliberately (its choice is stored in the database and wins over this file).
 env_set TEST_SHOW_SIGNIN_CODES 0

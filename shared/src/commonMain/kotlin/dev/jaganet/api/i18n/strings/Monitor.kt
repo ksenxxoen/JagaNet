@@ -71,4 +71,8 @@ internal val monitorStrings: List<S> = listOf(
     S("All nodes respond", "Все ноды на связи", "Alle Knoten antworten"),
     S("No contact with {names}", "Нет связи с {names}", "Keine Verbindung zu {names}"),
     S("VPN nodes", "VPN-ноды", "VPN-Knoten"),
+    S("Block lists", "Списки блокировок", "Sperrlisten"),
+    S("On the Roskomnadzor block list: {nodes}", "В реестре блокировок Роскомнадзора: {nodes}", "Auf der Sperrliste von Roskomnadzor: {nodes}"),
+    S("In ranges throttled in Russia ({providers}): {nodes}", "В диапазонах, которые замедляют в России ({providers}): {nodes}", "In Bereichen, die in Russland gedrosselt werden ({providers}): {nodes}"),
+    S("{n} VPN addresses checked, none on the lists", "Проверено адресов VPN: {n}, ни одного в списках", "{n} VPN-Adressen geprüft, keine auf den Listen"),
 )

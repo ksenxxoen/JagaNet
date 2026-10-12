@@ -63,6 +63,13 @@ fun Route.adminApi(s: Services) {
         call.respond(OkRes())
     }
     // Tariff builder. No deleting: archive instead, bought subscriptions keep their terms.
+    // Russian block lists (cheburcheck.ru's sources) for any address or name: ?host=1.2.3.4
+    get("/admin/blocklist") {
+        call.owner()
+        val host = call.request.queryParameters["host"]?.trim().orEmpty()
+        if (host.isEmpty() || host.length > 253) throw badRequest("Enter an address")
+        call.respond(dev.jaganet.server.services.BlocklistRes(s.blocklists.loaded, s.blocklists.updatedAt?.toString(), s.blocklists.checkHost(host)))
+    }
     get("/admin/test-accounts") { call.owner(); call.respond(TestAccountsRes(s.testAccounts.list())) }
     post("/admin/test-accounts") { call.owner(); call.respond(TestAccountsRes(s.testAccounts.create(call.receive<TestAccountsReq>()))) }
     delete("/admin/test-accounts/{id}") { call.owner(); s.testAccounts.delete(call.parameters["id"]!!); call.respond(OkRes()) }

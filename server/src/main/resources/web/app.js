@@ -517,7 +517,7 @@ const LEVELS = { ok: "OK", warning: "Warning", critical: "Problem", unknown: "Un
 const CHECK_NAMES = {
   vpn: "VPN", db: "Database", https: "Website (HTTPS)", cert: "Certificate", bot: "Telegram bot", cpu: "Processor", memory: "Memory",
   disk: "Disk", channel: "Channel load", net_errors: "Network errors", ping: "Ping and packet loss", dns: "DNS", traffic: "Monthly traffic",
-  nodes: "VPN nodes",
+  nodes: "VPN nodes", blocklist: "Block lists",
 };
 const DOWN = C1, UP = C2, ONE = C1;
 let statusTimer = null;

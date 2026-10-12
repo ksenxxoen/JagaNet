@@ -92,6 +92,7 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
     val site = Site(ctx)
     /** Set when TELEGRAM_BOT_TOKEN is configured and the bot started. */
     @Volatile var bot: dev.jaganet.server.telegram.TelegramBot? = null
+    val blocklists = dev.jaganet.server.services.Blocklists(ctx)
     val monitor = Monitor(
         ctx, probe,
         sinks = {
@@ -103,6 +104,7 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
         },
         botAlive = { bot?.lastPollOk },
         botEnabled = ctx.cfg.telegramBotToken != null,
+        blocklists = blocklists,
     )
 }
 

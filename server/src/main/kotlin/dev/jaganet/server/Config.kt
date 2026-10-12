@@ -103,6 +103,8 @@ data class Config(
                     monthlyTrafficLimitBytes = env["HOST_TRAFFIC_LIMIT_GB"]?.takeIf { it.isNotBlank() }?.toLong()?.times(1_000_000_000),
                     wanInterface = env["WAN_INTERFACE"]?.takeIf { it.isNotBlank() },
                     pingTargets = (env["PING_TARGETS"] ?: "1.1.1.1,8.8.8.8").split(',').map { it.trim() }.filter { it.isNotEmpty() },
+                    blocklistRknUrl = env["BLOCKLIST_RKN_URL"] ?: "https://antifilter.network/download/ipsum.lst",
+                    blocklistCdnUrl = env["BLOCKLIST_CDN_URL"] ?: "https://raw.githubusercontent.com/123jjck/cdn-ip-ranges/refs/heads/main/all/all.csv",
                 ),
             )
         }
@@ -125,4 +127,8 @@ data class MonitorConfig(
     /** Internet interface; default: the one with the default route. */
     val wanInterface: String? = null,
     val pingTargets: List<String> = listOf("1.1.1.1", "8.8.8.8"),
+    /** Subnets on the Roskomnadzor block list (antifilter.network, as cheburcheck.ru uses); empty = off. */
+    val blocklistRknUrl: String = "",
+    /** Hosting and CDN ranges throttled in Russia (123jjck/cdn-ip-ranges, as cheburcheck.ru uses); empty = off. */
+    val blocklistCdnUrl: String = "",
 )
