@@ -121,6 +121,9 @@ class ApiClient(
     suspend fun installNode(id: String, req: NodeSshReq): NodeInstall = post("admin/nodes/$id/install", req)
     suspend fun nodeInstall(id: String): NodeInstall = get("admin/nodes/$id/install")
     suspend fun moveNodeDevices(id: String, to: String): MoveDevicesRes = post("admin/nodes/$id/move-devices", MoveDevicesReq(to))
+    suspend fun currentTunnel(): TunnelState = get("tunnel")
+    suspend fun adminMoveDevice(id: String, to: String): OkRes = post("admin/devices/$id/move", MoveDeviceReq(to))
+    suspend fun adminRekeyDevice(id: String): OkRes = post("admin/devices/$id/rekey", OkRes())
     suspend fun analytics(period: String = "7d"): AnalyticsOverviewRes = get("admin/analytics") { parameter("period", period) }
     suspend fun analyticsServer(id: String, period: String = "7d"): AnalyticsServerRes = get("admin/analytics/servers/$id") { parameter("period", period) }
     suspend fun analyticsUsers(period: String = "7d", q: String? = null): AnalyticsUsersRes = get("admin/analytics/users") { parameter("period", period); if (q != null) parameter("q", q) }

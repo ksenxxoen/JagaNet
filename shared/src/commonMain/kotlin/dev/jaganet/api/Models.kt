@@ -100,6 +100,8 @@ data class ServerLocation(
     val load: Double,
     /** Protocols the node terminates, in the server's order of preference. */
     val protocols: List<String>,
+    /** The VPN host, for measuring ping before connecting. */
+    val host: String? = null,
 )
 
 @Serializable
@@ -129,6 +131,20 @@ data class TunnelConfig(
     /** Read only by the engine for [protocol]. */
     val params: JsonObject,
 )
+
+/** GET /tunnel: the device's tunnel as the server has it now. */
+@Serializable
+data class TunnelState(
+    val config: TunnelConfig? = null,
+    /** Changes with anything the app must apply; the app swaps the config in place, staying connected. */
+    val version: String = "",
+    /** The app should make a new key pair and provision again (POST /tunnel) on the same server. */
+    val rekey: Boolean = false,
+    val countryCode: String? = null,
+)
+
+@Serializable
+data class MoveDeviceReq(val to: String)
 
 @Serializable
 enum class ConnectionEventType { @SerialName("connected") CONNECTED, @SerialName("disconnected") DISCONNECTED }

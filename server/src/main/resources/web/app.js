@@ -806,7 +806,7 @@ async function analytics(params) {
   }
 
   if (user) {
-    const r = await api(`/admin/analytics/users/${encodeURIComponent(user)}?period=${period}`);
+    const [r, nodes] = await Promise.all([api(`/admin/analytics/users/${encodeURIComponent(user)}?period=${period}`), api("/admin/nodes")]);
     if (!location.hash.startsWith("#/analytics")) return;
     const u = r.user;
     view.innerHTML = `${head(t("Analytics"), "", chips(`&user=${encodeURIComponent(user)}`))}${tabs}
@@ -821,12 +821,31 @@ async function analytics(params) {
           <td>${h(bytes(total(x.traffic)))}</td><td class="opt">${h(bytes(x.traffic.down))}</td><td class="opt">${h(bytes(x.traffic.up))}</td><td>${torrentCell(x.traffic)}</td></tr>`).join("")
           || `<tr><td colspan="5" class="muted">${t("No traffic")}</td></tr>`}</tbody></table></div>
       <div class="h2row"><h2>${t("Devices")}</h2></div>
-      <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Device")}</th><th class="opt">${t("Server")}</th><th>${t("Traffic")}</th><th>${t("Torrents")}</th><th class="opt">${t("Last seen")}</th></tr></thead>
+      <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Device")}</th><th class="opt">${t("Server")}</th><th>${t("Traffic")}</th><th>${t("Torrents")}</th><th class="opt">${t("Last seen")}</th><th></th></tr></thead>
         <tbody>${r.devices.map((d) => `<tr class="${d.removed ? "muted" : ""}"><td><b>${h(d.name)}</b><div class="muted">${h(platformName(d.platform))}${d.removed ? `, ${t("removed")}` : ""}</div></td>
           <td class="opt">${d.serverName ? `${h(d.serverName)}<div class="muted">${h(d.countryCode || "")}</div>` : `<span class="muted">${t("none")}</span>`}</td>
-          <td>${h(bytes(total(d.traffic)))}</td><td>${torrentCell(d.traffic)}</td><td class="opt">${seenText(d.lastSeenAt)}</td></tr>`).join("")
-          || `<tr><td colspan="5" class="muted">${t("No devices")}</td></tr>`}</tbody></table></div>`;
+          <td>${h(bytes(total(d.traffic)))}</td><td>${torrentCell(d.traffic)}</td><td class="opt">${seenText(d.lastSeenAt)}</td>
+          <td class="actions">${d.serverName && !d.removed ? `<button class="btn secondary small" data-dev="${h(d.id)}">${t("Edit")}</button>` : ""}</td></tr>`).join("")
+          || `<tr><td colspan="6" class="muted">${t("No devices")}</td></tr>`}</tbody></table></div>
+      <form class="card adminform section" id="df" hidden></form>`;
     wireCharts(view);
+    const df = document.getElementById("df");
+    const targets = nodes.nodes.filter((n) => n.active && n.protocols.length);
+    for (const b of view.querySelectorAll("[data-dev]")) b.onclick = () => {
+      const d = r.devices.find((x) => x.id === b.dataset.dev);
+      const app = ["android", "ios", "desktop"].includes(d.platform);
+      df.hidden = false;
+      df.innerHTML = `<h3>${h(d.name)}</h3>
+        <div class="formrow two"><div><label for="dt">${t("Server")}</label><select id="dt">${targets.filter((n) => n.name !== d.serverName)
+          .map((n) => `<option value="${h(n.id)}">${h(n.name)}, ${h(n.countryCode)}</option>`).join("")}</select></div>
+          <button class="btn" type="submit" ${targets.length > 1 ? "" : "disabled"}>${t("Move")}</button></div>
+        ${app ? `<div class="actionsrow"><button class="btn secondary" type="button" id="drk">${t("New key")}</button></div>` : ""}
+        <p class="result" id="dres"></p>`;
+      df.onsubmit = (e) => { e.preventDefault(); saveWith(df.querySelector("button[type=submit]"), "dres", () => api(`/admin/devices/${encodeURIComponent(d.id)}/move`, { method: "POST", body: { to: val("dt") } }), () => render()); };
+      const rk = document.getElementById("drk");
+      if (rk) rk.onclick = () => saveWith(rk, "dres", () => api(`/admin/devices/${encodeURIComponent(d.id)}/rekey`, { method: "POST" }));
+      df.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
     return;
   }
 

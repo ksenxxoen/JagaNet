@@ -7,6 +7,8 @@ import dev.jaganet.api.ErrorCode
 import dev.jaganet.api.Platform
 import dev.jaganet.api.ServerLocation
 import dev.jaganet.api.TunnelConfig
+import dev.jaganet.api.TunnelState
+import dev.jaganet.api.Protocols
 import dev.jaganet.api.TunnelProvisionReq
 import dev.jaganet.server.AppError
 import dev.jaganet.server.Ctx
@@ -18,6 +20,7 @@ import dev.jaganet.server.protocols.ProtocolDriver
 import dev.jaganet.server.protocols.ServerNode
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import java.time.Duration
 import java.time.Instant
 
@@ -47,7 +50,10 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
 
     suspend fun servers(): List<ServerLocation> = ctx.db.run { sql ->
         sql.query("SELECT s.*, (SELECT count(*)::int FROM tunnels t WHERE t.server_id=s.id) AS peers FROM servers s WHERE $USABLE ORDER BY s.name", ctx.now().minus(NODE_OFFLINE))
-            .map { s -> ServerLocation(s.str("id"), s.str("name"), s.str("city"), s.str("country_code"), minOf(1.0, s.int("peers").toDouble() / s.int("max_peers")), usable(s)) }
+            .map { s ->
+                val host = s.json("protocols").values.firstNotNullOfOrNull { ((it as? JsonObject)?.get("endpoint") as? JsonPrimitive)?.content }?.substringBeforeLast(':')
+                ServerLocation(s.str("id"), s.str("name"), s.str("city"), s.str("country_code"), minOf(1.0, s.int("peers").toDouble() / s.int("max_peers")), usable(s), host)
+            }
             .filter { it.protocols.isNotEmpty() }
     }
 
@@ -103,23 +109,81 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
             for (proto in tunnels.map { it.str("protocol") }.distinct()) if (proto !in to.json("protocols")) {
                 throw AppError(400, ErrorCode.UNSUPPORTED_PROTOCOL, "{server} does not offer {protocol}", mapOf("server" to to.str("name"), "protocol" to proto))
             }
-            for (t in tunnels) {
-                val proto = t.str("protocol")
-                val driver = driver(proto)
-                val address = Ipam.allocate(to.str("subnet"), used) ?: throw AppError(503, ErrorCode.SERVER_FULL, "Server is full")
-                used += address
-                driver.addPeer(to.node(proto), t.str("device_id"), address, t.json("client_params"))
-                runCatching { driver.removePeer(from.node(proto), t.str("peer_key")) }
-                sql.exec(
-                    "UPDATE tunnels SET server_id=?, address=?, last_rx=0, last_tx=0, last_torrent_rx=0, last_torrent_tx=0 WHERE device_id=?::uuid",
-                    toId, address, t.str("device_id"),
-                )
-            }
+            for (t in tunnels) moveOne(sql, t, from, to, used)
             tunnels.size
         }
         ctx.nodeHub.changed(fromId)
         ctx.nodeHub.changed(toId)
         return moved
+    }
+
+    /** One tunnel to node [to]: a new address there, the peer added there and removed from [from]. */
+    private suspend fun moveOne(sql: Sql, t: Row, from: Row, to: Row, used: MutableList<String>) {
+        val proto = t.str("protocol")
+        val driver = driver(proto)
+        val address = Ipam.allocate(to.str("subnet"), used) ?: throw AppError(503, ErrorCode.SERVER_FULL, "Server is full")
+        used += address
+        driver.addPeer(to.node(proto), t.str("device_id"), address, t.json("client_params"))
+        runCatching { driver.removePeer(from.node(proto), t.str("peer_key")) }
+        sql.exec(
+            "UPDATE tunnels SET server_id=?, address=?, last_rx=0, last_tx=0, last_torrent_rx=0, last_torrent_tx=0 WHERE device_id=?::uuid",
+            to.str("id"), address, t.str("device_id"),
+        )
+    }
+
+    /**
+     * One device to another node. The Boop apps notice on their next check (GET /tunnel) and
+     * switch without disconnecting; key links give the new settings at once.
+     */
+    suspend fun moveDevice(deviceId: String, toId: String) {
+        val fromId = ctx.db.tx { sql ->
+            val t = sql.one("SELECT * FROM tunnels WHERE device_id=?::uuid FOR UPDATE", deviceId) ?: throw notFound("No tunnel for this device")
+            if (t.str("server_id") == toId) throw badRequest("Choose another node")
+            val from = sql.one("SELECT * FROM servers WHERE id=?", t.str("server_id")) ?: throw notFound("Node not found")
+            val to = sql.one("SELECT * FROM servers WHERE id=?", toId) ?: throw notFound("Node not found")
+            val used = sql.query("SELECT address FROM tunnels WHERE server_id=?", toId).map { it.str("address") }.toMutableList()
+            if (used.size >= to.int("max_peers")) throw AppError(503, ErrorCode.SERVER_FULL, "Server is full")
+            if (t.str("protocol") !in to.json("protocols")) {
+                throw AppError(400, ErrorCode.UNSUPPORTED_PROTOCOL, "{server} does not offer {protocol}", mapOf("server" to to.str("name"), "protocol" to t.str("protocol")))
+            }
+            moveOne(sql, t, from, to, used)
+            from.str("id")
+        }
+        ctx.nodeHub.changed(fromId)
+        ctx.nodeHub.changed(toId)
+    }
+
+    /** Asks a device's Boop app for a new key pair: it makes one and provisions again on its next check. */
+    suspend fun requestRekey(deviceId: String) = ctx.db.run { sql ->
+        val d = sql.one("SELECT d.platform FROM tunnels t JOIN devices d ON d.id = t.device_id WHERE t.device_id=?::uuid", deviceId)
+            ?: throw notFound("No tunnel for this device")
+        if (d.str("platform") !in setOf("android", "ios", "desktop")) throw badRequest("Only the Boop apps can change their key")
+        sql.exec("UPDATE tunnels SET rekey=true WHERE device_id=?::uuid", deviceId)
+    }
+
+    /**
+     * The device's tunnel with its node's current settings. [TunnelState.version] changes with
+     * anything a client must apply (node, address, keys, obfuscation), so the apps can follow
+     * moves and key changes while connected.
+     */
+    suspend fun current(p: Principal): TunnelState = ctx.db.run { sql ->
+        val t = sql.one("SELECT * FROM tunnels WHERE device_id=?::uuid", p.deviceId) ?: return@run TunnelState()
+        val server = sql.one("SELECT * FROM servers WHERE id=?", t.str("server_id")) ?: return@run TunnelState(rekey = true)
+        val proto = t.str("protocol")
+        val params = ctx.drivers[proto]?.currentParams(server.node(proto)) ?: return@run TunnelState(rekey = t.bool("rekey"))
+        val cfg = TunnelConfig(
+            protocol = proto,
+            serverId = server.str("id"),
+            location = "${server.str("city")}, ${server.str("country_code").trim()}",
+            address = t.str("address") + "/32",
+            dns = server.strings("dns"),
+            mtu = server.int("mtu"),
+            params = params,
+        )
+        val version = java.security.MessageDigest.getInstance("SHA-256")
+            .digest((Protocols.encode(cfg).toString() + "|" + t.str("peer_key")).toByteArray())
+            .take(12).joinToString("") { "%02x".format(it) }
+        TunnelState(cfg, version, t.bool("rekey"), server.str("country_code").trim())
     }
 
     suspend fun defaultProtocol(): String? = servers().flatMap { it.protocols }.toSet().let { offered -> ctx.drivers.ids().firstOrNull { it in offered } }

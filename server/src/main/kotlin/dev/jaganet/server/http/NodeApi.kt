@@ -40,6 +40,9 @@ fun Route.nodeApi(s: Services) {
     get("/admin/analytics") { call.owner(); call.respond(s.analytics.overview(call.request.queryParameters["period"])) }
     get("/admin/analytics/servers/{id}") { call.owner(); call.respond(s.analytics.server(call.parameters["id"]!!, call.request.queryParameters["period"])) }
     get("/admin/analytics/users") { call.owner(); call.respond(s.analytics.users(call.request.queryParameters["period"], call.request.queryParameters["q"])) }
+    // One device: to another node, or a new key pair from its Boop app. Both reach a connected app silently.
+    post("/admin/devices/{id}/move") { call.owner(); s.tunnels.moveDevice(call.parameters["id"]!!, call.receive<dev.jaganet.api.MoveDeviceReq>().to); call.respond(OkRes()) }
+    post("/admin/devices/{id}/rekey") { call.owner(); s.tunnels.requestRekey(call.parameters["id"]!!); call.respond(OkRes()) }
     get("/admin/analytics/users/{id}") { call.owner(); call.respond(s.analytics.user(call.parameters["id"]!!, call.request.queryParameters["period"])) }
     post("/admin/nodes") { call.owner(); call.respond(s.nodes.create(call.receive<NodeReq>())) }
     put("/admin/nodes/{id}") { call.owner(); call.respond(s.nodes.update(call.parameters["id"]!!, call.receive<NodeReq>())) }

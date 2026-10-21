@@ -35,6 +35,8 @@ internal val analyticsStrings: List<S> = listOf(
     S("User not found", "Пользователь не найден", "Nutzer nicht gefunden"),
     S("Test", "Тест", "Test"),
     S("Computer", "Компьютер", "Computer"),
+    S("Move", "Перенести", "Verschieben"),
+    S("Only the Boop apps can change their key", "Ключ меняют только приложения Boop", "Nur die Boop-Apps können ihren Schlüssel wechseln"),
 
     // Short texts of the website
     S("Connects in a second", "Подключение за секунду", "Verbindet in einer Sekunde"),

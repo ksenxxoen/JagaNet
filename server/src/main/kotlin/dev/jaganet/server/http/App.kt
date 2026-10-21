@@ -200,6 +200,7 @@ fun Application.jaganet(s: Services) {
                 if (!Protocols.ID.matches(b.protocol)) throw badRequest("Invalid protocol id")
                 call.respond(s.tunnels.provision(p, b))
             }
+            get("/tunnel") { call.respond(s.tunnels.current(call.principal(s))) }
             post("/tunnel/events") {
                 val p = call.principal(s)
                 s.tunnels.connectionEvent(p, call.receive<ConnectionEventReq>())
