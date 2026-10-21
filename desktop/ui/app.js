@@ -6,7 +6,7 @@ const T = {
     "Email": "Почта", "Get a code": "Получить код", "Sign in": "Войти", "Another e-mail": "Другая почта",
     "Device code": "Код устройства", "Sign in by e-mail": "Войти по почте", "I have a device code": "У меня есть код устройства",
     "Settings": "Настройки", "Close": "Закрыть", "Country": "Страна", "Account": "Аккаунт", "Plan": "Тариф", "Extend": "Продлить",
-    "Connect on start": "Подключаться при запуске", "Language": "Язык", "Sign out": "Выйти",
+    "Connect on start": "Подключаться при запуске", "Start with Windows": "Запускать с Windows", "Language": "Язык", "Sign out": "Выйти",
     "Off": "Отключено", "Connecting": "Подключение", "Connected": "Подключено", "Fastest": "Самая быстрая",
     "ms": "мс", "until": "до", "Free": "Бесплатный"
   },
@@ -15,7 +15,7 @@ const T = {
     "Email": "E-Mail", "Get a code": "Code erhalten", "Sign in": "Anmelden", "Another e-mail": "Andere E-Mail",
     "Device code": "Gerätecode", "Sign in by e-mail": "Mit E-Mail anmelden", "I have a device code": "Ich habe einen Gerätecode",
     "Settings": "Einstellungen", "Close": "Schließen", "Country": "Land", "Account": "Konto", "Plan": "Tarif", "Extend": "Verlängern",
-    "Connect on start": "Beim Start verbinden", "Language": "Sprache", "Sign out": "Abmelden",
+    "Connect on start": "Beim Start verbinden", "Start with Windows": "Mit Windows starten", "Language": "Sprache", "Sign out": "Abmelden",
     "Off": "Getrennt", "Connecting": "Verbinde", "Connected": "Verbunden", "Fastest": "Schnellstes",
     "ms": "ms", "until": "bis", "Free": "Kostenlos"
   },
@@ -146,6 +146,8 @@ function render(next) {
   $("s-email").textContent = S.email || "";
   $("s-plan").textContent = planText();
   $("s-auto").checked = !!S.autoConnect;
+  $("s-start-row").hidden = S.autostart == null;
+  $("s-start").checked = !!S.autostart;
   $("s-version").textContent = S.version ? "Boop " + S.version : "";
 }
 
@@ -262,6 +264,7 @@ $("open-places").onclick = () => openSheet("places");
 $("open-settings").onclick = () => openSheet("settings");
 $("s-extend").onclick = () => call("extend").catch(() => {});
 $("s-auto").onchange = (e) => call("setAutoConnect", e.target.checked).catch(() => {});
+$("s-start").onchange = (e) => call("setAutostart", e.target.checked).catch(() => {});
 $("s-signout").onclick = () => { closeSheet("settings"); call("signOut").catch(() => {}); };
 document.querySelectorAll("#s-lang button").forEach((b) => (b.onclick = () => call("setLang", b.dataset.lang).catch(() => {})));
 document.addEventListener("contextmenu", (e) => { if (!e.target.matches("input")) e.preventDefault(); });

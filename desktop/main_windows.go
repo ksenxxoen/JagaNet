@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unsafe"
 
@@ -72,6 +73,7 @@ func main() {
 	app := &core.App{
 		API: core.NewAPI(apiBase, nil, nil), Store: core.LoadStore(dir), Tunnel: tun, Ping: vpn.Ping,
 		Version: version, Site: apiBase, OpenURL: openURL,
+		Autostart: setAutostart, AutostartOn: autostartOn,
 	}
 
 	dpi := uint(96)
@@ -90,13 +92,22 @@ func main() {
 		return
 	}
 	defer w.Destroy()
+	hwnd := uintptr(w.Window())
+	if slices.Contains(os.Args[1:], "--tray") {
+		showWindow.Call(hwnd, 0) // started with Windows: only the tray icon
+	}
 	w.SetSize(380, 640, webview2.HintFixed)
-	themeTitleBar(uintptr(w.Window()))
+	themeTitleBar(hwnd)
+	t := newTray(hwnd, app, w.Terminate)
+	defer t.remove()
 
 	push := func(js string) { w.Dispatch(func() { w.Eval(js) }) }
 	app.OnState = func(s core.UIState) {
 		b, _ := json.Marshal(s)
-		push("window.boop && window.boop.update(" + string(b) + ")")
+		w.Dispatch(func() {
+			w.Eval("window.boop && window.boop.update(" + string(b) + ")")
+			t.update(s)
+		})
 	}
 	app.OnToast = func(t string) {
 		b, _ := json.Marshal(map[string]string{"toast": t})

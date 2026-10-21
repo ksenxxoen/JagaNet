@@ -19,6 +19,8 @@ import (
 	"github.com/ksenxxoen/JagaNet/desktop/vpn"
 )
 
+var autostart bool
+
 func main() {
 	base := apiBase
 	if v := os.Getenv("BOOP_API"); v != "" {
@@ -53,9 +55,11 @@ func main() {
 	app := &core.App{
 		API: core.NewAPI(base, nil, nil), Store: core.LoadStore(dir), Tunnel: tun, Ping: vpn.Ping,
 		Version: version, Site: base,
-		OpenURL: func(u string) { log.Printf("open %s", u) },
-		OnState: func(s core.UIState) { send(s) },
-		OnToast: func(t string) { send(map[string]string{"toast": t}) },
+		OpenURL:     func(u string) { log.Printf("open %s", u) },
+		OnState:     func(s core.UIState) { send(s) },
+		OnToast:     func(t string) { send(map[string]string{"toast": t}) },
+		Autostart:   func(on bool) error { autostart = on; return nil },
+		AutostartOn: func() bool { return autostart },
 	}
 	app.Init()
 

@@ -17,6 +17,7 @@ type Store struct {
 	Country     string `json:"country,omitempty"`
 	AutoConnect bool   `json:"autoConnect"`
 	Lang        string `json:"lang,omitempty"`
+	TrayHint    bool   `json:"trayHint,omitempty"`
 
 	path string
 }

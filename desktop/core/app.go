@@ -52,6 +52,7 @@ type UIState struct {
 	Email       string    `json:"email"`
 	Plan        *Plan     `json:"plan,omitempty"`
 	AutoConnect bool      `json:"autoConnect"`
+	Autostart   *bool     `json:"autostart,omitempty"`
 	Version     string    `json:"version"`
 }
 
@@ -63,8 +64,11 @@ type App struct {
 	OpenURL func(string)
 	OnState func(UIState)
 	OnToast func(string)
-	Version string
-	Site    string
+	// Starting with Windows, where the system allows it.
+	Autostart   func(on bool) error
+	AutostartOn func() bool
+	Version     string
+	Site        string
 
 	mu       sync.Mutex
 	plan     *Plan
@@ -125,6 +129,10 @@ func (a *App) state() UIState {
 	}
 	if a.conn == "on" {
 		s.Since = a.since.UnixMilli()
+	}
+	if a.AutostartOn != nil {
+		on := a.AutostartOn()
+		s.Autostart = &on
 	}
 	byCode := map[string]*Country{}
 	best, bestMs := "", math.MaxFloat64
@@ -235,6 +243,18 @@ func (a *App) Call(method string, arg json.RawMessage) (any, error) {
 		_ = a.Store.Save()
 		a.mu.Unlock()
 		a.emit()
+		return nil, nil
+	case "setAutostart":
+		var v bool
+		_ = json.Unmarshal(arg, &v)
+		if a.Autostart == nil {
+			return nil, nil
+		}
+		err := a.Autostart(v)
+		a.emit()
+		if err != nil {
+			return nil, a.humanize(err)
+		}
 		return nil, nil
 	case "setLang":
 		a.mu.Lock()
@@ -376,6 +396,18 @@ func (a *App) toast(err error) {
 }
 
 /* ---------- the connection ---------- */
+
+// Toggle turns the VPN on or off, for the tray menu.
+func (a *App) Toggle() {
+	a.mu.Lock()
+	on := a.conn != "off"
+	a.mu.Unlock()
+	if on {
+		a.Disconnect()
+	} else {
+		a.Connect()
+	}
+}
 
 func (a *App) Connect() {
 	a.mu.Lock()
@@ -724,4 +756,16 @@ func (a *App) pingHost(ctx context.Context, host string) (time.Duration, error) 
 		return 0, err
 	}
 	return a.Ping(ctx, pickV4(ips))
+}
+
+// FirstHide says whether the window is hidden to the tray for the first time.
+func (a *App) FirstHide() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.Store.TrayHint {
+		return false
+	}
+	a.Store.TrayHint = true
+	_ = a.Store.Save()
+	return true
 }
