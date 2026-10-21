@@ -111,7 +111,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
                 driver.addPeer(to.node(proto), t.str("device_id"), address, t.json("client_params"))
                 runCatching { driver.removePeer(from.node(proto), t.str("peer_key")) }
                 sql.exec(
-                    "UPDATE tunnels SET server_id=?, address=?, last_rx=0, last_tx=0 WHERE device_id=?::uuid",
+                    "UPDATE tunnels SET server_id=?, address=?, last_rx=0, last_tx=0, last_torrent_rx=0, last_torrent_tx=0 WHERE device_id=?::uuid",
                     toId, address, t.str("device_id"),
                 )
             }

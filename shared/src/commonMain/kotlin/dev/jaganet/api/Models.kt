@@ -829,3 +829,93 @@ data class MoveDevicesReq(val to: String)
 
 @Serializable
 data class MoveDevicesRes(val moved: Int)
+
+/* ---------------- traffic analytics (owner) ---------------- */
+
+/** Bytes from the user's point of view: down = to the device. torrent*: the BitTorrent part. */
+@Serializable
+data class TrafficSplit(val down: Long = 0, val up: Long = 0, val torrentDown: Long = 0, val torrentUp: Long = 0)
+
+/** One hour (period 24h) or one day (longer periods), UTC; ts = start of the bucket. */
+@Serializable
+data class TrafficPoint(val ts: String, val down: Long, val up: Long, val torrent: Long)
+
+@Serializable
+data class AnalyticsServer(
+    val id: String,
+    val name: String,
+    val city: String,
+    val countryCode: String,
+    val active: Boolean,
+    val remote: Boolean,
+    /** Devices with a tunnel on this server now. */
+    val devices: Int,
+    /** Devices with traffic on it in the period. */
+    val activeDevices: Int,
+    val users: Int,
+    /** Seen in the last 3 minutes. */
+    val online: Int,
+    val traffic: TrafficSplit,
+    /** BitTorrent counting on the server: "ok", "off", "stale" or an error text. */
+    val classes: String,
+)
+
+@Serializable
+data class AnalyticsUser(
+    val id: String,
+    /** The test account's name, else the e-mail. */
+    val name: String,
+    val email: String,
+    /** "pro", "test" or "free". */
+    val plan: String,
+    val devices: Int,
+    val activeDevices: Int,
+    /** Names of the servers its devices are on now. */
+    val servers: List<String>,
+    val traffic: TrafficSplit,
+    val lastSeenAt: String? = null,
+)
+
+@Serializable
+data class AnalyticsOverviewRes(
+    val period: String,
+    /** "hour" or "day". */
+    val bucket: String,
+    val totals: TrafficSplit,
+    val users: Int,
+    val activeDevices: Int,
+    val online: Int,
+    val points: List<TrafficPoint>,
+    val servers: List<AnalyticsServer>,
+)
+
+@Serializable
+data class AnalyticsServerRes(val period: String, val bucket: String, val server: AnalyticsServer, val points: List<TrafficPoint>, val users: List<AnalyticsUser>)
+
+@Serializable
+data class AnalyticsUsersRes(val period: String, val users: List<AnalyticsUser>)
+
+@Serializable
+data class AnalyticsUserServer(val id: String, val name: String, val countryCode: String, val traffic: TrafficSplit)
+
+@Serializable
+data class AnalyticsDevice(
+    val id: String,
+    val name: String,
+    val platform: String,
+    val serverName: String? = null,
+    val countryCode: String? = null,
+    val traffic: TrafficSplit,
+    val lastSeenAt: String? = null,
+    val removed: Boolean = false,
+)
+
+@Serializable
+data class AnalyticsUserRes(
+    val period: String,
+    val bucket: String,
+    val user: AnalyticsUser,
+    val points: List<TrafficPoint>,
+    val servers: List<AnalyticsUserServer>,
+    val devices: List<AnalyticsDevice>,
+)

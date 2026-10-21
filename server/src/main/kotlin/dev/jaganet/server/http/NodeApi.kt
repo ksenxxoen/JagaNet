@@ -36,6 +36,11 @@ fun Route.nodeApi(s: Services) {
 
     suspend fun ApplicationCall.owner() = principal(s).also { if (it.user.role != Role.OWNER) throw forbidden() }
     get("/admin/nodes") { call.owner(); call.respond(AdminNodesRes(s.nodes.list())) }
+    // Traffic analytics: all servers, one server with its users, users, one user across servers.
+    get("/admin/analytics") { call.owner(); call.respond(s.analytics.overview(call.request.queryParameters["period"])) }
+    get("/admin/analytics/servers/{id}") { call.owner(); call.respond(s.analytics.server(call.parameters["id"]!!, call.request.queryParameters["period"])) }
+    get("/admin/analytics/users") { call.owner(); call.respond(s.analytics.users(call.request.queryParameters["period"], call.request.queryParameters["q"])) }
+    get("/admin/analytics/users/{id}") { call.owner(); call.respond(s.analytics.user(call.parameters["id"]!!, call.request.queryParameters["period"])) }
     post("/admin/nodes") { call.owner(); call.respond(s.nodes.create(call.receive<NodeReq>())) }
     put("/admin/nodes/{id}") { call.owner(); call.respond(s.nodes.update(call.parameters["id"]!!, call.receive<NodeReq>())) }
     post("/admin/nodes/{id}/token") { call.owner(); call.respond(s.nodes.newToken(call.parameters["id"]!!)) }
@@ -49,7 +54,7 @@ fun Route.nodeApi(s: Services) {
 
 /** The node install script and agent, served by the main server so a node needs nothing else. */
 fun Route.nodeFiles() {
-    for (file in listOf("install.sh", "agent.py")) get("/node/$file") {
+    for (file in listOf("install.sh", "agent.py", "traffic.py")) get("/node/$file") {
         val text = javaClass.classLoader.getResource("node/$file")?.readText() ?: throw notFound()
         call.response.header(HttpHeaders.CacheControl, "no-store")
         call.respondText(text, ContentType.Text.Plain)

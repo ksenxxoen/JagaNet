@@ -78,7 +78,15 @@ data class NodePeer(val publicKey: String, val address: String)
 data class NodePeersRes(val version: String, val protocol: String, val iface: String, val peers: List<NodePeer>)
 
 @Serializable
-data class NodePeerCounter(val publicKey: String, val rx: Long, val tx: Long, val lastHandshake: Long = 0)
+data class NodePeerCounter(
+    val publicKey: String,
+    val rx: Long,
+    val tx: Long,
+    val lastHandshake: Long = 0,
+    /** The BitTorrent part of rx and tx (traffic.py on the node). */
+    val torrentRx: Long = 0,
+    val torrentTx: Long = 0,
+)
 
 @Serializable
 data class NodeSystem(
@@ -89,6 +97,8 @@ data class NodeSystem(
     val rxBytes: Long = 0,
     val txBytes: Long = 0,
     val uptime: Long = 0,
+    /** Traffic classes on the node: "ok", "off" (not installed), "stale" or an error. */
+    val classes: String? = null,
 )
 
 @Serializable
@@ -100,10 +110,14 @@ private data class StoredReport(val at: Long, val system: NodeSystem, val rxBps:
 
 /** Peer counters for one node and protocol: reported by its agent, or read locally. */
 suspend fun readCounters(ctx: Ctx, server: Row, protocol: String): List<PeerCounters> {
-    if (server.strOrNull("agent_token_hash") == null) return ctx.drivers[protocol]?.readCounters(server.node(protocol)) ?: emptyList()
+    if (server.strOrNull("agent_token_hash") == null) {
+        val local = ctx.drivers[protocol]?.readCounters(server.node(protocol)) ?: return emptyList()
+        val torrent = TrafficClasses.read(ctx.cfg.trafficClassesFile).peers
+        return local.map { c -> torrent[c.peerKey]?.let { c.copy(torrentRx = it.first, torrentTx = it.second) } ?: c }
+    }
     return ctx.db.run { sql ->
         sql.query("SELECT * FROM node_peer_counters WHERE server_id=? AND protocol=?", server.str("id"), protocol).map {
-            PeerCounters(it.str("peer_key"), it.long("rx_bytes"), it.long("tx_bytes"), it.instantOrNull("last_handshake"))
+            PeerCounters(it.str("peer_key"), it.long("rx_bytes"), it.long("tx_bytes"), it.instantOrNull("last_handshake"), it.long("torrent_rx"), it.long("torrent_tx"))
         }
     }
 }
@@ -440,10 +454,11 @@ class Nodes(private val ctx: Ctx) {
             val now = ctx.now()
             for (p in req.peers.take(70_000)) {
                 sql.exec(
-                    """INSERT INTO node_peer_counters (server_id, protocol, peer_key, rx_bytes, tx_bytes, last_handshake) VALUES (?,?,?,?,?,?)
+                    """INSERT INTO node_peer_counters (server_id, protocol, peer_key, rx_bytes, tx_bytes, last_handshake, torrent_rx, torrent_tx) VALUES (?,?,?,?,?,?,?,?)
                        ON CONFLICT (server_id, protocol, peer_key) DO UPDATE SET rx_bytes=EXCLUDED.rx_bytes, tx_bytes=EXCLUDED.tx_bytes,
-                         last_handshake=EXCLUDED.last_handshake""",
+                         last_handshake=EXCLUDED.last_handshake, torrent_rx=EXCLUDED.torrent_rx, torrent_tx=EXCLUDED.torrent_tx""",
                     id, req.protocol, p.publicKey, p.rx, p.tx, if (p.lastHandshake > 0) Instant.ofEpochSecond(p.lastHandshake) else null,
+                    p.torrentRx, p.torrentTx,
                 )
             }
             // Peers the node no longer has (removed devices) don't need counters anymore.

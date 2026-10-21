@@ -84,6 +84,7 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
     val billing = Billing(ctx, tariffs)
     val referrals = Referrals(ctx) { bot?.username }
     val admin = Admin(ctx)
+    val analytics = dev.jaganet.server.services.Analytics(ctx)
     val keys = Keys(ctx, tunnels)
     val testAccounts = dev.jaganet.server.services.TestAccounts(ctx, keys, tunnels)
     val settings = Settings(ctx)

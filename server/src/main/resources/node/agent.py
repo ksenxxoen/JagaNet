@@ -21,6 +21,7 @@ with open("/etc/jaganet-node/env") as f:
             ENV[k] = v
 URL, TOKEN = ENV["JAGANET_URL"].rstrip("/"), ENV["NODE_TOKEN"]
 IFACE, TOOL, PROTOCOL, WAN_IF = ENV["IFACE"], ENV["TOOL"], ENV["PROTOCOL"], ENV.get("WAN_IF", "")
+CLASSES_FILE = ENV.get("CLASSES_FILE", "/run/boop/traffic.json")
 
 
 def log(msg):
@@ -112,12 +113,27 @@ def system(prev):
     return info, (total, idle)
 
 
+def classes():
+    """BitTorrent counters per device from the traffic classes service (traffic.py), if it runs."""
+    try:
+        with open(CLASSES_FILE) as f:
+            doc = json.load(f)
+        if time.time() - doc.get("updatedAt", 0) > 300:
+            return {}, "stale"
+        return doc.get("peers", {}), "ok" if doc.get("ok") else (doc.get("error") or "error")
+    except (OSError, ValueError):
+        return {}, "off"
+
+
 def report_loop():
     prev = None
     while True:
         try:
             info, prev = system(prev)
-            peers = [{"publicKey": k, "rx": v[1], "tx": v[2], "lastHandshake": v[3]} for k, v in dump().items()]
+            torrent, info["classes"] = classes()
+            peers = [{"publicKey": k, "rx": v[1], "tx": v[2], "lastHandshake": v[3],
+                      "torrentRx": torrent.get(k, {}).get("torrentRx", 0), "torrentTx": torrent.get(k, {}).get("torrentTx", 0)}
+                     for k, v in dump().items()]
             api("POST", "/v1/node/report", {"protocol": PROTOCOL, "peers": peers, "system": info}, timeout=30)
         except Exception as e:
             log("report: %s" % e)

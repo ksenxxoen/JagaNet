@@ -44,6 +44,8 @@ data class Config(
     /** Outgoing e-mail (sign-in codes, alerts). Null = not set up. */
     val smtp: Smtp? = null,
     val monitor: MonitorConfig = MonitorConfig(),
+    /** BitTorrent counters of this machine's VPN devices, written by traffic.py; missing = no split. */
+    val trafficClassesFile: String = "/run/boop/traffic.json",
 ) {
     companion object {
         fun load(env: Map<String, String> = System.getenv()): Config {
@@ -106,6 +108,7 @@ data class Config(
                     blocklistRknUrl = env["BLOCKLIST_RKN_URL"] ?: "https://antifilter.network/download/ipsum.lst",
                     blocklistCdnUrl = env["BLOCKLIST_CDN_URL"] ?: "https://raw.githubusercontent.com/123jjck/cdn-ip-ranges/refs/heads/main/all/all.csv",
                 ),
+                trafficClassesFile = env["TRAFFIC_CLASSES_FILE"]?.takeIf { it.isNotBlank() } ?: "/run/boop/traffic.json",
             )
         }
     }

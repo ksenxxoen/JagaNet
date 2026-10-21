@@ -23,24 +23,32 @@ class Traffic(private val ctx: Ctx, private val ent: Entitlements, private val t
             ctx.db.run { sql ->
                 for (c in counters) {
                     val t = sql.one(
-                        """SELECT t.device_id, d.user_id, t.last_rx, t.last_tx FROM tunnels t JOIN devices d ON d.id=t.device_id
+                        """SELECT t.device_id, d.user_id, t.last_rx, t.last_tx, t.last_torrent_rx, t.last_torrent_tx FROM tunnels t JOIN devices d ON d.id=t.device_id
                             WHERE t.protocol=? AND t.peer_key=? AND t.server_id=?""",
                         protocol, c.peerKey, server.str("id"),
                     ) ?: continue
                     // Counters reset when the node restarts: then the whole value is new traffic.
-                    val dRx = if (c.rxBytes >= t.long("last_rx")) c.rxBytes - t.long("last_rx") else c.rxBytes
-                    val dTx = if (c.txBytes >= t.long("last_tx")) c.txBytes - t.long("last_tx") else c.txBytes
+                    fun delta(now: Long, last: Long) = if (now >= last) now - last else now
+                    val dRx = delta(c.rxBytes, t.long("last_rx"))
+                    val dTx = delta(c.txBytes, t.long("last_tx"))
+                    // The BitTorrent part is counted inside the tunnel (no encryption overhead): never more than the whole.
+                    val tRx = delta(c.torrentRx, t.long("last_torrent_rx")).coerceAtMost(dRx)
+                    val tTx = delta(c.torrentTx, t.long("last_torrent_tx")).coerceAtMost(dTx)
                     sql.exec(
-                        "UPDATE tunnels SET last_rx=?, last_tx=?, last_seen_at=GREATEST(last_seen_at, ?) WHERE device_id=?::uuid",
-                        c.rxBytes, c.txBytes, c.lastSeenAt, t.str("device_id"),
+                        """UPDATE tunnels SET last_rx=?, last_tx=?, last_torrent_rx=?, last_torrent_tx=?, last_seen_at=GREATEST(last_seen_at, ?)
+                           WHERE device_id=?::uuid""",
+                        c.rxBytes, c.txBytes, c.torrentRx, c.torrentTx, c.lastSeenAt, t.str("device_id"),
                     )
                     if (dRx + dTx == 0L) continue
                     // User's point of view: what the node sent is their download.
                     sql.exec(
-                        """INSERT INTO traffic_samples (device_id, bucket, rx_bytes, tx_bytes) VALUES (?::uuid,?,?,?)
+                        """INSERT INTO traffic_samples (device_id, bucket, rx_bytes, tx_bytes, torrent_rx_bytes, torrent_tx_bytes, server_id) VALUES (?::uuid,?,?,?,?,?,?)
                            ON CONFLICT (device_id, bucket) DO UPDATE SET rx_bytes=traffic_samples.rx_bytes+EXCLUDED.rx_bytes,
-                             tx_bytes=traffic_samples.tx_bytes+EXCLUDED.tx_bytes""",
-                        t.str("device_id"), bucket, dTx, dRx,
+                             tx_bytes=traffic_samples.tx_bytes+EXCLUDED.tx_bytes,
+                             torrent_rx_bytes=traffic_samples.torrent_rx_bytes+EXCLUDED.torrent_rx_bytes,
+                             torrent_tx_bytes=traffic_samples.torrent_tx_bytes+EXCLUDED.torrent_tx_bytes,
+                             server_id=EXCLUDED.server_id""",
+                        t.str("device_id"), bucket, dTx, dRx, tTx, tRx, server.str("id"),
                     )
                     samples++
                     touched += t.str("user_id")

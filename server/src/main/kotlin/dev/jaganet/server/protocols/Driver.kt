@@ -13,7 +13,15 @@ data class ServerNode(
 )
 
 /** Cumulative counters for one peer, as the node sees them. */
-data class PeerCounters(val peerKey: String, val rxBytes: Long, val txBytes: Long, val lastSeenAt: Instant?)
+/** Cumulative counters of one peer. torrent*: the BitTorrent part (traffic.py), 0 when unknown. */
+data class PeerCounters(
+    val peerKey: String,
+    val rxBytes: Long,
+    val txBytes: Long,
+    val lastSeenAt: Instant?,
+    val torrentRx: Long = 0,
+    val torrentTx: Long = 0,
+)
 
 data class AddedPeer(val peerKey: String, val params: JsonObject)
 

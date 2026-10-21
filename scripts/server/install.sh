@@ -354,6 +354,26 @@ systemctl restart jaganet
 for i in $(seq 1 60); do curl -fsS http://127.0.0.1:4000/health >/dev/null 2>&1 && break; sleep 2; done
 curl -fsS http://127.0.0.1:4000/health >/dev/null || { journalctl -u jaganet -n 30 --no-pager; fail "The backend didn't start (log above)."; }
 
+# BitTorrent share of each device's traffic for the admin analytics: byte counts only.
+install -m 755 "$APP_DIR/src/server/src/main/resources/node/traffic.py" "$APP_DIR/traffic.py"
+cat > /etc/systemd/system/boop-traffic.service <<EOF
+[Unit]
+Description=Boop traffic classes (BitTorrent byte counts per VPN device)
+After=network-online.target $TOOL-quick@$IFACE.service
+
+[Service]
+Environment=IFACE=$IFACE TOOL=$TOOL_PATH
+ExecStart=/usr/bin/python3 $APP_DIR/traffic.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable -q boop-traffic
+systemctl restart boop-traffic
+
 # Register this machine as the VPN node (first run) or refresh its settings.
 NODE_JSON="$(python3 -c "
 import json, sys

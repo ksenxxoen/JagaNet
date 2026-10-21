@@ -121,6 +121,10 @@ class ApiClient(
     suspend fun installNode(id: String, req: NodeSshReq): NodeInstall = post("admin/nodes/$id/install", req)
     suspend fun nodeInstall(id: String): NodeInstall = get("admin/nodes/$id/install")
     suspend fun moveNodeDevices(id: String, to: String): MoveDevicesRes = post("admin/nodes/$id/move-devices", MoveDevicesReq(to))
+    suspend fun analytics(period: String = "7d"): AnalyticsOverviewRes = get("admin/analytics") { parameter("period", period) }
+    suspend fun analyticsServer(id: String, period: String = "7d"): AnalyticsServerRes = get("admin/analytics/servers/$id") { parameter("period", period) }
+    suspend fun analyticsUsers(period: String = "7d", q: String? = null): AnalyticsUsersRes = get("admin/analytics/users") { parameter("period", period); if (q != null) parameter("q", q) }
+    suspend fun analyticsUser(id: String, period: String = "7d"): AnalyticsUserRes = get("admin/analytics/users/$id") { parameter("period", period) }
     suspend fun testAccounts(): TestAccountsRes = get("admin/test-accounts")
     suspend fun createTestAccounts(req: TestAccountsReq): TestAccountsRes = post("admin/test-accounts", req)
     suspend fun deleteTestAccount(id: String): OkRes = delete("admin/test-accounts/$id")

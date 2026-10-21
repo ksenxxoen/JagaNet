@@ -139,6 +139,8 @@ if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
 step "Starting the node agent"
 curl -fsSL "$JAGANET_URL/node/agent.py" -o "$APP_DIR/agent.py"
 chmod 755 "$APP_DIR/agent.py"
+curl -fsSL "$JAGANET_URL/node/traffic.py" -o "$APP_DIR/traffic.py"
+chmod 755 "$APP_DIR/traffic.py"
 umask 077
 cat > "$NODE_DIR/env" <<EOF
 JAGANET_URL=$JAGANET_URL
@@ -162,9 +164,26 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
+# BitTorrent share of each device's traffic for the admin analytics: byte counts only.
+cat > /etc/systemd/system/boop-traffic.service <<EOF
+[Unit]
+Description=Boop traffic classes (BitTorrent byte counts per VPN device)
+After=network-online.target $TOOL-quick@$IFACE.service
+
+[Service]
+Environment=IFACE=$IFACE TOOL=$(command -v "$TOOL")
+ExecStart=/usr/bin/python3 $APP_DIR/traffic.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
 systemctl daemon-reload
 systemctl enable -q jaganet-node
 systemctl restart jaganet-node
+systemctl enable -q boop-traffic
+systemctl restart boop-traffic
 sleep 3
 systemctl is-active -q jaganet-node || { journalctl -u jaganet-node -n 30 --no-pager -o cat; fail "The agent didn't start (log above)."; }
 
