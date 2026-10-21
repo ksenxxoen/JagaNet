@@ -1,0 +1,3 @@
+Copied from github.com/amnezia-vpn/amneziawg-windows/v3 tunnel/firewall (MIT, WireGuard LLC).
+One change, in rules.go permitWireGuardService: the filter matches the program's path only,
+without the service SID that an elevated program doesn't have.

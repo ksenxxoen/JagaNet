@@ -20,8 +20,8 @@ import (
 	"github.com/amnezia-vpn/amneziawg-go/v3/conn"
 	"github.com/amnezia-vpn/amneziawg-go/v3/device"
 	"github.com/amnezia-vpn/amneziawg-go/v3/tun"
-	"github.com/amnezia-vpn/amneziawg-windows/v3/tunnel/firewall"
 	"github.com/amnezia-vpn/amneziawg-windows/v3/tunnel/winipcfg"
+	"github.com/ksenxxoen/JagaNet/desktop/vpn/firewall"
 	"golang.org/x/sys/windows"
 )
 
@@ -71,7 +71,7 @@ func (w *winTunnel) Apply(c *Config) error {
 		}
 		firewall.DisableFirewall()
 		if err := firewall.EnableFirewall(uint64(w.luid), false, ips(c.DNS)); err != nil {
-			return err
+			log.Printf("vpn: firewall: %v", err)
 		}
 	}
 	if c.MTU != w.cur.MTU && c.MTU > 0 {
@@ -99,8 +99,9 @@ func (w *winTunnel) up(c *Config) error {
 
 	// Nothing leaves outside the tunnel from here on, apart from this app's own sockets.
 	firewall.DisableFirewall()
+	// Without it the VPN still works, only without the leak protection: better than no VPN.
 	if err := firewall.EnableFirewall(uint64(w.luid), false, ips(c.DNS)); err != nil {
-		return fmt.Errorf("firewall: %w", err)
+		log.Printf("vpn: firewall: %v", err)
 	}
 
 	bind := conn.NewDefaultBind()
