@@ -17,6 +17,7 @@ type Store struct {
 	Country     string `json:"country,omitempty"`
 	AutoConnect bool   `json:"autoConnect"`
 	Lang        string `json:"lang,omitempty"`
+	LangSet     bool   `json:"langSet,omitempty"` // chosen in settings, not the default
 	TrayHint    bool   `json:"trayHint,omitempty"`
 	// One of the account's VPN keys to use instead of the app's own; empty for its own.
 	KeyID string `json:"keyId,omitempty"`

@@ -108,7 +108,7 @@ type App struct {
 func (a *App) Init() {
 	a.conn = "off"
 	a.pings = map[string]float64{}
-	if a.Store.Lang == "" {
+	if !a.Store.LangSet {
 		a.Store.Lang = defaultLang()
 	}
 	a.API.Token = func() string { a.mu.Lock(); defer a.mu.Unlock(); return a.Store.Token }
@@ -323,7 +323,7 @@ func (a *App) Call(method string, arg json.RawMessage) (any, error) {
 	case "setLang":
 		a.mu.Lock()
 		if l := str(); l == "ru" || l == "en" || l == "de" {
-			a.Store.Lang = l
+			a.Store.Lang, a.Store.LangSet = l, true
 		}
 		_ = a.Store.Save()
 		a.mu.Unlock()
