@@ -57,9 +57,10 @@ class TestAccounts(private val ctx: Ctx, private val keys: Keys, private val tun
         val free = tunnels.defaultProtocol()?.let { tunnels.freePlaces(it) } ?: 0
         if (need > free) throw AppError(400, ErrorCode.BAD_REQUEST, "Not enough room on the VPN servers: {free} free places, {need} needed", mapOf("free" to free, "need" to need))
         val made = mutableListOf<String>()
-        for (a in req.accounts) {
+        for ((i, a) in req.accounts.withIndex()) {
             val email = "test-" + Crypto.newToken().filter { it.isLetterOrDigit() }.lowercase().take(8) + "@jaganet.invalid"
-            val now = ctx.now()
+            // A microsecond apart, so the list keeps the order they were given in.
+            val now = ctx.now().plusNanos(i * 1000L)
             val id = ctx.db.tx { sql ->
                 val id = sql.one(
                     "INSERT INTO users (email, referral_code, note, created_at) VALUES (?,?,?,?) RETURNING id",

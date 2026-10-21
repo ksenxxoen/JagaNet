@@ -248,6 +248,27 @@ func (a *API) RedeemPairing(ctx context.Context, code string, d DeviceInfo) (s S
 	return
 }
 
+type AppLogin struct {
+	ID     string `json:"id"`
+	Secret string `json:"secret"`
+	Code   string `json:"code"`
+	URL    string `json:"url"`
+}
+
+func (a *API) StartAppLogin(ctx context.Context, d DeviceInfo) (r AppLogin, err error) {
+	err = a.do(ctx, "POST", "auth/app/start", map[string]any{"device": d}, &r)
+	return
+}
+
+// PollAppLogin returns nil until the request is allowed on the website.
+func (a *API) PollAppLogin(ctx context.Context, id, secret string) (*Session, error) {
+	var r struct {
+		Session *Session `json:"session"`
+	}
+	err := a.do(ctx, "POST", "auth/app/poll", map[string]string{"id": id, "secret": secret}, &r)
+	return r.Session, err
+}
+
 func (a *API) Logout(ctx context.Context) error {
 	return a.do(ctx, "POST", "auth/logout", map[string]any{"ok": true}, nil)
 }

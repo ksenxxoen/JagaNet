@@ -11,6 +11,7 @@ object Crypto {
     private const val ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
     fun newToken(): String = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32).also(random::nextBytes))
+    fun randomInt(bound: Int): Int = random.nextInt(bound)
     fun sixDigits(): String = random.nextInt(1_000_000).toString().padStart(6, '0')
 
     fun hmac(secret: String, value: String): String {

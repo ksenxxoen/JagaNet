@@ -1,6 +1,10 @@
 package dev.jaganet.server.services
 
+import dev.jaganet.api.AppLoginInfo
+import dev.jaganet.api.AppLoginPollRes
+import dev.jaganet.api.AppLoginStartRes
 import dev.jaganet.api.DeviceInfo
+import dev.jaganet.api.Platform
 import dev.jaganet.api.ErrorCode
 import dev.jaganet.api.PairingCodeRes
 import dev.jaganet.api.Role
@@ -12,12 +16,19 @@ import dev.jaganet.server.AppError
 import dev.jaganet.server.Ctx
 import dev.jaganet.server.db.Row
 import dev.jaganet.server.db.Sql
+import dev.jaganet.server.badRequest
+import dev.jaganet.server.notFound
 import dev.jaganet.server.unauthorized
 import java.time.Duration
 
 private val OTP_TTL = Duration.ofMinutes(10)
 private const val OTP_MAX_ATTEMPTS = 5
 private val PAIRING_TTL = Duration.ofMinutes(10)
+private val APP_LOGIN_TTL = Duration.ofMinutes(10)
+// No 0/O or 1/I: the code is read by eye.
+private const val MATCH_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+private val UUID_RE = Regex("^[0-9a-fA-F-]{36}$")
 
 data class Principal(val user: User, val deviceId: String, val tokenHash: String)
 
@@ -157,6 +168,49 @@ class AuthService(private val ctx: Ctx) {
             if (ok.isNotEmpty()) return@run PairingCodeRes(code, expires.toString())
         }
         throw AppError(503, ErrorCode.INTERNAL, "Try again")
+    }
+
+    /** An app asks to be signed in from the website. */
+    suspend fun startAppLogin(device: DeviceInfo): AppLoginStartRes = ctx.db.run { sql ->
+        sql.exec("DELETE FROM app_logins WHERE expires_at < ?", ctx.now())
+        val secret = Crypto.newToken()
+        val code = (1..4).map { MATCH_ALPHABET[Crypto.randomInt(MATCH_ALPHABET.length)] }.joinToString("")
+        val expires = ctx.now().plus(APP_LOGIN_TTL)
+        val id = sql.one(
+            "INSERT INTO app_logins (secret_hash, device_name, platform, match_code, expires_at) VALUES (?,?,?,?,?) RETURNING id",
+            hash("app:$secret"), device.name.trim().take(60), device.platform.name.lowercase(), code, expires,
+        )!!.str("id")
+        AppLoginStartRes(id, secret, code, "${ctx.cfg.publicUrl.trimEnd('/')}/#/app-login?id=$id", expires.toString())
+    }
+
+    private fun appLoginRow(sql: Sql, id: String): Row {
+        if (!UUID_RE.matches(id)) throw notFound("This request has expired, start again in the app")
+        return sql.one("SELECT * FROM app_logins WHERE id=?::uuid AND expires_at > ?", id, ctx.now())
+            ?: throw notFound("This request has expired, start again in the app")
+    }
+
+    suspend fun appLogin(id: String): AppLoginInfo = ctx.db.run { sql ->
+        val r = appLoginRow(sql, id)
+        AppLoginInfo(r.str("device_name"), Platform.entries.firstOrNull { it.name.equals(r.str("platform"), true) } ?: Platform.OTHER, r.str("match_code"), r.instant("expires_at").toString())
+    }
+
+    /** The signed-in person allows it on the website. */
+    suspend fun allowAppLogin(p: Principal, id: String) = ctx.db.run { sql ->
+        val r = appLoginRow(sql, id)
+        if (r.strOrNull("user_id") != null && r.str("user_id") != p.user.id) throw badRequest("This request has expired, start again in the app")
+        sql.exec("UPDATE app_logins SET user_id=?::uuid WHERE id=?::uuid", p.user.id, id)
+    }
+
+    /** The app asks whether it's allowed yet; once allowed it gets its session, once. */
+    suspend fun pollAppLogin(id: String, secret: String): AppLoginPollRes = ctx.db.tx { sql ->
+        if (!UUID_RE.matches(id)) throw notFound("This request has expired, start again in the app")
+        val r = sql.one("SELECT * FROM app_logins WHERE id=?::uuid AND expires_at > ? FOR UPDATE", id, ctx.now())
+        if (r == null || !Crypto.safeEqual(r.str("secret_hash"), hash("app:$secret"))) throw notFound("This request has expired, start again in the app")
+        val userId = r.strOrNull("user_id") ?: return@tx AppLoginPollRes()
+        sql.exec("DELETE FROM app_logins WHERE id=?::uuid", id)
+        val user = sql.one("SELECT * FROM users WHERE id=?::uuid", userId)!!
+        val platform = Platform.entries.firstOrNull { it.name.equals(r.str("platform"), true) } ?: Platform.OTHER
+        AppLoginPollRes(createSession(sql, user, DeviceInfo(r.str("device_name"), platform)))
     }
 
     suspend fun redeemPairingCode(code: String, device: DeviceInfo): SessionRes = ctx.db.tx { sql ->

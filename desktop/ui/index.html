@@ -30,7 +30,16 @@
       <button class="primary" type="submit" data-t="Sign in"></button>
       <button class="text" type="button" id="pair-back" data-t="Sign in by e-mail"></button>
     </form>
-    <button class="text quiet" type="button" id="to-pair" data-t="I have a device code"></button>
+    <div class="form" id="f-web" hidden>
+      <label data-t="Allow on the website"></label>
+      <div class="match" id="web-code"></div>
+      <button class="primary" type="button" id="web-open" data-t="Open the website"></button>
+      <button class="text" type="button" id="web-back" data-t="Back"></button>
+    </div>
+    <div class="alts" id="alts">
+      <button class="text" type="button" id="to-web" data-t="Sign in through the website"></button>
+      <button class="text" type="button" id="to-pair" data-t="I have a device code"></button>
+    </div>
   </section>
 
   <!-- Main -->

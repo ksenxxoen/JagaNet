@@ -41,6 +41,32 @@ data class EmailVerifyReq(val email: String, val code: String, val device: Devic
 @Serializable
 data class PairRedeemReq(val code: String, val device: DeviceInfo)
 
+/** Signing an app in from the website, where the person is already signed in. */
+@Serializable
+data class AppLoginStartReq(val device: DeviceInfo)
+
+@Serializable
+data class AppLoginStartRes(
+    val id: String,
+    /** Only the app knows it: it takes the session with it. */
+    val secret: String,
+    /** Shown in the app and on the website, so the person can see it's the same request. */
+    val code: String,
+    /** Page to open in the browser. */
+    val url: String,
+    val expiresAt: String,
+)
+
+@Serializable
+data class AppLoginPollReq(val id: String, val secret: String)
+
+/** session is null until the request is allowed on the website. */
+@Serializable
+data class AppLoginPollRes(val session: SessionRes? = null)
+
+@Serializable
+data class AppLoginInfo(val deviceName: String, val platform: Platform, val code: String, val expiresAt: String)
+
 @Serializable
 enum class Role { @SerialName("user") USER, @SerialName("owner") OWNER }
 

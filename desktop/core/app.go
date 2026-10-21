@@ -54,6 +54,7 @@ type UIState struct {
 	AutoConnect bool      `json:"autoConnect"`
 	Autostart   *bool     `json:"autostart,omitempty"`
 	Version     string    `json:"version"`
+	WebLogin    bool      `json:"webLogin"`
 }
 
 type App struct {
@@ -83,6 +84,9 @@ type App struct {
 	peerKey  string
 	stop     context.CancelFunc
 	resyncCh chan struct{}
+
+	webLogin    context.CancelFunc
+	webLoginURL string
 
 	op sync.Mutex // one change to the tunnel at a time
 }
@@ -120,6 +124,7 @@ func (a *App) state() UIState {
 		Screen: "signin", Lang: a.Store.Lang, Conn: a.conn, Country: a.Store.Country,
 		Email: a.Store.Email, Plan: a.plan, AutoConnect: a.Store.AutoConnect, Version: a.Version,
 		Current: a.current, Ping: a.curPing, Countries: []Country{},
+		WebLogin: a.webLogin != nil,
 	}
 	if s.Country == "" {
 		s.Country = "auto"
@@ -211,6 +216,28 @@ func (a *App) Call(method string, arg json.RawMessage) (any, error) {
 	case "redeemPairing":
 		s, err := a.API.RedeemPairing(ctx, str(), a.device())
 		return a.signedIn(s, err)
+	case "startWebLogin":
+		r, err := a.API.StartAppLogin(ctx, a.device())
+		if err != nil {
+			return nil, a.humanize(err)
+		}
+		a.startWebLogin(r)
+		return map[string]string{"code": r.Code}, nil
+	case "openWebLogin":
+		a.mu.Lock()
+		u := a.webLoginURL
+		a.mu.Unlock()
+		if u != "" && a.OpenURL != nil {
+			a.OpenURL(u)
+		}
+		return nil, nil
+	case "cancelWebLogin":
+		a.mu.Lock()
+		if a.webLogin != nil {
+			a.webLogin()
+		}
+		a.mu.Unlock()
+		return nil, nil
 	case "toggle":
 		a.mu.Lock()
 		on := a.conn != "off"
@@ -285,6 +312,54 @@ func (a *App) Call(method string, arg json.RawMessage) (any, error) {
 		return nil, nil
 	}
 	return nil, fmt.Errorf("unknown call %s", method)
+}
+
+// startWebLogin opens the website, where the person allows this app, and waits for it.
+func (a *App) startWebLogin(r AppLogin) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	a.mu.Lock()
+	if a.webLogin != nil {
+		a.webLogin()
+	}
+	a.webLogin, a.webLoginURL = cancel, r.URL
+	a.mu.Unlock()
+	a.emit()
+	if a.OpenURL != nil {
+		a.OpenURL(r.URL)
+	}
+	go func() {
+		defer func() {
+			cancel()
+			a.mu.Lock()
+			if a.webLoginURL == r.URL {
+				a.webLogin, a.webLoginURL = nil, ""
+			}
+			a.mu.Unlock()
+			a.emit()
+		}()
+		t := time.NewTicker(2 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+			s, err := a.API.PollAppLogin(ctx, r.ID, r.Secret)
+			if ctx.Err() != nil {
+				return
+			}
+			var e *APIError
+			if errors.As(err, &e) {
+				a.toast(err) // expired
+				return
+			}
+			if s != nil {
+				_, _ = a.signedIn(*s, nil)
+				return
+			}
+		}
+	}()
 }
 
 func (a *App) device() DeviceInfo {

@@ -70,6 +70,10 @@ class ApiClient(
     suspend fun startEmail(req: EmailStartReq): EmailStartRes = post("auth/email/start", req)
     suspend fun verifyEmail(req: EmailVerifyReq): SessionRes = post("auth/email/verify", req)
     suspend fun redeemPairing(req: PairRedeemReq): SessionRes = post("auth/pair/redeem", req)
+    suspend fun startAppLogin(req: AppLoginStartReq): AppLoginStartRes = post("auth/app/start", req)
+    suspend fun pollAppLogin(req: AppLoginPollReq): AppLoginPollRes = post("auth/app/poll", req)
+    suspend fun appLogin(id: String): AppLoginInfo = get("auth/app/$id")
+    suspend fun allowAppLogin(id: String): OkRes = post("auth/app/$id/allow", OkRes())
     suspend fun logout(): OkRes = post("auth/logout", OkRes())
 
     // account

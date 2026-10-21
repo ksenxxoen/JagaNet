@@ -10,6 +10,8 @@ import dev.jaganet.api.ConnectionEventReq
 import dev.jaganet.api.DevicesRes
 import dev.jaganet.api.OkRes
 import dev.jaganet.api.PairRedeemReq
+import dev.jaganet.api.AppLoginStartReq
+import dev.jaganet.api.AppLoginPollReq
 import dev.jaganet.api.PaymentsRes
 import dev.jaganet.api.Protocols
 import dev.jaganet.api.RenameDeviceReq
@@ -173,6 +175,20 @@ fun Application.jaganet(s: Services) {
                     val b = call.receive<PairRedeemReq>()
                     call.respond(s.auth.redeemPairingCode(code(b.code), b.device))
                 }
+                post("/auth/app/start") { call.respond(s.auth.startAppLogin(call.receive<AppLoginStartReq>().device)) }
+            }
+            // The app asks every couple of seconds; the secret is what protects it.
+            post("/auth/app/poll") {
+                val b = call.receive<AppLoginPollReq>()
+                call.respond(s.auth.pollAppLogin(b.id.trim(), b.secret))
+            }
+            get("/auth/app/{id}") {
+                call.principal(s)
+                call.respond(s.auth.appLogin(call.parameters["id"]!!))
+            }
+            post("/auth/app/{id}/allow") {
+                s.auth.allowAppLogin(call.principal(s), call.parameters["id"]!!)
+                call.respond(OkRes())
             }
             post("/auth/logout") {
                 s.auth.logout(call.principal(s))

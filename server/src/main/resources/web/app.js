@@ -233,7 +233,9 @@ function signin() {
       const next = store.get("afterSignIn");
       store.set("afterSignIn", null);
       if (next) return buy(next);
-      go("#/account");
+      const back = store.get("returnTo");
+      store.set("returnTo", null);
+      go(back || "#/account");
     } catch (e) { err.textContent = e.message; }
   };
   document.getElementById("back").onclick = () => { f2.hidden = true; f1.hidden = false; };
@@ -256,6 +258,27 @@ async function login(params) {
       <div class="notice bad">${h(e.message)}</div>
       <a class="btn" href="#/signin">${t("Back to sign in")}</a></div>`;
   }
+}
+
+/** #/app-login?id=... : the Boop app on a computer asks to be signed in to this account. */
+async function appLogin(params) {
+  const id = params.get("id") || "";
+  if (!store.get("token")) { store.set("returnTo", location.hash); return go("#/signin"); }
+  const r = await api("/auth/app/" + encodeURIComponent(id));
+  view.innerHTML = `<div class="card signbox center">
+    <h1>${t("Sign in to the Boop app")}</h1>
+    <p class="muted">${h(r.deviceName)}</p>
+    <div class="code-big" style="margin:16px 0 20px">${h(r.code)}</div>
+    <div id="al"><button class="btn" id="allow">${t("Allow")}</button>
+      <p class="gap-s"><a class="link" href="#/account">${t("Cancel")}</a></p></div>
+  </div>`;
+  document.getElementById("allow").onclick = async (e) => {
+    e.target.disabled = true;
+    try {
+      await api(`/auth/app/${encodeURIComponent(id)}/allow`, { method: "POST" });
+      document.getElementById("al").innerHTML = `<div class="notice ok">${t("Signed in. Go back to the app.")}</div>`;
+    } catch (err) { e.target.disabled = false; alert(err.message); }
+  };
 }
 
 /* ---------------- account ---------------- */
@@ -1456,6 +1479,7 @@ async function render() {
     if (!site) site = await api("/site").catch(() => ({}));
     if (path === "/signin") return signin();
     if (path === "/login") return await login(params);
+    if (path === "/app-login") return await appLogin(params);
     if (path === "/admin") return await admin(params);
     if (path === "/account") return await account(params);
     if (path === "/referrals") return await referrals(params);

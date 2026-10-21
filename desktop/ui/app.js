@@ -4,7 +4,8 @@
 const T = {
   ru: {
     "Email": "Почта", "Get a code": "Получить код", "Sign in": "Войти", "Another e-mail": "Другая почта",
-    "Device code": "Код устройства", "Sign in by e-mail": "Войти по почте", "I have a device code": "У меня есть код устройства",
+    "Device code": "Код устройства", "Sign in through the website": "Войти через сайт", "Allow on the website": "Разрешите вход на сайте",
+    "Open the website": "Открыть сайт", "Back": "Назад", "Sign in by e-mail": "Войти по почте", "I have a device code": "У меня есть код устройства",
     "Settings": "Настройки", "Close": "Закрыть", "Country": "Страна", "Account": "Аккаунт", "Plan": "Тариф", "Extend": "Продлить",
     "Connect on start": "Подключаться при запуске", "Start with Windows": "Запускать с Windows", "Language": "Язык", "Sign out": "Выйти",
     "Off": "Отключено", "Connecting": "Подключение", "Connected": "Подключено", "Fastest": "Самая быстрая",
@@ -13,7 +14,8 @@ const T = {
   en: {},
   de: {
     "Email": "E-Mail", "Get a code": "Code erhalten", "Sign in": "Anmelden", "Another e-mail": "Andere E-Mail",
-    "Device code": "Gerätecode", "Sign in by e-mail": "Mit E-Mail anmelden", "I have a device code": "Ich habe einen Gerätecode",
+    "Device code": "Gerätecode", "Sign in through the website": "Über die Website anmelden", "Allow on the website": "Auf der Website erlauben",
+    "Open the website": "Website öffnen", "Back": "Zurück", "Sign in by e-mail": "Mit E-Mail anmelden", "I have a device code": "Ich habe einen Gerätecode",
     "Settings": "Einstellungen", "Close": "Schließen", "Country": "Land", "Account": "Konto", "Plan": "Tarif", "Extend": "Verlängern",
     "Connect on start": "Beim Start verbinden", "Start with Windows": "Mit Windows starten", "Language": "Sprache", "Sign out": "Abmelden",
     "Off": "Getrennt", "Connecting": "Verbinde", "Connected": "Verbunden", "Fastest": "Schnellstes",
@@ -126,6 +128,7 @@ function render(next) {
   $("signin").hidden = S.screen !== "signin";
   $("main").hidden = S.screen !== "main";
   if (S.screen === "signin" && prev.screen !== "signin") showForm("f-email");
+  if (S.screen === "signin" && prev.webLogin && !S.webLogin && !$("f-web").hidden) showForm("f-email");
   if (S.screen !== "main") return;
 
   const app = $("app"), boop = $("boop");
@@ -220,10 +223,10 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") ["places",
 /* ---------- sign in ---------- */
 
 function showForm(id) {
-  ["f-email", "f-code", "f-pair"].forEach((f) => ($(f).hidden = f !== id));
-  $("to-pair").hidden = id !== "f-email";
+  ["f-email", "f-code", "f-pair", "f-web"].forEach((f) => ($(f).hidden = f !== id));
+  $("alts").hidden = id !== "f-email";
   const input = $(id).querySelector("input");
-  setTimeout(() => input.focus(), 30);
+  if (input) setTimeout(() => input.focus(), 30);
 }
 async function busy(form, fn) {
   const btn = form.querySelector(".primary");
@@ -251,6 +254,15 @@ $("f-pair").onsubmit = (e) => {
 $("back").onclick = () => showForm("f-email");
 $("to-pair").onclick = () => showForm("f-pair");
 $("pair-back").onclick = () => showForm("f-email");
+$("to-web").onclick = async () => {
+  try {
+    const r = await call("startWebLogin");
+    $("web-code").textContent = r.code;
+    showForm("f-web");
+  } catch { /* the toast says why */ }
+};
+$("web-open").onclick = () => call("openWebLogin").catch(() => {});
+$("web-back").onclick = () => { call("cancelWebLogin").catch(() => {}); showForm("f-email"); };
 // Six digits are the whole code: send it straight away.
 ["code", "pair"].forEach((id) => $(id).addEventListener("input", (e) => {
   e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6);
