@@ -18,6 +18,8 @@ type Store struct {
 	AutoConnect bool   `json:"autoConnect"`
 	Lang        string `json:"lang,omitempty"`
 	TrayHint    bool   `json:"trayHint,omitempty"`
+	// One of the account's VPN keys to use instead of the app's own; empty for its own.
+	KeyID string `json:"keyId,omitempty"`
 
 	path string
 }

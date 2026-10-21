@@ -3,6 +3,7 @@ package dev.jaganet.server.services
 import dev.jaganet.api.AccessKey
 import dev.jaganet.api.AmneziaWG
 import dev.jaganet.api.ErrorCode
+import dev.jaganet.api.KeyTunnel
 import dev.jaganet.api.Protocols
 import dev.jaganet.api.TunnelConfig
 import dev.jaganet.api.TunnelProvisionReq
@@ -37,7 +38,8 @@ class Keys(private val ctx: Ctx, private val tunnels: Tunnels) {
 
     suspend fun list(userId: String): List<AccessKey> = ctx.db.run { sql ->
         sql.query(
-            """SELECT k.*, d.name FROM access_keys k JOIN devices d ON d.id = k.device_id
+            """SELECT k.*, d.name, t.last_seen_at, v.country_code FROM access_keys k JOIN devices d ON d.id = k.device_id
+                 LEFT JOIN tunnels t ON t.device_id = k.device_id LEFT JOIN servers v ON v.id = t.server_id
                 WHERE k.user_id=?::uuid AND d.removed_at IS NULL ORDER BY k.created_at""",
             userId,
         ).map { it.toAccessKey() }
@@ -85,7 +87,19 @@ class Keys(private val ctx: Ctx, private val tunnels: Tunnels) {
 
     suspend fun config(userId: String, id: String): KeyConfig? = configWhere("k.device_id=?::uuid AND k.user_id=?::uuid", id, userId)
 
-    private suspend fun configWhere(cond: String, vararg args: Any?): KeyConfig? = ctx.db.run { sql ->
+    /** A key's tunnel as it is now, with its private key: for the owner's own Boop desktop app. */
+    suspend fun tunnel(userId: String, id: String): KeyTunnel {
+        if (!Regex("^[0-9a-fA-F-]{36}$").matches(id)) throw AppError(404, ErrorCode.NOT_FOUND, "Key not found")
+        val (r, cfg) = current("k.device_id=?::uuid AND k.user_id=?::uuid", id, userId) ?: throw AppError(404, ErrorCode.NOT_FOUND, "Key not found")
+        val version = MessageDigest.getInstance("SHA-256").digest(Protocols.encode(cfg).toString().toByteArray())
+            .take(12).joinToString("") { "%02x".format(it) }
+        return KeyTunnel(cfg, decrypt(r.str("private_key_enc")), version, cfg.location.substringAfterLast(", ").trim().ifEmpty { null })
+    }
+
+    private suspend fun configWhere(cond: String, vararg args: Any?): KeyConfig? =
+        current(cond, *args)?.let { (r, cfg) -> KeyConfig(r.str("name"), cfg.location, cfg.protocol, configText(decrypt(r.str("private_key_enc")), cfg)) }
+
+    private suspend fun current(cond: String, vararg args: Any?): Pair<Row, TunnelConfig>? = ctx.db.run { sql ->
         val r = sql.one("SELECT k.*, d.name FROM access_keys k JOIN devices d ON d.id = k.device_id WHERE $cond AND d.removed_at IS NULL", *args)
             ?: return@run null
         // The node's current settings (port, obfuscation profile), not the ones from the day
@@ -103,14 +117,15 @@ class Keys(private val ctx: Ctx, private val tunnels: Tunnels) {
                 address = "${t!!.str("address")}/32", location = "${server.str("city")}, ${server.str("country_code").trim()}",
             )
         } ?: stored)
-    }?.let { (r, cfg) ->
-        KeyConfig(r.str("name"), cfg.location, cfg.protocol, configText(decrypt(r.str("private_key_enc")), cfg))
     }
 
     private fun Row.toAccessKey(): AccessKey {
         val cfg = Protocols.decode<TunnelConfig>(json("config"))
         val base = "${ctx.cfg.publicUrl.trimEnd('/')}/k/${str("link_token")}"
-        return AccessKey(str("device_id"), str("name"), cfg.protocol, cfg.location, base, "$base/$CONFIG_FILE", "$base/qr.png", instant("created_at").toString())
+        return AccessKey(
+            str("device_id"), str("name"), cfg.protocol, cfg.location, base, "$base/$CONFIG_FILE", "$base/qr.png", instant("created_at").toString(),
+            lastSeenAt = instantOrNull("last_seen_at")?.toString(), countryCode = strOrNull("country_code")?.trim(),
+        )
     }
 
     /* ---- crypto: the private key is stored encrypted with a key derived from AUTH_SECRET ---- */

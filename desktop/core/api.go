@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"syscall"
@@ -284,6 +285,33 @@ func (a *API) Servers(ctx context.Context) ([]Server, error) {
 	}
 	err := a.do(ctx, "GET", "servers", nil, &r)
 	return r.Servers, err
+}
+
+type Key struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	CountryCode *string `json:"countryCode"`
+	LastSeenAt  *string `json:"lastSeenAt"`
+}
+
+func (a *API) Keys(ctx context.Context) ([]Key, error) {
+	var r struct {
+		Keys []Key `json:"keys"`
+	}
+	err := a.do(ctx, "GET", "keys", nil, &r)
+	return r.Keys, err
+}
+
+type KeyTunnel struct {
+	Config      *TunnelConfig `json:"config"`
+	PrivateKey  string        `json:"privateKey"`
+	Version     string        `json:"version"`
+	CountryCode string        `json:"countryCode"`
+}
+
+func (a *API) KeyTunnel(ctx context.Context, id string) (k KeyTunnel, err error) {
+	err = a.do(ctx, "GET", "keys/"+url.PathEscape(id)+"/tunnel", nil, &k)
+	return
 }
 
 func (a *API) Provision(ctx context.Context, serverID, publicKey string) (c TunnelConfig, err error) {

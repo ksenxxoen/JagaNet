@@ -7,6 +7,7 @@ const T = {
     "Device code": "Код устройства", "Sign in through the website": "Войти через сайт", "Allow on the website": "Разрешите вход на сайте",
     "Open the website": "Открыть сайт", "Back": "Назад", "Sign in by e-mail": "Войти по почте", "I have a device code": "У меня есть код устройства",
     "Settings": "Настройки", "Close": "Закрыть", "Country": "Страна", "Account": "Аккаунт", "Plan": "Тариф", "Extend": "Продлить",
+    "Key": "Ключ", "Own key": "Свой ключ", "In use": "Используется",
     "Connect on start": "Подключаться при запуске", "Start with Windows": "Запускать с Windows", "Language": "Язык", "Sign out": "Выйти",
     "Off": "Отключено", "Connecting": "Подключение", "Connected": "Подключено", "Fastest": "Самая быстрая",
     "ms": "мс", "until": "до", "Free": "Бесплатный"
@@ -17,6 +18,7 @@ const T = {
     "Device code": "Gerätecode", "Sign in through the website": "Über die Website anmelden", "Allow on the website": "Auf der Website erlauben",
     "Open the website": "Website öffnen", "Back": "Zurück", "Sign in by e-mail": "Mit E-Mail anmelden", "I have a device code": "Ich habe einen Gerätecode",
     "Settings": "Einstellungen", "Close": "Schließen", "Country": "Land", "Account": "Konto", "Plan": "Tarif", "Extend": "Verlängern",
+    "Key": "Schlüssel", "Own key": "Eigener Schlüssel", "In use": "In Benutzung",
     "Connect on start": "Beim Start verbinden", "Start with Windows": "Mit Windows starten", "Language": "Sprache", "Sign out": "Abmelden",
     "Off": "Getrennt", "Connecting": "Verbinde", "Connected": "Verbunden", "Fastest": "Schnellstes",
     "ms": "ms", "until": "bis", "Free": "Kostenlos"
@@ -86,11 +88,13 @@ const FLAGS = {
   CA: V("#d52b1e", "#fff", "#fff", "#d52b1e") + `<path d="M15 8l2 4 2-1-1 5 2-1 1 2-4 1v3h-4v-3l-4-1 1-2 2 1-1-5 2 1z" fill="#d52b1e"/>`,
   ES: H("#aa151b", "#f1bf00", "#f1bf00", "#aa151b"), CZ: H("#fff", "#d7141a") + `<path d="M0 0L15 15L0 30z" fill="#11457e"/>`,
 };
+const APP = `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2.6" fill="#fff" stroke="none"/></svg>`;
 const AUTO = `<svg viewBox="0 0 24 24"><path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/></svg>`;
 
 function flag(el, code) {
   el.className = "flag" + (code === "auto" ? " auto" : "");
   if (code === "auto") el.innerHTML = AUTO;
+  else if (code === "app") { el.className = "flag auto"; el.innerHTML = APP; }
   else if (FLAGS[code]) el.innerHTML = `<svg viewBox="0 0 30 30" preserveAspectRatio="none">${FLAGS[code]}</svg>`;
   else el.textContent = code || "";
 }
@@ -139,13 +143,18 @@ function render(next) {
   tick();
 
   // The place card shows where we are, or where we'd go.
-  const shown = S.conn !== "off" && S.current ? S.current : S.country || "auto";
+  const key = (S.keys || []).find((k) => k.id === S.key);
+  const shown = S.conn !== "off" && S.current ? S.current : key ? key.country || "auto" : S.country || "auto";
+  $("keyname").textContent = key ? key.name : "";
   flag($("flag"), shown);
   $("country").textContent = countryName(shown);
   const row = (S.countries || []).find((c) => c.code === (shown === "auto" ? S.best : shown));
   setPing($("ping"), S.conn === "on" ? S.ping : row ? row.ping : null);
 
   if (!$("places").hidden) renderPlaces();
+  if (!$("keys").hidden) renderKeys();
+  $("s-key").hidden = !(S.keys || []).length;
+  $("s-key-name").textContent = key ? key.name : t("Own key");
   $("s-email").textContent = S.email || "";
   $("s-plan").textContent = planText();
   $("s-auto").checked = !!S.autoConnect;
@@ -168,7 +177,7 @@ function renderPlaces() {
   const items = [{ code: "auto", ping: (S.countries.find((c) => c.code === S.best) || {}).ping }].concat(
     [...S.countries].sort((a, b) => countryName(a.code).localeCompare(countryName(b.code), lang)),
   );
-  const chosen = S.country || "auto";
+  const chosen = S.key ? "" : S.country || "auto";
   list.innerHTML = "";
   items.forEach((c, i) => {
     const b = document.createElement("button");
@@ -181,6 +190,23 @@ function renderPlaces() {
     b.querySelector("b").textContent = countryName(c.code);
     setPing(b.querySelector(".ping"), c.ping);
     b.onclick = async () => { closeSheet("places"); await call("setCountry", c.code); };
+    list.appendChild(b);
+  });
+}
+
+function renderKeys() {
+  const list = $("key-list");
+  list.innerHTML = "";
+  [{ id: "", name: t("Own key") }].concat(S.keys || []).forEach((k, i) => {
+    const b = document.createElement("button");
+    b.className = "item" + (k.id === (S.key || "") ? " selected" : "");
+    b.style.animationDelay = `${i * 18}ms`;
+    b.innerHTML = `<span class="flag"></span><span class="place-name"><b></b></span>${k.inUse ? `<span class="busy"></span>` : ""}` +
+      `<span class="check"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>`;
+    flag(b.querySelector(".flag"), k.id ? k.country || "" : "app");
+    b.querySelector("b").textContent = k.name;
+    if (k.inUse) b.querySelector(".busy").textContent = t("In use");
+    b.onclick = async () => { closeSheet("keys"); await call("setKey", k.id); };
     list.appendChild(b);
   });
 }
@@ -210,6 +236,7 @@ function openSheet(id) {
   $(id).hidden = false;
   $(id).classList.remove("closing");
   if (id === "places") { renderPlaces(); call("refreshPings").catch(() => {}); }
+  if (id === "keys") { renderKeys(); call("refreshKeys").catch(() => {}); }
 }
 function closeSheet(id) {
   const el = $(id);
@@ -218,7 +245,7 @@ function closeSheet(id) {
   setTimeout(() => { el.hidden = true; el.classList.remove("closing"); }, 200);
 }
 document.querySelectorAll("[data-close]").forEach((b) => (b.onclick = () => closeSheet(b.closest(".sheet").id)));
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") ["places", "settings"].forEach(closeSheet); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") ["places", "keys", "settings"].forEach(closeSheet); });
 
 /* ---------- sign in ---------- */
 
@@ -274,6 +301,7 @@ $("web-back").onclick = () => { call("cancelWebLogin").catch(() => {}); showForm
 $("boop").onclick = () => call("toggle").catch(() => {});
 $("open-places").onclick = () => openSheet("places");
 $("open-settings").onclick = () => openSheet("settings");
+$("s-key").onclick = () => { closeSheet("settings"); openSheet("keys"); };
 $("s-extend").onclick = () => call("extend").catch(() => {});
 $("s-auto").onchange = (e) => call("setAutoConnect", e.target.checked).catch(() => {});
 $("s-start").onchange = (e) => call("setAutostart", e.target.checked).catch(() => {});

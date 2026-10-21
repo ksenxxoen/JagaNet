@@ -45,7 +45,6 @@
   <!-- Main -->
   <section class="screen main" id="main" hidden>
     <header class="bar">
-      <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" class="tile"/><circle cx="12" cy="12" r="6.5" class="ring"/><circle cx="12" cy="12" r="3.4" class="dot"/></svg><b>Boop</b></div>
       <button class="icon" id="open-settings" data-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/></svg></button>
     </header>
 
@@ -61,7 +60,7 @@
 
     <button class="place" id="open-places">
       <span class="flag" id="flag"></span>
-      <span class="place-name"><b id="country"></b></span>
+      <span class="place-name"><b id="country"></b><small id="keyname"></small></span>
       <span class="ping" id="ping"><i></i><i></i><i></i><em></em></span>
       <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
     </button>
@@ -73,12 +72,19 @@
     <div class="list" id="place-list"></div>
   </div>
 
+  <!-- Keys -->
+  <div class="sheet" id="keys" hidden>
+    <div class="sheet-head"><b data-t="Key"></b><button class="icon" data-close data-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="list" id="key-list"></div>
+  </div>
+
   <!-- Settings -->
   <div class="sheet" id="settings" hidden>
     <div class="sheet-head"><b data-t="Settings"></b><button class="icon" data-close data-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="group">
       <div class="row"><span class="muted" data-t="Account"></span><span id="s-email" class="ellipsis"></span></div>
       <div class="row"><span class="muted" data-t="Plan"></span><span id="s-plan"></span></div>
+      <button class="row link" id="s-key" hidden><span data-t="Key"></span><span class="row-val"><span id="s-key-name" class="ellipsis"></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></button>
       <button class="row link" id="s-extend"><span data-t="Extend"></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
     </div>
     <div class="group">

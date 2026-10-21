@@ -59,3 +59,32 @@ class TunnelSyncTest {
         assertEquals("NOT_FOUND", code { owner.adminRekeyDevice("00000000-0000-0000-0000-000000000000") })
     }
 }
+
+/** The desktop app can use one of the account's keys instead of its own, and follows it the same way. */
+class KeyTunnelTest {
+    @Test fun `a key's tunnel for its owner, following moves`() = harness {
+        val owner = signIn("owner@test.dev").api
+        val id = owner.createNode(NodeReq("Austria", "Vienna", "AT")).node.id
+        val token = owner.newNodeToken(id).command.substringAfter("NODE_TOKEN=").substringBefore(' ')
+        services.nodes.register(token, NodeRegisterReq("203.0.113.7", 40000, "amneziawg"))
+
+        val key = owner.createKey()
+        val listed = owner.keys().keys.single()
+        assertEquals(key.id, listed.id)
+        assertNull(listed.lastSeenAt) // never connected
+        val first = owner.keyTunnel(key.id)
+        assertTrue(WireGuard.isKey(first.privateKey))
+        assertEquals(listed.countryCode, first.countryCode)
+        assertEquals(first.version, owner.keyTunnel(key.id).version)
+
+        owner.adminMoveDevice(key.id, id)
+        val moved = owner.keyTunnel(key.id)
+        assertEquals(id, moved.config.serverId)
+        assertEquals("AT", moved.countryCode)
+        assertEquals("AT", owner.keys().keys.single().countryCode)
+        assertNotEquals(first.version, moved.version)
+
+        assertEquals("NOT_FOUND", code { signIn("a@example.com").api.keyTunnel(key.id) })
+        assertEquals("NOT_FOUND", code { owner.keyTunnel("nope") })
+    }
+}

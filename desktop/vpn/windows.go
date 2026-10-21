@@ -4,6 +4,7 @@ package vpn
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"math/bits"
 	"net"
@@ -91,7 +92,7 @@ func (w *winTunnel) up(c *Config) error {
 	}
 	t, err := tun.CreateTUNWithRequestedGUID(adapterName, &adapterGUID, mtu)
 	if err != nil {
-		return err
+		return fmt.Errorf("adapter: %w", err)
 	}
 	w.nt = t.(*tun.NativeTun)
 	w.luid = winipcfg.LUID(w.nt.LUID())
@@ -99,23 +100,30 @@ func (w *winTunnel) up(c *Config) error {
 	// Nothing leaves outside the tunnel from here on, apart from this app's own sockets.
 	firewall.DisableFirewall()
 	if err := firewall.EnableFirewall(uint64(w.luid), false, ips(c.DNS)); err != nil {
-		t.Close()
-		return err
+		return fmt.Errorf("firewall: %w", err)
 	}
 
 	bind := conn.NewDefaultBind()
 	w.dev = device.NewDevice(t, bind, &device.Logger{Verbosef: device.DiscardLogf, Errorf: log.Printf})
+	if err := w.dev.IpcSet(c.UAPI); err != nil {
+		return fmt.Errorf("settings: %w", err)
+	}
+	if err := w.dev.Up(); err != nil {
+		return fmt.Errorf("up: %w", err)
+	}
+	// The sockets exist only now. Bind them to the real network before the tunnel takes the default route.
 	if binder, ok := bind.(conn.BindSocketToInterface); ok {
 		for _, fam := range []winipcfg.AddressFamily{windows.AF_INET, windows.AF_INET6} {
 			cbs, err := monitorDefaultRoutes(fam, binder, w.luid)
 			if err != nil {
-				return err
+				if fam == windows.AF_INET {
+					return fmt.Errorf("bind: %w", err)
+				}
+				log.Printf("vpn: no IPv6 socket to bind: %v", err)
+				continue
 			}
 			w.cbs = append(w.cbs, cbs...)
 		}
-	}
-	if err := w.dev.IpcSet(c.UAPI); err != nil {
-		return err
 	}
 
 	if err := w.luid.SetIPAddressesForFamily(windows.AF_INET, []net.IPNet{ipnet(c.Address)}); err != nil {
@@ -137,9 +145,9 @@ func (w *winTunnel) up(c *Config) error {
 	}
 	w.nt.ForceMTU(mtu)
 	if err := w.luid.SetDNS(windows.AF_INET, ips(c.DNS), nil); err != nil {
-		return err
+		return fmt.Errorf("dns: %w", err)
 	}
-	return w.dev.Up()
+	return nil
 }
 
 func (w *winTunnel) Down() {

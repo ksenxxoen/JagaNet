@@ -443,10 +443,23 @@ data class AccessKey(
     /** QR code (PNG) of the .conf text. */
     val qrUrl: String,
     val createdAt: String,
+    /** Last handshake on its node: a key seen in the last minutes is in use somewhere. */
+    val lastSeenAt: String? = null,
+    val countryCode: String? = null,
 )
 
 @Serializable
 data class KeysRes(val keys: List<AccessKey>)
+
+/** GET /keys/{id}/tunnel: a key's settings for the Boop desktop app, which can use a key instead of its own. */
+@Serializable
+data class KeyTunnel(
+    val config: TunnelConfig,
+    val privateKey: String,
+    /** Changes with anything the app must apply, like [TunnelState.version]. */
+    val version: String,
+    val countryCode: String? = null,
+)
 
 /* ---------- orders (website / Telegram) ---------- */
 

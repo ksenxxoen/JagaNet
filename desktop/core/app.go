@@ -32,6 +32,17 @@ type Country struct {
 	Full bool     `json:"full,omitempty"`
 }
 
+// KeyUI is one of the account's VPN keys in the key list.
+type KeyUI struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Country string `json:"country,omitempty"`
+	// Seen on its node in the last minutes, by another device.
+	InUse bool `json:"inUse,omitempty"`
+}
+
+const keyInUse = 5 * time.Minute
+
 type Plan struct {
 	Name      string `json:"name,omitempty"`
 	Pro       bool   `json:"pro"`
@@ -55,6 +66,8 @@ type UIState struct {
 	Autostart   *bool     `json:"autostart,omitempty"`
 	Version     string    `json:"version"`
 	WebLogin    bool      `json:"webLogin"`
+	Keys        []KeyUI   `json:"keys"`
+	Key         string    `json:"key"`
 }
 
 type App struct {
@@ -74,6 +87,7 @@ type App struct {
 	mu       sync.Mutex
 	plan     *Plan
 	servers  []Server
+	keys     []Key
 	pings    map[string]float64 // by host
 	conn     string
 	since    time.Time
@@ -95,27 +109,20 @@ func (a *App) Init() {
 	a.conn = "off"
 	a.pings = map[string]float64{}
 	if a.Store.Lang == "" {
-		a.Store.Lang = systemLang()
+		a.Store.Lang = defaultLang()
 	}
 	a.API.Token = func() string { a.mu.Lock(); defer a.mu.Unlock(); return a.Store.Token }
 	a.API.Lang = func() string { a.mu.Lock(); defer a.mu.Unlock(); return a.Store.Lang }
 	go a.pingAllLoop()
 }
 
-func systemLang() string {
-	for _, v := range []string{os.Getenv("BOOP_LANG"), os.Getenv("LANG")} {
-		v = strings.ToLower(v)
-		for _, l := range []string{"ru", "de", "en"} {
-			if strings.HasPrefix(v, l) {
-				return l
-			}
-		}
+// Russian unless BOOP_LANG says otherwise; the language can be changed in settings.
+func defaultLang() string {
+	if v := strings.ToLower(os.Getenv("BOOP_LANG")); v == "en" || v == "de" || v == "ru" {
+		return v
 	}
-	return SystemLang()
+	return "ru"
 }
-
-// SystemLang is replaced on Windows with the user's UI language.
-var SystemLang = func() string { return "en" }
 
 /* ---------- state ---------- */
 
@@ -125,6 +132,18 @@ func (a *App) state() UIState {
 		Email: a.Store.Email, Plan: a.plan, AutoConnect: a.Store.AutoConnect, Version: a.Version,
 		Current: a.current, Ping: a.curPing, Countries: []Country{},
 		WebLogin: a.webLogin != nil,
+		Keys:     []KeyUI{}, Key: a.Store.KeyID,
+	}
+	for _, k := range a.keys {
+		ui := KeyUI{ID: k.ID, Name: k.Name}
+		if k.CountryCode != nil {
+			ui.Country = *k.CountryCode
+		}
+		ours := k.ID == a.Store.KeyID && a.conn != "off"
+		if t, err := time.Parse(time.RFC3339Nano, deref(k.LastSeenAt)); err == nil && time.Since(t) < keyInUse && !ours {
+			ui.InUse = true
+		}
+		s.Keys = append(s.Keys, ui)
 	}
 	if s.Country == "" {
 		s.Country = "auto"
@@ -248,10 +267,28 @@ func (a *App) Call(method string, arg json.RawMessage) (any, error) {
 			a.Connect()
 		}
 		return nil, nil
+	case "refreshKeys":
+		go func() { a.loadKeys(context.Background()); a.emit() }()
+		return nil, nil
+	case "setKey":
+		a.mu.Lock()
+		changed := a.Store.KeyID != str()
+		a.Store.KeyID = str()
+		on := a.conn != "off"
+		_ = a.Store.Save()
+		a.mu.Unlock()
+		a.emit()
+		if changed && on {
+			go a.switchCountry()
+		} else if !on {
+			a.Connect()
+		}
+		return nil, nil
 	case "setCountry":
 		a.mu.Lock()
-		changed := a.Store.Country != str()
+		changed := a.Store.Country != str() || a.Store.KeyID != ""
 		a.Store.Country = str()
+		a.Store.KeyID = "" // a country means the app's own key
 		on := a.conn != "off"
 		_ = a.Store.Save()
 		a.mu.Unlock()
@@ -407,6 +444,7 @@ func (a *App) refresh(connect bool) {
 		return
 	}
 	a.loadServers(ctx)
+	a.loadKeys(ctx)
 	a.emit()
 	if connect {
 		a.Connect()
@@ -422,6 +460,21 @@ func (a *App) loadServers(ctx context.Context) []Server {
 		a.servers = list
 	}
 	return slices.Clone(a.servers)
+}
+
+func (a *App) loadKeys(ctx context.Context) {
+	if list, err := a.API.Keys(ctx); err == nil {
+		a.mu.Lock()
+		a.keys = list
+		a.mu.Unlock()
+	}
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func (a *App) unauthorized(err error) bool {
@@ -461,6 +514,10 @@ func (a *App) humanize(err error) error {
 		return e
 	}
 	log.Printf("error: %v", err)
+	// The step that failed (adapter, firewall, bind, dns...), so a screenshot says enough.
+	if step, _, ok := strings.Cut(err.Error(), ":"); ok && len(step) <= 10 && !strings.Contains(step, " ") {
+		return fmt.Errorf("%s (%s)", tunnelFailed[l], step)
+	}
 	return errors.New(tunnelFailed[l])
 }
 
@@ -586,6 +643,13 @@ func (a *App) run(ctx context.Context) {
 // sync follows what the server says about this device's tunnel: a new node,
 // new settings or a request for a new key are applied without disconnecting.
 func (a *App) sync(ctx context.Context) {
+	a.mu.Lock()
+	keyID := a.Store.KeyID
+	a.mu.Unlock()
+	if keyID != "" {
+		a.syncKey(ctx, keyID)
+		return
+	}
 	st, err := a.API.Tunnel(ctx)
 	if err != nil {
 		if a.unauthorized(err) {
@@ -613,6 +677,37 @@ func (a *App) sync(ctx context.Context) {
 	}
 }
 
+// syncKey follows a chosen key the same way: a move of the key is applied in place.
+func (a *App) syncKey(ctx context.Context, id string) {
+	kt, err := a.API.KeyTunnel(ctx, id)
+	if err != nil {
+		if a.unauthorized(err) {
+			return
+		}
+		var e *APIError
+		if errors.As(err, &e) && e.Status == 404 {
+			err = a.establish(ctx, true) // the key is gone: back to the app's own
+		}
+		if err != nil {
+			log.Printf("sync key: %v", err)
+		}
+		return
+	}
+	a.op.Lock()
+	applied := a.applied
+	a.op.Unlock()
+	if kt.Version != applied {
+		log.Printf("sync: new key settings %s", kt.Version)
+		if err := a.apply(ctx, keyState(kt), kt.PrivateKey); err != nil {
+			log.Printf("sync key: %v", err)
+		}
+	}
+}
+
+func keyState(k KeyTunnel) TunnelState {
+	return TunnelState{Config: k.Config, Version: k.Version, CountryCode: k.CountryCode}
+}
+
 func (a *App) switchCountry() {
 	a.mu.Lock()
 	stop := a.stop
@@ -629,6 +724,24 @@ func (a *App) switchCountry() {
 
 // establish makes sure this device has a tunnel in the chosen country, then puts it in the tunnel.
 func (a *App) establish(ctx context.Context, moveNow bool) error {
+	a.mu.Lock()
+	keyID := a.Store.KeyID
+	a.mu.Unlock()
+	if keyID != "" {
+		kt, err := a.API.KeyTunnel(ctx, keyID)
+		if err == nil && kt.Config != nil {
+			return a.apply(ctx, keyState(kt), kt.PrivateKey)
+		}
+		var e *APIError
+		if !errors.As(err, &e) || e.Status != 404 {
+			return err
+		}
+		a.mu.Lock() // the key was deleted: the app's own from now on
+		a.Store.KeyID = ""
+		_ = a.Store.Save()
+		a.mu.Unlock()
+		go func() { a.loadKeys(context.Background()); a.emit() }()
+	}
 	servers := a.loadServers(ctx)
 	st, err := a.API.Tunnel(ctx)
 	if err != nil {
@@ -690,20 +803,24 @@ func (a *App) establish(ctx context.Context, moveNow bool) error {
 	return a.apply(ctx, st)
 }
 
-func (a *App) apply(ctx context.Context, st TunnelState) error {
+// apply puts a tunnel into the adapter. priv is a key's private key, or empty for the app's own.
+func (a *App) apply(ctx context.Context, st TunnelState, priv ...string) error {
 	a.op.Lock()
 	defer a.op.Unlock()
 	a.mu.Lock()
-	priv := a.Store.PrivateKey
+	key := a.Store.PrivateKey
+	if len(priv) > 0 {
+		key = priv[0]
+	}
 	off := a.conn == "off"
 	a.mu.Unlock()
 	if off {
 		return context.Canceled
 	}
-	if priv == "" {
+	if key == "" {
 		return errors.New("no key")
 	}
-	cfg, peer, err := BuildConfig(ctx, priv, st.Config, a.peerKey != "" && a.peerKey == peerKeyOf(st.Config))
+	cfg, peer, err := BuildConfig(ctx, key, st.Config, a.peerKey != "" && a.peerKey == peerKeyOf(st.Config))
 	if err != nil {
 		return err
 	}

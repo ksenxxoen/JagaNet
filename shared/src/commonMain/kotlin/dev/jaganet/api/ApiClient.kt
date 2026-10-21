@@ -105,6 +105,7 @@ class ApiClient(
     suspend fun keys(): KeysRes = get("keys")
     suspend fun createKey(): AccessKey = post("keys", OkRes())
     suspend fun deleteKey(id: String): OkRes = delete("keys/$id")
+    suspend fun keyTunnel(id: String): KeyTunnel = get("keys/$id/tunnel")
     suspend fun createOrder(req: CreateOrderReq): OrderRes = post("orders", req)
     suspend fun order(id: String): OrderRes = get("orders/$id")
 

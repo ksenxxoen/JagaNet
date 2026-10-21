@@ -65,6 +65,7 @@ fun Route.salesApi(s: Services) {
         call.respond(KeysRes(s.keys.list(call.principal(s).user.id).map { it.copy(name = keyName(it.name, lang)) }))
     }
     post("/keys") { call.respond(s.keys.create(call.principal(s).user.id).let { it.copy(name = keyName(it.name, call.apiLang())) }) }
+    get("/keys/{id}/tunnel") { call.respond(s.keys.tunnel(call.principal(s).user.id, call.parameters["id"]!!)) }
     delete("/keys/{id}") {
         s.keys.remove(call.principal(s).user.id, call.parameters["id"]!!)
         call.respond(OkRes())

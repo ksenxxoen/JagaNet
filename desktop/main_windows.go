@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"unsafe"
 
 	"github.com/jchv/go-webview2"
@@ -67,7 +66,6 @@ func main() {
 	core.Protect = dpapi(true)
 	core.Unprotect = dpapi(false)
 	core.SocketControl = vpn.SocketControl
-	core.SystemLang = systemLang
 
 	tun, _ := vpn.New()
 	app := &core.App{
@@ -168,20 +166,6 @@ func dpapi(seal bool) func([]byte) ([]byte, error) {
 		defer windows.LocalFree(windows.Handle(unsafe.Pointer(dst.Data)))
 		return bytes.Clone(unsafe.Slice(dst.Data, dst.Size)), nil
 	}
-}
-
-func systemLang() string {
-	langs, err := windows.GetUserPreferredUILanguages(windows.MUI_LANGUAGE_NAME)
-	if err == nil {
-		for _, l := range langs {
-			for _, k := range []string{"ru", "de", "en"} {
-				if strings.HasPrefix(strings.ToLower(l), k) {
-					return k
-				}
-			}
-		}
-	}
-	return "en"
 }
 
 func openURL(u string) {
