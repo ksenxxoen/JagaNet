@@ -157,7 +157,7 @@ private class Pages(val lang: Lang) {
 
     fun key(k: KeyConfig, token: String, s: Services): String {
         val base = "/k/" + esc(token)
-        val ours = s.site.androidAppUrl()?.let { """<li><a href="${esc(it)}">${t("Boop for Android")}</a><br><span class="muted">${t("In our app you just sign in, no key needed")}</span></li>""" } ?: ""
+        val ours = s.site.androidAppUrl()?.let { """<li><a href="${esc(it)}">${t("Boop for Android")}</a></li>""" } ?: ""
         val others = s.site.otherApps.joinToString("") { (n, u) -> """<li><a href="${esc(u)}" rel="noreferrer">${esc(n)}</a></li>""" }
         return page(t("Your VPN key"), """
 <div class="head"><div><h1>${t("Your VPN key")}</h1><p class="muted">${esc(keyName(k.name, lang))}, ${esc(k.location)}</p></div></div>
@@ -170,16 +170,15 @@ private class Pages(val lang: Lang) {
 </div>
 <div class="card section">
   <h3>${t("Key for AmneziaVPN")}</h3>
-  <p class="muted">${t("In AmneziaVPN tap Add server, then Insert key, and paste it.")}</p>
   <div class="formrow two"><input class="mono" id="vpnkey" readonly value="${esc(Keys.vpnLink(k.text))}"><button class="btn" id="copykey" type="button">${t("Copy key")}</button></div>
 </div>
 <h2>${t("How to connect")}</h2>
 <ol class="steps">
-  <li><b>${t("Install an app")}</b><br>${t("For example one of these apps")}<ul>$ours$others</ul></li>
-  <li><b>${t("Add the key")}</b><br>${t("Scan the QR code above in the app, paste the key for AmneziaVPN or import the {file} file.", "file" to Keys.CONFIG_FILE)}</li>
-  <li><b>${t("Turn on the VPN")}</b><br>${t("That's all.")}</li>
+  <li><b>${t("Install an app")}</b><ul>$ours$others</ul></li>
+  <li><b>${t("Add the key")}</b></li>
+  <li><b>${t("Turn on the VPN")}</b></li>
 </ol>
-<p class="notice bad">${t("Keep this page private. Anyone with this link can use your subscription. If it leaks, delete the key in your account and make a new one.")}</p>
+<p class="notice bad">${t("Don't share this link")}</p>
 <textarea id="cfg" hidden>${esc(k.text)}</textarea>
 <script>const cp=(b,v)=>b.onclick=async e=>{await navigator.clipboard.writeText(document.getElementById(v).value);e.target.textContent=${jsString(I18n.tr(lang, "Copied"))}};
 cp(document.getElementById('copy'),'cfg');cp(document.getElementById('copykey'),'vpnkey');</script>
@@ -192,18 +191,17 @@ cp(document.getElementById('copy'),'cfg');cp(document.getElementById('copykey'),
   <h1>${esc(product)}</h1>
   <div class="price">${esc(amount)}</div>
   ${if (paid) """<p class="muted">${t("This order is already paid.")}</p><a class="btn" href="/#/account">${t("Go to my account")}</a>"""
-    else """<p class="muted">${t("No money is taken here. This page stands in for the real payment service until it is connected.")}</p>
-  <form method="post" action="/pay/test/${esc(id)}?lang=${lang.code}"><button class="btn" type="submit">${t("Pay {amount} (test)", "amount" to amount)}</button></form>"""}
+    else """<form method="post" action="/pay/test/${esc(id)}?lang=${lang.code}"><button class="btn" type="submit">${t("Pay {amount} (test)", "amount" to amount)}</button></form>"""}
 </div>""")
 
     fun paidInTelegram(bot: String?) = page(t("Payment received"), """
 <div class="card signbox center"><h1>${t("Payment received")}</h1>
-<p class="muted">${t("Your VPN key is waiting in the Telegram chat.")}</p>
+<p class="muted">${t("The key is in the Telegram chat")}</p>
 ${bot?.let { """<a class="btn" href="https://t.me/${esc(it)}">${t("Back to Telegram")}</a>""" } ?: ""}</div>""")
 
     fun paidInApp() = page(t("Payment received"), """
 <div class="card signbox center"><h1>${t("Payment received")}</h1>
-<p class="muted">${t("Go back to the Boop app. Pro is already on.")}</p></div>""")
+<p class="muted">${t("Pro is on")}</p></div>""")
 
     private fun jsString(v: String) = "'" + v.replace("\\", "\\\\").replace("'", "\\'") + "'"
 }

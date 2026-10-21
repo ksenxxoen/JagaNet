@@ -80,6 +80,14 @@ class Seed(private val ctx: Ctx) {
             ),
             LocalDate.ofInstant(now.plus(Duration.ofDays(40)), ZoneOffset.UTC),
         )
+        // A second location, run by a node agent, with BitTorrent counting on.
+        sql.exec(
+            """INSERT INTO servers (id, name, city, country_code, subnet, protocols, max_peers, agent_token_hash, endpoint_host, registered_at, last_report_at, report)
+               VALUES ('sim-2','Amsterdam','Amsterdam','NL','10.8.0.0/24',?,250,'sim-agent','nl1.sim.jaganet.dev',?,?,?)""",
+            Jsonb("""{"amneziawg":{"endpoint":"nl1.sim.jaganet.dev:51985","publicIp":"203.0.113.40","port":51985,"publicKey":"c2ltdWxhdGVkLW5vZGUtMi1wdWJsaWMta2V5LTAwMDE="}}"""),
+            ago(Duration.ofDays(20)), ago(Duration.ofSeconds(40)),
+            Jsonb("""{"at":${now.toEpochMilli()},"system":{"cpu":0.18,"memUsed":700000000,"memTotal":2000000000,"classes":"ok"},"rxBps":84000000,"txBps":91000000}"""),
+        )
         sql.exec("INSERT INTO users (email, role, referral_code, created_at) VALUES ('owner@jaganet.dev','owner','OWNER-0000',?)", ago(Duration.ofDays(120)))
 
         val alex = user(sql, "alex@example.com")
@@ -94,7 +102,7 @@ class Seed(private val ctx: Ctx) {
         val samPhone = device(sql, sam, "Old phone", "android")
         // ~70% of the 10 GB free allowance used this month
         sql.exec(
-            "INSERT INTO traffic_samples (device_id, bucket, rx_bytes, tx_bytes) VALUES (?::uuid,?,5900000000,1100000000)",
+            "INSERT INTO traffic_samples (device_id, bucket, rx_bytes, tx_bytes, server_id) VALUES (?::uuid,?,5900000000,1100000000,'sim-1')",
             samPhone, maxOf(monthStart(now), ago(Duration.ofDays(2))).truncatedTo(ChronoUnit.HOURS),
         )
 
@@ -107,6 +115,16 @@ class Seed(private val ctx: Ctx) {
                     sub(sql, u, if (yearly) "pro_yearly" else "pro_monthly", ago(day.multipliedBy((i % 7).toLong()).plus(hour.multipliedBy(2))), if (yearly) 365 else 30)
                 }
                 i < 15 -> sub(sql, u, "pro_monthly", ago(Duration.ofDays(20)), 30, status = "cancelled", cancelled = ago(Duration.ofDays(2)))
+            }
+            // Traffic for the analytics: most on the Amsterdam node, a few heavy BitTorrent users.
+            if (i < 18) {
+                val server = if (i % 3 == 0) "sim-1" else "sim-2"
+                val phone = device(sql, u, "Phone", "android", tunnel = true, server = server, lastSeen = ago(Duration.ofMinutes(if (i % 4 == 0) 1L else 90L + i)))
+                history(sql, phone, 30, (2e6 + i * 4e5), sessionsPerDay = 0, server = server, torrent = if (i % 5 == 1) 0.6 else 0.0)
+                if (i % 2 == 0) {
+                    val pc = device(sql, u, "Laptop", "desktop", tunnel = true, server = "sim-2", lastSeen = ago(Duration.ofHours(3)))
+                    history(sql, pc, 30, 9e6 + i * 1e6, sessionsPerDay = 0, server = "sim-2", torrent = if (i % 4 == 2) 0.75 else 0.05)
+                }
             }
         }
     }
@@ -124,12 +142,18 @@ class Seed(private val ctx: Ctx) {
             if (product == "pro_yearly") "Pro на год" else "Pro на месяц",
         )
 
-    private suspend fun device(sql: Sql, userId: String, name: String, platform: String, tunnel: Boolean = false, connected: Boolean = false, lastSeen: Instant = now): String {
+    private suspend fun device(sql: Sql, userId: String, name: String, platform: String, tunnel: Boolean = false, connected: Boolean = false, lastSeen: Instant = now, server: String = "sim-1"): String {
         val id = sql.one(
             "INSERT INTO devices (user_id, name, platform, created_at) VALUES (?::uuid,?,?,?) RETURNING id",
             userId, name, platform, ago(Duration.ofDays(50)),
         )!!.str("id")
-        if (tunnel) {
+        if (tunnel && server != "sim-1") {
+            val pub = Base64.getEncoder().encodeToString("seed-$id".padEnd(32, '.').take(32).toByteArray())
+            sql.exec(
+                "INSERT INTO tunnels (device_id, server_id, protocol, address, peer_key, client_params, last_seen_at) VALUES (?::uuid,?,'amneziawg',?,?,?,?)",
+                id, server, "10.8.0.${ip++}", pub, Jsonb("""{"publicKey":"$pub"}"""), lastSeen,
+            )
+        } else if (tunnel) {
             val server = sql.one("SELECT * FROM servers WHERE id='sim-1'")!!
             val node = server.node(Protocols.WIREGUARD)
             val driver = ctx.drivers[Protocols.WIREGUARD]!!
@@ -147,13 +171,18 @@ class Seed(private val ctx: Ctx) {
     }
 
     /** Hourly traffic with an evening peak, plus connection sessions. */
-    private fun history(sql: Sql, deviceId: String, days: Int, scale: Double, sessionsPerDay: Int) {
+    private fun history(sql: Sql, deviceId: String, days: Int, scale: Double, sessionsPerDay: Int, server: String = "sim-1", torrent: Double = 0.0) {
         for (h in days * 24 downTo 1) {
             val t = ago(hour.multipliedBy(h.toLong())).truncatedTo(ChronoUnit.HOURS)
             val shape = when (t.atZone(ZoneOffset.UTC).hour) { in 0..5 -> 0.05; in 6..8 -> 0.4; in 9..16 -> 0.7; else -> 1.3 }
             val rx = (scale * shape * (0.5 + Random.nextDouble())).toLong()
             if (rx < 1000) continue
-            sql.exec("INSERT INTO traffic_samples (device_id, bucket, rx_bytes, tx_bytes) VALUES (?::uuid,?,?,?)", deviceId, t, rx, (rx * 0.19).toLong())
+            val tx = (rx * 0.19).toLong()
+            val share = if (torrent > 0) (torrent * (0.6 + 0.8 * Random.nextDouble())).coerceAtMost(0.95) else 0.0
+            sql.exec(
+                "INSERT INTO traffic_samples (device_id, bucket, rx_bytes, tx_bytes, torrent_rx_bytes, torrent_tx_bytes, server_id) VALUES (?::uuid,?,?,?,?,?,?)",
+                deviceId, t, rx, tx, (rx * share).toLong(), (tx * share * 2).toLong().coerceAtMost(tx), server,
+            )
         }
         for (d in days downTo 1) repeat(sessionsPerDay) { s ->
             val start = ago(day.multipliedBy(d.toLong())).plus(hour.multipliedBy(8L + s * 6))

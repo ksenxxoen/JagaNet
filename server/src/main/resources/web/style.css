@@ -260,6 +260,14 @@ main.narrow .keyactions { justify-content: center; }
 .meter div { height: 100%; background: var(--primary); }
 .meter div.hot { background: var(--danger); }
 
+.share { display: flex; align-items: center; gap: 8px; }
+.share-bar { width: 56px; height: 4px; background: var(--row); border-radius: 2px; overflow: hidden; flex: none; }
+.share-bar div { height: 100%; background: #e9762b; }
+.crumb { display: inline-flex; align-items: center; gap: 4px; margin: 0 0 8px; }
+.crumb::before { content: "\2039"; font-size: 18px; line-height: 1; }
+.h2row.first { margin-top: 0; }
+.toolbar input[type=search] { flex: 1; max-width: 360px; }
+
 /* ---------- server status ---------- */
 .lvl { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; color: var(--heading); }
 .lvl i { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
@@ -295,5 +303,7 @@ main.narrow .keyactions { justify-content: center; }
   .head .chips, .toolbar .chips { width: 100%; }
   .head .chips .chip, .toolbar .chips .chip { flex: 1; }
   .head > .btn { width: 100%; }
+  .toolbar input[type=search] { max-width: none; }
+  table .opt { display: none; }
   footer { flex-direction: column; align-items: center; text-align: center; }
 }

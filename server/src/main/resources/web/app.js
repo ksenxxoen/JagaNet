@@ -34,7 +34,7 @@ const MONTHS = {
   de: ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
 };
 function date(iso) {
-  if (!iso) return "-";
+  if (!iso) return "";
   const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
   return lang === "de" ? `${d}. ${MONTHS.de[m - 1]} ${y}` : `${d} ${MONTHS[lang][m - 1]} ${y}`;
 }
@@ -78,7 +78,7 @@ function go(hash) { if (location.hash === hash) render(); else location.hash = h
 function renderNav() {
   const here = (location.hash.slice(1) || "/").split("?")[0];
   const items = store.get("token")
-    ? [...(role === "owner" ? [["/admin", t("Admin panel")], ["/status", t("Server status")]] : []), ["/referrals", t("Referral program")], ["/account", t("My account")]]
+    ? [...(role === "owner" ? [["/analytics", t("Analytics")], ["/admin", t("Admin panel")], ["/status", t("Server status")]] : []), ["/referrals", t("Referral program")], ["/account", t("My account")]]
     : [];
   const link = ([p, l]) => `<a class="item ${p === here ? "on" : ""}" href="#${p}">${l}</a>`;
   const langs = `<span class="langs">${LANGS.map(([c, name]) => `<button type="button" class="${c === lang ? "on" : ""}" data-lang="${c}" title="${name}" lang="${c}">${c.toUpperCase()}</button>`).join("")}</span>`;
@@ -142,7 +142,6 @@ async function home() {
   view.innerHTML = `
   <section class="hero">
     <h1>${t("A fast and secure VPN.")}</h1>
-    <p>${t("Boop encrypts all your traffic and keeps the internet fast.")}</p>
     <div class="cta">
       <a class="btn large" href="#pricing">${t("Choose a plan")}</a>
       <a class="btn secondary large" href="#download">${t("Download the app")}</a>
@@ -150,9 +149,9 @@ async function home() {
   </section>
 
   <section class="facts">${tiles([
-    `<div class="fact">${icon("speed")}<h3>${t("Fast")}</h3><p>${t("Connects in a second and keeps full speed for video, games and calls.")}</p></div>`,
-    `<div class="fact">${icon("lock")}<h3>${t("Secure")}</h3><p>${t("Modern encryption protects your data on public Wi-Fi, at home and when you travel.")}</p></div>`,
-    `<div class="fact">${icon("eye")}<h3>${t("No logs")}</h3><p>${t("We don't keep your browsing history and never sell data.")}</p></div>`,
+    `<div class="fact">${icon("speed")}<h3>${t("Fast")}</h3><p>${t("Connects in a second")}</p></div>`,
+    `<div class="fact">${icon("lock")}<h3>${t("Secure")}</h3><p>${t("Encryption on any network")}</p></div>`,
+    `<div class="fact">${icon("eye")}<h3>${t("No logs")}</h3><p>${t("No browsing history kept")}</p></div>`,
   ])}</section>
 
   <div class="section-h" id="pricing"><h2>${t("Pricing")}</h2>${site?.testPayments ? testPayBadge() : ""}</div>
@@ -167,10 +166,10 @@ function downloads() {
   const a = site?.androidAppUrl, i = site?.iosAppUrl, tg = site?.telegramBotUrl;
   const soon = `<button class="btn secondary" disabled>${t("Coming soon")}</button>`;
   return tiles([
-    `<div class="card app-card"><h3>Android</h3><p>${t("The Boop app.")}</p>${a ? `<a class="btn secondary" href="${h(a)}">${t("Download for Android")}</a>` : soon}</div>`,
-    `<div class="card app-card"><h3>iPhone</h3><p>${t("The Boop app for iOS.")}</p>${i ? `<a class="btn secondary" href="${h(i)}">${t("Download on the App Store")}</a>` : soon}</div>`,
-    tg ? `<div class="card app-card"><h3>Telegram</h3><p>${t("Buy your key right in Telegram.")}</p><a class="btn secondary" href="${h(tg)}">${t("Open the bot")}</a></div>`
-       : `<div class="card app-card"><h3>${t("Other VPN apps")}</h3><p>${t("Your Pro key also works in other VPN apps.")}</p><a class="btn secondary" href="https://amnezia.org/downloads" rel="noreferrer">${t("Get AmneziaVPN")}</a></div>`,
+    `<div class="card app-card"><h3>Android</h3>${a ? `<a class="btn secondary" href="${h(a)}">${t("Download for Android")}</a>` : soon}</div>`,
+    `<div class="card app-card"><h3>iPhone</h3>${i ? `<a class="btn secondary" href="${h(i)}">${t("Download on the App Store")}</a>` : soon}</div>`,
+    tg ? `<div class="card app-card"><h3>Telegram</h3><a class="btn secondary" href="${h(tg)}">${t("Open the bot")}</a></div>`
+       : `<div class="card app-card"><h3>AmneziaVPN</h3><a class="btn secondary" href="https://amnezia.org/downloads" rel="noreferrer">${t("Get AmneziaVPN")}</a></div>`,
   ]);
 }
 
@@ -188,14 +187,13 @@ window.buy = async function (tariffId) {
 function signin() {
   if (store.get("token")) return go("#/account");
   const bot = site?.telegramBotUrl;
-  const viaTelegram = bot ? `<div class="alt"><a class="btn secondary" href="${h(bot)}" target="_blank" rel="noreferrer">${t("Sign in with Telegram")}</a>
-    <p class="muted small">${t("Send /login to the bot and open the link it gives you.")}</p></div>` : "";
+  const viaTelegram = bot ? `<div class="alt"><a class="btn secondary" href="${h(bot)}" target="_blank" rel="noreferrer">${t("Sign in with Telegram")}</a></div>` : "";
   if (site?.emailSignIn === false) {
     view.innerHTML = `
     <div class="card signbox">
       <h1>${t("Sign in")}</h1>
       <div class="notice bad">${t("Sign-in by e-mail is temporarily unavailable")}</div>
-      ${viaTelegram || `<p class="muted">${t("Please try again later.")}</p>`}
+      ${viaTelegram}
     </div>`;
     return;
   }
@@ -203,7 +201,6 @@ function signin() {
   <div class="card signbox">
     <h1>${t("Sign in")}</h1>
     ${site?.testCodes ? `<p><span class="badge test">${t("Test mode, sign-in codes are shown on screen")}</span></p>` : ""}
-    <p class="muted">${t("Enter your email. We'll send a 6-digit code, no password needed.")}</p>
     <form id="f1"><label for="email">${t("Email")}</label><input id="email" type="email" autocomplete="email" required placeholder="you@example.com">
       <button class="btn" type="submit">${t("Email me a code")}</button></form>
     <form id="f2" hidden><p id="sent" class="muted"></p><label for="code">${t("Code")}</label>
@@ -222,8 +219,8 @@ function signin() {
       const r = await api("/auth/email/start", { method: "POST", body: { email, referralCode: new URLSearchParams(location.search).get("ref") || store.get("ref") } });
       f1.hidden = true; f2.hidden = false;
       const sent = document.getElementById("sent");
-      sent.textContent = t("We sent a code to {email}. It works for 10 minutes.", { email });
-      if (r.devCode) { document.getElementById("code").value = r.devCode; sent.textContent += " " + t("Test mode, the code is filled in for you."); }
+      sent.textContent = t("Code sent to {email}", { email });
+      if (r.devCode) document.getElementById("code").value = r.devCode;
       document.getElementById("code").focus();
     } catch (e) { err.textContent = e.message; }
   };
@@ -245,7 +242,7 @@ function signin() {
 /** #/login?token=... : a one-time sign-in link from the Telegram bot or from the server. */
 async function login(params) {
   const token = params.get("token");
-  view.innerHTML = `<div class="card signbox"><p class="muted">${t("Signing you in…")}</p></div>`;
+  view.innerHTML = `<div class="card signbox"><p class="muted">${t("Signing in")}</p></div>`;
   try {
     if (!token) throw new Error(t("This sign-in link is incomplete. Ask for a new one."));
     const r = await api("/auth/link/redeem", { method: "POST", body: { token, device: { name: t("Website"), platform: "other" } } });
@@ -271,8 +268,8 @@ async function account(params) {
     try {
       const o = await api("/orders/" + encodeURIComponent(orderId));
       notice = o.status === "paid"
-        ? `<div class="notice">${t("Payment received, thank you! Your personal VPN key is below.")}</div>`
-        : `<div class="notice bad">${t("That payment hasn't gone through yet.")} <a href="${h(o.checkoutUrl || "#/account")}">${t("Try again")}</a></div>`;
+        ? `<div class="notice ok">${t("Payment received")}</div>`
+        : `<div class="notice bad">${t("Not paid yet")} <a href="${h(o.checkoutUrl || "#/account")}">${t("Try again")}</a></div>`;
     } catch {}
   }
   const [me, keys, plans, pays] = await Promise.all([api("/me"), api("/keys"), api("/billing/plans"), api("/me/payments")]);
@@ -280,7 +277,7 @@ async function account(params) {
   const sourceName = { web: t("Website"), telegram: "Telegram", app: t("Boop app"), apple: "App Store", google: "Google Play", referral: t("Invite reward"), dev: t("Simulation") };
   const who = me.user.email.endsWith("@telegram.invalid") ? t("Telegram account") : me.user.email;
   const kv = (k, v) => `<div><div class="k">${k}</div><div class="v">${v}</div></div>`;
-  const until = isPro ? (e.expiresAt ? h(date(e.expiresAt)) : t("Owner account, no time limit")) : t("No time limit");
+  const until = isPro ? (e.expiresAt ? h(date(e.expiresAt)) : t("No time limit")) : t("No time limit");
   view.innerHTML = `
   ${head(t("My account"), h(who), `<button class="btn secondary" id="logout">${t("Sign out")}</button>`)}
   ${notice}
@@ -291,7 +288,7 @@ async function account(params) {
         ${kv(t("Plan"), isPro ? h(e.tariffName || "Pro") : t("Free"))}
         ${kv(t("Active until"), until)}
         ${kv(t("Devices"), `${me.usage.devicesUsed} / ${e.deviceLimit}`)}
-        ${kv(t("Data"), h(dataText(e.monthlyDataLimitBytes)))}
+        ${kv(t("Data"), e.monthlyDataLimitBytes == null ? t("Unlimited") : h(dataText(e.monthlyDataLimitBytes)))}
       </div>
     </div>
     <div class="card">
@@ -299,18 +296,15 @@ async function account(params) {
       ${plans.tariffs.map((x) => `<div class="buyrow"><div><b>${h(x.name)}</b><div class="muted">${h(period(x))}, ${tp(x.deviceLimit, "{n} device|{n} devices")}</div></div>
         <span class="price-s">${h(money(x.priceMinor, x.currency))}</span>${buyBtn(x.id, "secondary", t("Buy"))}</div>`).join("") || `<p class="muted">${t("No plans on sale right now.")}</p>`}
       ${payOk() ? "" : `<p class="paynote warn">${t("Payments are temporarily unavailable")}</p>`}
-      ${isPro && e.expiresAt && plans.tariffs.length ? `<p class="paynote">${t("A new purchase starts when the current one ends.")}</p>` : ""}
     </div>
   </div>
 
   <div class="h2row"><h2>${t("VPN keys")}</h2>${isPro || keys.keys.length ? `<button class="btn secondary" id="newkey">${t("New key")}</button>` : ""}</div>
-  <p class="muted">${t("A personal key for other VPN apps. Each key counts as one of your devices.")}</p>
-  <div class="keys" id="keys">${keys.keys.map(keyCard).join("") || `<div class="card muted">${isPro ? t("You have no keys yet.") : t("Get Pro to receive your personal VPN key.")}</div>`}</div>
+  <div class="keys" id="keys">${keys.keys.map(keyCard).join("") || `<div class="card muted">${isPro ? t("No keys yet") : t("Keys come with Pro")}</div>`}</div>
 
   <div class="h2row"><h2>${t("Apps")}</h2></div>
   ${downloads()}
-  <div class="card section"><div class="card-h"><h3>${t("Sign in to the Boop app")}</h3><div id="pair"><button class="btn secondary" id="paircode">${t("Show a code")}</button></div></div>
-    <p class="muted">${t("In the app tap Sign in with a device code and enter the code.")}</p></div>
+  <div class="card section"><div class="card-h"><h3>${t("Sign in to the Boop app")}</h3><div id="pair"><button class="btn secondary" id="paircode">${t("Show a code")}</button></div></div></div>
 
   ${pays.payments.length ? `<div class="h2row"><h2>${t("Payments")}</h2></div><div class="card tablewrap"><table class="data"><thead><tr><th>${t("Plan")}</th><th>${t("Period")}</th><th>${t("Channel")}</th></tr></thead><tbody>
     ${pays.payments.map((x) => `<tr><td>${x.productId === "referral" ? t("Invite reward") : h(x.tariffName || "Pro")}</td><td>${t("{from} to {to}", { from: date(x.startedAt), to: date(x.expiresAt) })}</td><td>${h(sourceName[x.source] || x.source)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
@@ -334,8 +328,7 @@ function keyCard(k) {
     <img class="qr" src="${h(k.qrUrl)}" alt="${t("QR code of your VPN key")}" loading="lazy">
     <div>
       <h3>${h(k.name)}</h3>
-      <p class="muted">${h(k.location)}, ${t("Made on {date}", { date: date(k.createdAt) })}</p>
-      <p>${t("Scan the QR code in AmneziaVPN or download the file and import it.")}</p>
+      <p class="muted">${h(k.location)}, ${h(date(k.createdAt))}</p>
       <div class="keyactions">
         <a class="btn" href="${h(k.configUrl)}" download>${t("Download file")}</a>
         <a class="btn secondary" href="${h(withLang(k.pageUrl))}" target="_blank" rel="noreferrer">${t("Open key link")}</a>
@@ -347,8 +340,8 @@ function keyCard(k) {
 /* ---------------- referral program ---------------- */
 
 const PERIODS = [["7d", "7 days"], ["30d", "30 days"], ["90d", "90 days"], ["all", "All time"]];
-const pct = (a, b) => (b > 0 ? `${Math.round((a / b) * 1000) / 10}`.replace(".", lang === "en" ? "." : ",") + "%" : "-");
-const revenueText = (list) => (list && list.length ? list.map((m) => money(m.minor, m.currency)).join(", ") : "-");
+const pct = (a, b) => (b > 0 ? `${Math.round((a / b) * 1000) / 10}`.replace(".", lang === "en" ? "." : ",") + "%" : "0%");
+const revenueText = (list) => (list && list.length ? list.map((m) => money(m.minor, m.currency)).join(", ") : "0");
 const sourceName = (k) => (k === "direct" ? t("Direct") : k === "telegram" ? "Telegram" : k);
 const channelName = (k) => ({ website: t("Website"), app: t("App"), telegram: "Telegram" })[k] || k;
 const linkName = (l) => (l.main ? t("Main link") : l.name);
@@ -361,12 +354,12 @@ async function copyText(btn, text) {
 /** Funnel tiles: the headline numbers with the conversion between steps. */
 function funnelTiles(f) {
   return kpis([
-    [t("Clicks"), f.clicks, t("Repeat clicks included")],
-    [t("Unique visitors"), f.visitors, t("Repeat clicks not counted")],
+    [t("Clicks"), f.clicks, ""],
+    [t("Unique visitors"), f.visitors, ""],
     [t("Sign-ups"), f.signups, t("{p} of visitors", { p: pct(f.signups, f.visitors) })],
     [t("Paid"), f.paidUsers, t("{p} of sign-ups", { p: pct(f.paidUsers, f.signups) })],
-    [t("Purchases"), f.purchases, t("Renewals included")],
-    [t("Revenue"), h(revenueText(f.revenue)), t("All payments")],
+    [t("Purchases"), f.purchases, ""],
+    [t("Revenue"), h(revenueText(f.revenue)), ""],
   ]);
 }
 
@@ -462,7 +455,7 @@ async function referrals(params) {
 
   const st = await api(`/referrals/stats?period=${period}`);
   view.innerHTML = `
-  ${head(t("Referral program"), st.daysEarned ? tp(st.daysEarned, "You have earned {n} day.|You have earned {n} days.") : "", tabs)}${ownerTabs}
+  ${head(t("Referral program"), st.daysEarned ? tp(st.daysEarned, "{n} day earned|{n} days earned") : "", tabs)}${ownerTabs}
   ${funnelTiles(st.totals)}
   ${dayChart(st.days, CLICKS(), t("Clicks by day"))}
   ${dayChart(st.days, CONVERSIONS(), t("Sign-ups and payments by day"))}
@@ -478,8 +471,8 @@ async function referrals(params) {
   </tr>`).join("")}</tbody></table></div>
 
   <form id="newlink" class="card section"><h3>${t("New link")}</h3>
-    <div class="formrow"><div><label for="ln">${t("Name, for example Instagram")}</label><input id="ln" maxlength="40" required></div>
-    <div><label for="lc">${t("Own code (optional)")}</label><input id="lc" maxlength="32" placeholder="ALEX-INSTA"></div>
+    <div class="formrow"><div><label for="ln">${t("Name")}</label><input id="ln" maxlength="40" required placeholder="Instagram"></div>
+    <div><label for="lc">${t("Own code")}</label><input id="lc" maxlength="32" placeholder="ALEX-INSTA"></div>
     <button class="btn" type="submit">${t("Create link")}</button></div>
     <p id="lerr" class="warn"></p></form>
 
@@ -488,7 +481,7 @@ async function referrals(params) {
   <div class="h2row"><h2>${t("People you invited")}</h2></div>
   <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Who")}</th><th>${t("Link")}</th><th>${t("Joined")}</th><th>${t("Where")}</th><th>${t("Status")}</th><th>${t("Purchases")}</th></tr></thead>
   <tbody>${st.recent.map((r) => `<tr><td>${h(r.who)}</td><td>${h(r.linkName === "Main link" ? t("Main link") : r.linkName)}</td><td>${h(date(r.joinedAt))}</td><td>${h(channelName(r.channel))}</td>
-    <td><span class="status ${r.status}">${{ registered: t("Signed up"), active: t("Pro active"), lapsed: t("Pro ended") }[r.status]}</span></td><td>${r.purchases}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">${t("No one yet. Share your link to get started.")}</td></tr>`}</tbody></table></div>`;
+    <td><span class="status ${r.status}">${{ registered: t("Signed up"), active: t("Pro active"), lapsed: t("Pro ended") }[r.status]}</span></td><td>${r.purchases}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">${t("No one yet")}</td></tr>`}</tbody></table></div>`;
 
   wireCharts(view);
   for (const b of view.querySelectorAll("[data-copy]")) b.onclick = () => copyText(b, b.dataset.copy);
@@ -529,7 +522,7 @@ function num(v, digits = v < 10 && !Number.isInteger(v) ? 1 : 0) {
 }
 /** Bits per second: "850 Kbit/s", "12,5 Мбит/с", "1,2 Gbit/s". */
 function bits(bps) {
-  if (bps == null) return "-";
+  if (bps == null) return "0";
   const u = lang === "ru" ? ["Кбит/с", "Мбит/с", "Гбит/с"] : ["Kbit/s", "Mbit/s", "Gbit/s"];
   if (bps >= 1e9) return `${num(bps / 1e9)} ${u[2]}`;
   if (bps >= 1e6) return `${num(bps / 1e6)} ${u[1]}`;
@@ -544,10 +537,10 @@ function bytes(b) {
   if (b >= 1e3) return `${Math.round(b / 1e3)} ${u("KB")}`;
   return `${b} ${u("B")}`;
 }
-const percent = (v) => (v == null ? "-" : `${num(v)}%`);
+const percent = (v) => (v == null ? "0%" : `${num(v)}%`);
 const clock = (iso) => { const d = new Date(iso); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 const localDay = (iso) => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-const dateTime = (iso) => (iso ? `${date(localDay(iso))} ${clock(iso)}` : "-");
+const dateTime = (iso) => (iso ? `${date(localDay(iso))} ${clock(iso)}` : "");
 function duration(ms) {
   const m = Math.max(0, Math.round(ms / 60000));
   if (m < 60) return t("{n} min", { n: m });
@@ -608,7 +601,7 @@ function lineChart(points, series, title, formatY, opts = {}) {
     const cx = x(times[i]);
     const a = i ? (cx + x(times[i - 1])) / 2 : L, b = i < pts.length - 1 ? (cx + x(times[i + 1])) / 2 : W - R;
     const dots = series.map((s) => (p[s.key] == null ? "" : `<circle cx="${cx}" cy="${y(p[s.key])}" r="4" fill="${s.color}" class="dot"/>`)).join("");
-    const tip = h(byDay ? dateTime(p.ts) : clock(p.ts)) + "|" + series.map((s) => h(`${s.label} ${p[s.key] == null ? "-" : formatY(p[s.key])}`)).join("|");
+    const tip = h(byDay ? dateTime(p.ts) : clock(p.ts)) + "|" + series.map((s) => h(`${s.label} ${p[s.key] == null ? "0" : formatY(p[s.key])}`)).join("|");
     return `<g class="col" data-tip="${tip}"><rect x="${a}" y="${T}" width="${Math.max(0.5, b - a)}" height="${H - T - B}" class="hit"/><line x1="${cx}" x2="${cx}" y1="${T}" y2="${H - B}" class="xh"/>${dots}</g>`;
   }).join("");
   const legend = series.length > 1 ? `<div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${s.label}</span>`).join("")}</div>` : "";
@@ -653,9 +646,9 @@ async function status(params) {
 
   <div class="h2row"><h2>${t("Network")}</h2>${net.iface ? `<span class="muted">${t("Interface {name}", { name: `<span class="mono">${h(net.iface)}</span>` })}</span>` : ""}</div>
   ${kpis([
-    [t("Download speed"), h(bits(last?.rxBps)), t("Right now")],
-    [t("Upload speed"), h(bits(last?.txBps)), t("Right now")],
-    [t("Channel load"), last?.utilization == null ? "-" : percent(last.utilization * 100), h(capNote)],
+    [t("Download speed"), h(bits(last?.rxBps)), ""],
+    [t("Upload speed"), h(bits(last?.txBps)), ""],
+    [t("Channel load"), last?.utilization == null ? "0%" : percent(last.utilization * 100), h(capNote)],
     [t("Traffic this month"), h(bytes(monthTotal)), `${t("Downloaded")} ${h(bytes(net.monthRxBytes || 0))}, ${t("Uploaded").toLowerCase()} ${h(bytes(net.monthTxBytes || 0))}`],
   ])}
   ${net.monthLimitBytes ? `<div class="card section"><div class="row"><span>${t("{used} of {limit} allowed by the hosting plan", { used: h(bytes(monthTotal)), limit: h(bytes(net.monthLimitBytes)) })}</span><b>${percent((monthTotal / net.monthLimitBytes) * 100)}</b></div>${meter(monthTotal, net.monthLimitBytes)}</div>` : ""}
@@ -669,22 +662,22 @@ async function status(params) {
 
   <div class="h2row"><h2>${t("Resources")}</h2></div>
   ${kpis([
-    [t("Processor"), last ? percent(last.cpu * 100) : "-", t("Right now")],
-    [t("Memory"), last ? percent((last.memUsed / (last.memTotal || 1)) * 100) : "-", last ? t("{used} of {total}", { used: h(bytes(last.memUsed)), total: h(bytes(last.memTotal)) }) : ""],
-    [t("Disk free"), last ? h(bytes(last.diskFree)) : "-", last ? t("{used} of {total}", { used: percent((last.diskFree / (last.diskTotal || 1)) * 100), total: h(bytes(last.diskTotal)) }) : ""],
+    [t("Processor"), last ? percent(last.cpu * 100) : "0%", ""],
+    [t("Memory"), last ? percent((last.memUsed / (last.memTotal || 1)) * 100) : "0%", last ? t("{used} of {total}", { used: h(bytes(last.memUsed)), total: h(bytes(last.memTotal)) }) : ""],
+    [t("Disk free"), last ? h(bytes(last.diskFree)) : "0", last ? t("{used} of {total}", { used: percent((last.diskFree / (last.diskTotal || 1)) * 100), total: h(bytes(last.diskTotal)) }) : ""],
   ])}
   ${lineChart(pts, [{ key: "cpu", label: t("Processor"), color: DOWN }, { key: "mem", label: t("Memory"), color: UP }], t("Processor and memory, %"), (v) => `${whole(v)}%`, { top: 100 })}
 
   <div class="h2row"><h2>VPN</h2></div>
   ${kpis([
-    [t("Keys on the server"), last ? last.peers : "-", t("Devices and keys")],
-    [t("Connected now"), last ? last.online : "-", t("Active in the last 3 minutes")],
+    [t("Keys on the server"), last ? last.peers : 0, ""],
+    [t("Connected now"), last ? last.online : 0, ""],
   ])}
   ${lineChart(pts, [{ key: "online", label: t("Online"), color: ONE }], t("Devices online"), whole)}
 
   <div class="h2row"><h2>${t("Alerts")}</h2></div>
   <div class="card tablewrap"><table class="data alerts"><thead><tr><th>${t("Level")}</th><th>${t("Message")}</th><th>${t("Started")}</th></tr></thead>
-  <tbody>${open.map((a) => `<tr><td>${levelBadge(a.level)}</td><td>${h(t(a.message, a.args))}</td><td>${h(dateTime(a.openedAt))}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">${t("No open alerts.")}</td></tr>`}</tbody></table></div>
+  <tbody>${open.map((a) => `<tr><td>${levelBadge(a.level)}</td><td>${h(t(a.message, a.args))}</td><td>${h(dateTime(a.openedAt))}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">${t("No open alerts")}</td></tr>`}</tbody></table></div>
   ${done.length ? `<div class="h2row"><h2>${t("Resolved alerts")}</h2></div>
   <div class="card tablewrap"><table class="data alerts"><thead><tr><th>${t("Level")}</th><th>${t("Message")}</th><th>${t("Started")}</th><th>${t("Ended")}</th><th>${t("Duration")}</th></tr></thead>
   <tbody>${done.map((a) => `<tr><td>${levelBadge(a.level)}</td><td>${h(t(a.message, a.args))}</td><td>${h(dateTime(a.openedAt))}</td><td>${h(dateTime(a.resolvedAt))}</td><td>${h(duration(Date.parse(a.resolvedAt) - Date.parse(a.openedAt)))}</td></tr>`).join("")}</tbody></table></div>` : ""}
@@ -692,7 +685,7 @@ async function status(params) {
   <div class="h2row"><h2>${t("Notifications")}</h2><a class="btn secondary" href="#/admin?tab=alerts">${t("Change recipients")}</a></div>
   <div class="card notify">
     <div class="nrow"><b>${t("Email")}</b><span>${m.notify.emails.length ? m.notify.emails.map((e) => `<span class="mono">${h(e)}</span>`).join("<br>") : `<span class="muted">${t("No email addresses")}</span>`}</span></div>
-    ${m.notify.emailReady ? "" : `<div class="nrow"><span></span><span class="warn">${t("E-mail sending is not set up yet.")} <a href="#/admin?tab=email">${t("Set up e-mail")}</a></span></div>`}
+    ${m.notify.emailReady ? "" : `<div class="nrow"><span></span><span class="warn">${t("E-mail is not set up")} <a href="#/admin?tab=email">${t("Set up e-mail")}</a></span></div>`}
     <div class="nrow"><b>Telegram</b><span>${tp(m.notify.telegramChats, "{n} Telegram chat|{n} Telegram chats")}</span></div>
     <div class="actionsrow"><button class="btn secondary" id="testnote">${t("Send test notification")}</button><span id="testres" class="muted"></span></div>
   </div>`;
@@ -706,6 +699,163 @@ async function status(params) {
     btn.disabled = false;
   };
   statusTimer = setTimeout(() => { if (location.hash.startsWith("#/status")) render(); }, 60000);
+}
+
+/* ---------------- traffic analytics (owners) ---------------- */
+
+const A_PERIODS = [["24h", "24 hours"], ["7d", "7 days"], ["30d", "30 days"], ["90d", "90 days"]];
+const OTHER = C1, TORRENT = C2;
+const total = (s) => s.down + s.up;
+const torrentOf = (s) => s.torrentDown + s.torrentUp;
+/** BitTorrent share of a traffic split as a short bar and a percentage. */
+function torrentCell(s, classes) {
+  if (classes && classes !== "ok") return `<span class="muted" title="${h(classes)}">${t("no data")}</span>`;
+  const all = total(s), tor = torrentOf(s);
+  if (!all) return `<span class="muted">0%</span>`;
+  const p = (tor / all) * 100;
+  return `<div class="share"><div class="share-bar">${p > 0 ? `<div style="width:${Math.max(2, p)}%"></div>` : ""}</div><span class="${p >= 50 ? "warn" : p > 0 ? "" : "muted"}">${num(p)}%</span></div>`;
+}
+const userName = (u) => (u.email.endsWith("@telegram.invalid") && u.name === u.email ? t("Telegram account") : u.name);
+const PLAN_NAMES = { pro: "Pro", test: "Test", free: "Free" };
+const PLATFORMS = { android: "Android", ios: "iPhone", windows: "Windows", macos: "macOS", linux: "Linux" };
+const platformName = (p) => PLATFORMS[p] || (p === "desktop" ? t("Computer") : p === "key" ? t("VPN key") : p);
+const devCount = (active, all) => `${active} / ${Math.max(active, all)}`;
+const planBadge = (p) => `<span class="status ${p === "pro" ? "active" : p === "test" ? "lapsed" : ""}">${t(PLAN_NAMES[p] || p)}</span>`;
+/** Last seen as a number tile: "Online" while connected, else the time and the day. */
+const lastSeenKpi = (iso) => {
+  if (!iso) return [t("Last seen"), t("never"), ""];
+  if (Date.now() - Date.parse(iso) < 3 * 60e3) return [t("Last seen"), `<span class="lvl ok"><i></i>${t("online")}</span>`, ""];
+  return [t("Last seen"), h(clock(iso)), h(date(localDay(iso)))];
+};
+const seenText = (iso) => {
+  if (!iso) return `<span class="muted">${t("never")}</span>`;
+  const ms = Date.now() - Date.parse(iso);
+  if (ms < 3 * 60e3) return `<span class="lvl ok"><i></i>${t("online")}</span>`;
+  return h(dateTime(iso));
+};
+
+/** Stacked bars per hour or day: BitTorrent on top of the rest. */
+function trafficChart(points, bucket, title) {
+  const W = Math.max(300, Math.min(1000, (view.clientWidth || 960) - 42)), H = W < 600 ? 180 : 220, T = 10, B = 26, R = 8;
+  const rows = points.map((p) => ({ ts: p.ts, tor: p.torrent, other: Math.max(0, p.down + p.up - p.torrent) }));
+  const top = niceTop(Math.max(1, ...rows.map((r) => r.tor + r.other)));
+  const L = Math.max(36, 10 + bytes(top).length * 6.5);
+  const n = rows.length, cw = (W - L - R) / n, bw = Math.max(2, Math.min(40, cw * 0.6));
+  const y = (v) => T + (H - T - B) * (1 - v / top);
+  const ticks = [0, top / 2, top].map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${L - 6}" y="${y(v) + 4}" class="axis" text-anchor="end">${v ? h(bytes(v)) : "0"}</text>`).join("");
+  const every = Math.ceil(n / Math.max(3, Math.floor(W / 90)));
+  const label = (iso) => (bucket === "hour" ? clock(iso) : shortDate(localDay(iso)));
+  const bars = rows.map((r, i) => {
+    const x = L + i * cw + (cw - bw) / 2;
+    const hOther = r.other ? Math.max(1, y(0) - y(r.other)) : 0, hTor = r.tor ? Math.max(1, y(0) - y(r.tor)) : 0;
+    const rects = (hOther ? `<rect x="${x}" y="${y(0) - hOther}" width="${bw}" height="${hOther}" fill="${OTHER}"/>` : "")
+      + (hTor ? `<rect x="${x}" y="${y(0) - hOther - hTor}" width="${bw}" height="${hTor}" fill="${TORRENT}"/>` : "");
+    const tip = h(bucket === "hour" ? dateTime(r.ts) : date(localDay(r.ts))) + "|" + h(`${t("Torrents")} ${bytes(r.tor)}`) + "|" + h(`${t("Other")} ${bytes(r.other)}`);
+    const lab = i % every === 0 ? `<text x="${L + i * cw + cw / 2}" y="${H - 8}" class="axis" text-anchor="middle">${h(label(r.ts))}</text>` : "";
+    return `<g class="col" data-tip="${tip}"><rect x="${L + i * cw}" y="${T}" width="${cw}" height="${H - T - B}" class="hit"/>${rects}${lab}</g>`;
+  }).join("");
+  const legend = `<div class="legend"><span><i style="background:${OTHER}"></i>${t("Other")}</span><span><i style="background:${TORRENT}"></i>${t("Torrents")}</span></div>`;
+  return `<div class="card chart section"><div class="card-h"><h3>${title}</h3>${legend}</div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${h(title)}" preserveAspectRatio="none">${ticks}<line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" class="base"/>${bars}</svg>
+    <div class="tip" hidden></div></div>`;
+}
+
+const trafficKpis = (s, extra) => kpis([
+  [t("Traffic"), h(bytes(total(s))), `${t("Down")} ${h(bytes(s.down))}, ${t("up").toLowerCase()} ${h(bytes(s.up))}`],
+  [t("Torrents"), total(s) ? `${num((torrentOf(s) / total(s)) * 100)}%` : "0%", h(bytes(torrentOf(s)))],
+  ...extra,
+]);
+
+function userRows(list, withServers) {
+  if (!list.length) return `<tr><td colspan="${withServers ? 7 : 6}" class="muted">${t("No users")}</td></tr>`;
+  return list.map((u) => `<tr>
+    <td class="wrap"><a href="#/analytics?user=${encodeURIComponent(u.id)}"><b>${h(userName(u))}</b></a>${u.name !== u.email && !u.email.endsWith(".invalid") ? `<div class="muted">${h(u.email)}</div>` : ""}</td>
+    <td class="opt">${planBadge(u.plan)}</td>
+    <td class="opt">${devCount(u.activeDevices, u.devices)}</td>
+    ${withServers ? `<td class="wrap opt">${h(u.servers.join(", "))}</td>` : ""}
+    <td>${h(bytes(total(u.traffic)))}</td>
+    <td>${torrentCell(u.traffic)}</td>
+    <td class="opt">${seenText(u.lastSeenAt)}</td></tr>`).join("");
+}
+const userHead = (withServers) => `<thead><tr><th>${t("User")}</th><th class="opt">${t("Plan")}</th><th class="opt" title="${h(t("Active of all"))}">${t("Devices")}</th>${withServers ? `<th class="opt">${t("Servers")}</th>` : ""}<th>${t("Traffic")}</th><th>${t("Torrents")}</th><th class="opt">${t("Last seen")}</th></tr></thead>`;
+
+async function analytics(params) {
+  if (!store.get("token")) return go("#/signin");
+  if (role !== "owner") return go("#/account");
+  const period = A_PERIODS.some(([k]) => k === params.get("period")) ? params.get("period") : store.get("anPeriod") || "7d";
+  store.set("anPeriod", period);
+  const server = params.get("server"), user = params.get("user"), usersView = params.get("view") === "users";
+  const keep = (extra) => `#/analytics?period=${period}${extra}`;
+  const chips = (extra) => `<div class="chips">${A_PERIODS.map(([k, l]) => `<a class="chip ${k === period ? "on" : ""}" href="#/analytics?period=${k}${extra}">${t(l)}</a>`).join("")}</div>`;
+  const tabs = `<nav class="tabs"><a class="${usersView || user ? "" : "on"}" href="${keep("")}">${t("Servers")}</a><a class="${usersView || user ? "on" : ""}" href="${keep("&view=users")}">${t("Users")}</a></nav>`;
+  const crumb = (href, label) => `<a class="crumb" href="${href}">${label}</a>`;
+
+  if (server) {
+    const r = await api(`/admin/analytics/servers/${encodeURIComponent(server)}?period=${period}`);
+    if (!location.hash.startsWith("#/analytics")) return;
+    const s = r.server;
+    view.innerHTML = `${head(t("Analytics"), "", chips(`&server=${encodeURIComponent(server)}`))}${tabs}
+      ${crumb(keep(""), t("All servers"))}
+      <div class="h2row first"><h2>${h(s.name)}</h2><span class="muted">${h(s.city)}, ${h(s.countryCode)}</span></div>
+      ${trafficKpis(s.traffic, [[t("Users"), s.users, tp(s.devices, "{n} device|{n} devices")], [t("Online"), s.online, ""]])}
+      ${trafficChart(r.points, r.bucket, t("Traffic"))}
+      <div class="h2row"><h2>${t("Users on this server")}</h2></div>
+      <div class="card tablewrap"><table class="data">${userHead(false)}<tbody>${userRows(r.users, false)}</tbody></table></div>`;
+    wireCharts(view);
+    return;
+  }
+
+  if (user) {
+    const r = await api(`/admin/analytics/users/${encodeURIComponent(user)}?period=${period}`);
+    if (!location.hash.startsWith("#/analytics")) return;
+    const u = r.user;
+    view.innerHTML = `${head(t("Analytics"), "", chips(`&user=${encodeURIComponent(user)}`))}${tabs}
+      ${crumb(keep("&view=users"), t("All users"))}
+      <div class="h2row first"><h2>${h(userName(u))}</h2>${planBadge(u.plan)}</div>
+      ${u.name !== u.email && !u.email.endsWith(".invalid") ? `<p class="muted">${h(u.email)}</p>` : ""}
+      ${trafficKpis(u.traffic, [[t("Devices"), devCount(u.activeDevices, u.devices), t("Active of all")], lastSeenKpi(u.lastSeenAt)])}
+      ${trafficChart(r.points, r.bucket, t("Traffic"))}
+      <div class="h2row"><h2>${t("By server")}</h2></div>
+      <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Server")}</th><th>${t("Traffic")}</th><th class="opt">${t("Down")}</th><th class="opt">${t("Up")}</th><th>${t("Torrents")}</th></tr></thead>
+        <tbody>${r.servers.map((x) => `<tr><td><a href="${keep(`&server=${encodeURIComponent(x.id)}`)}"><b>${h(x.name)}</b></a><div class="muted">${h(x.countryCode)}</div></td>
+          <td>${h(bytes(total(x.traffic)))}</td><td class="opt">${h(bytes(x.traffic.down))}</td><td class="opt">${h(bytes(x.traffic.up))}</td><td>${torrentCell(x.traffic)}</td></tr>`).join("")
+          || `<tr><td colspan="5" class="muted">${t("No traffic")}</td></tr>`}</tbody></table></div>
+      <div class="h2row"><h2>${t("Devices")}</h2></div>
+      <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Device")}</th><th class="opt">${t("Server")}</th><th>${t("Traffic")}</th><th>${t("Torrents")}</th><th class="opt">${t("Last seen")}</th></tr></thead>
+        <tbody>${r.devices.map((d) => `<tr class="${d.removed ? "muted" : ""}"><td><b>${h(d.name)}</b><div class="muted">${h(platformName(d.platform))}${d.removed ? `, ${t("removed")}` : ""}</div></td>
+          <td class="opt">${d.serverName ? `${h(d.serverName)}<div class="muted">${h(d.countryCode || "")}</div>` : `<span class="muted">${t("none")}</span>`}</td>
+          <td>${h(bytes(total(d.traffic)))}</td><td>${torrentCell(d.traffic)}</td><td class="opt">${seenText(d.lastSeenAt)}</td></tr>`).join("")
+          || `<tr><td colspan="5" class="muted">${t("No devices")}</td></tr>`}</tbody></table></div>`;
+    wireCharts(view);
+    return;
+  }
+
+  if (usersView) {
+    const q = params.get("q") || "";
+    const r = await api(`/admin/analytics/users?period=${period}${q ? `&q=${encodeURIComponent(q)}` : ""}`);
+    if (!location.hash.startsWith("#/analytics")) return;
+    view.innerHTML = `${head(t("Analytics"), "", chips("&view=users"))}${tabs}
+      <form class="toolbar" id="uq"><input id="q" type="search" value="${h(q)}" placeholder="${h(t("Name or e-mail"))}" aria-label="${h(t("Search"))}"><button class="btn secondary" type="submit">${t("Find")}</button></form>
+      <div class="card tablewrap"><table class="data">${userHead(true)}<tbody>${userRows(r.users, true)}</tbody></table></div>`;
+    document.getElementById("uq").onsubmit = (e) => { e.preventDefault(); go(keep(`&view=users&q=${encodeURIComponent(val("q"))}`)); };
+    return;
+  }
+
+  const r = await api(`/admin/analytics?period=${period}`);
+  if (!location.hash.startsWith("#/analytics")) return;
+  const active = r.servers.filter((s) => s.active);
+  const off = r.servers.filter((s) => !s.active);
+  const row = (s) => `<tr class="${s.active ? "" : "muted"}">
+    <td><a href="${keep(`&server=${encodeURIComponent(s.id)}`)}"><b>${h(s.name)}</b></a><div class="muted">${h(s.city)}, ${h(s.countryCode)}</div></td>
+    <td class="opt">${s.users}</td><td class="opt">${devCount(s.activeDevices, s.devices)}</td><td class="opt">${s.online}</td>
+    <td>${h(bytes(total(s.traffic)))}</td><td>${torrentCell(s.traffic, s.classes)}</td></tr>`;
+  view.innerHTML = `${head(t("Analytics"), "", chips(""))}${tabs}
+    ${trafficKpis(r.totals, [[t("Users"), r.users, tp(r.activeDevices, "{n} device|{n} devices")], [t("Online"), r.online, ""]])}
+    ${trafficChart(r.points, r.bucket, t("Traffic"))}
+    <div class="h2row"><h2>${t("Servers")}</h2></div>
+    <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Server")}</th><th class="opt">${t("Users")}</th><th class="opt" title="${h(t("Active of all"))}">${t("Devices")}</th><th class="opt">${t("Online")}</th><th>${t("Traffic")}</th><th>${t("Torrents")}</th></tr></thead>
+      <tbody>${[...active, ...off].map(row).join("")}</tbody></table></div>`;
+  wireCharts(view);
 }
 
 /* ---------------- admin panel (owners) ---------------- */
@@ -770,14 +920,14 @@ async function adminMoney(params, top) {
   view.innerHTML = `${top}
   <div class="toolbar"><div class="chips">${PERIODS.map(([k, l]) => `<a class="chip ${k === period ? "on" : ""}" href="#/admin?tab=money&period=${k}">${t(l)}</a>`).join("")}</div></div>
   ${kpis([
-    [t("Revenue"), h(revenueText(f.revenue)), t("All payments")],
-    [t("Paid orders"), f.paidOrders, t("In this period")],
-    [t("New subscriptions"), f.newSubscriptions, t("In this period")],
-    [t("Renewals"), f.renewals, t("In this period")],
-    [t("Active subscribers"), f.activeSubscribers, t("Paid Pro right now")],
-    [t("Monthly recurring revenue"), h(revenueText(f.mrr)), t("Per month")],
-    [t("Unpaid orders"), f.unpaidOrders, t("Checkouts started but not paid")],
-    [t("Conversion"), f.paidOrders + f.unpaidOrders ? pct(f.paidOrders, f.paidOrders + f.unpaidOrders) : "-", t("Paid of all orders")],
+    [t("Revenue"), h(revenueText(f.revenue)), ""],
+    [t("Paid orders"), f.paidOrders, ""],
+    [t("New subscriptions"), f.newSubscriptions, ""],
+    [t("Renewals"), f.renewals, ""],
+    [t("Active subscribers"), f.activeSubscribers, ""],
+    [t("Monthly recurring revenue"), h(revenueText(f.mrr)), ""],
+    [t("Unpaid orders"), f.unpaidOrders, ""],
+    [t("Conversion"), f.paidOrders + f.unpaidOrders ? pct(f.paidOrders, f.paidOrders + f.unpaidOrders) : "0%", ""],
   ])}
   ${f.days.length && currencies.length ? currencies.map(revenueChart).join("") : empty(t("Revenue by day"))}
   ${f.days.length ? dayChart(f.days, subsSeries, t("New subscriptions and renewals by day")) : empty(t("New subscriptions and renewals by day"))}
@@ -785,8 +935,8 @@ async function adminMoney(params, top) {
   <div class="h2row"><h2>${t("Recent payments")}</h2></div>
   <div class="card tablewrap"><table class="data pays"><thead><tr><th>${t("Date")}</th><th>${t("Email")}</th><th>${t("Plan")}</th><th>${t("Amount")}</th><th>${t("Channel")}</th><th>${t("Type")}</th></tr></thead>
   <tbody>${f.recent.map((r) => `<tr><td>${h(dateTime(r.at))}</td><td>${h(who(r.email))}</td><td>${h(r.product)}</td>
-    <td>${r.amount ? h(money(r.amount.minor, r.amount.currency)) : "-"}</td><td>${h(payChannel(r.channel))}</td>
-    <td><span class="status ${r.renewal ? "" : "active"}">${r.renewal ? t("Renewal") : t("New subscription")}</span></td></tr>`).join("") || `<tr><td colspan="6" class="muted">${t("No payments in this period.")}</td></tr>`}</tbody></table></div>`;
+    <td>${r.amount ? h(money(r.amount.minor, r.amount.currency)) : ""}</td><td>${h(payChannel(r.channel))}</td>
+    <td><span class="status ${r.renewal ? "" : "active"}">${r.renewal ? t("Renewal") : t("New subscription")}</span></td></tr>`).join("") || `<tr><td colspan="6" class="muted">${t("No payments")}</td></tr>`}</tbody></table></div>`;
   wireCharts(view);
 }
 
@@ -804,7 +954,7 @@ const sshFields = (host = "") => `
     ${field("xw", t("Password"), "", 'type="password" autocomplete="new-password"')}
     <div class="wide"><label for="xk">${t("Private key, instead of the password")}</label><textarea id="xk" rows="3" class="mono" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></div>
   </div>
-  <p class="muted small hint">${t("A fresh Ubuntu or Debian server. The password is used once for the install and isn't saved.")}</p>`;
+  <p class="muted small hint">${t("The password is not saved")}</p>`;
 function sshBody() {
   const body = { host: val("xh"), port: Number(val("xp")) || 22, user: val("xu") || "root", password: document.getElementById("xw").value || null, privateKey: document.getElementById("xk").value.trim() || null };
   if (!body.password && !body.privateKey) throw new Error(t("Enter the password or the private key"));
@@ -813,7 +963,7 @@ function sshBody() {
 
 function installCard(n, i) {
   const text = i.state === "running" ? `${h(t(i.step || "Connecting"))}…`
-    : i.state === "done" ? t("The node is installed and connected.") : `<span class="warn">${h(t(i.error || "Something went wrong", i.errorArgs))}</span>`;
+    : i.state === "done" ? t("Installed") : `<span class="warn">${h(t(i.error || "Something went wrong", i.errorArgs))}</span>`;
   return `<div class="card section installcard" data-install="${h(n.id)}">
     <div class="card-h"><h3>${h(n.name)}, ${h(i.host)}</h3>${badge(INSTALL_STATES[i.state])}</div>
     <p>${text}</p>
@@ -837,15 +987,14 @@ async function nodesPane(command) {
   const stateOf = (x) => (x.install?.state === "running" ? badge(INSTALL_STATES.running) : badge(NODE_STATES[x.state]));
   const row = (x) => `<tr class="${x.active ? "" : "muted"}"><td><b>${h(x.name)}</b><div class="muted">${h(x.city)}, ${h(x.countryCode)}${x.remote ? "" : `, ${t("main server")}`}</div></td>
     <td>${stateOf(x)}<div class="muted">${x.lastReportAt ? h(seen(x.lastReportAt)) : "&nbsp;"}</div></td><td>${x.peers} / ${x.maxPeers}<div class="muted">${t("{n} online", { n: x.online })}</div></td>
-    <td><span class="mono">${h(x.endpoint || "-")}</span>${x.hostname && x.publicIp ? `<div class="muted mono">${h(x.publicIp)}</div>` : ""}</td>
-    <td>${x.cpu == null ? "-" : percent(x.cpu * 100)}<div class="muted">${loadNote(x) || "&nbsp;"}</div></td>
+    <td><span class="mono">${h(x.endpoint || "")}</span>${x.hostname && x.publicIp ? `<div class="muted mono">${h(x.publicIp)}</div>` : ""}</td>
+    <td>${x.cpu == null ? "" : percent(x.cpu * 100)}<div class="muted">${loadNote(x) || "&nbsp;"}</div></td>
     <td class="actions"><button class="btn secondary small" data-edit="${h(x.id)}">${t("Edit")}</button></td></tr>`;
   pane.innerHTML = `
   ${shown.map((n, k) => installCard(n, installs[k])).join("")}
   ${command ? `<div class="card section"><h3>${t("Install command")}</h3>
-    <p class="muted">${t("Run it as root on a clean Ubuntu or Debian machine. It works once; the node appears here as online in a minute.")}</p>
     <div class="formrow two"><input class="mono" id="cmd" readonly value="${h(command)}"><button class="btn" type="button" id="copycmd">${t("Copy")}</button></div></div>` : ""}
-  <div class="toolbar"><span class="muted">${t("A node silent for 3 minutes gets no new devices.")}</span><button class="btn" id="newn">${t("New node")}</button></div>
+  <div class="toolbar"><span></span><button class="btn" id="newn">${t("New node")}</button></div>
   <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Node")}</th><th>${t("Status")}</th><th>${t("Devices")}</th>
     <th>${t("Address")}</th><th>${t("Processor")}</th><th></th></tr></thead>
     <tbody>${list.map(row).join("")}</tbody></table></div>
@@ -865,8 +1014,7 @@ async function nodesPane(command) {
         ${field("nm", t("Devices at most"), v.maxPeers, 'type="number" min="1" max="65000" step="1" required')}
         ${field("nh", t("Host name"), v.hostname, 'maxlength="200" placeholder="de1.vpn.example.com"')}
         <div><label for="na">${t("Status")}</label><select id="na"><option value="1" ${v.active ? "selected" : ""}>${t("On")}</option><option value="0" ${v.active ? "" : "selected"}>${t("Off")}</option></select></div>
-      </div>
-      <p class="muted small hint">${t("With a host name in your own domain, key files keep working after a move: point the name to the new machine's address.")}</p>`;
+      </div>`;
   const nodeBody = () => ({ name: val("nn"), city: val("nc"), countryCode: val("nk").toUpperCase(), maxPeers: Number(val("nm")), active: document.getElementById("na").value === "1", hostname: document.getElementById("nh") ? val("nh") || null : null });
   const install = (id, ssh) => api(`/admin/nodes/${encodeURIComponent(id)}/install`, { method: "POST", body: ssh });
 
@@ -919,7 +1067,6 @@ async function nodesPane(command) {
       <p class="result" id="nres"></p>`;
     const used = x.state !== "waiting";
     if (x.remote) mf.innerHTML = `<h3>${used ? t("Move to another server") : t("Install on a server")}</h3>
-      ${used ? `<p class="muted">${t("The node keeps its key, settings and devices. The current machine stops serving it.")}</p>` : ""}
       ${sshFields(host || "")}
       <div class="actionsrow"><button class="btn" type="submit">${t("Install")}</button>
         <button class="btn secondary" type="button" id="nmove">${t("Show the command instead")}</button></div>
@@ -929,9 +1076,9 @@ async function nodesPane(command) {
     const targets = list.filter((n) => n.id !== x.id && n.active && n.protocols.length);
     vf.hidden = false;
     vf.innerHTML = `<h3>${t("Move devices")}</h3>
-      <p class="muted">${t("{n} devices on this node. Key links switch to the chosen node at once: people with key files add their key again from the same link, the Boop app follows on its next connect.", { n: x.peers })}</p>
+      <p class="muted">${tp(x.peers, "{n} device|{n} devices")}</p>
       ${targets.length ? `<div class="formrow two"><select id="vt">${targets.map((n) => `<option value="${h(n.id)}">${h(n.name)}, ${h(n.city)} (${n.peers} / ${n.maxPeers})</option>`).join("")}</select>
-        <button class="btn" type="submit" ${x.peers ? "" : "disabled"}>${t("Move all devices")}</button></div>` : `<p class="muted">${t("There is no other working node to move them to.")}</p>`}
+        <button class="btn" type="submit" ${x.peers ? "" : "disabled"}>${t("Move all devices")}</button></div>` : `<p class="muted">${t("No other working node")}</p>`}
       <p class="result" id="vres"></p>`;
     vf.onsubmit = (e) => {
       e.preventDefault();
@@ -950,7 +1097,7 @@ async function nodesPane(command) {
       saveWith(mf.querySelector("button[type=submit]"), "mres", () => install(x.id, sshBody()), () => nodesPane());
     };
     if (x.remote) document.getElementById("nmove").onclick = (e) => {
-      if (!confirm(t("A new install command is made and the old one stops working. Run it on the new machine: the node keeps its key, settings and devices."))) return;
+      if (!confirm(t("Make a new install command? The old one stops working."))) return;
       saveWith(e.target, "mres", () => api(`/admin/nodes/${encodeURIComponent(x.id)}/token`, { method: "POST" }), (r) => nodesPane(r.command));
     };
     nf.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1036,7 +1183,6 @@ async function testersPane() {
   pane.innerHTML = `
   <form class="card adminform" id="tf">
     <h3>${t("New test accounts")}</h3>
-    <p class="muted">${t("Copy the rows from your table (name and number of devices) and paste them here. Each account gets free access and one key link per device; testers don't need to sign in.")}</p>
     <div class="fields">
       <div class="wide"><label for="tr">${t("Rows from the table")}</label><textarea id="tr" rows="8" class="mono" placeholder="Игорь + Таня&#9;5&#10;Леня + Лера&#9;3" required></textarea></div>
       ${field("td", t("Test length, days"), 30, 'type="number" min="1" max="365" step="1" required')}
@@ -1050,8 +1196,7 @@ async function testersPane() {
     <tbody>${list.map((a) => `<tr><td><b>${h(a.name)}</b></td><td class="mono">${h(a.email)}</td><td>${a.devices}</td><td>${h(date(localDay(a.expiresAt)))}</td>
       <td>${used(a) === 0 ? `<span class="warn">${t("{a} of {b}", { a: 0, b: a.keys.length })}</span>` : t("{a} of {b}", { a: used(a), b: a.keys.length })}</td>
       <td class="wrap">${links(a)}</td><td class="actions"><button class="btn secondary small" data-del="${h(a.id)}">${t("Delete")}</button></td></tr>`).join("")
-      || `<tr><td colspan="7" class="muted">${t("No test accounts yet.")}</td></tr>`}</tbody></table></div>
-  ${list.length ? `<p class="muted small hint">${t("Next to each key is the last time it reached the server and the data used. \"Never connected\" means the device never got through to the server. The key wasn't added, the app can't do AmneziaWG (the plain WireGuard app can't), or the network blocks it.")}</p>` : ""}`;
+      || `<tr><td colspan="7" class="muted">${t("No test accounts")}</td></tr>`}</tbody></table></div>`;
 
   const ta = document.getElementById("tr"), count = document.getElementById("tcount");
   ta.oninput = () => {
@@ -1096,10 +1241,10 @@ async function plansPane(s) {
     <td>${x.sold}</td><td>${x.activeNow}</td><td><span class="status ${x.status === "active" ? "active" : ""}">${STATUS[x.status]}</span></td>
     <td class="actions"><button class="btn secondary small" data-edit="${h(x.id)}">${t("Edit")}</button></td></tr>`;
   pane.innerHTML = `
-  <div class="toolbar"><span class="muted">${t("Changes apply to new purchases only. Bought subscriptions keep their terms.")}</span><button class="btn" id="newt">${t("New plan")}</button></div>
+  <div class="toolbar"><span class="muted">${t("For new purchases")}</span><button class="btn" id="newt">${t("New plan")}</button></div>
   <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Name")}</th><th>${t("Length")}</th><th>${t("Price, rubles")}</th><th>${t("Price, euros")}</th>
     <th>${t("Devices")}</th><th>${t("Data")}</th><th>${t("Sold")}</th><th>${t("Using now")}</th><th>${t("Status")}</th><th></th></tr></thead>
-    <tbody>${list.map(row).join("") || `<tr><td colspan="10" class="muted">${t("No plans on sale right now.")}</td></tr>`}</tbody></table></div>
+    <tbody>${list.map(row).join("") || `<tr><td colspan="10" class="muted">${t("No plans")}</td></tr>`}</tbody></table></div>
   <form class="card adminform section" id="tf" hidden></form>
 
   <form class="card adminform section" id="pf">
@@ -1108,7 +1253,7 @@ async function plansPane(s) {
       ${field("fg", t("Free data per month, GB"), p.freeMonthlyGb, whole)}
       ${field("fd", t("Devices on Free"), p.freeDeviceLimit, whole)}
       ${field("rd", t("Pro days for an invite"), p.referralRewardDays, whole)}
-      ${field("pd", t("Devices during invite reward days"), p.proDeviceLimit, whole)}
+      ${field("pd", t("Devices on reward days"), p.proDeviceLimit, whole)}
     </div>
     <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button></div>
     <p class="result" id="pres"></p></form>`;
@@ -1127,7 +1272,7 @@ async function plansPane(s) {
         ${field("tr", t("Price, rubles"), v.priceRubMinor == null ? "" : fromMinor(v.priceRubMinor), 'inputmode="decimal" required placeholder="299"')}
         ${field("te", t("Price, euros"), v.priceEurMinor == null ? "" : fromMinor(v.priceEurMinor), 'inputmode="decimal" required placeholder="4,99"')}
         ${field("td", t("Devices"), v.deviceLimit, 'type="number" min="1" max="100" step="1" required')}
-        ${field("tg", t("Data per month, GB"), v.trafficGb, `type="number" min="1" step="1" placeholder="${h(t("Leave empty for unlimited"))}"`)}
+        ${field("tg", t("Data per month, GB"), v.trafficGb, `type="number" min="1" step="1" placeholder="${h(t("Unlimited"))}"`)}
         ${field("ts", t("Order on the page"), v.sort, 'type="number" step="1" required')}
         <div><label for="tst">${t("Status")}</label><select id="tst">${opt(STATUS, v.status)}</select></div>
       </div>
@@ -1167,8 +1312,8 @@ function emailPane(s) {
   const sec = m.security || "starttls";
   const PORTS = { starttls: 587, ssl: 465, none: 25 };
   pane.innerHTML = `
-  ${s.smtp ? `<div class="notice">${t("E-mail is set up, it goes out through {host}.", { host: h(m.host) })}</div>`
-           : `<div class="notice bad">${t("E-mail is not set up")}. ${t("Sign-in codes and alerts can't be sent by e-mail yet.")}</div>`}
+  ${s.smtp ? `<div class="notice ok">${t("E-mail works through {host}", { host: h(m.host) })}</div>`
+           : `<div class="notice bad">${t("E-mail is not set up")}</div>`}
   <form class="card adminform" id="sf" autocomplete="off">
     <h3>${t("Mail server (SMTP)")}</h3>
     <div class="fields">
@@ -1180,7 +1325,6 @@ function emailPane(s) {
       ${field("sw", t("Password"), "", `type="password" autocomplete="new-password" placeholder="${s.smtpHasPassword ? h(t("saved")) : ""}"`)}
       ${field("sf2", t("Sender address"), m.from, 'placeholder="Boop &lt;no-reply@example.com&gt;" required')}
     </div>
-    ${s.smtpHasPassword ? `<p class="muted small">${t("Leave the password empty to keep the saved one.")}</p>` : ""}
     <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button>
       ${s.smtp ? `<button class="btn danger" type="button" id="soff">${t("Turn e-mail off")}</button>` : ""}</div>
     <p class="result" id="sres"></p>
@@ -1210,7 +1354,7 @@ function emailPane(s) {
     const btn = tf.querySelector("button"), out = document.getElementById("tres");
     btn.disabled = true; out.className = "result"; out.textContent = "";
     api("/admin/settings/smtp/test", { method: "POST", body: { to: val("tt") } })
-      .then(() => { out.className = "result ok"; out.textContent = t("Sent. Check the inbox and the spam folder."); })
+      .then(() => { out.className = "result ok"; out.textContent = t("Sent"); })
       .catch((x) => { out.className = "result warn"; out.textContent = x.message; })
       .finally(() => (btn.disabled = false));
   };
@@ -1222,19 +1366,18 @@ function alertsPane(s) {
     <h3>${t("Who gets server alerts")}</h3>
     <label for="ae">${t("Email")}</label>
     <textarea id="ae" rows="3" placeholder="you@example.com">${h(a.emails.join("\n"))}</textarea>
-    ${s.smtp ? "" : `<p class="warn">${t("E-mail is not set up")}. <a href="#/admin?tab=email">${t("Set up e-mail")}</a></p>`}
-    <label for="at" class="gap">${t("Telegram chat ids, separated by commas")}</label>
+    ${s.smtp ? "" : `<p class="warn">${t("E-mail is not set up")} <a href="#/admin?tab=email">${t("Set up e-mail")}</a></p>`}
+    <label for="at" class="gap">${t("Telegram chats")}</label>
     <input id="at" value="${h(a.telegramChats.join(", "))}" placeholder="123456789">
-    <p class="muted small gap-s">${t("Send /myid to the bot in a chat to see that chat's id.")}</p>
-    ${s.botEnabled ? "" : `<p class="warn">${t("The Telegram bot is not set up, so alerts can't go to Telegram.")}</p>`}
+    ${s.botEnabled ? "" : `<p class="warn">${t("The Telegram bot is off")}</p>`}
     <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button><a class="btn secondary" href="#/status">${t("Server status")}</a></div>
     <p class="result" id="ares"></p></form>
   <form class="card adminform" id="nf">
     <h3>${t("Server channel")}</h3>
     <label for="nc">${t("Channel speed, Mbit/s")}</label>
     <input id="nc" inputmode="numeric" value="${h(s.network?.channelMbps ?? "")}" placeholder="1000">
-    <label for="nt" class="gap">${t("Traffic per month, GB (empty if unlimited)")}</label>
-    <input id="nt" inputmode="numeric" value="${h(s.network?.monthlyTrafficGb ?? "")}" placeholder="">
+    <label for="nt" class="gap">${t("Traffic per month, GB")}</label>
+    <input id="nt" inputmode="numeric" value="${h(s.network?.monthlyTrafficGb ?? "")}" placeholder="${h(t("Unlimited"))}">
     <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button></div>
     <p class="result" id="nres"></p></form>`;
   const nform = document.getElementById("nf");
@@ -1261,14 +1404,13 @@ function modesPane(s) {
   const pane = document.getElementById("pane"), m = s.modes;
   const on = m.showSignInCodes || m.testPayments;
   pane.innerHTML = `
-  ${on ? `<div class="notice danger">${t("A test mode is on. Turn it off before real people use the service.")}</div>` : ""}
+  ${on ? `<div class="notice danger">${t("A test mode is on")}</div>` : ""}
   <form class="card adminform" id="mf">
     <h3>${t("Test modes")}</h3>
     <label class="toggle"><input type="checkbox" id="mc" ${m.showSignInCodes ? "checked" : ""}><span>${t("Show sign-in codes on screen")}</span></label>
-    <p class="danger-text">${t("Anyone can then sign in to any account, yours too, just by typing its e-mail address.")}</p>
+    <p class="danger-text">${t("Anyone can sign in to any account")}</p>
     <label class="toggle"><input type="checkbox" id="mp" ${m.testPayments && !s.paymentsConnected ? "checked" : ""} ${s.paymentsConnected ? "disabled" : ""}><span>${t("Test payments")}</span></label>
-    <p class="danger-text">${t("Anyone can then get Pro without paying. No money is taken.")}</p>
-    ${s.paymentsConnected ? `<p class="muted small">${t("A real payment service is connected, so test payments can't be turned on.")}</p>` : ""}
+    <p class="danger-text">${t("Pro without paying")}</p>
     <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button></div>
     <p class="result" id="mres"></p></form>`;
   const form = document.getElementById("mf");
@@ -1299,6 +1441,7 @@ async function render() {
     if (path === "/account") return await account(params);
     if (path === "/referrals") return await referrals(params);
     if (path === "/status") return await status(params);
+    if (path === "/analytics") return await analytics(params);
     await home();
     if (location.hash === "#download") document.getElementById("download")?.scrollIntoView();
   } catch (e) {

@@ -86,8 +86,8 @@ class Referrals(private val ctx: Ctx, private val botUsername: () -> String? = {
     suspend fun click(code: String, visitorKey: String, channel: String, source: String?): String? = ctx.db.run { sql ->
         val link = sql.one("SELECT id, code FROM referral_links WHERE code=? AND archived_at IS NULL", code.trim().uppercase()) ?: return@run null
         sql.exec(
-            "INSERT INTO referral_clicks (link_id, visitor, channel, source) VALUES (?::uuid,?,?,?)",
-            link.str("id"), Crypto.hmac(ctx.cfg.authSecret, "visitor:$visitorKey"), channel, source?.take(100)?.lowercase(),
+            "INSERT INTO referral_clicks (link_id, visitor, channel, source, created_at) VALUES (?::uuid,?,?,?,?)",
+            link.str("id"), Crypto.hmac(ctx.cfg.authSecret, "visitor:$visitorKey"), channel, source?.take(100)?.lowercase(), ctx.now(),
         )
         link.str("code")
     }

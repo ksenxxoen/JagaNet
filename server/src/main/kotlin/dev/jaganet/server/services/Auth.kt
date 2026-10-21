@@ -79,7 +79,7 @@ class AuthService(private val ctx: Ctx) {
         val email = ctx.cfg.ownerEmail ?: throw AppError(503, ErrorCode.SERVICE_UNAVAILABLE, "OWNER_EMAIL is not set")
         val id = ctx.db.tx { sql ->
             sql.one("SELECT id FROM users WHERE email=?", email)?.str("id")
-                ?: sql.one("INSERT INTO users (email, role, referral_code) VALUES (?,'owner',?) RETURNING id", email, Crypto.referralCode(email))!!.str("id")
+                ?: sql.one("INSERT INTO users (email, role, referral_code, created_at) VALUES (?,'owner',?,?) RETURNING id", email, Crypto.referralCode(email), ctx.now())!!.str("id")
         }
         ctx.db.run { it.exec("UPDATE users SET role='owner' WHERE id=?::uuid", id) }
         return createLoginLink(id)
@@ -105,8 +105,8 @@ class AuthService(private val ctx: Ctx) {
                 val referrer = Referrals.resolve(sql, used.strOrNull("referral_code"))
                 val role = if (ctx.cfg.ownerEmail == email) "owner" else "user"
                 sql.one(
-                    "INSERT INTO users (email, role, referral_code, referred_by, referral_link_id) VALUES (?,?,?,?::uuid,?::uuid) RETURNING *",
-                    email, role, Crypto.referralCode(email), referrer?.userId, referrer?.linkId,
+                    "INSERT INTO users (email, role, referral_code, referred_by, referral_link_id, created_at) VALUES (?,?,?,?::uuid,?::uuid,?) RETURNING *",
+                    email, role, Crypto.referralCode(email), referrer?.userId, referrer?.linkId, ctx.now(),
                 )!!
             }
             createSession(sql, user, device)

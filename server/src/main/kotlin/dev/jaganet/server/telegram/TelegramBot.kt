@@ -302,9 +302,9 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
                 val email = "tg$tgId@telegram.invalid"
                 val referrer = Referrals.resolve(sql, referral)
                 sql.one(
-                    """INSERT INTO users (email, referral_code, referred_by, referral_link_id, telegram_id) VALUES (?,?,?::uuid,?::uuid,?)
+                    """INSERT INTO users (email, referral_code, referred_by, referral_link_id, telegram_id, created_at) VALUES (?,?,?::uuid,?::uuid,?,?)
                        ON CONFLICT (email) DO UPDATE SET telegram_id=EXCLUDED.telegram_id RETURNING id, lang""",
-                    email, Crypto.referralCode("tg@x"), referrer?.userId, referrer?.linkId, tgId,
+                    email, Crypto.referralCode("tg@x"), referrer?.userId, referrer?.linkId, tgId, ctx.now(),
                 )!!
             }
         }

@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 
 /**
  * Every product's texts: each `t("…")` / `tp(n, "…")` in the apps, the server and the website
- * has Russian and German, and the house style holds (no long dashes, no "·" separators,
+ * has Russian and German, and the house style holds (no dashes of any kind, no "·" separators,
  * at most one colon per text).
  */
 class I18nTest {
@@ -71,6 +71,7 @@ class I18nTest {
         const val BANNED = "—–·"
         fun styleProblem(s: String): String? = when {
             s.any { it in BANNED } -> "long dash or ·"
+            " - " in s -> "a hyphen used as a dash"
             s.count { it == ':' } > 1 -> "more than one colon"
             else -> null
         }

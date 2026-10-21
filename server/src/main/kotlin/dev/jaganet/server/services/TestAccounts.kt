@@ -62,13 +62,13 @@ class TestAccounts(private val ctx: Ctx, private val keys: Keys, private val tun
             val now = ctx.now()
             val id = ctx.db.tx { sql ->
                 val id = sql.one(
-                    "INSERT INTO users (email, referral_code, note) VALUES (?,?,?) RETURNING id",
-                    email, Crypto.referralCode(email), a.name.trim(),
+                    "INSERT INTO users (email, referral_code, note, created_at) VALUES (?,?,?,?) RETURNING id",
+                    email, Crypto.referralCode(email), a.name.trim(), now,
                 )!!.str("id")
                 sql.exec(
-                    """INSERT INTO subscriptions (user_id, product_id, source, external_id, started_at, expires_at, auto_renew, tariff_name, device_limit)
-                       VALUES (?::uuid,'test','test',?,?,?,false,'Тест',?)""",
-                    id, "test:$id", now, now.plus(Duration.ofDays(req.days.toLong())), a.devices,
+                    """INSERT INTO subscriptions (user_id, product_id, source, external_id, started_at, expires_at, auto_renew, tariff_name, device_limit, created_at)
+                       VALUES (?::uuid,'test','test',?,?,?,false,'Тест',?,?)""",
+                    id, "test:$id", now, now.plus(Duration.ofDays(req.days.toLong())), a.devices, now,
                 )
                 id
             }

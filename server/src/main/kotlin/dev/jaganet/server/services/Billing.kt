@@ -23,11 +23,11 @@ class Billing(private val ctx: Ctx, private val tariffs: Tariffs) {
         val isFirstPaid = sql.one("SELECT count(*)::int AS n FROM subscriptions WHERE user_id=?::uuid AND source NOT IN ('referral','test')", userId)!!.int("n") == 0
         sql.exec(
             """INSERT INTO subscriptions (user_id, product_id, source, external_id, started_at, expires_at, is_renewal, auto_renew,
-                                          tariff_id, tariff_name, device_limit, monthly_bytes)
-               VALUES (?::uuid,?,?,?,?,?,?,false,?::uuid,?,?,?)
+                                          tariff_id, tariff_name, device_limit, monthly_bytes, created_at)
+               VALUES (?::uuid,?,?,?,?,?,?,false,?::uuid,?,?,?,?)
                ON CONFLICT (source, external_id) DO UPDATE SET expires_at=EXCLUDED.expires_at, status='active'""",
             userId, terms.tariffId ?: "legacy", source, externalId, startedAt, expiresAt, !isFirstPaid,
-            terms.tariffId, terms.name, terms.deviceLimit, terms.monthlyBytes,
+            terms.tariffId, terms.name, terms.deviceLimit, terms.monthlyBytes, ctx.now(),
         )
         if (isFirstPaid) grantReferralRewards(sql, userId)
     }
@@ -39,9 +39,9 @@ class Billing(private val ctx: Ctx, private val tariffs: Tariffs) {
             val last = sql.one("SELECT max(expires_at) AS e FROM subscriptions WHERE user_id=?::uuid AND status='active'", beneficiary)?.instantOrNull("e")
             val start = maxOf(ctx.now(), last ?: Instant.EPOCH)
             sql.exec(
-                """INSERT INTO subscriptions (user_id, product_id, source, external_id, started_at, expires_at, auto_renew)
-                   VALUES (?::uuid,'referral','referral',?,?,?,false) ON CONFLICT (source, external_id) DO NOTHING""",
-                beneficiary, "ref:$from->$beneficiary", start, start.plus(Duration.ofDays(ctx.live.plans.referralRewardDays.toLong())),
+                """INSERT INTO subscriptions (user_id, product_id, source, external_id, started_at, expires_at, auto_renew, created_at)
+                   VALUES (?::uuid,'referral','referral',?,?,?,false,?) ON CONFLICT (source, external_id) DO NOTHING""",
+                beneficiary, "ref:$from->$beneficiary", start, start.plus(Duration.ofDays(ctx.live.plans.referralRewardDays.toLong())), ctx.now(),
             )
         }
     }
