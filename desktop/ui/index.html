@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boop VPN</title>
+<style>/*CSS*/</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="glow" aria-hidden="true"></div>
+
+  <!-- Sign in -->
+  <section class="screen signin" id="signin" hidden>
+    <div class="brand-big"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" class="tile"/><circle cx="12" cy="12" r="6.5" class="ring"/><circle cx="12" cy="12" r="3.4" class="dot"/></svg><b>Boop</b></div>
+    <form class="form" id="f-email">
+      <label for="email" data-t="Email"></label>
+      <input id="email" type="email" autocomplete="email" required placeholder="you@example.com">
+      <button class="primary" type="submit" data-t="Get a code"></button>
+    </form>
+    <form class="form" id="f-code" hidden>
+      <label for="code" id="code-label"></label>
+      <input id="code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required placeholder="000000">
+      <button class="primary" type="submit" data-t="Sign in"></button>
+      <button class="text" type="button" id="back" data-t="Another e-mail"></button>
+    </form>
+    <form class="form" id="f-pair" hidden>
+      <label for="pair" data-t="Device code"></label>
+      <input id="pair" class="code" inputmode="numeric" maxlength="6" required placeholder="000000">
+      <button class="primary" type="submit" data-t="Sign in"></button>
+      <button class="text" type="button" id="pair-back" data-t="Sign in by e-mail"></button>
+    </form>
+    <button class="text quiet" type="button" id="to-pair" data-t="I have a device code"></button>
+  </section>
+
+  <!-- Main -->
+  <section class="screen main" id="main" hidden>
+    <header class="bar">
+      <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" class="tile"/><circle cx="12" cy="12" r="6.5" class="ring"/><circle cx="12" cy="12" r="3.4" class="dot"/></svg><b>Boop</b></div>
+      <button class="icon" id="open-settings" data-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/></svg></button>
+    </header>
+
+    <div class="stage">
+      <button class="boop" id="boop" data-state="off">
+        <span class="wave w1"></span><span class="wave w2"></span><span class="wave w3"></span>
+        <span class="ring"></span>
+        <span class="core"><span class="spark"></span></span>
+      </button>
+      <div class="status" id="status"></div>
+      <div class="timer" id="timer"></div>
+    </div>
+
+    <button class="place" id="open-places">
+      <span class="flag" id="flag"></span>
+      <span class="place-name"><b id="country"></b></span>
+      <span class="ping" id="ping"><i></i><i></i><i></i><em></em></span>
+      <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+  </section>
+
+  <!-- Countries -->
+  <div class="sheet" id="places" hidden>
+    <div class="sheet-head"><b data-t="Country"></b><button class="icon" data-close data-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="list" id="place-list"></div>
+  </div>
+
+  <!-- Settings -->
+  <div class="sheet" id="settings" hidden>
+    <div class="sheet-head"><b data-t="Settings"></b><button class="icon" data-close data-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="group">
+      <div class="row"><span class="muted" data-t="Account"></span><span id="s-email" class="ellipsis"></span></div>
+      <div class="row"><span class="muted" data-t="Plan"></span><span id="s-plan"></span></div>
+      <button class="row link" id="s-extend"><span data-t="Extend"></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+    </div>
+    <div class="group">
+      <label class="row toggle"><span data-t="Connect on start"></span><input type="checkbox" id="s-auto"><i></i></label>
+      <div class="row"><span data-t="Language"></span><span class="seg" id="s-lang"><button data-lang="ru">RU</button><button data-lang="en">EN</button><button data-lang="de">DE</button></span></div>
+    </div>
+    <div class="group">
+      <button class="row danger" id="s-signout" data-t="Sign out"></button>
+    </div>
+    <div class="version" id="s-version"></div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+</div>
+<script>/*JS*/</script>
+</body>
+</html>
