@@ -296,10 +296,17 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         }
     }
 
-    suspend fun rename(p: Principal, id: String, name: String) {
+    suspend fun rename(p: Principal, id: String, name: String) = renameFor(p.user.id, id, name)
+
+    /** userId null: the owner renames anyone's device or key. */
+    suspend fun renameFor(userId: String?, id: String, name: String) {
         val n = name.trim()
         if (n.isEmpty() || n.length > 60) throw badRequest("Name must be 1 to 60 characters")
-        val rows = ctx.db.run { it.exec("UPDATE devices SET name=? WHERE id=?::uuid AND user_id=?::uuid AND removed_at IS NULL", n, id, p.user.id) }
+        if (!Regex("^[0-9a-fA-F-]{36}$").matches(id)) throw notFound("Device not found")
+        val rows = ctx.db.run {
+            if (userId == null) it.exec("UPDATE devices SET name=? WHERE id=?::uuid AND removed_at IS NULL", n, id)
+            else it.exec("UPDATE devices SET name=? WHERE id=?::uuid AND user_id=?::uuid AND removed_at IS NULL", n, id, userId)
+        }
         if (rows == 0) throw notFound("Device not found")
     }
 

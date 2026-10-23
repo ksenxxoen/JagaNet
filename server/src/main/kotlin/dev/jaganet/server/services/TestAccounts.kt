@@ -1,5 +1,6 @@
 package dev.jaganet.server.services
 
+import dev.jaganet.api.AssignTestAccountRes
 import dev.jaganet.api.KeyActivity
 import dev.jaganet.api.TestAccount
 import dev.jaganet.api.TestAccountsReq
@@ -14,6 +15,8 @@ import java.time.Duration
  * Accounts the owner makes for testers who don't sign in themselves: a made-up address that
  * can't get mail, free access for a number of days and one VPN key link per device.
  */
+private val UUID = Regex("^[0-9a-fA-F-]{36}$")
+
 class TestAccounts(private val ctx: Ctx, private val keys: Keys, private val tunnels: Tunnels) {
     suspend fun list(): List<TestAccount> {
         val rows = ctx.db.run { sql ->
@@ -82,6 +85,33 @@ class TestAccounts(private val ctx: Ctx, private val keys: Keys, private val tun
             made += id
         }
         return list().filter { it.id in made }
+    }
+
+    /**
+     * Gives the account to a registered user: its keys (same links, same VPN peers, so nothing
+     * changes for the person using them) and its test period become theirs; the account is removed.
+     */
+    suspend fun assign(id: String, email: String): AssignTestAccountRes = ctx.db.tx { sql ->
+        if (!UUID.matches(id)) throw notFound("Account not found")
+        sql.one("SELECT 1 FROM subscriptions WHERE user_id=?::uuid AND source='test' FOR UPDATE", id) ?: throw notFound("Account not found")
+        val to = sql.one("SELECT id, email FROM users WHERE lower(email)=lower(?)", email.trim())
+            ?: throw notFound("No user with this e-mail")
+        val toId = to.str("id")
+        if (toId == id || sql.one("SELECT 1 FROM subscriptions WHERE user_id=?::uuid AND source='test' AND external_id='test:'||user_id::text", toId) != null) {
+            throw badRequest("Choose a registered user, not a test account")
+        }
+        // Their keys go on after the user's own: VPN key, VPN key 2...
+        var n = sql.one("SELECT count(*)::int AS n FROM access_keys WHERE user_id=?::uuid", toId)!!.int("n")
+        val moved = sql.query("SELECT device_id FROM access_keys WHERE user_id=?::uuid ORDER BY created_at, device_id", id)
+        for (k in moved) {
+            n++
+            sql.exec("UPDATE devices SET name=? WHERE id=?::uuid", if (n == 1) "VPN key" else "VPN key $n", k.str("device_id"))
+        }
+        sql.exec("UPDATE devices SET user_id=?::uuid WHERE user_id=?::uuid", toId, id)
+        sql.exec("UPDATE access_keys SET user_id=?::uuid WHERE user_id=?::uuid", toId, id)
+        sql.exec("UPDATE subscriptions SET user_id=?::uuid WHERE user_id=?::uuid", toId, id)
+        sql.exec("DELETE FROM users WHERE id=?::uuid AND role='user'", id)
+        AssignTestAccountRes(to.str("email"), moved.size)
     }
 
     /** Removes the account, its keys (from the VPN too) and its data. */

@@ -1,5 +1,6 @@
 package dev.jaganet.server.http
 
+import dev.jaganet.api.AssignTestAccountReq
 import dev.jaganet.api.AlertSettings
 import dev.jaganet.api.ErrorCode
 import dev.jaganet.api.LinkLoginReq
@@ -72,6 +73,10 @@ fun Route.adminApi(s: Services) {
     }
     get("/admin/test-accounts") { call.owner(); call.respond(TestAccountsRes(s.testAccounts.list())) }
     post("/admin/test-accounts") { call.owner(); call.respond(TestAccountsRes(s.testAccounts.create(call.receive<TestAccountsReq>()))) }
+    post("/admin/test-accounts/{id}/assign") {
+        call.owner()
+        call.respond(s.testAccounts.assign(call.parameters["id"]!!, call.receive<AssignTestAccountReq>().email))
+    }
     delete("/admin/test-accounts/{id}") { call.owner(); s.testAccounts.delete(call.parameters["id"]!!); call.respond(OkRes()) }
     get("/admin/tariffs") { call.owner(); call.respond(AdminTariffsRes(s.tariffs.all())) }
     post("/admin/tariffs") { call.owner(); s.tariffs.create(call.receive<TariffReq>()); call.respond(AdminTariffsRes(s.tariffs.all())) }

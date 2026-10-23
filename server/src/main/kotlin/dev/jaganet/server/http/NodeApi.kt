@@ -20,6 +20,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
+import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 
@@ -42,6 +43,11 @@ fun Route.nodeApi(s: Services) {
     get("/admin/analytics/users") { call.owner(); call.respond(s.analytics.users(call.request.queryParameters["period"], call.request.queryParameters["q"])) }
     // One device: to another node, or a new key pair from its Boop app. Both reach a connected app silently.
     post("/admin/devices/{id}/move") { call.owner(); s.tunnels.moveDevice(call.parameters["id"]!!, call.receive<dev.jaganet.api.MoveDeviceReq>().to); call.respond(OkRes()) }
+    patch("/admin/devices/{id}") {
+        call.owner()
+        s.tunnels.renameFor(null, call.parameters["id"]!!, call.receive<dev.jaganet.api.RenameDeviceReq>().name)
+        call.respond(OkRes())
+    }
     post("/admin/devices/{id}/rekey") { call.owner(); s.tunnels.requestRekey(call.parameters["id"]!!); call.respond(OkRes()) }
     get("/admin/analytics/users/{id}") { call.owner(); call.respond(s.analytics.user(call.parameters["id"]!!, call.request.queryParameters["period"])) }
     post("/admin/nodes") { call.owner(); call.respond(s.nodes.create(call.receive<NodeReq>())) }

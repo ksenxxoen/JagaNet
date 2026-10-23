@@ -307,3 +307,10 @@ main.narrow .keyactions { justify-content: center; }
   table .opt { display: none; }
   footer { flex-direction: column; align-items: center; text-align: center; }
 }
+
+.giveform { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.giveform input { flex: 1 1 240px; max-width: 360px; }
+form.rename { display: flex; gap: 8px; margin-bottom: 4px; }
+form.rename[hidden], h3[hidden] { display: none; }
+form.rename input { flex: 1; max-width: 320px; }
+.stack { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }

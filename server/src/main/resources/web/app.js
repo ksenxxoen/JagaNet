@@ -339,6 +339,18 @@ async function account(params) {
     try { const r = await api("/devices/pairing-code", { method: "POST" }); document.getElementById("pair").innerHTML = `<div class="code-big" title="${t("Works for 10 minutes")}">${h(r.code)}</div>`; }
     catch (e) { alert(e.message); }
   };
+  for (const b of document.querySelectorAll("[data-ren]")) b.onclick = () => {
+    const f = document.querySelector(`[data-renf="${b.dataset.ren}"]`), title = document.querySelector(`[data-name="${b.dataset.ren}"]`);
+    f.hidden = false; title.hidden = true;
+    const input = f.querySelector("input");
+    input.focus(); input.select();
+    input.onkeydown = (e) => { if (e.key === "Escape") { f.hidden = true; title.hidden = false; } };
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      try { await api("/devices/" + encodeURIComponent(b.dataset.ren), { method: "PATCH", body: { name: input.value.trim() } }); render(); }
+      catch (x) { alert(x.message); }
+    };
+  };
   for (const b of document.querySelectorAll("[data-del]")) b.onclick = async () => {
     if (!confirm(t("Delete this key? Apps using it will stop connecting."))) return;
     try { await api("/keys/" + b.dataset.del, { method: "DELETE" }); render(); } catch (e) { alert(e.message); }
@@ -350,11 +362,13 @@ function keyCard(k) {
   return `<div class="card keycard">
     <img class="qr" src="${h(k.qrUrl)}" alt="${t("QR code of your VPN key")}" loading="lazy">
     <div>
-      <h3>${h(k.name)}</h3>
+      <h3 data-name="${h(k.id)}">${h(k.name)}</h3>
+      <form class="rename" data-renf="${h(k.id)}" hidden><input maxlength="60" required value="${h(k.name)}" aria-label="${h(t("Name"))}"><button class="btn" type="submit">${t("Save")}</button></form>
       <p class="muted">${h(k.location)}, ${h(date(k.createdAt))}</p>
       <div class="keyactions">
         <a class="btn" href="${h(k.configUrl)}" download>${t("Download file")}</a>
         <a class="btn secondary" href="${h(withLang(k.pageUrl))}" target="_blank" rel="noreferrer">${t("Open key link")}</a>
+        <button class="btn secondary" data-ren="${h(k.id)}">${t("Rename")}</button>
         <button class="btn danger" data-del="${h(k.id)}">${t("Delete")}</button>
       </div>
     </div></div>`;
@@ -848,7 +862,7 @@ async function analytics(params) {
         <tbody>${r.devices.map((d) => `<tr class="${d.removed ? "muted" : ""}"><td><b>${h(d.name)}</b><div class="muted">${h(platformName(d.platform))}${d.removed ? `, ${t("removed")}` : ""}</div></td>
           <td class="opt">${d.serverName ? `${h(d.serverName)}<div class="muted">${h(d.countryCode || "")}</div>` : `<span class="muted">${t("none")}</span>`}</td>
           <td>${h(bytes(total(d.traffic)))}</td><td>${torrentCell(d.traffic)}</td><td class="opt">${seenText(d.lastSeenAt)}</td>
-          <td class="actions">${d.serverName && !d.removed ? `<button class="btn secondary small" data-dev="${h(d.id)}">${t("Edit")}</button>` : ""}</td></tr>`).join("")
+          <td class="actions">${!d.removed ? `<button class="btn secondary small" data-dev="${h(d.id)}">${t("Edit")}</button>` : ""}</td></tr>`).join("")
           || `<tr><td colspan="6" class="muted">${t("No devices")}</td></tr>`}</tbody></table></div>
       <form class="card adminform section" id="df" hidden></form>`;
     wireCharts(view);
@@ -859,12 +873,16 @@ async function analytics(params) {
       const app = ["android", "ios", "desktop"].includes(d.platform);
       df.hidden = false;
       df.innerHTML = `<h3>${h(d.name)}</h3>
-        <div class="formrow two"><div><label for="dt">${t("Server")}</label><select id="dt">${targets.filter((n) => n.name !== d.serverName)
+        <div class="formrow two"><div><label for="dn">${t("Name")}</label><input id="dn" maxlength="60" value="${h(d.name)}"></div>
+          <button class="btn secondary" type="button" id="dnb">${t("Save")}</button></div>
+        ${d.serverName ? `<div class="formrow two"><div><label for="dt">${t("Server")}</label><select id="dt">${targets.filter((n) => n.name !== d.serverName)
           .map((n) => `<option value="${h(n.id)}">${h(n.name)}, ${h(n.countryCode)}</option>`).join("")}</select></div>
-          <button class="btn" type="submit" ${targets.length > 1 ? "" : "disabled"}>${t("Move")}</button></div>
+          <button class="btn" type="submit" ${targets.length > 1 ? "" : "disabled"}>${t("Move")}</button></div>` : ""}
         ${app ? `<div class="actionsrow"><button class="btn secondary" type="button" id="drk">${t("New key")}</button></div>` : ""}
         <p class="result" id="dres"></p>`;
       df.onsubmit = (e) => { e.preventDefault(); saveWith(df.querySelector("button[type=submit]"), "dres", () => api(`/admin/devices/${encodeURIComponent(d.id)}/move`, { method: "POST", body: { to: val("dt") } }), () => render()); };
+      const dnb = document.getElementById("dnb");
+      dnb.onclick = () => saveWith(dnb, "dres", () => api(`/admin/devices/${encodeURIComponent(d.id)}`, { method: "PATCH", body: { name: val("dn") } }), () => render());
       const rk = document.getElementById("drk");
       if (rk) rk.onclick = () => saveWith(rk, "dres", () => api(`/admin/devices/${encodeURIComponent(d.id)}/rekey`, { method: "POST" }));
       df.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1237,7 +1255,9 @@ async function testersPane() {
   <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Client")}</th><th>${t("Email")}</th><th>${t("Devices")}</th><th>${t("Valid until")}</th><th>${t("Connected")}</th><th>${t("Keys")}</th><th></th></tr></thead>
     <tbody>${list.map((a) => `<tr><td><b>${h(a.name)}</b></td><td class="mono">${h(a.email)}</td><td>${a.devices}</td><td>${h(date(localDay(a.expiresAt)))}</td>
       <td>${used(a) === 0 ? `<span class="warn">${t("{a} of {b}", { a: 0, b: a.keys.length })}</span>` : t("{a} of {b}", { a: used(a), b: a.keys.length })}</td>
-      <td class="wrap">${links(a)}</td><td class="actions"><button class="btn secondary small" data-del="${h(a.id)}">${t("Delete")}</button></td></tr>`).join("")
+      <td class="wrap">${links(a)}</td><td class="actions"><div class="stack"><button class="btn small" data-give="${h(a.id)}">${t("Give")}</button><button class="btn secondary small" data-del="${h(a.id)}">${t("Delete")}</button></div></td></tr>
+      <tr class="giverow" data-giverow="${h(a.id)}" hidden><td colspan="7"><form class="giveform"><input type="email" required list="users-${h(a.id)}" placeholder="${h(t("User's e-mail"))}" aria-label="${h(t("User's e-mail"))}" autocomplete="off">
+        <datalist id="users-${h(a.id)}"></datalist><button class="btn" type="submit">${t("Give")}</button><button class="btn secondary" type="button" data-cancel>${t("Cancel")}</button><span class="result"></span></form></td></tr>`).join("")
       || `<tr><td colspan="7" class="muted">${t("No test accounts")}</td></tr>`}</tbody></table></div>`;
 
   const ta = document.getElementById("tr"), count = document.getElementById("tcount");
@@ -1263,6 +1283,35 @@ async function testersPane() {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
   for (const b of pane.querySelectorAll("[data-copy]")) b.onclick = () => copyText(b, b.dataset.copy);
+  for (const b of pane.querySelectorAll("[data-give]")) b.onclick = () => {
+    const a = list.find((x) => x.id === b.dataset.give);
+    const row = pane.querySelector(`[data-giverow="${a.id}"]`), f = row.querySelector("form"), input = f.querySelector("input");
+    const dl = f.querySelector("datalist"), res = f.querySelector(".result");
+    row.hidden = false; input.focus();
+    f.querySelector("[data-cancel]").onclick = () => { row.hidden = true; };
+    // Registered users as you type, from the analytics search.
+    let timer;
+    input.oninput = () => {
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (q.length < 2) return;
+      timer = setTimeout(async () => {
+        try {
+          const r = await api(`/admin/analytics/users?period=7d&q=${encodeURIComponent(q)}`);
+          dl.innerHTML = r.users.filter((u) => !u.email.endsWith(".invalid")).slice(0, 8).map((u) => `<option value="${h(u.email)}">`).join("");
+        } catch { /* suggestions only */ }
+      }, 250);
+    };
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      const email = input.value.trim();
+      if (!confirm(t("Give the keys of {name} to {email}? The test account will be removed.", { name: a.name, email }))) return;
+      const btn = f.querySelector("button[type=submit]");
+      btn.disabled = true; res.textContent = "";
+      try { await api(`/admin/test-accounts/${encodeURIComponent(a.id)}/assign`, { method: "POST", body: { email } }); testersPane(); }
+      catch (x) { btn.disabled = false; res.className = "result warn"; res.textContent = x.message; }
+    };
+  };
   for (const b of pane.querySelectorAll("[data-del]")) b.onclick = async () => {
     const a = list.find((x) => x.id === b.dataset.del);
     if (!confirm(t("Delete the account of {name} and its keys? The keys stop working.", { name: a.name }))) return;

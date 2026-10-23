@@ -81,3 +81,34 @@ class QuickConfigTest {
         assertTrue("S3 = 20" in dev.jaganet.api.AmneziaWG.quickConfig("priv", "10.8.0.2/32", emptyList(), 1280, q))
     }
 }
+
+class AssignTestAccountTest {
+    @Test fun `a test account goes to a registered user with its keys`() = harness {
+        val owner = signIn("owner@test.dev").api
+        val made = owner.createTestAccounts(TestAccountsReq(listOf(TestAccountReq("Игорь", 2)), days = 14)).accounts.single()
+        val user = signIn("igor@example.com").api
+        val ownKey = user.createKey()
+
+        assertEquals("NOT_FOUND", code { owner.assignTestAccount(made.id, "nobody@example.com") })
+        val r = owner.assignTestAccount(made.id, " Igor@Example.com ")
+        assertEquals("igor@example.com", r.email)
+        assertEquals(2, r.keys)
+
+        // Same links as before, now the user's, numbered after their own key.
+        val all = user.keys().keys
+        assertEquals(3, all.size)
+        val keys = listOf(all.single { it.id == ownKey.id }) + all.filter { it.id != ownKey.id }
+        assertEquals(made.keys.toSet(), keys.drop(1).map { it.pageUrl }.toSet())
+        assertEquals(listOf("VPN-ключ 2", "VPN-ключ 3"), keys.drop(1).map { it.name })
+        // The test period came with them, and the test account is gone.
+        assertEquals(made.expiresAt, user.me().entitlement.expiresAt)
+        assertTrue(owner.testAccounts().accounts.none { it.id == made.id })
+        assertEquals("NOT_FOUND", code { owner.assignTestAccount(made.id, "igor@example.com") })
+
+        // Keys can be renamed, by the user and by the owner.
+        user.renameDevice(keys[1].id, "Ноутбук Игоря")
+        owner.adminRenameDevice(keys[2].id, "Телефон Тани")
+        assertEquals(setOf("Ноутбук Игоря", "Телефон Тани"), user.keys().keys.filter { it.id != ownKey.id }.map { it.name }.toSet())
+        assertEquals("NOT_FOUND", code { signIn("x@example.com").api.renameDevice(keys[1].id, "мой") })
+    }
+}

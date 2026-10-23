@@ -137,6 +137,8 @@ internal val serverStrings: List<S> = listOf(
     S("Name must be 1 to 80 characters", "Имя: от 1 до 80 символов", "Der Name muss 1 bis 80 Zeichen lang sein"),
     S("Devices: 1 to 20 per account", "Устройств: от 1 до 20 на аккаунт", "Geräte: 1 bis 20 pro Konto"),
     S("Account not found", "Аккаунт не найден", "Konto nicht gefunden"),
+    S("No user with this e-mail", "Нет пользователя с такой почтой", "Kein Nutzer mit dieser E-Mail"),
+    S("Choose a registered user, not a test account", "Выберите зарегистрированного пользователя, а не тестовый аккаунт", "Wähle einen registrierten Nutzer, kein Testkonto"),
     S("Not enough room on the VPN servers: {free} free places, {need} needed", "На VPN-серверах не хватает места. Свободно {free}, нужно {need}", "Nicht genug Platz auf den VPN-Servern. Frei sind {free}, gebraucht {need}"),
     S("Enter an address", "Введите адрес", "Gib eine Adresse ein"),
     S("Choose another node", "Выберите другую ноду", "Wähle einen anderen Knoten"),

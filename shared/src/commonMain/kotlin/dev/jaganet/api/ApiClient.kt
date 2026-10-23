@@ -128,6 +128,8 @@ class ApiClient(
     suspend fun moveNodeDevices(id: String, to: String): MoveDevicesRes = post("admin/nodes/$id/move-devices", MoveDevicesReq(to))
     suspend fun currentTunnel(): TunnelState = get("tunnel")
     suspend fun adminMoveDevice(id: String, to: String): OkRes = post("admin/devices/$id/move", MoveDeviceReq(to))
+    suspend fun adminRenameDevice(id: String, name: String): OkRes =
+        http.patch("admin/devices/$id") { auth(); contentType(ContentType.Application.Json); setBody(RenameDeviceReq(name)) }.read()
     suspend fun adminRekeyDevice(id: String): OkRes = post("admin/devices/$id/rekey", OkRes())
     suspend fun analytics(period: String = "7d"): AnalyticsOverviewRes = get("admin/analytics") { parameter("period", period) }
     suspend fun analyticsServer(id: String, period: String = "7d"): AnalyticsServerRes = get("admin/analytics/servers/$id") { parameter("period", period) }
@@ -136,6 +138,7 @@ class ApiClient(
     suspend fun testAccounts(): TestAccountsRes = get("admin/test-accounts")
     suspend fun createTestAccounts(req: TestAccountsReq): TestAccountsRes = post("admin/test-accounts", req)
     suspend fun deleteTestAccount(id: String): OkRes = delete("admin/test-accounts/$id")
+    suspend fun assignTestAccount(id: String, email: String): AssignTestAccountRes = post("admin/test-accounts/$id/assign", AssignTestAccountReq(email))
     suspend fun adminTariffs(): AdminTariffsRes = get("admin/tariffs")
     suspend fun createTariff(req: TariffReq): AdminTariffsRes = post("admin/tariffs", req)
     suspend fun updateTariff(id: String, req: TariffReq): AdminTariffsRes = put("admin/tariffs/$id", req)

@@ -878,6 +878,13 @@ data class KeyActivity(
 @Serializable
 data class TestAccountsRes(val accounts: List<TestAccount>)
 
+/** Hands a test account to a registered user: its keys and test period move to them. */
+@Serializable
+data class AssignTestAccountReq(val email: String)
+
+@Serializable
+data class AssignTestAccountRes(val email: String, val keys: Int)
+
 /** Moves every device of a node to another node (e.g. when the node's address is blocked). */
 @Serializable
 data class MoveDevicesReq(val to: String)
