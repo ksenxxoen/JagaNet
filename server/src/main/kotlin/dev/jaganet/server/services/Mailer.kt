@@ -45,13 +45,20 @@ class EmailSender(private val smtp: Smtp) {
     suspend fun send(to: List<String>, subject: String, text: String) = withContext(Dispatchers.IO) {
         if (to.isEmpty()) return@withContext
         val msg = MimeMessage(session).apply {
-            setFrom(InternetAddress(smtp.from, "Boop VPN"))
+            setFrom(fromAddress(smtp.from))
             to.forEach { addRecipient(Message.RecipientType.TO, InternetAddress(it)) }
             setSubject(subject, "UTF-8")
             setText(text, "UTF-8")
         }
         if (smtp.user != null) Transport.send(msg, smtp.user, smtp.password) else Transport.send(msg)
     }
+}
+
+/** The sender: "no-reply@boopvpn.app" or "Boop <no-reply@boopvpn.app>"; a bare address is signed "Boop VPN". */
+fun fromAddress(from: String): InternetAddress {
+    val a = InternetAddress(from.trim(), true)
+    if (a.personal.isNullOrBlank()) a.setPersonal("Boop VPN", "UTF-8")
+    return a
 }
 
 /** Sign-in codes by e-mail through the SMTP settings in force (the admin panel can change them). */

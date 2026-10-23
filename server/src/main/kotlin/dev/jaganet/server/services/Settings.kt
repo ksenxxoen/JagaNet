@@ -80,7 +80,7 @@ class Settings(private val ctx: Ctx) {
             return
         }
         if (s.port !in 1..65535) throw badRequest("Port must be 1 to 65535")
-        if ('@' !in s.from) throw badRequest("Invalid email")
+        if ('@' !in s.from || runCatching { fromAddress(s.from) }.isFailure) throw badRequest("Invalid email")
         if (s.security !in setOf("starttls", "ssl", "none")) throw badRequest("Some values are out of range")
         val password = s.password ?: ctx.live.smtp?.password
         val smtp = Smtp(s.host.trim(), s.port, s.user?.trim()?.takeIf { it.isNotEmpty() }, password, s.from.trim(), s.security)
