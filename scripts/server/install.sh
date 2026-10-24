@@ -339,6 +339,9 @@ Wants=network-online.target
 User=jaganet
 EnvironmentFile=$ENV_FILE
 Environment=JAVA_OPTS=-Xmx512m
+# The free plan's speed limit for this machine's VPN, read by boop-traffic.
+RuntimeDirectory=jaganet
+Environment=SPEED_LIMITS_FILE=/run/jaganet/limits.json
 ExecStart=$APP_DIR/server/bin/server
 Restart=on-failure
 RestartSec=3
@@ -358,11 +361,11 @@ curl -fsS http://127.0.0.1:4000/health >/dev/null || { journalctl -u jaganet -n 
 install -m 755 "$APP_DIR/src/server/src/main/resources/node/traffic.py" "$APP_DIR/traffic.py"
 cat > /etc/systemd/system/boop-traffic.service <<EOF
 [Unit]
-Description=Boop traffic classes (BitTorrent byte counts per VPN device)
+Description=Boop traffic classes (BitTorrent byte counts) and the free plan's speed limit
 After=network-online.target $TOOL-quick@$IFACE.service
 
 [Service]
-Environment=IFACE=$IFACE TOOL=$TOOL_PATH
+Environment=IFACE=$IFACE TOOL=$TOOL_PATH LIMITS=/run/jaganet/limits.json
 ExecStart=/usr/bin/python3 $APP_DIR/traffic.py
 Restart=always
 RestartSec=10

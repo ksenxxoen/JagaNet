@@ -1,5 +1,6 @@
 package dev.jaganet.server.services
 
+import dev.jaganet.api.Protocols
 import dev.jaganet.server.Ctx
 import java.time.temporal.ChronoUnit
 
@@ -10,7 +11,7 @@ data class CollectResult(val samples: Int, val suspended: Int)
  * per-device samples and enforces the free plan's data limit. Runs on a timer;
  * a later multi-node setup can push counters instead.
  */
-class Traffic(private val ctx: Ctx, private val ent: Entitlements, private val tunnels: Tunnels) {
+class Traffic(private val ctx: Ctx, private val ent: Entitlements, private val tunnels: Tunnels, private val speedLimits: SpeedLimits) {
     suspend fun collect(): CollectResult {
         val bucket = ctx.now().truncatedTo(ChronoUnit.HOURS)
         var samples = 0
@@ -71,6 +72,62 @@ class Traffic(private val ctx: Ctx, private val ent: Entitlements, private val t
                 suspended++
             }
         }
+        // Free period over: off the VPN until they buy (the apps then connect again).
+        val ended = ctx.live.plans.freeDays.takeIf { it > 0 }?.let { days ->
+            ctx.db.run { sql ->
+                sql.query(
+                    """SELECT t.device_id FROM tunnels t JOIN devices d ON d.id = t.device_id JOIN users u ON u.id = d.user_id
+                        WHERE u.role <> 'owner' AND u.created_at <= ? AND NOT EXISTS (
+                          SELECT 1 FROM subscriptions s WHERE s.user_id = u.id AND s.status='active' AND s.started_at <= ? AND s.expires_at > ?)""",
+                    ctx.now().minus(java.time.Duration.ofDays(days.toLong())), ctx.now(), ctx.now(),
+                ).map { it.str("device_id") }
+            }
+        }.orEmpty()
+        for (d in ended) {
+            ctx.db.tx { tunnels.revoke(it, d) }
+            suspended++
+        }
+        speedLimits.publish()
         return CollectResult(samples, suspended)
+    }
+}
+
+/**
+ * The free plan's speed limit: which tunnel addresses on each node are on Free. Nodes get it
+ * with their peers (agent.py), the main server's own VPN through a file; traffic.py applies it.
+ */
+class SpeedLimits(private val ctx: Ctx) {
+    private val last = java.util.Collections.synchronizedMap(HashMap<String, NodeLimit?>())
+
+    fun limit(sql: dev.jaganet.server.db.Sql, serverId: String): NodeLimit? {
+        val mbps = ctx.live.plans.freeSpeedMbps.takeIf { it > 0 } ?: return null
+        val addresses = sql.query(
+            """SELECT t.address FROM tunnels t JOIN devices d ON d.id = t.device_id JOIN users u ON u.id = d.user_id
+                WHERE t.server_id = ? AND u.role <> 'owner' AND NOT EXISTS (
+                  SELECT 1 FROM subscriptions s WHERE s.user_id = u.id AND s.status='active' AND s.started_at <= ? AND s.expires_at > ?)
+                ORDER BY t.address""",
+            serverId, ctx.now(), ctx.now(),
+        ).map { it.str("address") }
+        return NodeLimit(mbps, addresses).takeIf { addresses.isNotEmpty() }
+    }
+
+    /** Wakes agents whose list changed and rewrites this machine's file. */
+    suspend fun publish() {
+        val servers = ctx.db.run { sql -> sql.query("SELECT id, agent_token_hash FROM servers WHERE active").map { Triple(it.str("id"), it.strOrNull("agent_token_hash") != null, limit(sql, it.str("id"))) } }
+        for ((id, remote, l) in servers) {
+            if (!remote) continue
+            val changed = !last.containsKey(id) || last[id] != l
+            last[id] = l
+            if (changed) ctx.nodeHub.changed(id)
+        }
+        val file = ctx.cfg.speedLimitsFile ?: return
+        val local = servers.filter { !it.second }.mapNotNull { it.third }
+        val json = Protocols.encode(NodeLimit(local.firstOrNull()?.mbps ?: 0, local.flatMap { it.addresses }))
+        runCatching {
+            val f = java.io.File(file)
+            val tmp = java.io.File("$file.tmp")
+            tmp.writeText(json.toString())
+            java.nio.file.Files.move(tmp.toPath(), f.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+        }.onFailure { org.slf4j.LoggerFactory.getLogger("limits").warn("can't write {}: {}", file, it.message) }
     }
 }

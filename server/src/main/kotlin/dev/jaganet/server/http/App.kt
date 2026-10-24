@@ -43,6 +43,7 @@ import dev.jaganet.server.services.Site
 import dev.jaganet.server.services.Principal
 import dev.jaganet.server.services.Referrals
 import dev.jaganet.server.services.Stats
+import dev.jaganet.server.services.SpeedLimits
 import dev.jaganet.server.services.Traffic
 import dev.jaganet.server.services.Tunnels
 import io.ktor.http.HttpHeaders
@@ -79,7 +80,7 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
     val auth = AuthService(ctx)
     val ent = Entitlements(ctx)
     val tunnels = Tunnels(ctx, ent)
-    val traffic = Traffic(ctx, ent, tunnels)
+    val traffic = Traffic(ctx, ent, tunnels, SpeedLimits(ctx))
     val stats = Stats(ctx)
     val nodes = Nodes(ctx).also { kotlinx.coroutines.runBlocking { it.failInterrupted() } }
     val tariffs = Tariffs(ctx).also { kotlinx.coroutines.runBlocking { it.seedIfEmpty() } }

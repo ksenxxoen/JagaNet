@@ -89,6 +89,10 @@ data class Entitlement(
     val deviceLimit: Int,
     /** null = unlimited */
     val monthlyDataLimitBytes: Long? = null,
+    /** Free plan: per-device speed limit, null = none. */
+    val speedLimitMbps: Int? = null,
+    /** Free plan: its days are over (expiresAt passed), the VPN needs a paid plan. */
+    val freeEnded: Boolean = false,
 )
 
 @Serializable
@@ -248,7 +252,13 @@ data class Tariff(
 )
 
 @Serializable
-data class FreePlan(val monthlyDataLimitBytes: Long, val deviceLimit: Int)
+data class FreePlan(
+    /** null = no limit. */
+    val monthlyDataLimitBytes: Long?,
+    val deviceLimit: Int,
+    val speedMbps: Int? = null,
+    val days: Int? = null,
+)
 
 @Serializable
 data class PlansRes(
@@ -410,7 +420,10 @@ data class AdminOverviewRes(val revenue: Revenue, val server: ServerHealth)
 @Serializable
 enum class ErrorCode {
     BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, INVALID_CODE, TOO_MANY_ATTEMPTS,
-    DEVICE_LIMIT, DATA_LIMIT, SERVER_FULL, UNSUPPORTED_PROTOCOL, NOT_IMPLEMENTED, INTERNAL,
+    DEVICE_LIMIT, DATA_LIMIT,
+    /** The free period is over: a paid plan is needed. */
+    FREE_ENDED,
+    SERVER_FULL, UNSUPPORTED_PROTOCOL, NOT_IMPLEMENTED, INTERNAL,
     /** A feature that isn't set up on this server (e-mail, payments, store purchases). */
     SERVICE_UNAVAILABLE,
 }
@@ -590,11 +603,12 @@ data class LinkLoginReq(val token: String, val device: DeviceInfo)
 
 @Serializable
 data class PlanSettings(
+    /** 0 = no limit, for all three. */
     val freeMonthlyGb: Long,
     val freeDeviceLimit: Int,
-    /** Devices during invite reward days. */
-    val proDeviceLimit: Int,
-    val referralRewardDays: Int,
+    val freeSpeedMbps: Int = 0,
+    /** Days of Free after signing up; then the person is asked to buy a plan. */
+    val freeDays: Int = 0,
 )
 
 /* ---------- owner admin panel: tariff builder ---------- */

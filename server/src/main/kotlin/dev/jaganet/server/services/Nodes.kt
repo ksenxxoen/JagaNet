@@ -75,7 +75,14 @@ data class NodeRegisterRes(
 data class NodePeer(val publicKey: String, val address: String)
 
 @Serializable
-data class NodePeersRes(val version: String, val protocol: String, val iface: String, val peers: List<NodePeer>)
+data class NodePeersRes(
+    val version: String, val protocol: String, val iface: String, val peers: List<NodePeer>,
+    /** Free plan speed limit for these addresses; null = no limit on this node. */
+    val limit: NodeLimit? = null,
+)
+
+@Serializable
+data class NodeLimit(val mbps: Int, val addresses: List<String>)
 
 @Serializable
 data class NodePeerCounter(
@@ -139,6 +146,7 @@ private val IPV4 = Regex("^(25[0-5]|2[0-4]\\d|1?\\d?\\d)(\\.(25[0-5]|2[0-4]\\d|1
  * The node needs no database and opens no port but the VPN one.
  */
 class Nodes(private val ctx: Ctx) {
+    private val speedLimits = SpeedLimits(ctx)
     private val box by lazy { SecretBox("node-keys:${ctx.cfg.authSecret}") }
     /** How installs reach new machines: SSH, or a stand-in in the simulator and tests. */
     var runner: RemoteRunner = if (ctx.cfg.mode == Mode.SIMULATION) simulatedRunner() else SshRunner()
@@ -427,9 +435,11 @@ class Nodes(private val ctx: Ctx) {
         val protocol = s.json("protocols").keys.firstOrNull() ?: Protocols.AMNEZIAWG
         val peers = sql.query("SELECT peer_key, address FROM tunnels WHERE server_id=? AND protocol=? ORDER BY peer_key", serverId, protocol)
             .map { NodePeer(it.str("peer_key"), it.str("address")) }
-        val version = MessageDigest.getInstance("SHA-256").digest(peers.joinToString("\n") { "${it.publicKey} ${it.address}" }.toByteArray())
+        val limit = speedLimits.limit(sql, serverId)
+        val version = MessageDigest.getInstance("SHA-256")
+            .digest((peers.joinToString("\n") { "${it.publicKey} ${it.address}" } + "|" + limit?.let { "${it.mbps} ${it.addresses}" }).toByteArray())
             .take(12).joinToString("") { "%02x".format(it) }
-        NodePeersRes(version, protocol, if (protocol == Protocols.AMNEZIAWG) IFACE_AWG else IFACE_WG, peers)
+        NodePeersRes(version, protocol, if (protocol == Protocols.AMNEZIAWG) IFACE_AWG else IFACE_WG, peers, limit)
     }
 
     /**

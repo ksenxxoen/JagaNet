@@ -22,6 +22,7 @@ with open("/etc/jaganet-node/env") as f:
 URL, TOKEN = ENV["JAGANET_URL"].rstrip("/"), ENV["NODE_TOKEN"]
 IFACE, TOOL, PROTOCOL, WAN_IF = ENV["IFACE"], ENV["TOOL"], ENV["PROTOCOL"], ENV.get("WAN_IF", "")
 CLASSES_FILE = ENV.get("CLASSES_FILE", "/run/boop/traffic.json")
+LIMITS_FILE = ENV.get("LIMITS_FILE", "/run/boop/limits.json")
 
 
 def log(msg):
@@ -62,6 +63,17 @@ def apply(wanted):
         log("peers: %d now, %d added or changed, %d removed" % (len(desired), added, removed))
 
 
+def write_limits(limit):
+    """The free plan's speed limit for traffic.py, which applies it."""
+    import os
+    os.makedirs(os.path.dirname(LIMITS_FILE), mode=0o755, exist_ok=True)
+    tmp = LIMITS_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(limit or {"mbps": 0, "addresses": []}, f)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, LIMITS_FILE)
+
+
 def sync_loop():
     version = None
     while True:
@@ -70,6 +82,7 @@ def sync_loop():
             res = api("GET", path, timeout=40)
             if res["version"] != version:
                 apply(res["peers"])
+                write_limits(res.get("limit"))
                 version = res["version"]
         except urllib.error.HTTPError as e:
             log("main server answered %s; retrying" % e.code)

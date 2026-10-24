@@ -137,7 +137,9 @@ async function home() {
   const slot = plans.tariffs.some((x) => x.badge);
   const cur = plans.tariffs[0]?.currency || (lang === "ru" ? "RUB" : "EUR");
   const freeCard = planCard(t("Free"), money(0, cur),
-    [t("No time limit"), tp(free.deviceLimit, "{n} device|{n} devices"), h(t("{n} GB a month", { n: Math.round(free.monthlyDataLimitBytes / 1e9) })), t("Boop app")],
+    [free.days ? tp(free.days, "{n} day|{n} days") : t("No time limit"), tp(free.deviceLimit, "{n} device|{n} devices"),
+      free.monthlyDataLimitBytes ? h(t("{n} GB a month", { n: Math.round(free.monthlyDataLimitBytes / 1e9) })) : t("Unlimited"),
+      free.speedMbps ? h(t("Up to {n} Mbit/s", { n: free.speedMbps })) : t("Boop app")],
     `<a class="btn secondary" href="#download">${t("Download the app")}</a>`, null, false, slot);
   view.innerHTML = `
   <section class="hero">
@@ -300,18 +302,20 @@ async function account(params) {
   const sourceName = { web: t("Website"), telegram: "Telegram", app: t("Boop app"), apple: "App Store", google: "Google Play", referral: t("Invite reward"), dev: t("Simulation") };
   const who = me.user.email.endsWith("@telegram.invalid") ? t("Telegram account") : me.user.email;
   const kv = (k, v) => `<div><div class="k">${k}</div><div class="v">${v}</div></div>`;
-  const until = isPro ? (e.expiresAt ? h(date(e.expiresAt)) : t("No time limit")) : t("No time limit");
+  const until = e.expiresAt ? h(date(e.expiresAt)) : t("No time limit");
   view.innerHTML = `
   ${head(t("My account"), h(who), `<button class="btn secondary" id="logout">${t("Sign out")}</button>`)}
   ${notice}
+  ${e.freeEnded ? `<div class="notice bad">${t("Your free period has ended, choose a plan")}</div>` : ""}
   <div class="grid2">
     <div class="card">
-      <div class="card-h"><h3>${t("Your plan")}</h3><span class="status ${isPro ? "active" : ""}">${isPro ? t("Active") : t("Free")}</span></div>
+      <div class="card-h"><h3>${t("Your plan")}</h3><span class="status ${isPro ? "active" : ""}">${isPro ? t("Active") : e.freeEnded ? t("Free period over") : t("Free")}</span></div>
       <div class="kv">
         ${kv(t("Plan"), isPro ? h(e.tariffName || "Pro") : t("Free"))}
         ${kv(t("Active until"), until)}
         ${kv(t("Devices"), `${me.usage.devicesUsed} / ${e.deviceLimit}`)}
         ${kv(t("Data"), e.monthlyDataLimitBytes == null ? t("Unlimited") : h(dataText(e.monthlyDataLimitBytes)))}
+        ${e.speedLimitMbps ? kv(t("Speed"), h(t("Up to {n} Mbit/s", { n: e.speedLimitMbps }))) : ""}
       </div>
     </div>
     <div class="card">
@@ -1339,12 +1343,12 @@ async function plansPane(s) {
   <form class="card adminform section" id="tf" hidden></form>
 
   <form class="card adminform section" id="pf">
-    <h3>${t("Free plan and invite rewards")}</h3>
+    <h3>${t("Free plan")}</h3>
     <div class="fields">
-      ${field("fg", t("Free data per month, GB"), p.freeMonthlyGb, whole)}
+      ${field("fs", `${t("Speed, Mbit/s")} <span class="muted">${t("0 no limit")}</span>`, p.freeSpeedMbps, whole)}
+      ${field("fy", `${t("Free period, days")} <span class="muted">${t("0 for ever")}</span>`, p.freeDays, whole)}
+      ${field("fg", `${t("Data per month, GB")} <span class="muted">${t("0 no limit")}</span>`, p.freeMonthlyGb, whole)}
       ${field("fd", t("Devices on Free"), p.freeDeviceLimit, whole)}
-      ${field("rd", t("Pro days for an invite"), p.referralRewardDays, whole)}
-      ${field("pd", t("Devices on reward days"), p.proDeviceLimit, whole)}
     </div>
     <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button></div>
     <p class="result" id="pres"></p></form>`;
@@ -1392,7 +1396,7 @@ async function plansPane(s) {
   form.onsubmit = (e) => {
     e.preventDefault();
     saveWith(form.querySelector("button[type=submit]"), "pres", () => {
-      const body = { freeMonthlyGb: Number(val("fg")), freeDeviceLimit: Number(val("fd")), proDeviceLimit: Number(val("pd")), referralRewardDays: Number(val("rd")) };
+      const body = { freeMonthlyGb: Number(val("fg")), freeDeviceLimit: Number(val("fd")), freeSpeedMbps: Number(val("fs")), freeDays: Number(val("fy")) };
       return api("/admin/settings/plans", { method: "PUT", body });
     }, (r) => plansPane(r));
   };

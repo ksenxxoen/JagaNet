@@ -167,7 +167,7 @@ EOF
 # BitTorrent share of each device's traffic for the admin analytics: byte counts only.
 cat > /etc/systemd/system/boop-traffic.service <<EOF
 [Unit]
-Description=Boop traffic classes (BitTorrent byte counts per VPN device)
+Description=Boop traffic classes (BitTorrent byte counts) and the free plan's speed limit
 After=network-online.target $TOOL-quick@$IFACE.service
 
 [Service]

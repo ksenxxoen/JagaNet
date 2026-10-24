@@ -200,6 +200,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
 
         return ctx.db.tx { sql ->
             val e = ent.entitlement(sql, userId)
+            if (e.freeEnded) throw AppError(402, ErrorCode.FREE_ENDED, "Your free period has ended, choose a plan")
             val limit = e.monthlyDataLimitBytes
             if (limit != null && ent.monthlyUsageBytes(sql, userId) >= limit) throw AppError(403, ErrorCode.DATA_LIMIT, "Monthly data used up")
             if (ent.activeTunnelCount(sql, userId, deviceId) >= e.deviceLimit) {

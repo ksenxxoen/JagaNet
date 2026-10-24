@@ -9,6 +9,7 @@ import dev.jaganet.api.PlanId
 import dev.jaganet.api.Usage
 import dev.jaganet.server.Ctx
 import dev.jaganet.server.db.Sql
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 
@@ -33,7 +34,7 @@ class Entitlements(private val ctx: Ctx) {
                 WHERE user_id=?::uuid AND status='active' AND started_at <= ? AND expires_at > ?
                 ORDER BY (source='referral'), expires_at DESC LIMIT 1""",
             userId, ctx.now(), ctx.now(),
-        ) ?: return Entitlement(PlanId.FREE, deviceLimit = p.freeDeviceLimit, monthlyDataLimitBytes = p.freeMonthlyBytes)
+        ) ?: return free(sql, userId)
         val last = sql.one("SELECT max(expires_at) AS e FROM subscriptions WHERE user_id=?::uuid AND status='active'", userId)?.instantOrNull("e")
         val source = sourceOf(sub.str("source"))
         return Entitlement(
@@ -44,6 +45,18 @@ class Entitlements(private val ctx: Ctx) {
             autoRenew = false,
             deviceLimit = sub.longOrNull("device_limit")?.toInt() ?: p.proDeviceLimit,
             monthlyDataLimitBytes = sub.longOrNull("monthly_bytes"),
+        )
+    }
+
+    /** Free: from signing up for [Plans.freeDays] days (0 = for ever), with its data and speed limits. */
+    private fun free(sql: Sql, userId: String): Entitlement {
+        val p = ctx.live.plans
+        val ends = if (p.freeDays > 0) sql.one("SELECT created_at FROM users WHERE id=?::uuid", userId)?.instant("created_at")?.plus(Duration.ofDays(p.freeDays.toLong())) else null
+        return Entitlement(
+            PlanId.FREE, expiresAt = ends?.toString(), deviceLimit = p.freeDeviceLimit,
+            monthlyDataLimitBytes = p.freeMonthlyBytes.takeIf { it > 0 },
+            speedLimitMbps = p.freeSpeedMbps.takeIf { it > 0 },
+            freeEnded = ends != null && ends <= ctx.now(),
         )
     }
 

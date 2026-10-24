@@ -5,10 +5,15 @@ import dev.jaganet.api.i18n.Lang
 enum class Mode { PRODUCTION, SIMULATION, TEST }
 
 data class Plans(
+    /** 0 = no data limit. */
     val freeMonthlyBytes: Long,
     val freeDeviceLimit: Int,
+    /** Devices on paid subscriptions bought before tariffs kept their own terms. */
     val proDeviceLimit: Int,
-    val referralRewardDays: Int,
+    /** Speed per device on Free, 0 = no limit. */
+    val freeSpeedMbps: Int = 0,
+    /** Days of Free after signing up, then the user is asked to buy; 0 = for ever. */
+    val freeDays: Int = 0,
     /** Prices ("RUB", "EUR") of the two tariffs made on first start; after that tariffs live in the database. */
     val prices: Map<String, Price>,
 ) {
@@ -46,6 +51,8 @@ data class Config(
     val monitor: MonitorConfig = MonitorConfig(),
     /** BitTorrent counters of this machine's VPN devices, written by traffic.py; missing = no split. */
     val trafficClassesFile: String = "/run/boop/traffic.json",
+    /** Where the free plan's speed limit for this machine's VPN is written for traffic.py; null = not written. */
+    val speedLimitsFile: String? = null,
 ) {
     companion object {
         fun load(env: Map<String, String> = System.getenv()): Config {
@@ -73,7 +80,8 @@ data class Config(
                     freeMonthlyBytes = num("FREE_MONTHLY_GB", 10) * 1_000_000_000,
                     freeDeviceLimit = num("FREE_DEVICE_LIMIT", 1).toInt(),
                     proDeviceLimit = num("PRO_DEVICE_LIMIT", 5).toInt(),
-                    referralRewardDays = num("REFERRAL_REWARD_DAYS", 30).toInt(),
+                    freeSpeedMbps = num("FREE_SPEED_MBPS", 0).toInt(),
+                    freeDays = num("FREE_DAYS", 0).toInt(),
                     // Minor units: 29900 = 299 ₽, 499 = 4,99 €.
                     prices = mapOf(
                         "RUB" to Price(num("PRICE_RUB_MONTHLY", 29_900), num("PRICE_RUB_YEARLY", 249_000)),
@@ -109,6 +117,7 @@ data class Config(
                     blocklistCdnUrl = env["BLOCKLIST_CDN_URL"] ?: "https://raw.githubusercontent.com/123jjck/cdn-ip-ranges/refs/heads/main/all/all.csv",
                 ),
                 trafficClassesFile = env["TRAFFIC_CLASSES_FILE"]?.takeIf { it.isNotBlank() } ?: "/run/boop/traffic.json",
+                speedLimitsFile = env["SPEED_LIMITS_FILE"]?.takeIf { it.isNotBlank() },
             )
         }
     }

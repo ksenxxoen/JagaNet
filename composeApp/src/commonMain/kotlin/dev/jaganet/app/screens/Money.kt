@@ -136,7 +136,7 @@ fun PlansScreen(s: AppState) {
                         fMoney(x.priceMinor, x.currency), current == x.id, x.badge,
                     ) { pick = x.id; picked = true }
                 }
-                PlanOption(t("Free"), tp(p.free.deviceLimit, "{data} a month, {n} device|{data} a month, {n} devices", "data" to fBytes(p.free.monthlyDataLimitBytes)), fMoney(0, p.tariffs.firstOrNull()?.currency ?: "RUB"), current == null, null) { pick = null; picked = true }
+                PlanOption(t("Free"), tp(p.free.deviceLimit, "{data} a month, {n} device|{data} a month, {n} devices", "data" to (p.free.monthlyDataLimitBytes?.let { fBytes(it) } ?: t("Unlimited"))), fMoney(0, p.tariffs.firstOrNull()?.currency ?: "RUB"), current == null, null) { pick = null; picked = true }
             }
             if (!p.paymentsEnabled && p.tariffs.isNotEmpty()) ErrorNote(t("Payments are temporarily unavailable"))
             ErrorNote(a.error)
@@ -256,7 +256,7 @@ fun AccountScreen(s: AppState) {
             val r = (refs as? Load.Ok)?.value
             ListRow(
                 t("Referral program"),
-                if (r != null) t("{n} joined", "n" to r.subscribed) + ", " + tp(r.daysEarned, "{n} day of Pro earned|{n} days of Pro earned") else t("Free Pro time for both of you"),
+                t("{n} joined", "n" to (r?.subscribed ?: 0)),
                 last = true, onClick = { s.router.go(Route.Referral) },
             )
         }

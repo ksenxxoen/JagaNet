@@ -18,6 +18,7 @@ import dev.jaganet.server.protocols.AwgParams
 import dev.jaganet.server.protocols.SimulatedDriver
 import dev.jaganet.server.protocols.WireGuardDriver
 import dev.jaganet.server.services.Ipam
+import dev.jaganet.server.services.SpeedLimits
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
@@ -25,6 +26,7 @@ import java.time.Duration
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -151,7 +153,7 @@ class TrafficTest {
 }
 
 class BillingTest {
-    @Test fun `upgrades to Pro and rewards both sides of a referral once`() = harness {
+    @Test fun `upgrades to Pro, an invite gives no free days`() = harness {
         val alex = signIn("alex@example.com")
         val ref = alex.api.referrals()
         val sam = signIn("sam@example.com", referral = ref.code)
@@ -163,19 +165,17 @@ class BillingTest {
         assertEquals(YEAR, m.entitlement.tariffName)
         assertEquals(5, m.entitlement.deviceLimit)
         assertNull(m.entitlement.monthlyDataLimitBytes)
-        // Sam: 365 paid days + 30 referral days stacked after them
-        assertEquals(Duration.ofDays(395), Duration.between(clock, Instant.parse(m.entitlement.expiresAt)))
-        // Alex: 30 free days
-        assertEquals(PlanId.PRO, alex.api.me().entitlement.plan)
-        alex.api.referrals().let { assertEquals(listOf(1, 1, 30), listOf(it.invited, it.subscribed, it.daysEarned)) }
+        // Sam: the 365 paid days only; invite rewards are gone.
+        assertEquals(Duration.ofDays(365), Duration.between(clock, Instant.parse(m.entitlement.expiresAt)))
+        assertEquals(PlanId.FREE, alex.api.me().entitlement.plan)
+        alex.api.referrals().let { assertEquals(listOf(1, 1, 0), listOf(it.invited, it.subscribed, it.daysEarned)) }
 
         clock = clock.plusSeconds(1)
         buy(sam.api, MONTH)
-        assertEquals(30, alex.api.referrals().daysEarned)
 
         val r = signIn("owner@test.dev").api.adminOverview().revenue
         // The month Sam bought starts after the year, so only the year runs now.
-        assertEquals(listOf(1, 1, 0, 1, 1), listOf(r.paying, r.yearly, r.monthly, r.fromReferrals, r.newSubsThisWeek))
+        assertEquals(listOf(1, 1, 0, 1, 1), listOf(r.paying, r.yearly, r.monthly, r.fromReferrals, r.newSubsThisWeek)) // Sam came by invite
         assertEquals(20848L, r.mrrMinor) // 2500 ₽ a year, per month
         assertEquals("RUB", r.currency)
     }
@@ -232,5 +232,36 @@ class UnitTest {
         assertEquals(listOf("wg", "set", "wg0", "peer", key(1), "allowed-ips", "10.8.0.7/32"), calls[0])
         assertEquals(listOf("wg", "set", "wg0", "peer", key(1), "remove"), calls[1])
         assertEquals("h:1", added.params["endpoint"]!!.jsonPrimitive.content)
+    }
+}
+
+class FreePlanTest {
+    @Test fun `free days end and a paid plan is needed, free devices get the speed limit`() = harness {
+        val owner = signIn("owner@test.dev").api
+        owner.savePlanSettings(owner.adminSettings().plans.copy(freeSpeedMbps = 20, freeDays = 7))
+        val a = signIn("free@example.com")
+        a.api.provisionTunnel(wg(7))
+        val e = a.api.me().entitlement
+        assertEquals(20, e.speedLimitMbps)
+        assertFalse(e.freeEnded)
+        assertEquals(clock.plus(Duration.ofDays(7)).toString(), e.expiresAt)
+
+        // The node is told which addresses are on Free.
+        val address = a.api.devices().devices.single().tunnelAddress!!.substringBefore('/')
+        val server = a.api.currentTunnel().config!!.serverId
+        val limit = ctx.db.run { sql -> SpeedLimits(ctx).limit(sql, server) }
+        assertEquals(20, limit?.mbps)
+        assertTrue(address in limit!!.addresses)
+
+        clock = clock.plus(Duration.ofDays(8))
+        assertTrue(a.api.me().entitlement.freeEnded)
+        assertEquals(1, services.traffic.collect().suspended)
+        assertNull(a.api.devices().devices.single().tunnelAddress)
+        assertEquals("FREE_ENDED", code { a.api.provisionTunnel(wg(7)) })
+
+        buy(a.api)
+        assertFalse(a.api.me().entitlement.freeEnded)
+        assertEquals("OK", code { a.api.provisionTunnel(wg(7)) })
+        assertNull(ctx.db.run { sql -> SpeedLimits(ctx).limit(sql, server) }) // Pro: no limit
     }
 }

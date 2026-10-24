@@ -60,9 +60,7 @@ internal val adminWebStrings: List<S> = listOf(
 
     // Plans and prices
     S("Limits", "Лимиты", "Limits"),
-    S("Free data per month, GB", "Бесплатный трафик в месяц, ГБ", "Kostenloses Datenvolumen pro Monat, GB"),
     S("Devices on Free", "Устройств на бесплатном тарифе", "Geräte im kostenlosen Tarif"),
-    S("Pro days for an invite", "Дней Pro за приглашение", "Pro-Tage pro Einladung"),
     S(
         "Enter prices as numbers above zero, for example 299 or 4,99",
         "Укажите цены числами больше нуля, например 299 или 4,99",
@@ -161,7 +159,6 @@ internal val adminWebStrings: List<S> = listOf(
     S("Sold", "Продано", "Verkauft"),
     S("Using now", "Сейчас пользуются", "Nutzen gerade"),
     S("Edit", "Изменить", "Bearbeiten"),
-    S("Free plan and invite rewards", "Бесплатный тариф и бонусы за приглашения", "Gratis-Tarif und Einladungsbonus"),
     S("Devices during invite reward days", "Устройств в бонусные дни", "Geräte in den Bonustagen"),
     S(
         "Changes apply to new purchases only. Bought subscriptions keep their terms.",

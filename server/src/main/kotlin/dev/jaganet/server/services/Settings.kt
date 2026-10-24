@@ -43,8 +43,8 @@ class Settings(private val ctx: Ctx) {
         val p = ctx.live.plans
         return AdminSettingsRes(
             plans = PlanSettings(
-                freeMonthlyGb = p.freeMonthlyBytes / 1_000_000_000, freeDeviceLimit = p.freeDeviceLimit, proDeviceLimit = p.proDeviceLimit,
-                referralRewardDays = p.referralRewardDays,
+                freeMonthlyGb = p.freeMonthlyBytes / 1_000_000_000, freeDeviceLimit = p.freeDeviceLimit,
+                freeSpeedMbps = p.freeSpeedMbps, freeDays = p.freeDays,
             ),
             smtp = ctx.live.smtp?.let { SmtpSettings(it.host, it.port, it.user, null, it.from, it.security) },
             smtpHasPassword = ctx.live.smtp?.password?.isNotEmpty() == true,
@@ -57,7 +57,7 @@ class Settings(private val ctx: Ctx) {
     }
 
     suspend fun savePlans(s: PlanSettings) {
-        if (s.freeMonthlyGb !in 0..10_000 || s.freeDeviceLimit !in 0..100 || s.proDeviceLimit !in 1..100 || s.referralRewardDays !in 0..365) {
+        if (s.freeMonthlyGb !in 0..10_000 || s.freeDeviceLimit !in 0..100 || s.freeSpeedMbps !in 0..10_000 || s.freeDays !in 0..3650) {
             throw badRequest("Some values are out of range")
         }
         apply(s)
@@ -66,8 +66,8 @@ class Settings(private val ctx: Ctx) {
 
     private fun apply(s: PlanSettings) {
         ctx.live.plans = ctx.live.plans.copy(
-            freeMonthlyBytes = s.freeMonthlyGb * 1_000_000_000, freeDeviceLimit = s.freeDeviceLimit, proDeviceLimit = s.proDeviceLimit,
-            referralRewardDays = s.referralRewardDays,
+            freeMonthlyBytes = s.freeMonthlyGb * 1_000_000_000, freeDeviceLimit = s.freeDeviceLimit,
+            freeSpeedMbps = s.freeSpeedMbps, freeDays = s.freeDays,
         )
     }
 

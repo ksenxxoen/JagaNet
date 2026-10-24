@@ -58,7 +58,6 @@ internal val analyticsStrings: List<S> = listOf(
     S("No test accounts", "Тестовых аккаунтов нет", "Keine Testkonten"),
     S("For new purchases", "Для новых покупок", "Für neue Käufe"),
     S("No plans", "Тарифов нет", "Keine Tarife"),
-    S("Devices on reward days", "Устройств в бонусные дни", "Geräte an Bonustagen"),
     S("E-mail works through {host}", "Почта работает через {host}", "E-Mail läuft über {host}"),
     S("Telegram chats", "Чаты Telegram", "Telegram-Chats"),
     S("The Telegram bot is off", "Telegram-бот выключен", "Der Telegram-Bot ist aus"),

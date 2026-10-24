@@ -5,14 +5,13 @@ import dev.jaganet.api.PlansRes
 import dev.jaganet.api.i18n.Lang
 import dev.jaganet.server.Ctx
 import dev.jaganet.server.db.Sql
-import java.time.Duration
 import java.time.Instant
 
 class Billing(private val ctx: Ctx, private val tariffs: Tariffs) {
     /** Tariffs on sale with prices in the currency of [lang] (rubles for Russian, euros otherwise). */
     suspend fun plans(lang: Lang = Lang.DEFAULT): PlansRes {
         val p = ctx.live.plans
-        return PlansRes(tariffs.onSale(lang), FreePlan(p.freeMonthlyBytes, p.freeDeviceLimit), paymentsEnabled = ctx.live.paymentProvider != null)
+        return PlansRes(tariffs.onSale(lang), FreePlan(p.freeMonthlyBytes.takeIf { it > 0 }, p.freeDeviceLimit, p.freeSpeedMbps.takeIf { it > 0 }, p.freeDays.takeIf { it > 0 }), paymentsEnabled = ctx.live.paymentProvider != null)
     }
 
     /**
@@ -29,20 +28,6 @@ class Billing(private val ctx: Ctx, private val tariffs: Tariffs) {
             userId, terms.tariffId ?: "legacy", source, externalId, startedAt, expiresAt, !isFirstPaid,
             terms.tariffId, terms.name, terms.deviceLimit, terms.monthlyBytes, ctx.now(),
         )
-        if (isFirstPaid) grantReferralRewards(sql, userId)
     }
 
-    /** When a referred user pays for the first time, both sides get free Pro days. */
-    private fun grantReferralRewards(sql: Sql, userId: String) {
-        val referrer = sql.one("SELECT referred_by FROM users WHERE id=?::uuid", userId)?.strOrNull("referred_by") ?: return
-        for ((beneficiary, from) in listOf(referrer to userId, userId to referrer)) {
-            val last = sql.one("SELECT max(expires_at) AS e FROM subscriptions WHERE user_id=?::uuid AND status='active'", beneficiary)?.instantOrNull("e")
-            val start = maxOf(ctx.now(), last ?: Instant.EPOCH)
-            sql.exec(
-                """INSERT INTO subscriptions (user_id, product_id, source, external_id, started_at, expires_at, auto_renew, created_at)
-                   VALUES (?::uuid,'referral','referral',?,?,?,false,?) ON CONFLICT (source, external_id) DO NOTHING""",
-                beneficiary, "ref:$from->$beneficiary", start, start.plus(Duration.ofDays(ctx.live.plans.referralRewardDays.toLong())), ctx.now(),
-            )
-        }
-    }
 }

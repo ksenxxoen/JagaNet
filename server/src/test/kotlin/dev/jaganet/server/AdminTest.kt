@@ -85,8 +85,9 @@ class AdminTest {
         assertEquals("FORBIDDEN", code { signIn("a@example.com").api.adminSettings() })
         val o = signIn("owner@test.dev").api
         val st = o.adminSettings()
-        o.savePlanSettings(st.plans.copy(freeMonthlyGb = 5, proDeviceLimit = 7))
+        o.savePlanSettings(st.plans.copy(freeMonthlyGb = 5, freeSpeedMbps = 20, freeDays = 14))
         assertEquals(5_000_000_000L, client().plans().free.monthlyDataLimitBytes)
+        assertEquals(20, client().plans().free.speedMbps)
         assertEquals("BAD_REQUEST", code { o.savePlanSettings(st.plans.copy(freeDeviceLimit = -1)) })
 
         val saved = o.saveSmtpSettings(SmtpSettings("smtp.example.com", 587, "me@example.com", "secret", "me@example.com"))
@@ -106,7 +107,8 @@ class AdminTest {
         Settings(ctx).load()
         assertEquals("secret", ctx.live.smtp!!.password)
         assertEquals(listOf("ops@example.com"), ctx.live.alertEmails)
-        assertEquals(7, ctx.live.plans.proDeviceLimit)
+        assertEquals(14, ctx.live.plans.freeDays)
+        assertEquals(20, ctx.live.plans.freeSpeedMbps)
         assertEquals(1000L, ctx.live.channelMbps)
         assertNull(ctx.live.paymentProvider)
     }

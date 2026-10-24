@@ -72,8 +72,8 @@ class ReferralTest {
         assertEquals("Instagram", recent["sa***@example.com"]!!.linkName)
         assertEquals(ReferredStatus.REGISTERED, recent["ki***@example.com"]!!.status)
 
-        // Paying also gave both sides the invite reward, as before.
-        assertTrue(st.daysEarned > 0)
+        // Invites no longer give free days.
+        assertEquals(0, st.daysEarned)
 
         // 40 days later the 30-day view is empty, "all time" still has everything.
         clock = clock.plus(Duration.ofDays(40))
