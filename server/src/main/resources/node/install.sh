@@ -44,6 +44,11 @@ PROTOCOL=amneziawg
 # amneziawg-tools and amneziawg-go, built from source (the PPA kernel module lags behind).
 GO_DIR="$APP_DIR/go"
 AWG_STAMP="$APP_DIR/awg-userspace.txt"
+# The AmneziaWG release this installer runs. Running it again on a server with an older build
+# updates it (the VPN restarts for a few seconds). Newer releases: update these two lines.
+AWG_GO_REF=v3.1.20260828
+AWG_TOOLS_REF=v3.1.20260812
+awg_current() { [ -f "$AWG_STAMP" ] && grep -q "amneziawg-go $AWG_GO_REF " "$AWG_STAMP" && grep -q "amneziawg-tools $AWG_TOOLS_REF " "$AWG_STAMP"; }
 build_awg_userspace() { # builds in a temp dir; installs only if everything built
   apt-get install -y -q build-essential >/dev/null || return 1
   case "$(uname -m)" in x86_64) GOARCH=amd64 ;; aarch64) GOARCH=arm64 ;; *) return 1 ;; esac
@@ -55,24 +60,28 @@ build_awg_userspace() { # builds in a temp dir; installs only if everything buil
       && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile \
       && echo '/swapfile none swap sw 0 0' >> /etc/fstab || true
   fi
-  if [ ! -x "$GO_DIR/bin/go" ]; then
+  local b; b="$(mktemp -d)"
+  git clone -q --depth 1 --branch "$AWG_TOOLS_REF" https://github.com/amnezia-vpn/amneziawg-tools.git "$b/tools" || return 1
+  git clone -q --depth 1 --branch "$AWG_GO_REF" https://github.com/amnezia-vpn/amneziawg-go.git "$b/go" || return 1
+  # Go: at least what amneziawg-go asks for; an older one from an earlier run is replaced.
+  local need have
+  need="go$(awk '/^go /{print $2; exit}' "$b/go/go.mod")"
+  have="$("$GO_DIR/bin/go" env GOVERSION 2>/dev/null || true)"
+  if [ -z "$have" ] || [ "$(printf '%s\n%s\n' "$need" "$have" | sort -V | head -1)" != "$need" ]; then
     GOVER="$(curl -fsS 'https://go.dev/VERSION?m=text' | head -1)" || return 1
     rm -rf "$GO_DIR" && mkdir -p "$GO_DIR"
     curl -fsSL "https://dl.google.com/go/$GOVER.linux-$GOARCH.tar.gz" | tar -xz -C "$GO_DIR" --strip-components=1 || return 1
   fi
-  local b; b="$(mktemp -d)"
-  git clone -q --depth 1 https://github.com/amnezia-vpn/amneziawg-tools.git "$b/tools" || return 1
-  git clone -q --depth 1 https://github.com/amnezia-vpn/amneziawg-go.git "$b/go" || return 1
   make -s -C "$b/tools/src" >/dev/null || return 1
   ( cd "$b/go" && PATH="$GO_DIR/bin:$PATH" GOTOOLCHAIN=local go build -o "$b/amneziawg-go" . ) || return 1
   apt-get remove -y -q amneziawg amneziawg-dkms amneziawg-tools >/dev/null 2>&1 || true
   make -s -C "$b/tools/src" install WITH_WGQUICK=yes WITH_SYSTEMDUNITS=yes >/dev/null || return 1
   install -m 755 "$b/amneziawg-go" /usr/bin/amneziawg-go
   systemctl daemon-reload
-  echo "amneziawg-tools $(git -C "$b/tools" rev-parse --short HEAD), amneziawg-go $(git -C "$b/go" rev-parse --short HEAD), built $(date -u +%F)" > "$AWG_STAMP"
+  echo "amneziawg-tools $AWG_TOOLS_REF ($(git -C "$b/tools" rev-parse --short HEAD)), amneziawg-go $AWG_GO_REF ($(git -C "$b/go" rev-parse --short HEAD)), built $(date -u +%F)" > "$AWG_STAMP"
   rm -rf "$b"
 }
-if [ -c /dev/net/tun ] && { [ ! -f "$AWG_STAMP" ] || [ -n "${AWG_REBUILD:-}" ] || ! command -v amneziawg-go >/dev/null 2>&1 || ! command -v awg-quick >/dev/null 2>&1; }; then
+if [ -c /dev/net/tun ] && { ! awg_current || [ -n "${AWG_REBUILD:-}" ] || ! command -v amneziawg-go >/dev/null 2>&1 || ! command -v awg-quick >/dev/null 2>&1; }; then
   build_awg_userspace || note "Couldn't build AmneziaWG 3.1 here."
 fi
 if [ -f "$AWG_STAMP" ] && command -v amneziawg-go >/dev/null 2>&1 && command -v awg-quick >/dev/null 2>&1; then
