@@ -4,14 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/ksenxxoen/JagaNet/desktop/vpn"
 	"log"
 	"net/netip"
-	"os"
-	"path/filepath"
 	"slices"
 	"time"
-
-	"github.com/ksenxxoen/JagaNet/desktop/vpn"
 )
 
 // tunnelHold is the config last given to the adapter.
@@ -306,33 +303,6 @@ func (a *App) failOver(ctx context.Context) {
 	}
 }
 
-func (a *App) nodesLeft() int {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	cur := ""
-	if a.hold != nil {
-		cur = a.hold.serverID
-	}
-	want := a.Store.Country
-	if want == "" {
-		want = "auto"
-	}
-	n := 0
-	for _, s := range a.servers {
-		if !slices.Contains(s.Protocols, Protocol) || s.Load >= 1 {
-			continue
-		}
-		if want != "auto" && s.CountryCode != want {
-			continue
-		}
-		if s.ID == cur || slices.Contains(a.skip, s.ID) {
-			continue
-		}
-		n++
-	}
-	return n
-}
-
 func (a *App) pushEndpoint(ctx context.Context, force bool) error {
 	a.mu.Lock()
 	hold := a.hold
@@ -439,6 +409,12 @@ func (a *App) applyAt(ctx context.Context, st TunnelState, key string, ep netip.
 		return err
 	}
 	a.mu.Lock()
+	if a.conn == "off" {
+		// Disconnect came while the adapter was being set up; it takes the tunnel
+		// down next and must not find state from a connection that is gone.
+		a.mu.Unlock()
+		return context.Canceled
+	}
 	a.applied, a.peerKey = st.Version, peer
 	a.current = st.CountryCode
 	if a.current == "" && st.Config != nil {
@@ -522,174 +498,4 @@ func jsonUnmarshal(c *TunnelConfig, p *awgParams) error {
 		return errors.New("no tunnel")
 	}
 	return json.Unmarshal(c.Params, p)
-}
-
-func (a *App) alert(code string) {
-	a.mu.Lock()
-	if a.told == nil {
-		a.told = map[string]bool{}
-	}
-	if a.told[code] {
-		a.mu.Unlock()
-		return
-	}
-	a.told[code] = true
-	l := "ru"
-	if a.Store != nil && a.Store.Lang != "" {
-		l = a.Store.Lang
-	}
-	released := a.released
-	strict := a.Store != nil && a.Store.StrictKill
-	fn := a.OnNotify
-	a.mu.Unlock()
-	msg := phrase(l, code, released, strict)
-	if fn != nil && msg != "" {
-		fn(msg)
-	}
-}
-
-func phrase(lang, code string, released, strict bool) string {
-	if code == ProbNoHandshake || code == ProbDead {
-		if released {
-			return pickLang(lang, map[string]string{
-				"ru": "Не удалось подключиться. Интернет снова доступен, пробуем ещё.",
-				"en": "Could not connect. Internet is back on, still trying.",
-				"de": "Verbindung fehlgeschlagen. Internet ist wieder da, neuer Versuch.",
-			})
-		}
-		if strict {
-			return pickLang(lang, map[string]string{
-				"ru": "Сервер не отвечает. Интернет заблокирован, пока VPN не подключится.",
-				"en": "Server is not responding. Internet stays blocked until the VPN connects.",
-				"de": "Server antwortet nicht. Internet bleibt blockiert, bis das VPN steht.",
-			})
-		}
-	}
-	table := map[string]map[string]string{
-		ProbOffline: {
-			"ru": "Нет сети, пробуем снова…",
-			"en": "No network, trying again…",
-			"de": "Kein Netz, neuer Versuch…",
-		},
-		ProbNoHandshake: {
-			"ru": "Сервер не отвечает, пробуем ещё…",
-			"en": "Server is not responding, trying again…",
-			"de": "Server antwortet nicht, neuer Versuch…",
-		},
-		ProbDead: {
-			"ru": "Связь с VPN пропала, переподключаемся…",
-			"en": "The VPN stopped passing traffic. Reconnecting…",
-			"de": "Die VPN-Verbindung ist weg, verbinde neu…",
-		},
-		"up": {
-			"ru": "VPN снова подключён",
-			"en": "VPN is connected again",
-			"de": "VPN ist wieder verbunden",
-		},
-		ProbPlan: {
-			"ru": "Тариф закончился. Продлите его, чтобы включить VPN.",
-			"en": "The plan has ended. Extend it to turn the VPN on.",
-			"de": "Der Tarif ist zu Ende. Verlängern Sie ihn, um das VPN einzuschalten.",
-		},
-		ProbKeyRemoved: {
-			"ru": "Ключ удалён",
-			"en": "This key was removed",
-			"de": "Schlüssel wurde gelöscht",
-		},
-		ProbAuth: {
-			"ru": "Сессия закончилась, войдите снова",
-			"en": "Signed out, please sign in again",
-			"de": "Sitzung beendet, bitte erneut anmelden",
-		},
-		"update": {
-			"ru": "Доступно обновление Boop",
-			"en": "A Boop update is available",
-			"de": "Ein Boop-Update ist verfügbar",
-		},
-	}
-	if m, ok := table[code]; ok {
-		return pickLang(lang, m)
-	}
-	return ""
-}
-
-func pickLang(lang string, m map[string]string) string {
-	if s, ok := m[lang]; ok {
-		return s
-	}
-	return m["en"]
-}
-
-func (a *App) updateLoop() {
-	a.checkUpdate()
-	t := time.NewTicker(6 * time.Hour)
-	defer t.Stop()
-	for range t.C {
-		a.checkUpdate()
-	}
-}
-
-func (a *App) checkUpdate() {
-	if a == nil || a.API == nil || a.Version == "" || a.Version == "dev" {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	m, err := a.API.DesktopManifest(ctx)
-	if err != nil {
-		var e *APIError
-		if errors.As(err, &e) && (e.Status == 404 || e.Status == 204) {
-			return
-		}
-		log.Printf("update: %v", err)
-		return
-	}
-	if err := m.Validate(a.API.Base); err != nil {
-		log.Printf("update: manifest: %v", err)
-		return
-	}
-	if !Newer(m.Version, a.Version) {
-		return
-	}
-	a.mu.Lock()
-	a.available = &m
-	a.mu.Unlock()
-	a.emit()
-	a.alert("update")
-	if m.Mandatory {
-		a.installUpdate(m, true)
-	}
-}
-
-// installUpdate downloads and checks the exe. apply restarts into it.
-func (a *App) installUpdate(m Manifest, apply bool) {
-	if a.UpdateDir == "" {
-		log.Printf("update: nowhere to stage %s", m.Version)
-		return
-	}
-	if err := m.Validate(a.API.Base); err != nil {
-		log.Printf("update: %v", err)
-		return
-	}
-	dst := filepath.Join(a.UpdateDir, "Boop.exe.new")
-	if b, err := os.ReadFile(dst); err != nil || VerifyPayload(m, b, UpdatePublicKey) != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-		defer cancel()
-		data, err := a.API.Download(ctx, m.URL, 64<<20)
-		if err != nil {
-			log.Printf("update: download: %v", err)
-			return
-		}
-		if err := StageFile(dst, data, m, UpdatePublicKey); err != nil {
-			log.Printf("update: %v", err)
-			return
-		}
-	}
-	log.Printf("update: staged %s", m.Version)
-	if !apply || a.ApplyUpdate == nil {
-		return
-	}
-	if err := a.ApplyUpdate(dst); err != nil {
-		log.Printf("update: apply: %v", err)
-	}
 }

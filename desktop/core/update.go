@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
@@ -8,9 +9,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Manifest is GET /v1/app/desktop. SHA256 of the exe is always required.
@@ -176,4 +180,78 @@ func SwapBinary(dst, staged string) error {
 		return fmt.Errorf("install: %w", err)
 	}
 	return nil
+}
+
+func (a *App) updateLoop() {
+	a.checkUpdate()
+	t := time.NewTicker(6 * time.Hour)
+	defer t.Stop()
+	for range t.C {
+		a.checkUpdate()
+	}
+}
+
+func (a *App) checkUpdate() {
+	if a == nil || a.API == nil || a.Version == "" || a.Version == "dev" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	m, err := a.API.DesktopManifest(ctx)
+	if err != nil {
+		var e *APIError
+		if errors.As(err, &e) && (e.Status == 404 || e.Status == 204) {
+			return
+		}
+		log.Printf("update: %v", err)
+		return
+	}
+	if err := m.Validate(a.API.Base); err != nil {
+		log.Printf("update: manifest: %v", err)
+		return
+	}
+	if !Newer(m.Version, a.Version) {
+		return
+	}
+	a.mu.Lock()
+	a.available = &m
+	a.mu.Unlock()
+	a.emit()
+	a.alert("update")
+	if m.Mandatory {
+		a.installUpdate(m, true)
+	}
+}
+
+// installUpdate downloads and checks the exe. apply restarts into it.
+func (a *App) installUpdate(m Manifest, apply bool) {
+	if a.UpdateDir == "" {
+		log.Printf("update: nowhere to stage %s", m.Version)
+		return
+	}
+	if err := m.Validate(a.API.Base); err != nil {
+		log.Printf("update: %v", err)
+		return
+	}
+	dst := filepath.Join(a.UpdateDir, "Boop.exe.new")
+	if b, err := os.ReadFile(dst); err != nil || VerifyPayload(m, b, UpdatePublicKey) != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		data, err := a.API.Download(ctx, m.URL, 64<<20)
+		if err != nil {
+			log.Printf("update: download: %v", err)
+			return
+		}
+		if err := StageFile(dst, data, m, UpdatePublicKey); err != nil {
+			log.Printf("update: %v", err)
+			return
+		}
+	}
+	log.Printf("update: staged %s", m.Version)
+	if !apply || a.ApplyUpdate == nil {
+		return
+	}
+	if err := a.ApplyUpdate(dst); err != nil {
+		log.Printf("update: apply: %v", err)
+	}
 }

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -27,7 +28,10 @@ var (
 // TunnelActive reports whether the tunnel (and its kill switch) is up.
 // While it is, system DNS is the tunnel's DNS and must not be consulted:
 // a dead tunnel would stall the lookup and hide a fresh answer.
-var TunnelActive func() bool
+var tunnelActive atomic.Pointer[func() bool]
+
+// SetTunnelActive installs that report; the last App to start wins.
+func SetTunnelActive(fn func() bool) { tunnelActive.Store(&fn) }
 
 // ResolveFallback answers for names that don't resolve (the dev server's made-up hosts).
 var ResolveFallback func(host string) []string
@@ -60,7 +64,12 @@ var (
 	resolved   = map[string][]string{}
 )
 
-func preferOutside() bool { return TunnelActive != nil && TunnelActive() }
+func preferOutside() bool {
+	if fn := tunnelActive.Load(); fn != nil && *fn != nil {
+		return (*fn)()
+	}
+	return false
+}
 
 // Resolve is the lookup the API dialer uses. A remembered address is returned
 // only when system DNS, DoH and the public UDP resolvers have all failed.

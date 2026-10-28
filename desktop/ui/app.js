@@ -61,7 +61,8 @@ const $ = (id) => document.getElementById(id);
 // Windows: Go binds boopSend and answers through boop.reply. The dev build on other systems serves /rpc and /events.
 const pending = {};
 let seq = 0;
-async function call(method, arg) {
+// Background calls (opts.silent) fail quietly: a toast is for something the person asked for.
+async function call(method, arg, opts) {
   try {
     if (window.boopSend) {
       return await new Promise((resolve, reject) => {
@@ -75,7 +76,7 @@ async function call(method, arg) {
     if (!r.ok) throw new Error(body.error || "error");
     return body;
   } catch (e) {
-    toast(String(e.message || e).replace(/^Error: /, ""));
+    if (!(opts && opts.silent)) toast(String(e.message || e).replace(/^Error: /, ""));
     throw e;
   }
 }
@@ -176,9 +177,11 @@ function render(next) {
   const act = $("detail-btn");
   if (S.problem === "plan" && S.conn !== "off") {
     act.hidden = false;
+    act.dataset.action = "extend";
     act.textContent = t("Extend");
   } else {
     act.hidden = true;
+    delete act.dataset.action;
   }
   tick();
 
@@ -229,8 +232,9 @@ function planText() {
   return `${name}, ${t("until")} ${d.toLocaleDateString(lang, { day: "numeric", month: "short" })}`;
 }
 
-function renderPlaces() {
+function renderPlaces(animate) {
   const list = $("place-list");
+  const scroll = list.scrollTop;
   const items = [{ code: "auto", ping: (S.countries.find((c) => c.code === S.best) || {}).ping }].concat(
     [...S.countries].sort((a, b) => countryName(a.code).localeCompare(countryName(b.code), lang)),
   );
@@ -239,7 +243,7 @@ function renderPlaces() {
   items.forEach((c, i) => {
     const b = document.createElement("button");
     b.className = "item" + (c.code === chosen ? " selected" : "");
-    b.style.animationDelay = `${i * 18}ms`;
+    if (animate) b.style.animationDelay = `${i * 18}ms`; else b.style.animation = "none";
     if (c.full) b.disabled = true;
     b.innerHTML = `<span class="flag"></span><span class="place-name"><b></b></span><span class="ping"><i></i><i></i><i></i><em></em></span>` +
       `<span class="check"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>`;
@@ -249,15 +253,17 @@ function renderPlaces() {
     b.onclick = async () => { closeSheet("places"); await call("setCountry", c.code); };
     list.appendChild(b);
   });
+  list.scrollTop = scroll;
 }
 
-function renderKeys() {
+function renderKeys(animate) {
   const list = $("key-list");
+  const scroll = list.scrollTop;
   list.innerHTML = "";
   [{ id: "", name: t("Own key") }].concat(S.keys || []).forEach((k, i) => {
     const b = document.createElement("button");
     b.className = "item" + (k.id === (S.key || "") ? " selected" : "");
-    b.style.animationDelay = `${i * 18}ms`;
+    if (animate) b.style.animationDelay = `${i * 18}ms`; else b.style.animation = "none";
     b.innerHTML = `<span class="flag"></span><span class="place-name"><b></b></span>${k.inUse ? `<span class="busy"></span>` : ""}` +
       `<span class="check"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>`;
     flag(b.querySelector(".flag"), k.id ? k.country || "" : "app");
@@ -277,6 +283,7 @@ function renderKeys() {
     };
     list.appendChild(b);
   });
+  list.scrollTop = scroll;
 }
 
 async function renameKey(k) {
@@ -306,17 +313,19 @@ function toast(text) {
 
 /* ---------- sheets ---------- */
 
+const closing = {};
 function openSheet(id) {
+  clearTimeout(closing[id]); // a close still running would hide the sheet that was just reopened
   $(id).hidden = false;
   $(id).classList.remove("closing");
-  if (id === "places") { renderPlaces(); call("refreshPings").catch(() => {}); }
-  if (id === "keys") { renderKeys(); call("refreshKeys").catch(() => {}); }
+  if (id === "places") { renderPlaces(true); call("refreshPings", null, { silent: true }).catch(() => {}); }
+  if (id === "keys") { renderKeys(true); call("refreshKeys", null, { silent: true }).catch(() => {}); }
 }
 function closeSheet(id) {
   const el = $(id);
   if (el.hidden) return;
   el.classList.add("closing");
-  setTimeout(() => { el.hidden = true; el.classList.remove("closing"); }, 200);
+  closing[id] = setTimeout(() => { el.hidden = true; el.classList.remove("closing"); }, 200);
 }
 document.querySelectorAll("[data-close]").forEach((b) => (b.onclick = () => closeSheet(b.closest(".sheet").id)));
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") ["places", "keys", "settings"].forEach(closeSheet); });
@@ -387,7 +396,7 @@ $("s-auto").onchange = (e) => call("setAutoConnect", e.target.checked).catch(() 
 $("s-strict").onchange = (e) => call("setStrictKill", e.target.checked).catch(() => {});
 $("s-update").onclick = () => call("update").catch(() => {});
 $("update-banner").onclick = () => call("update").catch(() => {});
-$("detail-btn").onclick = () => call("extend").catch(() => {});
+$("detail-btn").onclick = (e) => { const a = e.currentTarget.dataset.action; if (a) call(a).catch(() => {}); };
 $("s-start").onchange = (e) => call("setAutostart", e.target.checked).catch(() => {});
 $("s-signout").onclick = () => { closeSheet("settings"); call("signOut").catch(() => {}); };
 document.querySelectorAll("#s-lang button").forEach((b) => (b.onclick = () => call("setLang", b.dataset.lang).catch(() => {})));
