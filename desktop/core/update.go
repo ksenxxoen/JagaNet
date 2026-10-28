@@ -223,6 +223,23 @@ func (a *App) checkUpdate() {
 	}
 }
 
+// setStage tells the window how far the update has got.
+func (a *App) setStage(stage string) {
+	a.mu.Lock()
+	a.updStage = stage
+	a.mu.Unlock()
+	a.emit()
+}
+
+// failUpdate shows the person that the update did not go through.
+func (a *App) failUpdate(format string, err error) {
+	log.Printf(format, err)
+	a.setStage("failed")
+	if a.OnToast != nil {
+		a.OnToast("Не удалось установить обновление. Попробуйте позже.")
+	}
+}
+
 // installUpdate downloads and checks the exe. apply restarts into it.
 func (a *App) installUpdate(m Manifest, apply bool) {
 	if a.UpdateDir == "" {
@@ -230,28 +247,31 @@ func (a *App) installUpdate(m Manifest, apply bool) {
 		return
 	}
 	if err := m.Validate(a.API.Base); err != nil {
-		log.Printf("update: %v", err)
+		a.failUpdate("update: %v", err)
 		return
 	}
 	dst := filepath.Join(a.UpdateDir, "Boop.exe.new")
 	if b, err := os.ReadFile(dst); err != nil || VerifyPayload(m, b, UpdatePublicKey) != nil {
+		a.setStage("downloading")
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cancel()
 		data, err := a.API.Download(ctx, m.URL, 64<<20)
 		if err != nil {
-			log.Printf("update: download: %v", err)
+			a.failUpdate("update: download: %v", err)
 			return
 		}
 		if err := StageFile(dst, data, m, UpdatePublicKey); err != nil {
-			log.Printf("update: %v", err)
+			a.failUpdate("update: %v", err)
 			return
 		}
 	}
 	log.Printf("update: staged %s", m.Version)
 	if !apply || a.ApplyUpdate == nil {
+		a.setStage("")
 		return
 	}
+	a.setStage("installing")
 	if err := a.ApplyUpdate(dst); err != nil {
-		log.Printf("update: apply: %v", err)
+		a.failUpdate("update: apply: %v", err)
 	}
 }

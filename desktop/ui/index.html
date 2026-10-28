@@ -14,36 +14,43 @@
   <!-- Вход -->
   <section class="screen signin" id="signin" hidden>
     <div class="brand-big"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" class="tile"/><circle cx="12" cy="12" r="6.5" class="ring"/><circle cx="12" cy="12" r="3.4" class="dot"/></svg><b>Boop</b></div>
-    <form class="form" id="f-email">
+    <form class="form" id="f-email" novalidate>
       <div class="field">
         <label for="email">Почта</label>
-        <input class="input" id="email" type="email" autocomplete="email" required placeholder="you@example.com">
+        <input class="input" id="email" type="email" autocomplete="email" inputmode="email" required placeholder="you@example.com" aria-describedby="err-email">
       </div>
+      <p class="form-error" id="err-email" role="alert" hidden></p>
       <button class="btn btn-primary" type="submit">Получить код</button>
     </form>
-    <form class="form" id="f-code" hidden>
+    <form class="form" id="f-code" hidden novalidate>
+      <p class="form-note" id="code-note"></p>
       <div class="field">
-        <label for="code" id="code-label"></label>
-        <input class="input input-code" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required placeholder="000000">
+        <label for="code">Код из письма</label>
+        <input class="input input-code" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required placeholder="000000" aria-describedby="err-code">
       </div>
+      <p class="form-error" id="err-code" role="alert" hidden></p>
       <button class="btn btn-primary" type="submit">Войти</button>
       <button class="btn btn-text" type="button" id="back">Другая почта</button>
     </form>
-    <form class="form" id="f-pair" hidden>
+    <form class="form" id="f-pair" hidden novalidate>
+      <p class="form-note">Код показан в личном кабинете на сайте, в разделе устройств.</p>
       <div class="field">
         <label for="pair">Код устройства</label>
-        <input class="input input-code" id="pair" inputmode="numeric" maxlength="6" required placeholder="000000">
+        <input class="input input-code" id="pair" inputmode="numeric" maxlength="6" required placeholder="000000" aria-describedby="err-pair">
       </div>
+      <p class="form-error" id="err-pair" role="alert" hidden></p>
       <button class="btn btn-primary" type="submit">Войти</button>
       <button class="btn btn-text" type="button" id="pair-back">Войти по почте</button>
     </form>
     <div class="form" id="f-web" hidden>
-      <span class="muted">Разрешите вход на сайте</span>
+      <p class="form-note">Откройте сайт и разрешите вход, если там показан такой же код.</p>
       <div class="match" id="web-code" aria-live="polite"></div>
+      <p class="form-error" id="err-web" role="alert" hidden></p>
       <button class="btn btn-primary" type="button" id="web-open">Открыть сайт</button>
       <button class="btn btn-text" type="button" id="web-back">Назад</button>
     </div>
     <div class="alts" id="alts">
+      <p class="form-error" id="err-alts" role="alert" hidden></p>
       <button class="btn btn-text" type="button" id="to-web">Войти через сайт</button>
       <button class="btn btn-text" type="button" id="to-pair">У меня есть код устройства</button>
     </div>
@@ -80,6 +87,9 @@
   <!-- Страны -->
   <div class="sheet" id="places" role="dialog" aria-modal="true" aria-labelledby="places-title" hidden>
     <div class="sheet-head"><h2 class="sheet-title" id="places-title">Страна</h2><button class="icon-btn" data-close aria-label="Закрыть"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="search">
+      <input class="input" id="place-search" type="search" placeholder="Найти страну" aria-label="Найти страну" autocomplete="off" spellcheck="false">
+    </div>
     <div class="sheet-list" id="place-list"></div>
   </div>
 
@@ -95,15 +105,17 @@
     <div class="sheet-scroll">
       <div class="group">
         <div class="setting-row"><span class="muted">Аккаунт</span><span id="s-email" class="ellipsis"></span></div>
-        <div class="setting-row"><span class="muted">Тариф</span><span id="s-plan"></span></div>
-        <button class="setting-row is-link" id="s-key" hidden><span>Ключ</span><span class="row-value"><span id="s-key-name" class="ellipsis"></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></button>
-        <button class="setting-row is-link" id="s-extend"><span>Продлить</span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+        <div class="setting-row"><span class="muted">Тариф</span><span class="row-value"><span id="s-plan" class="ellipsis"></span><span class="badge is-warn" id="s-plan-badge" hidden>Закончился</span></span></div>
+        <button class="setting-row is-link" id="s-key" hidden><span class="muted">Ключ</span><span class="row-value"><span id="s-key-name" class="ellipsis"></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></button>
+        <button class="setting-row is-link" id="s-extend"><span>Продлить тариф</span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
       </div>
       <div class="group">
-        <label class="setting-row switch-row" id="s-start-row" hidden><span>Запускать с Windows</span><input type="checkbox" class="switch" id="s-start"><i></i></label>
-        <label class="setting-row switch-row"><span>Подключаться при запуске</span><input type="checkbox" class="switch" id="s-auto"><i></i></label>
-        <label class="setting-row switch-row"><span>Не возвращать интернет, пока нет VPN</span><input type="checkbox" class="switch" id="s-strict"><i></i></label>
-        <button class="setting-row is-link" id="s-update" hidden><span>Обновить</span><span class="row-value"><span id="s-update-ver" class="ellipsis"></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></button>
+        <label class="setting-row switch-row" id="s-start-row" hidden><span class="setting-text"><span>Запускать с Windows</span><small>Boop стартует в трее при входе в систему.</small></span><input type="checkbox" class="switch" id="s-start"><i></i></label>
+        <label class="setting-row switch-row"><span class="setting-text"><span>Подключаться при запуске</span><small>VPN включается сам, как только запускается Boop.</small></span><input type="checkbox" class="switch" id="s-auto"><i></i></label>
+        <label class="setting-row switch-row"><span class="setting-text"><span>Не возвращать интернет, пока нет VPN</span><small>Если VPN не подключился или пропал, интернет остаётся закрытым, чтобы ваш настоящий адрес не попал в сеть.</small></span><input type="checkbox" class="switch" id="s-strict"><i></i></label>
+      </div>
+      <div class="group" id="s-update-group" hidden>
+        <button class="setting-row is-link" id="s-update"><span class="setting-text"><span id="s-update-title">Обновить</span><small id="s-update-sub"></small></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
       </div>
       <div class="group">
         <button class="setting-row is-danger" id="s-signout">Выйти</button>
@@ -127,7 +139,19 @@
     </form>
   </div>
 
-  <div class="toast" id="toast" role="alert" hidden></div>
+  <!-- Подтверждение -->
+  <div class="dialog-wrap" id="confirm" hidden>
+    <form class="card dialog" id="f-confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-text">
+      <h2 class="sheet-title" id="confirm-title"></h2>
+      <p class="form-note" id="confirm-text"></p>
+      <div class="dialog-actions">
+        <button class="btn btn-text" type="button" id="confirm-cancel">Отмена</button>
+        <button class="btn btn-danger" type="submit" id="confirm-ok"></button>
+      </div>
+    </form>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 </div>
 <script>/*JS*/</script>
 </body>

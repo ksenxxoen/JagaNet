@@ -113,12 +113,22 @@ func main() {
 	if slices.Contains(os.Args[1:], "--tray") {
 		showWindow.Call(hwnd, 0) // started with Windows: only the tray icon
 	}
-	// The process is system-DPI aware, so SetSize takes physical pixels like the
-	// size above; unscaled it shrank the window to 380x640 at 125-200%.
-	w.SetSize(int(380*dpi/96), int(640*dpi/96), webview2.HintFixed)
+	// The window can be resized down to a minimum. The library's HintMin takes
+	// physical pixels once, so the real, per-monitor minimum is set in
+	// subclassWindow; this one keeps the frame resizable from the start.
+	mw, mh := outerSize(core.MinWindowW, core.MinWindowH, int(dpi))
+	w.SetSize(int(mw), int(mh), webview2.HintMin)
+	var t *tray
+	subclassWindow(hwnd, app, func(dpi int) {
+		if t != nil {
+			t.reloadIcons(dpi)
+		}
+	})
+	restoreWindow(hwnd, app, slices.Contains(os.Args[1:], "--tray"))
 	themeTitleBar(hwnd)
-	t := newTray(hwnd, app, w.Terminate)
+	t = newTray(hwnd, app, w.Terminate)
 	defer t.remove()
+	defer rememberWindow(hwnd, app)
 
 	push := func(js string) { w.Dispatch(func() { w.Eval(js) }) }
 	app.OnState = func(s core.UIState) {

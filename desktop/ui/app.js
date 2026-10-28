@@ -17,6 +17,16 @@ const TXT = {
   keyRemoved: "Ключ удалён",
   signedOut: "Сессия закончилась, войдите снова",
   updateAvailable: "Доступно обновление",
+  updating: "Скачиваем обновление…", installing: "Устанавливаем и перезапускаем…", updateFailed: "Не удалось обновить. Повторить",
+  update: "Обновить", expired: "Закончился",
+  full: "Нет мест", noResults: "Ничего не найдено", noResultsHint: "Попробуйте другое название.",
+  noCountries: "Список стран недоступен", noCountriesHint: "Проверьте интернет и попробуйте ещё раз.", retry: "Обновить список",
+  noKeys: "Других ключей пока нет. Их можно создать в личном кабинете на сайте.",
+  fastestNow: "Сейчас:", usedElsewhere: "Используется на другом устройстве",
+  badEmail: "Введите почту в таком виде: name@example.com", badCode: "Введите шесть цифр.",
+  signOutTitle: "Выйти из аккаунта?", signOutText: "VPN будет отключён. Чтобы вернуться, войдите снова.", signOut: "Выйти",
+  connect: "Подключить VPN", disconnect: "Отключить VPN", wait: "Подождите, идёт подключение",
+  codeSent: "Мы отправили код на", renameKey: "Переименовать ключ",
 };
 
 let S = { screen: "", conn: "off", countries: [] };
@@ -125,21 +135,21 @@ function render(next) {
   if (next.toast) return toast(next.toast);
   const prev = S;
   S = Object.assign({}, S, next);
+  $("app").classList.add("ready");
 
   $("signin").hidden = S.screen !== "signin";
   $("main").hidden = S.screen !== "main";
-  const banner = $("update-banner");
-  if (S.update && S.update.version) {
-    banner.hidden = false;
-    banner.textContent = TXT.updateAvailable + " · " + S.update.version + (S.update.notes ? " — " + S.update.notes : "");
-  } else banner.hidden = true;
+  renderUpdate();
   if (S.screen === "signin" && prev.screen !== "signin") showForm("f-email");
   if (S.screen === "signin" && prev.webLogin && !S.webLogin && !$("f-web").hidden) showForm("f-email");
   if (S.screen !== "main") return;
+  // A wide window starts with the country panel beside the button: two columns.
+  if (prev.screen !== "main" && wide.matches && !SHEETS.some((id) => !$(id).hidden)) openSheet("places", false);
 
   const app = $("app"), boop = $("boop");
   app.dataset.state = S.conn;
   boop.dataset.state = S.conn;
+  boop.setAttribute("aria-label", S.conn === "off" ? TXT.connect : S.conn === "on" ? TXT.disconnect : TXT.disconnect);
   if (prev.conn !== S.conn && S.conn === "on") { boop.classList.remove("bump"); void boop.offsetWidth; boop.classList.add("bump"); }
   $("status").textContent = STATUS[S.conn] || TXT.off;
   $("hint").textContent = S.conn === "off" ? TXT.hintOff : "";
@@ -171,10 +181,9 @@ function render(next) {
   $("s-key-name").textContent = key ? key.name : TXT.own;
   $("s-email").textContent = S.email || "";
   $("s-plan").textContent = planText();
+  $("s-plan-badge").hidden = !planExpired();
   $("s-auto").checked = !!S.autoConnect;
   $("s-strict").checked = !!S.strictKill;
-  $("s-update").hidden = !(S.update && S.update.version);
-  $("s-update-ver").textContent = S.update && S.update.version ? S.update.version : "";
   $("s-start-row").hidden = S.autostart == null;
   $("s-start").checked = !!S.autostart;
   $("s-version").textContent = S.version ? "Boop " + S.version : "";
@@ -194,6 +203,31 @@ function detailText() {
   return "";
 }
 
+// The banner, the settings row and their busy state while an update installs.
+function renderUpdate() {
+  const u = S.update && S.update.version ? S.update : null;
+  const banner = $("update-banner");
+  const stage = u ? u.stage || "" : "";
+  const busyNow = stage === "downloading" || stage === "installing";
+  banner.hidden = !u;
+  $("s-update-group").hidden = !u;
+  if (!u) return;
+  const text = stage === "downloading" ? TXT.updating : stage === "installing" ? TXT.installing : stage === "failed" ? TXT.updateFailed
+    : TXT.updateAvailable + " · " + u.version + (u.notes ? " — " + u.notes : "");
+  banner.textContent = text;
+  banner.disabled = busyNow;
+  banner.classList.toggle("is-loading", busyNow);
+  $("s-update").disabled = busyNow;
+  $("s-update").classList.toggle("is-loading", busyNow);
+  $("s-update-title").textContent = busyNow || stage === "failed" ? text : TXT.update + " до " + u.version;
+  $("s-update-sub").textContent = busyNow || stage === "failed" ? "" : u.notes || "";
+}
+
+function planExpired() {
+  const p = S.plan;
+  return !!(p && p.expiresAt && new Date(p.expiresAt).getTime() < Date.now());
+}
+
 function planText() {
   const p = S.plan;
   if (!p) return "";
@@ -204,27 +238,72 @@ function planText() {
 }
 
 const CHECK = `<span class="check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>`;
+const PENCIL = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M14.5 7.5l3 3"/></svg>`;
 
+function emptyState(title, hint, retry) {
+  const d = document.createElement("div");
+  d.className = "empty";
+  const b = document.createElement("b");
+  b.textContent = title;
+  const p = document.createElement("p");
+  p.textContent = hint;
+  d.append(b, p);
+  if (retry) {
+    const btn = document.createElement("button");
+    btn.className = "btn btn-secondary";
+    btn.textContent = retry.label;
+    btn.onclick = retry.fn;
+    d.append(btn);
+  }
+  return d;
+}
+
+function listLabel(text) {
+  const l = document.createElement("div");
+  l.className = "list-label";
+  l.textContent = text;
+  return l;
+}
+
+// The search box narrows the list by the Russian name; the fastest row stays on top.
 function renderPlaces(animate) {
   const list = $("place-list");
   const scroll = list.scrollTop;
-  const items = [{ code: "auto", ping: (S.countries.find((c) => c.code === S.best) || {}).ping }].concat(
-    [...S.countries].sort((a, b) => countryName(a.code).localeCompare(countryName(b.code), "ru")),
-  );
+  const q = $("place-search").value.trim().toLowerCase().replace(/ё/g, "е");
+  const norm = (x) => x.toLowerCase().replace(/ё/g, "е");
+  const countries = [...(S.countries || [])].sort((a, b) => countryName(a.code).localeCompare(countryName(b.code), "ru"));
+  const found = q ? countries.filter((c) => norm(countryName(c.code)).includes(q) || c.code.toLowerCase() === q) : countries;
+  const best = countries.find((c) => c.code === S.best);
   const chosen = S.key ? "" : S.country || "auto";
   list.innerHTML = "";
-  items.forEach((c, i) => {
+  $("place-search").hidden = !countries.length;
+
+  if (!countries.length) {
+    list.append(emptyState(TXT.noCountries, TXT.noCountriesHint, { label: TXT.retry, fn: () => call("refreshPings", null, { silent: true }).catch(() => {}) }));
+    return;
+  }
+  const rows = [];
+  if (!q) rows.push({ code: "auto", ping: best ? best.ping : null, sub: best ? `${TXT.fastestNow} ${countryName(best.code)}` : "" });
+  found.forEach((c) => rows.push(c));
+  rows.forEach((c, i) => {
+    if (!q && i === 1) list.append(listLabel("Все страны"));
     const b = document.createElement("button");
     b.className = "list-item" + (c.code === chosen ? " selected" : "");
-    if (animate) b.style.animationDelay = `${i * 18}ms`; else b.style.animation = "none";
-    if (c.full) b.disabled = true;
-    b.innerHTML = `<span class="flag"></span><span class="item-text"><b class="item-title"></b></span><span class="ping"><i></i><i></i><i></i><em></em></span>` + CHECK;
+    if (c.code === chosen) b.setAttribute("aria-current", "true");
+    if (animate) b.style.animationDelay = `${Math.min(i, 12) * 18}ms`; else b.style.animation = "none";
+    b.innerHTML = `<span class="flag"></span><span class="item-text"><b class="item-title"></b><small class="item-sub"></small></span>` +
+      (c.full ? `<span class="badge"></span>` : `<span class="ping"><i></i><i></i><i></i><em></em></span>`) + CHECK;
     flag(b.querySelector(".flag"), c.code);
     b.querySelector("b").textContent = countryName(c.code);
-    setPing(b.querySelector(".ping"), c.ping);
+    b.querySelector("small").textContent = c.sub || "";
+    if (c.full) {
+      b.disabled = true;
+      b.querySelector(".badge").textContent = TXT.full;
+    } else setPing(b.querySelector(".ping"), c.ping);
     b.onclick = async () => { closeSheet("places"); await call("setCountry", c.code); };
     list.appendChild(b);
   });
+  if (q && !found.length) list.append(emptyState(TXT.noResults, TXT.noResultsHint));
   list.scrollTop = scroll;
 }
 
@@ -232,45 +311,58 @@ function renderKeys(animate) {
   const list = $("key-list");
   const scroll = list.scrollTop;
   list.innerHTML = "";
-  [{ id: "", name: TXT.own }].concat(S.keys || []).forEach((k, i) => {
+  const rows = [{ id: "", name: TXT.own }].concat(S.keys || []);
+  rows.forEach((k, i) => {
+    if (i === 1) list.append(listLabel("Ключи аккаунта"));
+    const row = document.createElement("div");
+    row.className = "list-row";
     const b = document.createElement("button");
     b.className = "list-item" + (k.id === (S.key || "") ? " selected" : "");
-    if (animate) b.style.animationDelay = `${i * 18}ms`; else b.style.animation = "none";
-    b.innerHTML = `<span class="flag"></span><span class="item-text"><b class="item-title"></b></span>${k.inUse ? `<span class="badge is-warn"></span>` : ""}` + CHECK;
+    if (k.id === (S.key || "")) b.setAttribute("aria-current", "true");
+    if (animate) row.style.animationDelay = `${Math.min(i, 12) * 18}ms`; else row.style.animation = "none";
+    b.innerHTML = `<span class="flag"></span><span class="item-text"><b class="item-title"></b><small class="item-sub"></small></span>${k.inUse ? `<span class="badge is-warn"></span>` : ""}` + CHECK;
     flag(b.querySelector(".flag"), k.id ? k.country || "" : "app");
     b.querySelector("b").textContent = k.name;
-    if (k.inUse) b.querySelector(".badge").textContent = TXT.inUse;
-    if (k.id) {
-      const rn = document.createElement("span");
-      rn.className = "item-action rename";
-      rn.setAttribute("role", "button");
-      rn.tabIndex = 0;
-      rn.textContent = TXT.rename;
-      rn.onclick = (e) => { e.stopPropagation(); renameKey(k); };
-      rn.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); renameKey(k); } };
-      b.insertBefore(rn, b.querySelector(".check"));
+    if (k.inUse) {
+      b.querySelector(".badge").textContent = TXT.inUse;
+      b.title = TXT.usedElsewhere;
     }
-    b.onclick = async (e) => {
-      if (e.target.closest && e.target.closest(".rename")) return;
+    b.onclick = async () => {
       closeSheet("keys");
       await call("setKey", k.id);
     };
-    list.appendChild(b);
+    row.append(b);
+    if (k.id) {
+      const rn = document.createElement("button");
+      rn.className = "icon-btn rename";
+      rn.title = TXT.rename;
+      rn.setAttribute("aria-label", `${TXT.renameKey}: ${k.name}`);
+      rn.innerHTML = PENCIL;
+      rn.onclick = () => renameKey(k, rn);
+      row.append(rn);
+    }
+    list.appendChild(row);
   });
+  if (!(S.keys || []).length) {
+    const p = document.createElement("p");
+    p.className = "form-note list-note";
+    p.textContent = TXT.noKeys;
+    list.append(p);
+  }
   list.scrollTop = scroll;
 }
 
 // The rename dialog stands in for the browser's prompt().
 let renaming = null;
-function renameKey(k) {
+function renameKey(k, from) {
   renaming = k;
   $("rename-input").value = k.name || "";
-  $("rename").hidden = false;
-  setTimeout(() => { $("rename-input").focus(); $("rename-input").select(); }, 30);
+  openDialog("rename", from, "rename-input");
+  $("rename-input").select();
 }
 function closeRename() {
   renaming = null;
-  $("rename").hidden = true;
+  closeDialog("rename");
 }
 $("rename-cancel").onclick = closeRename;
 $("f-rename").onsubmit = async (e) => {
@@ -280,6 +372,26 @@ $("f-rename").onsubmit = async (e) => {
   if (!k || !name || name === k.name) return;
   try { await call("renameKey", { id: k.id, name }); } catch { /* the toast says why */ }
 };
+
+// Asks before something that cannot be taken back with one click. Resolves true on "ok".
+let confirmDone = null;
+function confirmDialog({ title, text, ok }, from) {
+  $("confirm-title").textContent = title;
+  $("confirm-text").textContent = text;
+  $("confirm-ok").textContent = ok;
+  return new Promise((resolve) => {
+    confirmDone = resolve;
+    openDialog("confirm", from, "confirm-cancel");
+  });
+}
+function closeConfirm(result) {
+  const done = confirmDone;
+  confirmDone = null;
+  closeDialog("confirm");
+  if (done) done(result);
+}
+$("confirm-cancel").onclick = () => closeConfirm(false);
+$("f-confirm").onsubmit = (e) => { e.preventDefault(); closeConfirm(true); };
 
 function tick() {
   const el = $("timer");
@@ -297,84 +409,177 @@ function toast(text) {
   el.hidden = false;
   el.style.animation = "none"; void el.offsetWidth; el.style.animation = "";
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.hidden = true), 3200);
+  toastTimer = setTimeout(() => (el.hidden = true), 4500);
 }
+$("toast").onclick = () => { $("toast").hidden = true; };
 
-/* ---------- sheets ---------- */
+/* ---------- sheets and dialogs ---------- */
 
+// Wide windows show a sheet as a panel beside the main screen; narrow ones cover it.
+const wide = window.matchMedia("(min-width: 56rem)");
+const SHEETS = ["places", "keys", "settings"];
 const closing = {}, opener = {};
-function openSheet(id) {
+
+function syncPanel() {
+  const open = SHEETS.some((id) => !$(id).hidden && !$(id).classList.contains("closing"));
+  if (open) $("app").dataset.panel = ""; else delete $("app").dataset.panel;
+}
+function openSheet(id, focus = true) {
+  // One sheet at a time: a panel beside the main screen has room for one.
+  SHEETS.filter((o) => o !== id && !$(o).hidden).forEach((o) => closeSheet(o, true));
   clearTimeout(closing[id]); // a close still running would hide the sheet that was just reopened
   $(id).hidden = false;
   $(id).classList.remove("closing");
   opener[id] = document.activeElement;
-  setTimeout(() => { const c = $(id).querySelector("[data-close]"); if (c && !$(id).hidden) c.focus(); }, 30);
-  if (id === "places") { renderPlaces(true); call("refreshPings", null, { silent: true }).catch(() => {}); }
+  syncPanel();
+  const first = id === "places" ? $("place-search") : $(id).querySelector("[data-close]");
+  if (focus) setTimeout(() => { if (!$(id).hidden && first && !first.hidden) first.focus(); }, 30);
+  if (id === "places") { $("place-search").value = ""; renderPlaces(true); call("refreshPings", null, { silent: true }).catch(() => {}); }
   if (id === "keys") { renderKeys(true); call("refreshKeys", null, { silent: true }).catch(() => {}); }
 }
-function closeSheet(id) {
+function closeSheet(id, quiet) {
   const el = $(id);
   if (el.hidden) return;
   el.classList.add("closing");
-  closing[id] = setTimeout(() => { el.hidden = true; el.classList.remove("closing"); }, 200);
+  syncPanel();
+  closing[id] = setTimeout(() => { el.hidden = true; el.classList.remove("closing"); syncPanel(); }, 200);
   const back = opener[id];
-  if (back && back.focus && !back.hidden) back.focus();
+  if (!quiet && back && back.focus && !back.hidden) back.focus();
 }
 document.querySelectorAll("[data-close]").forEach((b) => (b.onclick = () => closeSheet(b.closest(".sheet").id)));
+
+const dialogOpener = {};
+function openDialog(id, from, focusId) {
+  dialogOpener[id] = from || document.activeElement;
+  $(id).hidden = false;
+  setTimeout(() => { const f = $(focusId); if (f && !$(id).hidden) f.focus(); }, 30);
+}
+function closeDialog(id) {
+  $(id).hidden = true;
+  const back = dialogOpener[id];
+  if (back && back.focus && document.contains(back) && !back.hidden) back.focus();
+}
+
+// The topmost thing that holds the keyboard: a dialog, else a sheet on a narrow window.
+function modal() {
+  for (const id of ["confirm", "rename"]) if (!$(id).hidden) return $(id);
+  if (!wide.matches) return SHEETS.map($).find((el) => !el.hidden && !el.classList.contains("closing")) || null;
+  return null;
+}
 document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  if (!$("rename").hidden) closeRename();
-  else ["places", "keys", "settings"].forEach(closeSheet);
+  if (e.key === "Escape") {
+    if (!$("confirm").hidden) closeConfirm(false);
+    else if (!$("rename").hidden) closeRename();
+    else SHEETS.forEach((id) => closeSheet(id));
+    return;
+  }
+  // Tab stays inside the dialog or sheet that is open.
+  if (e.key === "Tab") {
+    const m = modal();
+    if (!m) return;
+    const items = [...m.querySelectorAll("button, input, [tabindex]")].filter((el) => !el.disabled && !el.hidden && el.tabIndex >= 0 && el.offsetParent !== null);
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (!m.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+    else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
+// Arrow keys walk a list; from the search box ArrowDown goes to the first row and Enter picks the first one.
+["place-list", "key-list"].forEach((id) => $(id).addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+  const items = [...$(id).querySelectorAll(".list-item:not(:disabled), .rename")];
+  const i = items.indexOf(document.activeElement);
+  if (i < 0 && e.key === "ArrowUp") return;
+  e.preventDefault();
+  const next = items[e.key === "ArrowDown" ? Math.min(i + 1, items.length - 1) : Math.max(i - 1, 0)];
+  if (next) next.focus();
+}));
+$("place-search").addEventListener("input", () => renderPlaces());
+$("place-search").addEventListener("keydown", (e) => {
+  const items = [...$("place-list").querySelectorAll(".list-item:not(:disabled)")];
+  if (e.key === "ArrowDown" && items[0]) { e.preventDefault(); items[0].focus(); }
+  if (e.key === "Enter") { e.preventDefault(); const pick = $("place-search").value.trim() ? items[0] : null; if (pick) pick.click(); }
 });
 
 /* ---------- sign in ---------- */
 
+const FORMS = ["f-email", "f-code", "f-pair", "f-web"];
 function showForm(id) {
-  ["f-email", "f-code", "f-pair", "f-web"].forEach((f) => ($(f).hidden = f !== id));
+  FORMS.forEach((f) => ($(f).hidden = f !== id));
   $("alts").hidden = id !== "f-email";
+  document.querySelectorAll("#signin .form-error").forEach((el) => (el.hidden = true));
+  document.querySelectorAll("#signin [aria-invalid]").forEach((el) => el.removeAttribute("aria-invalid"));
   const input = $(id).querySelector("input");
   if (input) setTimeout(() => input.focus(), 30);
 }
-async function busy(form, fn) {
-  const btn = form.querySelector(".btn-primary");
-  btn.disabled = true;
-  try { await fn(); } catch { /* the toast already says why */ } finally { btn.disabled = false; }
+function formError(id, text, input) {
+  const el = $(id);
+  el.textContent = text;
+  el.hidden = !text;
+  if (input) { if (text) input.setAttribute("aria-invalid", "true"); else input.removeAttribute("aria-invalid"); }
 }
+// Runs fn with the primary button busy. A failure is written under the field,
+// where the person is looking, instead of only in a toast.
+async function busy(form, errId, input, fn) {
+  const btn = form.querySelector(".btn-primary");
+  formError(errId, "", input);
+  btn.disabled = true;
+  btn.classList.add("is-loading");
+  try { await fn(); } catch (e) {
+    formError(errId, String((e && e.message) || e).replace(/^Error: /, ""), input);
+    if (input && input.classList.contains("input-code")) { input.value = ""; input.focus(); }
+  } finally { btn.disabled = false; btn.classList.remove("is-loading"); }
+}
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 $("f-email").onsubmit = (e) => {
   e.preventDefault();
-  busy(e.target, async () => {
-    const email = $("email").value.trim();
-    const r = await call("startEmail", email);
-    $("code-label").textContent = email;
+  const email = $("email").value.trim();
+  if (!EMAIL_RE.test(email)) { formError("err-email", TXT.badEmail, $("email")); $("email").focus(); return; }
+  busy(e.target, "err-email", $("email"), async () => {
+    const r = await call("startEmail", email, { silent: true });
+    $("code-note").textContent = `${TXT.codeSent} ${email}`;
     $("code").value = (r && r.devCode) || "";
     showForm("f-code");
   });
 };
 $("f-code").onsubmit = (e) => {
   e.preventDefault();
-  busy(e.target, () => call("verifyEmail", { email: $("email").value.trim(), code: $("code").value.trim() }));
+  const code = $("code").value.trim();
+  if (code.length !== 6) { formError("err-code", TXT.badCode, $("code")); $("code").focus(); return; }
+  busy(e.target, "err-code", $("code"), () => call("verifyEmail", { email: $("email").value.trim(), code }, { silent: true }));
 };
 $("f-pair").onsubmit = (e) => {
   e.preventDefault();
-  busy(e.target, () => call("redeemPairing", $("pair").value.trim()));
+  const code = $("pair").value.trim();
+  if (code.length !== 6) { formError("err-pair", TXT.badCode, $("pair")); $("pair").focus(); return; }
+  busy(e.target, "err-pair", $("pair"), () => call("redeemPairing", code, { silent: true }));
 };
 $("back").onclick = () => showForm("f-email");
 $("to-pair").onclick = () => showForm("f-pair");
 $("pair-back").onclick = () => showForm("f-email");
 $("to-web").onclick = async () => {
+  const btn = $("to-web");
+  formError("err-alts", "");
+  btn.disabled = true;
+  btn.classList.add("is-loading");
   try {
-    const r = await call("startWebLogin");
+    const r = await call("startWebLogin", null, { silent: true });
     $("web-code").textContent = r.code;
     showForm("f-web");
-  } catch { /* the toast says why */ }
+  } catch (e) {
+    formError("err-alts", String((e && e.message) || e).replace(/^Error: /, ""));
+  } finally { btn.disabled = false; btn.classList.remove("is-loading"); }
 };
-$("web-open").onclick = () => call("openWebLogin").catch(() => {});
+$("web-open").onclick = () => { formError("err-web", ""); call("openWebLogin", null, { silent: true }).catch((e) => formError("err-web", String(e.message || e))); };
 $("web-back").onclick = () => { call("cancelWebLogin").catch(() => {}); showForm("f-email"); };
 // Six digits are the whole code: send it straight away.
 ["code", "pair"].forEach((id) => $(id).addEventListener("input", (e) => {
   e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6);
+  formError("err-" + id, "", e.target);
   if (e.target.value.length === 6) e.target.form.requestSubmit();
 }));
+$("email").addEventListener("input", () => formError("err-email", "", $("email")));
 
 /* ---------- main ---------- */
 
@@ -387,7 +592,7 @@ $("boop").onclick = () => {
 };
 $("open-places").onclick = () => openSheet("places");
 $("open-settings").onclick = () => openSheet("settings");
-$("s-key").onclick = () => { closeSheet("settings"); openSheet("keys"); };
+$("s-key").onclick = () => { closeSheet("settings", true); openSheet("keys"); };
 $("s-extend").onclick = () => call("extend").catch(() => {});
 $("s-auto").onchange = (e) => call("setAutoConnect", e.target.checked).catch(() => {});
 $("s-strict").onchange = (e) => call("setStrictKill", e.target.checked).catch(() => {});
@@ -400,7 +605,12 @@ $("detail-btn").onclick = (e) => {
   else if (a === "signOut") call("signOut").catch(() => {});
 };
 $("s-start").onchange = (e) => call("setAutostart", e.target.checked).catch(() => {});
-$("s-signout").onclick = () => { closeSheet("settings"); call("signOut").catch(() => {}); };
+$("s-signout").onclick = async (e) => {
+  const ok = await confirmDialog({ title: TXT.signOutTitle, text: TXT.signOutText, ok: TXT.signOut }, e.currentTarget);
+  if (!ok) return;
+  closeSheet("settings", true);
+  call("signOut").catch(() => {});
+};
 document.addEventListener("contextmenu", (e) => { if (!e.target.matches("input")) e.preventDefault(); });
 
 /* ---------- start ---------- */
@@ -410,3 +620,5 @@ if (!window.boopSend) {
   es.onmessage = (e) => render(JSON.parse(e.data));
 }
 call("ready").then(render).catch(() => {});
+// If the first state never comes the window still must not stay blank.
+setTimeout(() => $("app").classList.add("ready"), 1500);

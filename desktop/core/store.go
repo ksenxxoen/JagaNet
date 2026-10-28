@@ -25,6 +25,8 @@ type Store struct {
 	// Keep the kill switch up even when a connection cannot be made.
 	// Off by default: after a short wait the internet is given back.
 	StrictKill bool `json:"strictKill,omitempty"`
+	// Where the window was left (see window.go).
+	Win *WindowPlacement `json:"window,omitempty"`
 
 	cache *CachedTunnel
 

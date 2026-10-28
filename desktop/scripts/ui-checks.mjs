@@ -71,7 +71,7 @@ try {
     check("failed refreshPings shows no toast", !(await toastShown()));
     // ...but a failed action the person asked for does.
     await page.route("**/rpc/setCountry", (r) => r.fulfill({ status: 400, body: '{"error":"no luck"}', contentType: "application/json" }));
-    await click("#place-list .list-item:nth-child(2)");
+    await click("#place-list button.list-item:nth-of-type(2)");
     await page.waitForTimeout(300);
     check("failed setCountry shows a toast", await toastShown());
   });
@@ -117,7 +117,119 @@ try {
     check("rename dialog closes", await hidden("rename"));
   });
 
+  // ---- redesign step 3 ----
+
+  await attempt("no browser dialogs", async () => {
+    const js = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+    check("no prompt()/alert()/confirm() in the page script", !/\b(prompt|alert|confirm)\s*\(/.test(js.slice(js.indexOf("<script>")).replace(/\/\/.*$/gm, "")));
+  });
+
+  await attempt("sign-in errors", async () => {
+    await page.evaluate(() => { ["places", "keys", "settings"].forEach((id) => { document.getElementById(id).hidden = true; }); });
+    await show({ ...main, screen: "signin" });
+    await page.evaluate(() => { document.getElementById("email").value = "nonsense"; document.getElementById("f-email").requestSubmit(); });
+    check("a bad e-mail is explained under the field", await page.evaluate(() => !document.getElementById("err-email").hidden && document.getElementById("err-email").textContent.length > 5));
+    await page.evaluate(() => { document.getElementById("toast").hidden = true; });
+    await page.route("**/rpc/startEmail", (r) => r.fulfill({ status: 400, body: '{"error":"Нет связи с сервером"}', contentType: "application/json" }));
+    await page.evaluate(() => { document.getElementById("email").value = "demo@example.com"; document.getElementById("f-email").requestSubmit(); });
+    await page.waitForTimeout(300);
+    check("a failed request is written under the field, not in a toast",
+      (await page.evaluate(() => document.getElementById("err-email").textContent)) === "Нет связи с сервером" && !(await toastShown()));
+    check("the button is free again after the error", await page.evaluate(() => !document.querySelector("#f-email .btn-primary").disabled));
+    await page.unroute("**/rpc/startEmail");
+    await show({ ...main, screen: "main" });
+  });
+
+  await attempt("country list", async () => {
+    const list = { ...main, conn: "off", countries: [{ code: "NL", ping: 23 }, { code: "DE", ping: 41 }, { code: "JP", ping: 210, full: true }], best: "NL" };
+    await show(list);
+    await click("#open-places");
+    await page.waitForTimeout(100);
+    check("a full country cannot be clicked", await page.evaluate(() => [...document.querySelectorAll("#place-list .list-item")].some((b) => b.disabled && /Япония/.test(b.textContent))));
+    await page.fill("#place-search", "герм");
+    await page.waitForTimeout(50);
+    check("search narrows the list", (await page.evaluate(() => [...document.querySelectorAll("#place-list .list-item")].map((b) => b.textContent.trim()))).length === 1);
+    await page.fill("#place-search", "яяя");
+    check("search with no match says so", await page.evaluate(() => !!document.querySelector("#place-list .empty")));
+    await show({ ...list, countries: [] });
+    check("no countries shows an empty state with a retry button", await page.evaluate(() => !!document.querySelector("#place-list .empty .btn")));
+    await closePlaces();
+    await page.waitForTimeout(300);
+  });
+
+  await attempt("sign-out asks first", async () => {
+    await show(main);
+    let signedOut = 0;
+    await page.route("**/rpc/signOut", (r) => { signedOut++; r.fulfill({ status: 200, body: "null", contentType: "application/json" }); });
+    await click("#open-settings");
+    await click("#s-signout");
+    check("a confirmation opens", !(await hidden("confirm")));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(50);
+    check("Esc cancels without signing out", (await hidden("confirm")) && signedOut === 0);
+    await click("#s-signout");
+    await click("#confirm-ok");
+    await page.waitForTimeout(200);
+    check("confirming signs out", signedOut === 1);
+    await page.evaluate(() => { document.getElementById("settings").hidden = true; });
+  });
+
+  await attempt("update progress", async () => {
+    await show({ ...main, update: { version: "9.9.9" } });
+    await page.evaluate(() => { document.getElementById("settings").hidden = false; });
+    await show({ ...main, update: { version: "9.9.9", stage: "downloading" } });
+    check("banner is disabled and busy while downloading", await page.evaluate(() => { const b = document.getElementById("update-banner"); return b.disabled && /Скачиваем/.test(b.textContent); }));
+    await show({ ...main, update: { version: "9.9.9", stage: "failed" } });
+    check("a failed update can be retried", await page.evaluate(() => { const b = document.getElementById("update-banner"); return !b.disabled && /Повторить/.test(b.textContent); }));
+    await show({ ...main, update: null });
+    await page.evaluate(() => { document.getElementById("settings").hidden = true; });
+  });
+
+  await attempt("focus stays in the sheet", async () => {
+    await show(main);
+    await click("#open-settings");
+    await page.waitForTimeout(100);
+    for (let i = 0; i < 12; i++) await page.keyboard.press("Tab");
+    check("Tab does not leave the settings sheet", await page.evaluate(() => document.getElementById("settings").contains(document.activeElement)));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    check("Esc closes the sheet", await hidden("settings"));
+  });
+
   await browser.close();
+
+  // No horizontal scroll at any size, in the states with the longest texts.
+  const b2 = await chromium.launch();
+  const long = { ...main, email: "very.long.address.for.layout.checks@subdomain.example.com", keys: [{ id: "k1", name: "Очень длинное название ключа, которое не должно ломать верстку", country: "DE" }], key: "k1", plan: { name: "Очень длинный тариф для проверки", pro: true, expiresAt: "2099-01-01T00:00:00Z" }, update: { version: "1.3.0", notes: "Очень длинное описание обновления, которое не должно ломать баннер" } };
+  for (const [w, h] of [[360, 520], [480, 800], [1280, 800], [1920, 1080]]) {
+    for (const scale of [1, 2]) {
+      const pg = await (await b2.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: scale })).newPage();
+      await pg.route("**/events", (r) => r.abort());
+      await pg.goto(`http://127.0.0.1:${port}/`);
+      await pg.waitForFunction(() => window.boop && document.getElementById("signin"));
+      const bad = await pg.evaluate((long) => {
+        const out = [];
+        const scan = (name) => {
+          // #app is left out: its glow and waves overflow on purpose and are clipped.
+          const els = [document.documentElement, document.body, ...document.querySelectorAll(".sheet:not([hidden]), .screen:not([hidden])")];
+          for (const el of els) if (el.scrollWidth > el.clientWidth + 1) out.push(`${name}: ${el.id || el.className} ${el.scrollWidth}>${el.clientWidth}`);
+        };
+        for (const [name, st, open] of [["signin", { screen: "signin" }], ["main", {}], ["problem", { conn: "problem", problem: "no_handshake" }], ["settings", {}, "settings"], ["keys", {}, "keys"], ["places", {}, "places"]]) {
+          ["places", "keys", "settings"].forEach((id) => { document.getElementById(id).hidden = true; });
+          syncPanel();
+          window.boop.update({ ...long, ...st });
+          if (open) openSheet(open, false);
+          scan(name);
+        }
+        return out;
+      }, long);
+      check(`no horizontal overflow at ${w}x${h} @${scale}x${bad.length ? " — " + bad.join("; ") : ""}`, bad.length === 0);
+      const wideOk = w < 896 || (await pg.evaluate(() => { openSheet("places", false); return getComputedStyle(document.getElementById("places")).width !== getComputedStyle(document.getElementById("app")).width; }));
+      if (w >= 896) check(`at ${w}px a sheet is a side panel, not full screen`, wideOk);
+      await pg.close();
+    }
+  }
+  await b2.close();
 } finally {
   stop();
 }

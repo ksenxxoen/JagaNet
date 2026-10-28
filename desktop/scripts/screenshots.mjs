@@ -1,4 +1,4 @@
-// Renders the window headless in the states the redesign tasks care about.
+// Renders the window headless in the states the redesign tasks care about: every screen, sheet and dialog.
 //
 //   node scripts/screenshots.mjs <out-dir> [desktop-dir]
 //
@@ -24,36 +24,61 @@ const port = 5199 + Math.floor(Math.random() * 500);
 mkdirSync(out, { recursive: true });
 
 const NOW = 1_800_000_000_000;
+const longEmail = "very.long.address.for.layout.checks@subdomain.example.com";
+const longKey = "Очень длинное название ключа, которое не должно ломать верстку";
 const base = {
   screen: "main", conn: "off", country: "auto", best: "NL", ping: null,
   countries: [
-    { code: "NL", ping: 23 }, { code: "DE", ping: 41 }, { code: "FI", ping: 58 },
-    { code: "US", ping: 131 }, { code: "JP", ping: 210, full: true },
+    { code: "NL", ping: 23 }, { code: "DE", ping: 41 }, { code: "FI", ping: 58 }, { code: "SE", ping: 64 },
+    { code: "US", ping: 131 }, { code: "JP", ping: 210, full: true }, { code: "AM", ping: 88 }, { code: "KZ", ping: 97 },
   ],
-  email: "demo@example.com", plan: { name: "Pro", pro: true, expiresAt: "2027-01-15T00:00:00Z" },
+  email: "demo@example.com", plan: { name: "Pro", pro: true, expiresAt: "2027-03-15T00:00:00Z" },
   autoConnect: true, autostart: true, version: "1.2.0-dev", webLogin: false,
-  keys: [{ id: "k1", name: "Demo phone", country: "DE" }, { id: "k2", name: "Demo laptop", inUse: true }], key: "",
+  keys: [{ id: "k1", name: "Demo phone", country: "DE" }, { id: "k2", name: "Demo laptop", inUse: true }], key: "", update: null, problem: "", released: false,
 };
+const on = { conn: "on", current: "NL", ping: 24, since: NOW - 3_725_000 };
+// Each state: the UI state fed to window.boop.update, plus `act`, a snippet run in the page afterwards
+// (it calls the window's own functions, so the real code paths draw the sheets and dialogs).
 const states = {
-  "signin": { screen: "signin" },
+  "signin-email": { screen: "signin" },
+  "signin-email-error": { screen: "signin", act: `formError("err-email", TXT.badEmail, $("email")); $("email").value = "demo@"` },
+  "signin-code": { screen: "signin", act: `$("email").value = "demo@example.com"; $("code-note").textContent = TXT.codeSent + " demo@example.com"; showForm("f-code"); $("code").value = "48"` },
+  "signin-code-error": { screen: "signin", act: `$("code-note").textContent = TXT.codeSent + " demo@example.com"; showForm("f-code"); formError("err-code", "Неверный код. Проверьте письмо и попробуйте ещё раз.", $("code"))` },
+  "signin-loading": { screen: "signin", act: `$("email").value = "demo@example.com"; $("f-email").querySelector(".btn-primary").classList.add("is-loading"); $("f-email").querySelector(".btn-primary").disabled = true` },
+  "signin-web": { screen: "signin", act: `$("web-code").textContent = "4821"; showForm("f-web")` },
+  "signin-pair": { screen: "signin", act: `showForm("f-pair")` },
+  "signin-offline": { screen: "signin", act: `formError("err-email", "Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.", $("email")); $("email").value = "demo@example.com"` },
   "off": {},
   "connecting": { conn: "connecting" },
-  "reconnecting": { conn: "reconnecting", current: "NL", since: NOW - 3_725_000 },
-  "on": { conn: "on", current: "NL", ping: 24, since: NOW - 3_725_000 },
+  "on": on,
+  "banner-update": { ...on, update: { version: "1.3.0", notes: "Быстрее подключение" } },
   "problem-plan": { conn: "problem", problem: "plan", released: true },
-  "problem-auth": { conn: "problem", problem: "auth" },
   "problem-server": { conn: "problem", problem: "no_handshake", released: true },
-  "settings": { conn: "on", current: "NL", ping: 24, since: NOW - 3_725_000, open: "settings" },
-  "places": { conn: "on", current: "NL", ping: 24, since: NOW - 3_725_000, open: "places" },
-  "keys": { conn: "on", current: "NL", ping: 24, since: NOW - 3_725_000, open: "keys" },
+  "settings": { ...on, act: `openSheet("settings")` },
+  "settings-long": { ...on, email: longEmail, keys: [{ id: "k1", name: longKey }], key: "k1", act: `openSheet("settings")` },
+  "settings-expired": { ...on, plan: { name: "Pro", pro: true, expiresAt: "2026-12-01T00:00:00Z" }, act: `openSheet("settings")` },
+  "settings-update": { ...on, update: { version: "1.3.0", notes: "Быстрее подключение" }, act: `openSheet("settings")` },
+  "settings-updating": { ...on, update: { version: "1.3.0", stage: "downloading" }, act: `openSheet("settings")` },
+  "confirm-signout": { ...on, act: `openSheet("settings"); $("s-signout").click()` },
+  "places": { ...on, act: `openSheet("places")` },
+  "places-search": { ...on, act: `openSheet("places"); $("place-search").value = "ге"; renderPlaces()` },
+  "places-noresult": { ...on, act: `openSheet("places"); $("place-search").value = "яяя"; renderPlaces()` },
+  "places-empty": { ...on, countries: [], best: "", act: `openSheet("places")` },
+  "keys": { ...on, act: `openSheet("keys")` },
+  "keys-long": { ...on, keys: [{ id: "k1", name: longKey, country: "DE" }, { id: "k2", name: "Demo laptop", inUse: true }], key: "k1", act: `openSheet("keys")` },
+  "keys-empty": { ...on, keys: [], act: `openSheet("keys")` },
+  "rename": { ...on, act: `openSheet("keys"); renameKey({ id: "k1", name: "Demo phone" })` },
+  "toast": { ...on, act: `toast("Не удалось подключиться. Проверьте интернет.")` },
 };
+// Big pictures at a higher scale only for the main states, to keep the folder small.
+const CORE = ["signin-email", "off", "on", "problem-plan", "settings", "places", "keys"];
 const viewports = [
-  { name: "360x560", width: 360, height: 560, scale: 1 },
-  { name: "360x560@1.5x", width: 360, height: 560, scale: 1.5 },
-  { name: "1280x800", width: 1280, height: 800, scale: 1 },
-  { name: "1280x800@1.5x", width: 1280, height: 800, scale: 1.5 },
-];
-const schemes = ["light", "dark"];
+  { name: "360x520", width: 360, height: 520, scales: [1, 1.5, 2] },
+  { name: "480x800", width: 480, height: 800, scales: [1, 1.5] },
+  { name: "1280x800", width: 1280, height: 800, scales: [1, 1.5, 2] },
+  { name: "1920x1080", width: 1920, height: 1080, scales: [1, 1.5] },
+].filter((v) => !process.env.SHOT_VP || process.env.SHOT_VP.split(",").includes(v.name)).flatMap((v) => v.scales.map((scale) => ({ name: `${v.name}${scale === 1 ? "" : `@${scale}x`}`, width: v.width, height: v.height, scale })));
+const schemes = process.env.SHOT_SCHEMES ? process.env.SHOT_SCHEMES.split(",") : ["light", "dark"];
 
 const server = spawn("go", ["run", "."], {
   cwd: root,
@@ -78,25 +103,37 @@ try {
     const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.scale, locale: "ru-RU", colorScheme: scheme });
     await ctx.addInitScript(`Date.now = () => ${NOW};`);
     const page = await ctx.newPage();
+    // The dev server's own pushes (a signed-out app) would overwrite the states fed below.
+    await page.route("**/events", (r) => r.abort());
     await page.goto(`http://127.0.0.1:${port}/`);
     await page.addStyleTag({ content: "*,*::before,*::after{animation:none!important;transition:none!important}" });
     await page.waitForFunction(() => window.boop && document.getElementById("signin"));
     await page.waitForTimeout(300);
     for (const [name, patch] of Object.entries(states)) {
-      const { open, ...s } = patch;
-      await page.evaluate(([state, open]) => {
-        ["places", "keys", "settings"].forEach((id) => { document.getElementById(id).hidden = true; });
+      if (vp.scale > 1 && vp.width >= 1280 && !CORE.includes(name)) continue;
+      const { act, ...st } = patch;
+      await page.evaluate(([state, act]) => {
+        // Back to a clean window: no sheet, dialog or toast left from the previous state.
+        ["places", "keys", "settings"].forEach((id) => { const el = document.getElementById(id); el.hidden = true; el.classList.remove("closing"); });
+        ["rename", "confirm", "toast"].forEach((id) => { document.getElementById(id).hidden = true; });
+        document.getElementById("place-search").value = "";
+        syncPanel();
+        showForm("f-email");
+        document.querySelectorAll("#signin .btn-primary").forEach((b) => { b.disabled = false; b.classList.remove("is-loading"); });
+        document.getElementById("email").value = "";
+        document.getElementById("code").value = "";
+        window.boop.update({ screen: "signin" }); // so a wide window opens its country panel again
         window.boop.update(state);
-        if (open) document.getElementById(open).hidden = false;
-        if (open === "places" || open === "keys") window.boop.update({});
-      }, [{ ...base, ...s }, open]);
-      await page.waitForTimeout(100);
+        if (act) (0, eval)(act);
+        if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      }, [{ ...base, ...st }, act || ""]);
+      await page.waitForTimeout(120);
       await page.screenshot({ path: `${out}/${vp.name}-${scheme}-${name}.png` });
     }
     await ctx.close();
   }
   await browser.close();
-  console.log(`wrote ${viewports.length * schemes.length * Object.keys(states).length} screenshots to ${out}`);
+  console.log(`wrote screenshots to ${out}`);
 } finally {
   stop();
 }

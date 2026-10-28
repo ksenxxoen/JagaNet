@@ -20,20 +20,20 @@ import (
 // The window hides to the notification area instead of closing; the VPN keeps running.
 
 var (
-	shell32           = windows.NewLazySystemDLL("shell32.dll")
-	shellNotifyIcon   = shell32.NewProc("Shell_NotifyIconW")
-	setWindowLongPtr  = user32.NewProc("SetWindowLongPtrW")
-	callWindowProc    = user32.NewProc("CallWindowProcW")
-	loadImage         = user32.NewProc("LoadImageW")
-	getSystemMetrics  = user32.NewProc("GetSystemMetrics")
-	createPopupMenu   = user32.NewProc("CreatePopupMenu")
-	appendMenu        = user32.NewProc("AppendMenuW")
-	setMenuDefault    = user32.NewProc("SetMenuDefaultItem")
-	trackPopupMenu    = user32.NewProc("TrackPopupMenu")
-	destroyMenu       = user32.NewProc("DestroyMenu")
-	getCursorPos      = user32.NewProc("GetCursorPos")
-	postMessage       = user32.NewProc("PostMessageW")
-	registerWindowMsg = user32.NewProc("RegisterWindowMessageW")
+	shell32                = windows.NewLazySystemDLL("shell32.dll")
+	shellNotifyIcon        = shell32.NewProc("Shell_NotifyIconW")
+	setWindowLongPtr       = user32.NewProc("SetWindowLongPtrW")
+	callWindowProc         = user32.NewProc("CallWindowProcW")
+	loadImage              = user32.NewProc("LoadImageW")
+	getSystemMetricsForDpi = user32.NewProc("GetSystemMetricsForDpi")
+	createPopupMenu        = user32.NewProc("CreatePopupMenu")
+	appendMenu             = user32.NewProc("AppendMenuW")
+	setMenuDefault         = user32.NewProc("SetMenuDefaultItem")
+	trackPopupMenu         = user32.NewProc("TrackPopupMenu")
+	destroyMenu            = user32.NewProc("DestroyMenu")
+	getCursorPos           = user32.NewProc("GetCursorPos")
+	postMessage            = user32.NewProc("PostMessageW")
+	registerWindowMsg      = user32.NewProc("RegisterWindowMessageW")
 )
 
 const (
@@ -99,6 +99,7 @@ type tray struct {
 	app     *core.App
 	quit    func()
 	oldProc uintptr
+	inst    windows.Handle
 	created uint32 // "TaskbarCreated": Explorer restarted, the icon must be added again
 	icons   [5]uintptr
 	mu      sync.Mutex
@@ -110,17 +111,33 @@ func newTray(hwnd uintptr, app *core.App, quit func()) *tray {
 	t := &tray{hwnd: hwnd, app: app, quit: quit, conn: "off"}
 	var inst windows.Handle
 	_ = windows.GetModuleHandleEx(0, nil, &inst)
-	cx, _, _ := getSystemMetrics.Call(smCxSmIcon)
-	cy, _, _ := getSystemMetrics.Call(smCySmIcon)
-	for _, id := range []int{iconOn, iconOff, iconConnecting, iconProblem} {
-		t.icons[id], _, _ = loadImage.Call(uintptr(inst), uintptr(id), imageIcon, cx, cy, lrShared)
-	}
+	t.inst = inst
+	t.loadIcons(dpiOf(hwnd))
 	name, _ := windows.UTF16PtrFromString("TaskbarCreated")
 	r, _, _ := registerWindowMsg.Call(uintptr(unsafe.Pointer(name)))
 	t.created = uint32(r)
 	t.oldProc, _, _ = setWindowLongPtr.Call(hwnd, gwlpWndProc, windows.NewCallback(t.wndproc))
 	t.notify(nimAdd, "")
 	return t
+}
+
+// loadIcons picks the icon size the notification area uses at this scale; the
+// executable carries 16, 20, 24, 32, 40, 48 and 64 px images (winres.json), so
+// Windows takes an exact one instead of scaling the big picture.
+func (t *tray) loadIcons(dpi int) {
+	cx, _, _ := getSystemMetricsForDpi.Call(smCxSmIcon, uintptr(dpi))
+	cy, _, _ := getSystemMetricsForDpi.Call(smCySmIcon, uintptr(dpi))
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, id := range []int{iconOn, iconOff, iconConnecting, iconProblem} {
+		t.icons[id], _, _ = loadImage.Call(uintptr(t.inst), uintptr(id), imageIcon, cx, cy, lrShared)
+	}
+}
+
+// reloadIcons runs when the scale changes (another monitor, another setting).
+func (t *tray) reloadIcons(dpi int) {
+	t.loadIcons(dpi)
+	t.notify(nimModify, "")
 }
 
 func (t *tray) text(k string) string {
