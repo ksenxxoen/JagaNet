@@ -113,7 +113,9 @@ func main() {
 	if slices.Contains(os.Args[1:], "--tray") {
 		showWindow.Call(hwnd, 0) // started with Windows: only the tray icon
 	}
-	w.SetSize(380, 640, webview2.HintFixed)
+	// The process is system-DPI aware, so SetSize takes physical pixels like the
+	// size above; unscaled it shrank the window to 380x640 at 125-200%.
+	w.SetSize(int(380*dpi/96), int(640*dpi/96), webview2.HintFixed)
 	themeTitleBar(hwnd)
 	t := newTray(hwnd, app, w.Terminate)
 	defer t.remove()
@@ -134,23 +136,20 @@ func main() {
 		w.Dispatch(func() { t.balloon(msg) })
 	}
 	app.Init()
+	// Also on a panic in this goroutine (the recover above runs after it): the
+	// adapter and kill switch go with the process, but the panel is told.
+	defer app.Disconnect()
 
 	// Calls run off the window's thread; the answer comes back through boop.reply.
 	_ = w.Bind("boopSend", func(id int, method, arg string) {
 		core.Go("call "+method, func() {
-			res, err := app.Call(method, json.RawMessage(arg))
-			out := map[string]any{"ok": err == nil, "value": res}
-			if err != nil {
-				out["error"] = err.Error()
-			}
-			b, _ := json.Marshal(out)
+			b, _ := json.Marshal(app.Invoke(method, json.RawMessage(arg)))
 			push("window.boop.reply(" + itoa(id) + "," + string(b) + ")")
 		})
 	})
 	w.SetHtml(page())
 	w.Run()
 
-	app.Disconnect()
 	log.Printf("Boop closed")
 }
 
