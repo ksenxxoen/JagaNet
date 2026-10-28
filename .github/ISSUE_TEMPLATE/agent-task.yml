@@ -1,0 +1,26 @@
+name: Agent task
+description: A task for Claude (handed over by Grok Bot or a person). See docs/AGENT-TASKS.md.
+title: "[task] "
+labels: ["claude:todo"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should be done and why.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: A checklist the result is accepted against.
+      placeholder: |
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Files, links, constraints, things not to touch.
