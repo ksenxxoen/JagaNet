@@ -24,6 +24,7 @@ import dev.jaganet.server.Ctx
 import dev.jaganet.server.Mode
 import dev.jaganet.server.badRequest
 import dev.jaganet.server.forbidden
+import dev.jaganet.server.notFound
 import dev.jaganet.server.services.Admin
 import dev.jaganet.server.services.AuthService
 import dev.jaganet.server.services.Billing
@@ -61,6 +62,7 @@ import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.receive
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
@@ -162,6 +164,13 @@ fun Application.jaganet(s: Services) {
         }
 
         route("/v1") {
+            // Public and opt-in: 404 until DOWNLOADS_DIR has Boop.exe and desktop.json.
+            // Older clients never call it. No auth, so an update can be fetched signed out.
+            get("/app/desktop") {
+                val m = s.site.desktopManifest() ?: throw notFound("No desktop build is published")
+                call.response.header(HttpHeaders.CacheControl, "no-cache")
+                call.respond(m)
+            }
             rateLimit(AUTH_LIMIT) {
                 post("/auth/email/start") {
                     val b = call.receive<EmailStartReq>()

@@ -20,8 +20,6 @@ import (
 // made by the owner reaches the app within this time and is applied in place.
 const (
 	syncEvery    = 30 * time.Second
-	staleAfter   = 3 * time.Minute
-	stuckAfter   = 15 * time.Second
 	pingEvery    = 5 * time.Second
 	pingAllEvery = 2 * time.Minute
 )
@@ -68,6 +66,18 @@ type UIState struct {
 	WebLogin    bool      `json:"webLogin"`
 	Keys        []KeyUI   `json:"keys"`
 	Key         string    `json:"key"`
+	// Problem stays on screen until the tunnel is up or the user disconnects.
+	Problem    string    `json:"problem,omitempty"`
+	Released   bool      `json:"released,omitempty"`
+	StrictKill bool      `json:"strictKill,omitempty"`
+	Update     *UpdateUI `json:"update,omitempty"`
+}
+
+// UpdateUI is a newer desktop build the panel is offering.
+type UpdateUI struct {
+	Version   string `json:"version"`
+	Notes     string `json:"notes,omitempty"`
+	Mandatory bool   `json:"mandatory,omitempty"`
 }
 
 type App struct {
@@ -78,31 +88,46 @@ type App struct {
 	OpenURL func(string)
 	OnState func(UIState)
 	OnToast func(string)
+	// OnNotify is a system notification (the window may be hidden in the tray).
+	OnNotify func(string)
+	// ApplyUpdate replaces this process with a staged exe. Nil outside Windows.
+	ApplyUpdate func(staged string) error
+	// UpdateDir is where a downloaded exe is staged. Empty skips installing.
+	UpdateDir string
 	// Starting with Windows, where the system allows it.
 	Autostart   func(on bool) error
 	AutostartOn func() bool
 	Version     string
 	Site        string
 
-	mu       sync.Mutex
-	plan     *Plan
-	servers  []Server
-	keys     []Key
-	pings    map[string]float64 // by host
-	conn     string
-	since    time.Time
-	current  string
-	curHost  string
-	curPing  *float64
-	applied  string // TunnelState.version now in the tunnel
-	peerKey  string
-	stop     context.CancelFunc
-	resyncCh chan struct{}
+	mu         sync.Mutex
+	plan       *Plan
+	servers    []Server
+	keys       []Key
+	pings      map[string]float64 // by host
+	conn       string
+	since      time.Time
+	current    string
+	curHost    string
+	curPing    *float64
+	applied    string // TunnelState.version now in the tunnel
+	peerKey    string
+	problem    string
+	released   bool
+	asleep     bool // tunnel is down on purpose; sync must not bring it back
+	skip       []string
+	hold       *tunnelHold
+	available  *Manifest
+	told       map[string]bool
+	lastToggle time.Time
+	stop       context.CancelFunc
+	resyncCh   chan struct{}
 
 	webLogin    context.CancelFunc
 	webLoginURL string
 
-	op sync.Mutex // one change to the tunnel at a time
+	op  sync.Mutex // one change to the tunnel at a time
+	cmd sync.Mutex // one Connect/Disconnect at a time
 }
 
 func (a *App) Init() {
@@ -113,7 +138,9 @@ func (a *App) Init() {
 	}
 	a.API.Token = func() string { a.mu.Lock(); defer a.mu.Unlock(); return a.Store.Token }
 	a.API.Lang = func() string { a.mu.Lock(); defer a.mu.Unlock(); return a.Store.Lang }
-	go a.pingAllLoop()
+	TunnelActive = func() bool { return a.Tunnel != nil && a.Tunnel.Up() }
+	Go("pings", a.pingAllLoop)
+	Go("updates", a.updateLoop)
 }
 
 // Russian unless BOOP_LANG says otherwise; the language can be changed in settings.
@@ -133,6 +160,10 @@ func (a *App) state() UIState {
 		Current: a.current, Ping: a.curPing, Countries: []Country{},
 		WebLogin: a.webLogin != nil,
 		Keys:     []KeyUI{}, Key: a.Store.KeyID,
+		Problem: a.problem, Released: a.released, StrictKill: a.Store.StrictKill,
+	}
+	if a.available != nil {
+		s.Update = &UpdateUI{Version: a.available.Version, Notes: a.available.Notes, Mandatory: a.available.Mandatory}
 	}
 	for _, k := range a.keys {
 		ui := KeyUI{ID: k.ID, Name: k.Name}
@@ -213,7 +244,7 @@ func (a *App) Call(method string, arg json.RawMessage) (any, error) {
 		auto := a.Store.AutoConnect
 		a.mu.Unlock()
 		if signedIn {
-			go a.refresh(auto)
+			Go("refresh", func() { a.refresh(auto) })
 		}
 		a.mu.Lock()
 		defer a.mu.Unlock()
@@ -268,7 +299,16 @@ func (a *App) Call(method string, arg json.RawMessage) (any, error) {
 		}
 		return nil, nil
 	case "refreshKeys":
-		go func() { a.loadKeys(context.Background()); a.emit() }()
+		Go("keys", func() { a.loadKeys(context.Background()); a.emit() })
+		return nil, nil
+	case "renameKey":
+		var rk struct{ ID, Name string }
+		_ = json.Unmarshal(arg, &rk)
+		if err := a.API.RenameDevice(ctx, strings.TrimSpace(rk.ID), strings.TrimSpace(rk.Name)); err != nil {
+			return nil, a.humanize(err)
+		}
+		a.loadKeys(ctx)
+		a.emit()
 		return nil, nil
 	case "setKey":
 		a.mu.Lock()
@@ -279,7 +319,7 @@ func (a *App) Call(method string, arg json.RawMessage) (any, error) {
 		a.mu.Unlock()
 		a.emit()
 		if changed && on {
-			go a.switchCountry()
+			Go("switch", a.switchCountry)
 		} else if !on {
 			a.Connect()
 		}
@@ -294,9 +334,27 @@ func (a *App) Call(method string, arg json.RawMessage) (any, error) {
 		a.mu.Unlock()
 		a.emit()
 		if changed && on {
-			go a.switchCountry()
+			Go("switch", a.switchCountry)
 		} else if !on {
 			a.Connect()
+		}
+		return nil, nil
+	case "setStrictKill":
+		var v bool
+		_ = json.Unmarshal(arg, &v)
+		a.mu.Lock()
+		a.Store.StrictKill = v
+		_ = a.Store.Save()
+		a.mu.Unlock()
+		a.emit()
+		return nil, nil
+	case "update":
+		a.mu.Lock()
+		m := a.available
+		a.mu.Unlock()
+		if m != nil {
+			mm := *m
+			Go("update", func() { a.installUpdate(mm, true) })
 		}
 		return nil, nil
 	case "setAutoConnect":
@@ -330,7 +388,7 @@ func (a *App) Call(method string, arg json.RawMessage) (any, error) {
 		a.emit()
 		return nil, nil
 	case "refreshPings":
-		go a.pingAll()
+		Go("pings", a.pingAll)
 		return nil, nil
 	case "extend":
 		if a.OpenURL != nil {
@@ -339,10 +397,22 @@ func (a *App) Call(method string, arg json.RawMessage) (any, error) {
 		return nil, nil
 	case "signOut":
 		a.Disconnect()
-		_ = a.API.Logout(ctx)
 		a.mu.Lock()
-		a.Store.Token, a.Store.PrivateKey = "", ""
+		id := a.Store.DeviceID
+		a.mu.Unlock()
+		if id != "" {
+			if err := a.API.RemoveDevice(ctx, id); err != nil {
+				log.Printf("sign out: %v", err)
+				_ = a.API.Logout(ctx)
+			}
+		} else {
+			_ = a.API.Logout(ctx)
+		}
+		a.mu.Lock()
+		a.Store.Token, a.Store.PrivateKey, a.Store.DeviceID = "", "", ""
+		a.Store.SetCached(nil)
 		a.plan, a.applied, a.peerKey = nil, "", ""
+		a.hold = nil
 		_ = a.Store.Save()
 		a.mu.Unlock()
 		a.emit()
@@ -364,7 +434,7 @@ func (a *App) startWebLogin(r AppLogin) {
 	if a.OpenURL != nil {
 		a.OpenURL(r.URL)
 	}
-	go func() {
+	Go("weblogin", func() {
 		defer func() {
 			cancel()
 			a.mu.Lock()
@@ -396,7 +466,7 @@ func (a *App) startWebLogin(r AppLogin) {
 				return
 			}
 		}
-	}()
+	})
 }
 
 func (a *App) device() DeviceInfo {
@@ -412,13 +482,28 @@ func (a *App) signedIn(s Session, err error) (any, error) {
 		return nil, a.humanize(err)
 	}
 	a.mu.Lock()
+	oldTok, oldDev := a.Store.Token, a.Store.DeviceID
+	a.mu.Unlock()
+	// A second sign-in used to leave the previous device on the account forever.
+	if oldTok != "" && oldDev != "" && oldDev != s.DeviceID {
+		a.Disconnect()
+		cctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := a.API.RemoveDevice(cctx, oldDev); err != nil {
+			log.Printf("replace device: %v", err)
+		}
+		cancel()
+	}
+	a.mu.Lock()
 	a.Store.Token = s.Token
+	a.Store.DeviceID = s.DeviceID
 	a.Store.Email = s.User.Email
 	a.Store.PrivateKey = ""
+	a.Store.SetCached(nil)
 	a.applied, a.peerKey = "", ""
+	a.hold = nil
 	_ = a.Store.Save()
 	a.mu.Unlock()
-	go a.refresh(false)
+	Go("refresh", func() { a.refresh(false) })
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.state(), nil
@@ -484,9 +569,12 @@ func (a *App) unauthorized(err error) bool {
 	}
 	a.mu.Lock()
 	a.Store.Token = ""
+	a.Store.DeviceID = ""
+	a.Store.SetCached(nil)
 	_ = a.Store.Save()
 	a.mu.Unlock()
 	a.Disconnect()
+	a.alert(ProbAuth)
 	return true
 }
 
@@ -531,17 +619,29 @@ func (a *App) toast(err error) {
 
 // Toggle turns the VPN on or off, for the tray menu.
 func (a *App) Toggle() {
+	a.cmd.Lock()
+	defer a.cmd.Unlock()
+	if time.Since(a.lastToggle) < 400*time.Millisecond {
+		return
+	}
+	a.lastToggle = time.Now()
 	a.mu.Lock()
 	on := a.conn != "off"
 	a.mu.Unlock()
 	if on {
-		a.Disconnect()
+		a.disconnect()
 	} else {
-		a.Connect()
+		a.connect()
 	}
 }
 
 func (a *App) Connect() {
+	a.cmd.Lock()
+	defer a.cmd.Unlock()
+	a.connect()
+}
+
+func (a *App) connect() {
 	a.mu.Lock()
 	if a.conn != "off" || a.Store.Token == "" {
 		a.mu.Unlock()
@@ -549,15 +649,26 @@ func (a *App) Connect() {
 	}
 	a.conn = "connecting"
 	a.curPing = nil
+	a.problem = ""
+	a.released = false
+	a.asleep = false
+	a.skip = nil
+	a.told = nil
 	ctx, cancel := context.WithCancel(context.Background())
 	a.stop = cancel
 	a.resyncCh = make(chan struct{}, 1)
 	a.mu.Unlock()
 	a.emit()
-	go a.run(ctx)
+	Go("run", func() { a.run(ctx) })
 }
 
 func (a *App) Disconnect() {
+	a.cmd.Lock()
+	defer a.cmd.Unlock()
+	a.disconnect()
+}
+
+func (a *App) disconnect() {
 	a.mu.Lock()
 	if a.conn == "off" {
 		a.mu.Unlock()
@@ -568,75 +679,23 @@ func (a *App) Disconnect() {
 		a.stop()
 	}
 	a.conn, a.current, a.curHost, a.curPing = "off", "", "", nil
+	a.problem, a.released, a.asleep = "", false, false
+	a.skip = nil
+	a.hold = nil
+	a.applied, a.peerKey = "", ""
 	a.mu.Unlock()
 	a.op.Lock()
-	a.Tunnel.Down()
-	a.applied, a.peerKey = "", ""
+	if a.Tunnel != nil {
+		a.Tunnel.Down()
+	}
 	a.op.Unlock()
 	a.emit()
 	if wasOn {
-		go func() {
+		Go("event", func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			_ = a.API.Event(ctx, "disconnected")
-		}()
-	}
-}
-
-func (a *App) fail(err error) {
-	if a.unauthorized(err) {
-		return
-	}
-	a.Disconnect()
-	a.toast(err)
-}
-
-func (a *App) run(ctx context.Context) {
-	if err := a.establish(ctx, false); err != nil {
-		if ctx.Err() == nil {
-			a.fail(err)
-		}
-		return
-	}
-	start := time.Now()
-	lastSync := time.Now()
-	lastPing := time.Time{}
-	tick := time.NewTicker(time.Second)
-	defer tick.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-a.resyncCh:
-			a.sync(ctx)
-			lastSync = time.Now()
-		case <-tick.C:
-		}
-		st := a.Tunnel.Stats()
-		a.mu.Lock()
-		conn := a.conn
-		if conn == "connecting" && !st.Handshake.IsZero() {
-			a.conn, a.since = "on", time.Now()
-			conn = "on"
-			go func() { _ = a.API.Event(context.Background(), "connected") }()
-			a.mu.Unlock()
-			a.emit()
-			go a.pingCurrent(ctx)
-			lastPing = time.Now()
-		} else {
-			a.mu.Unlock()
-		}
-		// A handshake that stopped, or never came, often means the server moved us: ask now.
-		stuck := conn == "connecting" && time.Since(start) > stuckAfter && time.Since(lastSync) > stuckAfter
-		stale := conn == "on" && time.Since(st.Handshake) > staleAfter && time.Since(lastSync) > stuckAfter
-		if stuck || stale || time.Since(lastSync) > syncEvery {
-			a.sync(ctx)
-			lastSync = time.Now()
-		}
-		if conn == "on" && time.Since(lastPing) > pingEvery {
-			go a.pingCurrent(ctx)
-			lastPing = time.Now()
-		}
+		})
 	}
 }
 
@@ -658,19 +717,22 @@ func (a *App) sync(ctx context.Context) {
 		log.Printf("sync: %v", err)
 		return
 	}
-	a.op.Lock()
+	a.mu.Lock()
 	applied := a.applied
-	a.op.Unlock()
+	a.mu.Unlock()
 	if st.Config == nil || st.Rekey {
 		err = a.establish(ctx, false)
 	} else if st.Version != applied {
 		log.Printf("sync: new settings %s", st.Version)
 		err = a.apply(ctx, st)
 	}
-	if err != nil && ctx.Err() == nil {
+	if err != nil && ctx.Err() == nil && !errors.Is(err, errPaused) {
+		if a.unauthorized(err) {
+			return
+		}
 		var e *APIError
 		if errors.As(err, &e) && (e.Status == 402 || e.Status == 403) {
-			a.fail(err) // the plan ended
+			a.stopProblem(ProbPlan)
 			return
 		}
 		log.Printf("sync: %v", err)
@@ -685,20 +747,29 @@ func (a *App) syncKey(ctx context.Context, id string) {
 			return
 		}
 		var e *APIError
+		if errors.As(err, &e) && (e.Status == 402 || e.Status == 403) {
+			a.stopProblem(ProbPlan)
+			return
+		}
 		if errors.As(err, &e) && e.Status == 404 {
+			a.alert(ProbKeyRemoved)
+			a.mu.Lock()
+			a.problem = ProbKeyRemoved
+			a.mu.Unlock()
+			a.emit()
 			err = a.establish(ctx, true) // the key is gone: back to the app's own
 		}
-		if err != nil {
+		if err != nil && !errors.Is(err, errPaused) {
 			log.Printf("sync key: %v", err)
 		}
 		return
 	}
-	a.op.Lock()
+	a.mu.Lock()
 	applied := a.applied
-	a.op.Unlock()
+	a.mu.Unlock()
 	if kt.Version != applied {
 		log.Printf("sync: new key settings %s", kt.Version)
-		if err := a.apply(ctx, keyState(kt), kt.PrivateKey); err != nil {
+		if err := a.apply(ctx, keyState(kt), kt.PrivateKey); err != nil && !errors.Is(err, errPaused) {
 			log.Printf("sync key: %v", err)
 		}
 	}
@@ -740,7 +811,7 @@ func (a *App) establish(ctx context.Context, moveNow bool) error {
 		a.Store.KeyID = ""
 		_ = a.Store.Save()
 		a.mu.Unlock()
-		go func() { a.loadKeys(context.Background()); a.emit() }()
+		Go("keys", func() { a.loadKeys(context.Background()); a.emit() })
 	}
 	servers := a.loadServers(ctx)
 	st, err := a.API.Tunnel(ctx)
@@ -757,8 +828,11 @@ func (a *App) establish(ctx context.Context, moveNow bool) error {
 		return slices.ContainsFunc(servers, func(s Server) bool { return s.ID == id && slices.Contains(s.Protocols, Protocol) })
 	}
 
+	away := st.Config != nil && a.serverSkipped(st.Config.ServerID)
 	target := ""
 	switch {
+	case away:
+		target = a.pick(want, servers) // this node did not answer; try another
 	case st.Config != nil && st.Rekey && usable(st.Config.ServerID):
 		target = st.Config.ServerID // a new key on the same node
 	case st.Config == nil || st.Config.Protocol != Protocol || !usable(st.Config.ServerID):
@@ -803,59 +877,44 @@ func (a *App) establish(ctx context.Context, moveNow bool) error {
 	return a.apply(ctx, st)
 }
 
-// apply puts a tunnel into the adapter. priv is a key's private key, or empty for the app's own.
-func (a *App) apply(ctx context.Context, st TunnelState, priv ...string) error {
-	a.op.Lock()
-	defer a.op.Unlock()
-	a.mu.Lock()
-	key := a.Store.PrivateKey
-	if len(priv) > 0 {
-		key = priv[0]
-	}
-	off := a.conn == "off"
-	a.mu.Unlock()
-	if off {
-		return context.Canceled
-	}
-	if key == "" {
-		return errors.New("no key")
-	}
-	cfg, peer, err := BuildConfig(ctx, key, st.Config, a.peerKey != "" && a.peerKey == peerKeyOf(st.Config))
-	if err != nil {
-		return err
-	}
-	if err := a.Tunnel.Apply(cfg); err != nil {
-		return err
-	}
-	a.applied, a.peerKey = st.Version, peer
-	a.mu.Lock()
-	a.current = st.CountryCode
-	if a.current == "" {
-		for _, s := range a.servers {
-			if s.ID == st.Config.ServerID {
-				a.current = s.CountryCode
-			}
-		}
-	}
-	a.curHost = EndpointHost(st.Config)
-	a.mu.Unlock()
-	a.emit()
-	return nil
-}
-
 func peerKeyOf(c *TunnelConfig) string {
 	var p awgParams
 	_ = json.Unmarshal(c.Params, &p)
 	return p.ServerPublicKey
 }
 
+func (a *App) serverSkipped(id string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return slices.Contains(a.skip, id)
+}
+
 // pick chooses a node: the lowest ping, with busy nodes counting as slower.
+// Nodes that failed a handshake in this attempt are skipped until none remain.
 func (a *App) pick(want string, servers []Server) string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	id := a.choose(want, servers, true)
+	if id == "?" && want != "auto" {
+		id = a.choose("auto", servers, true)
+	}
+	if id == "?" && len(a.skip) > 0 {
+		a.skip = nil
+		id = a.choose(want, servers, false)
+		if id == "?" && want != "auto" {
+			id = a.choose("auto", servers, false)
+		}
+	}
+	return id
+}
+
+func (a *App) choose(want string, servers []Server, honorSkip bool) string {
 	best, score := "?", math.MaxFloat64
 	for _, s := range servers {
 		if !slices.Contains(s.Protocols, Protocol) || s.Load >= 1 || (want != "auto" && s.CountryCode != want) {
+			continue
+		}
+		if honorSkip && slices.Contains(a.skip, s.ID) {
 			continue
 		}
 		ms, ok := a.pings[s.Host]
@@ -865,12 +924,6 @@ func (a *App) pick(want string, servers []Server) string {
 		if v := ms + s.Load*150; v < score {
 			best, score = s.ID, v
 		}
-	}
-	if best == "?" && want != "auto" {
-		// The chosen country has no free node now: the fastest one elsewhere.
-		a.mu.Unlock()
-		defer a.mu.Lock()
-		return a.pick("auto", servers)
 	}
 	return best
 }
@@ -902,14 +955,15 @@ func (a *App) pingAll() {
 	res := sync.Map{}
 	for h := range hosts {
 		wg.Add(1)
-		go func(h string) {
+		h := h
+		Go("ping", func() {
 			defer wg.Done()
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
 			if d, err := a.pingHost(ctx, h); err == nil {
 				res.Store(h, float64(d.Microseconds())/1000)
 			}
-		}(h)
+		})
 	}
 	wg.Wait()
 	a.mu.Lock()
@@ -947,7 +1001,11 @@ func (a *App) pingHost(ctx context.Context, host string) (time.Duration, error) 
 	if err != nil {
 		return 0, err
 	}
-	return a.Ping(ctx, pickV4(ips))
+	ip, err := pickV4(ips)
+	if err != nil {
+		return 0, err
+	}
+	return a.Ping(ctx, ip)
 }
 
 // FirstHide says whether the window is hidden to the tray for the first time.

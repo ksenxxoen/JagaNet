@@ -54,6 +54,12 @@ func (f *Fake) Down() {
 	f.cfg = nil
 }
 
+func (f *Fake) Up() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.cfg != nil
+}
+
 func (f *Fake) Stats() Stats {
 	f.mu.Lock()
 	defer f.mu.Unlock()

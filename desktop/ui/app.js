@@ -7,21 +7,47 @@ const T = {
     "Device code": "Код устройства", "Sign in through the website": "Войти через сайт", "Allow on the website": "Разрешите вход на сайте",
     "Open the website": "Открыть сайт", "Back": "Назад", "Sign in by e-mail": "Войти по почте", "I have a device code": "У меня есть код устройства",
     "Settings": "Настройки", "Close": "Закрыть", "Country": "Страна", "Account": "Аккаунт", "Plan": "Тариф", "Extend": "Продлить",
-    "Key": "Ключ", "Own key": "Свой ключ", "In use": "Используется",
+    "Key": "Ключ", "Own key": "Автоматически", "In use": "Используется",
     "Connect on start": "Подключаться при запуске", "Start with Windows": "Запускать с Windows", "Language": "Язык", "Sign out": "Выйти",
-    "Off": "Отключено", "Connecting": "Подключение", "Connected": "Подключено", "Fastest": "Самая быстрая",
-    "ms": "мс", "until": "до", "Free": "Бесплатный"
+    "Off": "Отключено", "Connecting": "Подключение", "Reconnecting": "Переподключение", "Connected": "Подключено", "Problem": "Проблема", "Fastest": "Самая быстрая",
+    "ms": "мс", "until": "до", "Free": "Бесплатный",
+    "No network, trying again…": "Нет сети, пробуем снова…",
+    "Server is not responding, trying again…": "Сервер не отвечает, пробуем ещё…",
+    "Could not connect. Internet is back on, still trying.": "Не удалось подключиться. Интернет снова доступен, пробуем ещё.",
+    "Server is not responding. Internet stays blocked until the VPN connects.": "Сервер не отвечает. Интернет заблокирован, пока VPN не подключится.",
+    "The VPN stopped passing traffic. Reconnecting…": "Связь с VPN пропала, переподключаемся…",
+    "The plan has ended": "Тариф закончился. Продлите его, чтобы включить VPN.",
+    "This key was removed": "Ключ удалён",
+    "Signed out": "Сессия закончилась, войдите снова",
+    "Update available": "Доступно обновление",
+    "Update": "Обновить",
+    "Strict kill switch": "Не возвращать интернет, пока нет VPN",
+    "Rename": "Переименовать",
+    "New name": "Новое имя"
   },
-  en: {},
+  en: { "Own key": "Automatic" },
   de: {
     "Email": "E-Mail", "Get a code": "Code erhalten", "Sign in": "Anmelden", "Another e-mail": "Andere E-Mail",
     "Device code": "Gerätecode", "Sign in through the website": "Über die Website anmelden", "Allow on the website": "Auf der Website erlauben",
     "Open the website": "Website öffnen", "Back": "Zurück", "Sign in by e-mail": "Mit E-Mail anmelden", "I have a device code": "Ich habe einen Gerätecode",
     "Settings": "Einstellungen", "Close": "Schließen", "Country": "Land", "Account": "Konto", "Plan": "Tarif", "Extend": "Verlängern",
-    "Key": "Schlüssel", "Own key": "Eigener Schlüssel", "In use": "In Benutzung",
+    "Key": "Schlüssel", "Own key": "Automatisch", "In use": "In Benutzung",
     "Connect on start": "Beim Start verbinden", "Start with Windows": "Mit Windows starten", "Language": "Sprache", "Sign out": "Abmelden",
-    "Off": "Getrennt", "Connecting": "Verbinde", "Connected": "Verbunden", "Fastest": "Schnellstes",
-    "ms": "ms", "until": "bis", "Free": "Kostenlos"
+    "Off": "Getrennt", "Connecting": "Verbinde", "Reconnecting": "Verbinde neu", "Connected": "Verbunden", "Problem": "Problem", "Fastest": "Schnellstes",
+    "ms": "ms", "until": "bis", "Free": "Kostenlos",
+    "No network, trying again…": "Kein Netz, neuer Versuch…",
+    "Server is not responding, trying again…": "Server antwortet nicht, neuer Versuch…",
+    "Could not connect. Internet is back on, still trying.": "Verbindung fehlgeschlagen. Internet ist wieder da, neuer Versuch.",
+    "Server is not responding. Internet stays blocked until the VPN connects.": "Server antwortet nicht. Internet bleibt blockiert, bis das VPN steht.",
+    "The VPN stopped passing traffic. Reconnecting…": "Die VPN-Verbindung ist weg, verbinde neu…",
+    "The plan has ended": "Der Tarif ist zu Ende. Verlängern Sie ihn, um das VPN einzuschalten.",
+    "This key was removed": "Schlüssel wurde gelöscht",
+    "Signed out": "Sitzung beendet, bitte erneut anmelden",
+    "Update available": "Update verfügbar",
+    "Update": "Aktualisieren",
+    "Strict kill switch": "Internet aus, bis das VPN steht",
+    "Rename": "Umbenennen",
+    "New name": "Neuer Name"
   },
 };
 
@@ -131,6 +157,11 @@ function render(next) {
 
   $("signin").hidden = S.screen !== "signin";
   $("main").hidden = S.screen !== "main";
+  const banner = $("update-banner");
+  if (S.update && S.update.version) {
+    banner.hidden = false;
+    banner.textContent = t("Update available") + " · " + S.update.version + (S.update.notes ? " — " + S.update.notes : "");
+  } else banner.hidden = true;
   if (S.screen === "signin" && prev.screen !== "signin") showForm("f-email");
   if (S.screen === "signin" && prev.webLogin && !S.webLogin && !$("f-web").hidden) showForm("f-email");
   if (S.screen !== "main") return;
@@ -139,7 +170,16 @@ function render(next) {
   app.dataset.state = S.conn;
   boop.dataset.state = S.conn;
   if (prev.conn !== S.conn && S.conn === "on") { boop.classList.remove("bump"); void boop.offsetWidth; boop.classList.add("bump"); }
-  $("status").textContent = t({ off: "Off", connecting: "Connecting", on: "Connected" }[S.conn]);
+  $("status").textContent = t({ off: "Off", connecting: "Connecting", reconnecting: "Reconnecting", on: "Connected", problem: "Problem" }[S.conn] || "Off");
+  const detail = detailText();
+  $("detail").textContent = detail;
+  const act = $("detail-btn");
+  if (S.problem === "plan" && S.conn !== "off") {
+    act.hidden = false;
+    act.textContent = t("Extend");
+  } else {
+    act.hidden = true;
+  }
   tick();
 
   // The place card shows where we are, or where we'd go.
@@ -158,9 +198,26 @@ function render(next) {
   $("s-email").textContent = S.email || "";
   $("s-plan").textContent = planText();
   $("s-auto").checked = !!S.autoConnect;
+  $("s-strict").checked = !!S.strictKill;
+  $("s-update").hidden = !(S.update && S.update.version);
+  $("s-update-ver").textContent = S.update && S.update.version ? S.update.version : "";
   $("s-start-row").hidden = S.autostart == null;
   $("s-start").checked = !!S.autostart;
   $("s-version").textContent = S.version ? "Boop " + S.version : "";
+}
+
+function detailText() {
+  if (!S.problem || S.conn === "off") return "";
+  if (S.problem === "offline") return t("No network, trying again…");
+  if (S.problem === "plan") return t("The plan has ended");
+  if (S.problem === "key_removed") return t("This key was removed");
+  if (S.problem === "auth") return t("Signed out");
+  if (S.problem === "dead" && !S.released) return t("The VPN stopped passing traffic. Reconnecting…");
+  if (S.released) return t("Could not connect. Internet is back on, still trying.");
+  if (S.strictKill) return t("Server is not responding. Internet stays blocked until the VPN connects.");
+  if (S.problem === "no_handshake") return t("Server is not responding, trying again…");
+  if (S.problem === "dead") return t("The VPN stopped passing traffic. Reconnecting…");
+  return "";
 }
 
 function planText() {
@@ -206,9 +263,26 @@ function renderKeys() {
     flag(b.querySelector(".flag"), k.id ? k.country || "" : "app");
     b.querySelector("b").textContent = k.name;
     if (k.inUse) b.querySelector(".busy").textContent = t("In use");
-    b.onclick = async () => { closeSheet("keys"); await call("setKey", k.id); };
+    if (k.id) {
+      const rn = document.createElement("span");
+      rn.className = "rename";
+      rn.textContent = t("Rename");
+      rn.onclick = (e) => { e.stopPropagation(); renameKey(k); };
+      b.insertBefore(rn, b.querySelector(".check"));
+    }
+    b.onclick = async (e) => {
+      if (e.target.closest && e.target.closest(".rename")) return;
+      closeSheet("keys");
+      await call("setKey", k.id);
+    };
     list.appendChild(b);
   });
+}
+
+async function renameKey(k) {
+  const name = prompt(t("New name"), k.name || "");
+  if (!name || !name.trim() || name.trim() === k.name) return;
+  await call("renameKey", { id: k.id, name: name.trim() });
 }
 
 function tick() {
@@ -298,12 +372,22 @@ $("web-back").onclick = () => { call("cancelWebLogin").catch(() => {}); showForm
 
 /* ---------- main ---------- */
 
-$("boop").onclick = () => call("toggle").catch(() => {});
+let busyToggle = false;
+$("boop").onclick = () => {
+  if (busyToggle) return;
+  busyToggle = true;
+  $("boop").disabled = true;
+  call("toggle").finally(() => { busyToggle = false; $("boop").disabled = false; });
+};
 $("open-places").onclick = () => openSheet("places");
 $("open-settings").onclick = () => openSheet("settings");
 $("s-key").onclick = () => { closeSheet("settings"); openSheet("keys"); };
 $("s-extend").onclick = () => call("extend").catch(() => {});
 $("s-auto").onchange = (e) => call("setAutoConnect", e.target.checked).catch(() => {});
+$("s-strict").onchange = (e) => call("setStrictKill", e.target.checked).catch(() => {});
+$("s-update").onclick = () => call("update").catch(() => {});
+$("update-banner").onclick = () => call("update").catch(() => {});
+$("detail-btn").onclick = () => call("extend").catch(() => {});
 $("s-start").onchange = (e) => call("setAutostart", e.target.checked).catch(() => {});
 $("s-signout").onclick = () => { closeSheet("settings"); call("signOut").catch(() => {}); };
 document.querySelectorAll("#s-lang button").forEach((b) => (b.onclick = () => call("setLang", b.dataset.lang).catch(() => {})));

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -22,6 +23,9 @@ type awgParams struct {
 	AllowedIps          []string          `json:"allowedIps"`
 	PersistentKeepalive int               `json:"persistentKeepalive"`
 	Obfuscation         map[string]string `json:"obfuscation"`
+	// Current addresses of the endpoint hostname, when the panel knows them.
+	// Ignored by older clients. Live DNS wins; this is only a hint.
+	EndpointIps []string `json:"endpointIps,omitempty"`
 }
 
 // NewKey makes a private key and returns it with its public key, both base64.
@@ -91,6 +95,23 @@ func BuildConfig(ctx context.Context, priv string, c *TunnelConfig, samePeer boo
 	if err := json.Unmarshal(c.Params, &p); err != nil {
 		return nil, "", err
 	}
+	ep, err := ResolveConfigEndpoint(ctx, &p, netip.AddrPort{})
+	if err != nil {
+		return nil, "", err
+	}
+	return BuildConfigAt(priv, c, samePeer, ep)
+}
+
+// BuildConfigAt is BuildConfig with the peer address already chosen, so a
+// re-resolve does not look the name up twice and does not hold the tunnel lock.
+func BuildConfigAt(priv string, c *TunnelConfig, samePeer bool, ep netip.AddrPort) (*vpn.Config, string, error) {
+	if c == nil || c.Protocol != Protocol {
+		return nil, "", fmt.Errorf("unsupported protocol")
+	}
+	var p awgParams
+	if err := json.Unmarshal(c.Params, &p); err != nil {
+		return nil, "", err
+	}
 	privHex, err := keyHex(priv)
 	if err != nil {
 		return nil, "", err
@@ -99,18 +120,45 @@ func BuildConfig(ctx context.Context, priv string, c *TunnelConfig, samePeer boo
 	if err != nil {
 		return nil, "", err
 	}
+	return buildConfig(privHex, peerHex, p, c, samePeer, ep)
+}
+
+// ResolveConfigEndpoint picks an address for the peer. A live lookup wins.
+// If it fails and current is already set, current is kept — a failed lookup
+// must not put a remembered or hinted address back onto a moved node.
+// Hints (the panel's endpointIps) are used only when there is no current address.
+func ResolveConfigEndpoint(ctx context.Context, p *awgParams, current netip.AddrPort) (netip.AddrPort, error) {
 	host, port, err := net.SplitHostPort(p.Endpoint)
 	if err != nil {
-		return nil, "", err
+		return netip.AddrPort{}, err
 	}
-	ips, err := Resolve(ctx, host)
-	if err != nil {
-		return nil, "", err
+	if net.ParseIP(host) != nil {
+		return netip.ParseAddrPort(net.JoinHostPort(host, port))
 	}
-	ep, err := netip.ParseAddrPort(net.JoinHostPort(pickV4(ips), port))
-	if err != nil {
-		return nil, "", err
+	var live []string
+	ips, err := ResolveFresh(ctx, host)
+	if err == nil {
+		live = ips
 	}
+	return selectEndpoint(current, port, live, p.EndpointIps)
+}
+
+// selectEndpoint applies the order: live DNS, then the address already in use,
+// then the panel's hint.
+func selectEndpoint(current netip.AddrPort, port string, live, hints []string) (netip.AddrPort, error) {
+	if ip, err := pickV4(live); err == nil {
+		return netip.ParseAddrPort(net.JoinHostPort(ip, port))
+	}
+	if current.IsValid() {
+		return current, nil
+	}
+	if ip, err := pickV4(hints); err == nil {
+		return netip.ParseAddrPort(net.JoinHostPort(ip, port))
+	}
+	return netip.AddrPort{}, errors.New("no addresses")
+}
+
+func buildConfig(privHex, peerHex string, p awgParams, c *TunnelConfig, samePeer bool, ep netip.AddrPort) (*vpn.Config, string, error) {
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "private_key=%s\n", privHex)
@@ -127,9 +175,11 @@ func BuildConfig(ctx context.Context, priv string, c *TunnelConfig, samePeer boo
 		}
 		switch k {
 		case "HeaderProtectionKey":
-			if v, err = keyHex(v); err != nil {
+			hv, herr := keyHex(v)
+			if herr != nil {
 				return nil, "", fmt.Errorf("bad HeaderProtectionKey")
 			}
+			v = hv
 		case "RandomTrailers", "DisableCookies":
 			v = uapiBool(v)
 		}
@@ -159,13 +209,16 @@ func BuildConfig(ctx context.Context, priv string, c *TunnelConfig, samePeer boo
 	return cfg, p.ServerPublicKey, nil
 }
 
-func pickV4(ips []string) string {
+func pickV4(ips []string) (string, error) {
+	if len(ips) == 0 {
+		return "", errors.New("no addresses")
+	}
 	for _, ip := range ips {
 		if a, err := netip.ParseAddr(ip); err == nil && a.Is4() {
-			return ip
+			return ip, nil
 		}
 	}
-	return ips[0]
+	return ips[0], nil
 }
 
 // EndpointHost is where to ping a server's tunnel.

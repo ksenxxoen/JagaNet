@@ -3,7 +3,7 @@
 #   ./build.sh [version] [api]
 set -euo pipefail
 cd "$(dirname "$0")"
-VERSION="${1:-1.0.0}"
+VERSION="${1:-1.1.0}"
 API="${2:-https://boopvpn.app}"
 export GOTOOLCHAIN="${GOTOOLCHAIN:-go1.25.0}"
 

@@ -9,6 +9,7 @@
 <body>
 <div class="app" id="app">
   <div class="glow" aria-hidden="true"></div>
+  <button class="banner" id="update-banner" hidden></button>
 
   <!-- Sign in -->
   <section class="screen signin" id="signin" hidden>
@@ -55,6 +56,8 @@
         <span class="core"><span class="spark"></span></span>
       </button>
       <div class="status" id="status"></div>
+      <p class="detail" id="detail"></p>
+      <button class="text detail-btn" id="detail-btn" hidden></button>
       <div class="timer" id="timer"></div>
     </div>
 
@@ -90,6 +93,8 @@
     <div class="group">
       <label class="row toggle" id="s-start-row" hidden><span data-t="Start with Windows"></span><input type="checkbox" id="s-start"><i></i></label>
       <label class="row toggle"><span data-t="Connect on start"></span><input type="checkbox" id="s-auto"><i></i></label>
+      <label class="row toggle"><span data-t="Strict kill switch"></span><input type="checkbox" id="s-strict"><i></i></label>
+      <button class="row link" id="s-update" hidden><span data-t="Update"></span><span class="row-val"><span id="s-update-ver" class="ellipsis"></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></button>
       <div class="row"><span data-t="Language"></span><span class="seg" id="s-lang"><button data-lang="ru">RU</button><button data-lang="en">EN</button><button data-lang="de">DE</button></span></div>
     </div>
     <div class="group">

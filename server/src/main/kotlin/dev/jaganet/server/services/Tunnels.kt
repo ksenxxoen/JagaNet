@@ -179,7 +179,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
             dns = server.strings("dns"),
             mtu = server.int("mtu"),
             params = params,
-        )
+        ).withEndpointIp(publicIp(server, proto))
         val version = java.security.MessageDigest.getInstance("SHA-256")
             .digest((Protocols.encode(cfg).toString() + "|" + t.str("peer_key")).toByteArray())
             .take(12).joinToString("") { "%02x".format(it) }
