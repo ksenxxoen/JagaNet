@@ -185,6 +185,15 @@ try {
     await page.evaluate(() => { document.getElementById("settings").hidden = true; });
   });
 
+  await attempt("each push replaces the state", async () => {
+    // Go leaves empty fields out of the JSON; a field that is gone must not keep its old value.
+    await show({ ...main, conn: "connecting", current: "", problem: "offline", strictKill: true, plan: { name: "Pro", pro: true } });
+    await show({ ...main, conn: "on" });
+    check("a cleared problem leaves the screen", (await page.evaluate(() => document.getElementById("detail").textContent)) === "");
+    check("a strict mode turned off shows off", !(await page.evaluate(() => document.getElementById("s-strict").checked)));
+    check("a plan that is gone is not shown", (await page.evaluate(() => S.plan)) === undefined);
+  });
+
   await attempt("focus stays in the sheet", async () => {
     await show(main);
     await click("#open-settings");

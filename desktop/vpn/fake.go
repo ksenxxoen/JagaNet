@@ -19,6 +19,8 @@ type Fake struct {
 	hs   time.Time
 	ups  int
 	Logf func(string, ...any)
+	// NoHandshake makes the peer stay silent, as when the node is blocked (dev server and UI tests only).
+	NoHandshake bool
 }
 
 func New() (Tunnel, error) { return &Fake{Logf: log.Printf}, nil }
@@ -37,7 +39,7 @@ func (f *Fake) Apply(c *Config) error {
 	go func() {
 		time.Sleep(700 * time.Millisecond)
 		f.mu.Lock()
-		if f.cfg == c {
+		if f.cfg == c && !f.NoHandshake {
 			f.hs = time.Now()
 		}
 		f.mu.Unlock()

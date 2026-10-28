@@ -81,3 +81,10 @@ Changing a name means changing the test, `app.js` and Go together.
   states at 360×560, 360×560 @1.5×, 1280×800, from invented states (no panel).
   Output of this task: `docs/screenshots/6/{before,after}`.
 * `node scripts/ui-checks.mjs [desktop-dir]` — behaviour checks for `app.js`.
+* `node scripts/e2e.mjs [desktop-dir]` — the whole client on fakes: Chromium → dev build
+  (stand-in tunnel) → a made-up panel (`scripts/fakepanel.mjs`). Sign-in three ways,
+  connect / disconnect, country and key changes on the way, rename, strict mode across a
+  restart, the panel's problems (offline, plan, removed key, 401) and a silent node with the
+  real 20 s / 45 s timeouts (`BOOP_FAKE_NOHANDSHAKE=1` keeps the stand-in tunnel from
+  handshaking). About three minutes; `E2E_LOGS=<dir>` keeps each app's log.
+  Manual checks for a real Windows machine: `docs/QA-1.2.0.md`.
