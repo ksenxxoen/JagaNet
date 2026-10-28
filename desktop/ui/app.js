@@ -7,12 +7,15 @@ const TXT = {
   ms: "мс", until: "до", free: "Бесплатный",
   off: "Выключено", connecting: "Подключение…", reconnecting: "Переподключение…", on: "Подключено", problem: "Проблема",
   hintOff: "Нажмите, чтобы подключиться",
-  extend: "Продлить", signIn: "Войти", changeCountry: "Сменить страну", changeKey: "Выбрать ключ",
+  extend: "Продлить", signIn: "Войти", changeCountry: "Сменить страну", otherCountry: "Другая страна", changeKey: "Выбрать ключ",
   offline: "Нет сети, пробуем снова…",
   noHandshake: "Сервер не отвечает, пробуем ещё…",
   released: "Не удалось подключиться. Интернет снова доступен, пробуем ещё.",
   strict: "Сервер не отвечает. Интернет заблокирован, пока VPN не подключится.",
   dead: "Связь с VPN пропала, переподключаемся…",
+  // Same words as blockedText / strictClosed in core/notify.go (the tray says the same).
+  blocked: "Похоже, ваша сеть блокирует VPN. Попробуйте Wi\u2011Fi или другую страну.",
+  strictClosed: "Интернет закрыт, пока VPN не подключится.",
   plan: "Тариф закончился. Продлите его, чтобы включить VPN.",
   keyRemoved: "Ключ удалён",
   signedOut: "Сессия закончилась, войдите снова",
@@ -127,6 +130,7 @@ function problemAction() {
     case "auth": return { action: "signOut", label: TXT.signIn };
     case "key_removed": return { action: "keys", label: TXT.changeKey };
     case "no_handshake": case "dead": return { action: "places", label: TXT.changeCountry };
+    case "blocked": return { action: "places", label: TXT.otherCountry };
     default: return null;
   }
 }
@@ -197,6 +201,7 @@ function detailText() {
   if (S.problem === "plan") return TXT.plan;
   if (S.problem === "key_removed") return TXT.keyRemoved;
   if (S.problem === "auth") return TXT.signedOut;
+  if (S.problem === "blocked") return S.strictKill && !S.released ? TXT.blocked + " " + TXT.strictClosed : TXT.blocked;
   if (S.problem === "dead" && !S.released) return TXT.dead;
   if (S.released) return TXT.released;
   if (S.strictKill) return TXT.strict;

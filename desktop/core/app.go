@@ -34,6 +34,9 @@ type App struct {
 	AutostartOn func() bool
 	Version     string
 	Site        string
+	// Prober checks the network outside the tunnel when it stays silent. Init
+	// fills in the real one unless a test already did.
+	Prober Prober
 
 	mu         sync.Mutex
 	plan       *Plan
@@ -60,6 +63,11 @@ type App struct {
 	resyncCh   chan struct{}
 	signingOut bool // sign-out in progress: connect() refuses
 
+	probing   bool      // a probe is running
+	probeAt   time.Time // when the last probe finished
+	probeLast Reach
+	verdict   string // what the last probe made of a silent tunnel: offline, blocked or ""
+
 	webLogin    context.CancelFunc
 	webLoginURL string
 
@@ -71,6 +79,9 @@ type App struct {
 func (a *App) Init() {
 	a.conn = "off"
 	a.pings = map[string]float64{}
+	if a.Prober.Panel == nil && a.Prober.Web == nil {
+		a.Prober = netProber(a.API)
+	}
 	a.API.Token = func() string { a.mu.Lock(); defer a.mu.Unlock(); return a.Store.Token }
 	SetTunnelActive(func() bool { return a.Tunnel != nil && a.Tunnel.Up() })
 	Go("pings", a.pingAllLoop)

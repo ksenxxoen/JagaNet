@@ -95,6 +95,11 @@ try {
     check("auth problem offers sign-in", (await action()) === "signOut");
     await show({ ...main, conn: "problem", problem: "no_handshake" });
     check("server problem offers a country change", (await action()) === "places");
+    await show({ ...main, conn: "problem", problem: "blocked", released: true });
+    check("blocked problem offers another country", (await action()) === "places" && (await page.evaluate(() => document.getElementById("detail-btn").textContent)) === "Другая страна");
+    check("blocked problem explains the network", (await page.evaluate(() => document.getElementById("detail").textContent)).startsWith("Похоже, ваша сеть блокирует VPN"));
+    await show({ ...main, conn: "problem", problem: "blocked", strictKill: true });
+    check("blocked in strict mode says the internet is closed", (await page.evaluate(() => document.getElementById("detail").textContent)).endsWith("Интернет закрыт, пока VPN не подключится."));
     await show({ ...main, conn: "problem", problem: "offline" });
     check("offline problem shows no action", (await hidden("detail-btn")) && !(await action()));
     await show({ ...main, conn: "off" });

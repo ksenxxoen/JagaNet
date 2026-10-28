@@ -231,16 +231,21 @@ try {
 
   /* ---------- 5. the server is silent (blocked node) ---------- */
   // Real timeouts: problem text after 20 s, the connection is given back (kill switch released) after 45 s.
+  // Then the probe outside the tunnel finds the panel answering (its /v1/health here is a 404, which
+  // still counts), so the silence is put down to the network: "blocked" with "Другая страна".
   panel.reset();
   const c = await launch({ env: { BOOP_FAKE_NOHANDSHAKE: "1" } });
   await signInByMail(c);
   await c.click("#boop");
   await c.until("connecting, no handshake yet", async () => (await c.conn()) === "connecting");
   await c.until("internet is given back after the connect budget", async () => (await c.state()).released === true, 60000);
-  check("released text is shown", (await detail(c)) === (await TXT(c)).released);
+  await c.until("the probe calls it blocked", async () => (await c.state()).problem === "blocked", 10000);
+  check("blocked text is shown", (await detail(c)) === (await TXT(c)).blocked);
+  check("blocked: the action is 'Другая страна'", !(await c.hidden("detail-btn")) && (await c.text("detail-btn")) === (await TXT(c)).otherCountry);
   check("released: the button can still cancel", (await c.conn()) !== "off");
-  // 30 s later it tries again on its own: the problem text stays, the internet is held again
-  await c.until("'server does not answer' on the retry", async () => (await detail(c)) === (await TXT(c)).noHandshake, 40000);
+  // 30 s later it tries again on its own, the internet is held again; the explanation stays
+  await c.until("retry holds the internet again", async () => (await c.state()).released !== true, 40000);
+  check("blocked text stays on the retry", (await detail(c)) === (await TXT(c)).blocked);
   await c.click("#boop");
   await c.until("off", async () => (await c.conn()) === "off");
 
@@ -250,7 +255,8 @@ try {
   await sleep(500);
   await c.page.keyboard.press("Escape");
   await c.click("#boop");
-  await c.until("strict: 'internet is blocked' text", async () => (await detail(c)) === (await TXT(c)).strict, 60000);
+  await c.until("strict: 'internet is blocked' text", async () => { const t = await TXT(c); const d = await detail(c); return d === t.strict || d === t.blocked + " " + t.strictClosed; }, 60000);
+  await c.until("strict: blocked, internet closed", async () => (await detail(c)) === (await TXT(c)).blocked + " " + (await TXT(c)).strictClosed, 10000);
   await sleep(10000);
   check("strict: still not released after the budget", (await c.state()).released !== true);
   await c.click("#boop");
