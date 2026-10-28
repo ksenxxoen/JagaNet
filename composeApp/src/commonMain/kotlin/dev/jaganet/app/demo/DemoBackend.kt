@@ -470,7 +470,10 @@ class DemoBackend(private val now: () -> Instant = { Clock.System.now() }) {
             }
             method == HttpMethod.Post && path == "tunnel/events" -> {
                 val ev = read<ConnectionEventReq>(body)
-                if (ev.type == ConnectionEventType.CONNECTED) {
+                // Failure reports (handshake_failed, no_rx) leave sessions alone, as on the server.
+                if (ev.type.failure) {
+                    return ok
+                } else if (ev.type == ConnectionEventType.CONNECTED) {
                     me.connectedSince = now()
                 } else {
                     val start = me.connectedSince ?: now()

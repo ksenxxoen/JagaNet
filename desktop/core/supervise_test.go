@@ -150,3 +150,55 @@ func TestSupervisorReconnectBudget(t *testing.T) {
 		t.Fatalf("reconnect budget: %+v", end)
 	}
 }
+
+// reports runs the supervisor one sample a second and collects the failure reports it asks for.
+func reports(s *Supervisor, from, to time.Duration, t0 time.Time, sample func(at time.Duration) Sample) []string {
+	var out []string
+	for at := from; at <= to; at += time.Second {
+		sm := sample(at)
+		sm.Now = t0.Add(at)
+		if r := s.Tick(sm).Report; r != "" {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func TestSupervisorReportsNoHandshakeOnce(t *testing.T) {
+	t0 := time.Unix(1_700_000_000, 0)
+	for _, strict := range []bool{false, true} {
+		var s Supervisor
+		s.Started(t0, 0)
+		// Five minutes of silence: give-up, release, retries and give-ups again. One report.
+		got := reports(&s, time.Second, 5*time.Minute, t0, func(time.Duration) Sample { return Sample{Strict: strict} })
+		if len(got) != 1 || got[0] != EvHandshakeFailed {
+			t.Fatalf("strict=%v: reports %v", strict, got)
+		}
+	}
+}
+
+func TestSupervisorReportsDeadOnceAndAgainAfterUp(t *testing.T) {
+	t0 := time.Unix(1_700_000_000, 0)
+	var s Supervisor
+	s.Started(t0, 0)
+	if step := s.Tick(Sample{Now: t0.Add(time.Second), Rx: 10, Tx: 10, Handshake: t0}); step.Phase != "on" {
+		t.Fatalf("not up: %+v", step)
+	}
+	// The node goes quiet: we keep sending, nothing comes back.
+	quiet := func(at time.Duration) Sample { return Sample{Rx: 10, Tx: 10 + uint64(at/time.Second), Handshake: t0} }
+	got := reports(&s, 2*time.Second, 4*time.Minute, t0, quiet)
+	if len(got) != 1 || got[0] != EvNoRx {
+		t.Fatalf("reports %v", got)
+	}
+	// Up again, then quiet again: a new problem, a new report.
+	s.Tick(Sample{Now: t0.Add(5 * time.Minute), Rx: 500, Tx: 500, Handshake: t0.Add(5 * time.Minute)})
+	if s.Phase != "on" {
+		t.Fatalf("phase %s", s.Phase)
+	}
+	again := reports(&s, 5*time.Minute+time.Second, 7*time.Minute, t0, func(at time.Duration) Sample {
+		return Sample{Rx: 500, Tx: 500 + uint64(at/time.Second), Handshake: t0.Add(5 * time.Minute)}
+	})
+	if len(again) != 1 || again[0] != EvNoRx {
+		t.Fatalf("second problem: %v", again)
+	}
+}

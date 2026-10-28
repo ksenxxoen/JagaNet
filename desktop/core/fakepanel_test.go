@@ -33,6 +33,7 @@ type fakePanel struct {
 	serverID   string   // where this device is provisioned
 	version    int
 	events     []string
+	bodies     []ConnEvent // every tunnel/events body, in order
 	removed    []string
 	serverPub  string
 	deleteOnce sync.Once
@@ -83,9 +84,9 @@ func (p *fakePanel) handle(w http.ResponseWriter, r *http.Request) {
 	case path == "keys":
 		reply(map[string]any{"keys": []Key{}})
 	case path == "tunnel/events":
-		var b struct{ Type string }
+		var b ConnEvent
 		_ = json.NewDecoder(r.Body).Decode(&b)
-		p.set(func() { p.events = append(p.events, b.Type) })
+		p.set(func() { p.events = append(p.events, b.Type); p.bodies = append(p.bodies, b) })
 		reply(map[string]bool{"ok": true})
 	case path == "tunnel" && r.Method == "POST":
 		var b struct {
@@ -146,6 +147,12 @@ func (p *fakePanel) eventsSeen() []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return append([]string(nil), p.events...)
+}
+
+func (p *fakePanel) eventBodies() []ConnEvent {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]ConnEvent(nil), p.bodies...)
 }
 
 // testApp is an App wired to the fake panel and the stand-in tunnel.

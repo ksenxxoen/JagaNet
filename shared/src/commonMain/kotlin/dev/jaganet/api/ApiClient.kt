@@ -131,6 +131,8 @@ class ApiClient(
     suspend fun adminRenameDevice(id: String, name: String): OkRes =
         http.patch("admin/devices/$id") { auth(); contentType(ContentType.Application.Json); setBody(RenameDeviceReq(name)) }.read()
     suspend fun adminRekeyDevice(id: String): OkRes = post("admin/devices/$id/rekey", OkRes())
+    suspend fun connectionFailures(server: String? = null, user: String? = null): ConnectionFailuresRes =
+        get("admin/connection-failures") { if (server != null) parameter("server", server); if (user != null) parameter("user", user) }
     suspend fun analytics(period: String = "7d"): AnalyticsOverviewRes = get("admin/analytics") { parameter("period", period) }
     suspend fun analyticsServer(id: String, period: String = "7d"): AnalyticsServerRes = get("admin/analytics/servers/$id") { parameter("period", period) }
     suspend fun analyticsUsers(period: String = "7d", q: String? = null): AnalyticsUsersRes = get("admin/analytics/users") { parameter("period", period); if (q != null) parameter("q", q) }

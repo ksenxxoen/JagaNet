@@ -269,8 +269,25 @@ func (a *API) Tunnel(ctx context.Context) (s TunnelState, err error) {
 	return
 }
 
-func (a *API) Event(ctx context.Context, typ string) error {
-	return a.do(ctx, "POST", "tunnel/events", map[string]any{"type": typ, "at": time.Now().UTC().Format(time.RFC3339)}, nil)
+// ConnEvent is one POST /v1/tunnel/events. Type and At are all an older panel
+// knows; the rest (failure reports, see failures.go) is left out when empty.
+type ConnEvent struct {
+	Type       string `json:"type"`
+	At         string `json:"at"`
+	Endpoint   string `json:"endpoint,omitempty"` // the node's address:port
+	ServerID   string `json:"serverId,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+	Network    string `json:"network,omitempty"`
+	AppVersion string `json:"appVersion,omitempty"`
+	Platform   string `json:"platform,omitempty"`
+}
+
+// Event tells the panel about the connection. An empty At means now.
+func (a *API) Event(ctx context.Context, ev ConnEvent) error {
+	if ev.At == "" {
+		ev.At = time.Now().UTC().Format(time.RFC3339)
+	}
+	return a.do(ctx, "POST", "tunnel/events", ev, nil)
 }
 
 func (a *API) RenameDevice(ctx context.Context, id, name string) error {

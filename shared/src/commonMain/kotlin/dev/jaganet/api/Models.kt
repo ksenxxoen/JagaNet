@@ -176,11 +176,64 @@ data class TunnelState(
 @Serializable
 data class MoveDeviceReq(val to: String)
 
+/**
+ * POST /tunnel/events. `connected` / `disconnected` open and close a connection session.
+ * `handshake_failed` (the node never answered) and `no_rx` (a working tunnel went quiet) are
+ * failure reports from the Boop apps: stored for the admin panel, sessions stay as they are.
+ */
 @Serializable
-enum class ConnectionEventType { @SerialName("connected") CONNECTED, @SerialName("disconnected") DISCONNECTED }
+enum class ConnectionEventType {
+    @SerialName("connected") CONNECTED,
+    @SerialName("disconnected") DISCONNECTED,
+    @SerialName("handshake_failed") HANDSHAKE_FAILED,
+    @SerialName("no_rx") NO_RX,
+    ;
 
+    val failure get() = this == HANDSHAKE_FAILED || this == NO_RX
+}
+
+/** Every field after [peakDownBps] is optional: older apps send only type and time. */
 @Serializable
-data class ConnectionEventReq(val type: ConnectionEventType, val at: String, val peakDownBps: Long? = null)
+data class ConnectionEventReq(
+    val type: ConnectionEventType,
+    val at: String,
+    val peakDownBps: Long? = null,
+    /** The node's address:port the app was knocking on (never the user's address). */
+    val endpoint: String? = null,
+    val serverId: String? = null,
+    /** The app's own problem code, e.g. no_handshake, blocked, offline, stale_handshake. */
+    val reason: String? = null,
+    /** wifi, ethernet, mobile or unknown. */
+    val network: String? = null,
+    val appVersion: String? = null,
+    val platform: String? = null,
+)
+
+/** One failure report, as the admin panel shows it. */
+@Serializable
+data class ConnectionFailure(
+    val at: String,
+    val type: ConnectionEventType,
+    val userId: String? = null,
+    val email: String? = null,
+    val deviceId: String,
+    val deviceName: String? = null,
+    val serverId: String? = null,
+    val serverName: String? = null,
+    val reason: String? = null,
+    val endpoint: String? = null,
+    val network: String? = null,
+    val appVersion: String? = null,
+    val platform: String? = null,
+)
+
+/** Failures a node had in the last 15 minutes (every active node, zero included). */
+@Serializable
+data class NodeFailureCount(val serverId: String, val name: String, val last15m: Int)
+
+/** GET /admin/connection-failures?server=&user= */
+@Serializable
+data class ConnectionFailuresRes(val failures: List<ConnectionFailure>, val nodes: List<NodeFailureCount>)
 
 /* ---------- devices ---------- */
 

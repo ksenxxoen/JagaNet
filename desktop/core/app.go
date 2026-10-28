@@ -68,6 +68,8 @@ type App struct {
 	probeLast Reach
 	verdict   string // what the last probe made of a silent tunnel: offline, blocked or ""
 
+	reports *Reporter // failure reports waiting for the panel (failures.go)
+
 	webLogin    context.CancelFunc
 	webLoginURL string
 
@@ -83,6 +85,7 @@ func (a *App) Init() {
 		a.Prober = netProber(a.API)
 	}
 	a.API.Token = func() string { a.mu.Lock(); defer a.mu.Unlock(); return a.Store.Token }
+	a.reports = NewReporter(a.API.Event)
 	SetTunnelActive(func() bool { return a.Tunnel != nil && a.Tunnel.Up() })
 	Go("pings", a.pingAllLoop)
 	Go("updates", a.updateLoop)
