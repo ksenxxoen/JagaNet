@@ -82,7 +82,7 @@ func TestUIStateWireNames(t *testing.T) {
 	want := []string{
 		"autoConnect", "autostart", "best", "conn", "countries", "countries.code", "countries.full", "countries.ping",
 		"country", "current", "email", "key", "keys", "keys.country", "keys.id", "keys.inUse", "keys.name",
-		"ping", "plan", "plan.expiresAt", "plan.name", "plan.pro", "problem", "released", "screen",
+		"ping", "plan", "plan.daysLeft", "plan.expiresAt", "plan.name", "plan.pro", "plan.warn", "problem", "released", "screen",
 		"since", "strictKill", "update", "update.mandatory", "update.notes", "update.stage", "update.version", "version", "webLogin",
 	}
 	if !slices.Equal(got, want) {

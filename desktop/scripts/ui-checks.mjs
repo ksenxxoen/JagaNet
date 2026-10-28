@@ -190,6 +190,45 @@ try {
     await page.evaluate(() => { document.getElementById("settings").hidden = true; });
   });
 
+  // ---- issue #4: the plan is about to end ----
+
+  await attempt("plan warning banner", async () => {
+    const text = () => page.evaluate(() => document.getElementById("plan-banner-text").textContent);
+    const plan = (warn, daysLeft) => ({ name: "Pro", pro: true, expiresAt: "2099-01-01T00:00:00Z", warn, daysLeft });
+    await show({ ...main, plan: plan("soon", 3) });
+    check("soon: banner with the days left", !(await hidden("plan-banner")) && (await text()) === "Тариф заканчивается через 3 дня");
+    await show({ ...main, plan: plan("soon", 1) });
+    check("soon: one day", (await text()) === "Тариф заканчивается через 1 день");
+    await show({ ...main, plan: plan("today") });
+    check("today: banner says today", (await text()) === "Тариф заканчивается сегодня");
+    let extended = 0;
+    await page.route("**/rpc/extend", (r) => { extended++; r.fulfill({ status: 200, body: "null", contentType: "application/json" }); });
+    await click("#plan-extend");
+    await page.waitForTimeout(200);
+    check("«Продлить» opens the payment page (extend)", extended === 1 && (await page.evaluate(() => document.getElementById("plan-extend").textContent)) === "Продлить");
+    await page.unroute("**/rpc/extend");
+    // Next to the update banner, in the smallest window: neither covers the connect button.
+    await page.setViewportSize({ width: 360, height: 520 });
+    await show({ ...main, conn: "off", plan: plan("soon", 2), update: { version: "1.3.0", notes: "Быстрее подключение" } });
+    await page.waitForTimeout(100);
+    const box = await page.evaluate(() => {
+      const r = (id) => document.getElementById(id).getBoundingClientRect();
+      return { upd: r("update-banner"), plan: r("plan-banner"), boop: r("boop"), h: innerHeight };
+    });
+    check("both banners show, one under the other", !(await hidden("update-banner")) && box.plan.top >= box.upd.bottom);
+    check("the connect button is below the banners and on screen", box.boop.top >= box.plan.bottom && box.boop.bottom <= box.h);
+    await page.setViewportSize({ width: 360, height: 560 });
+    await show({ ...main, conn: "problem", problem: "plan", plan: plan("today") });
+    check("not next to the 'plan has ended' problem", await hidden("plan-banner"));
+    await show({ ...main, screen: "signin", plan: plan("soon", 2) });
+    check("not on the sign-in screen", await hidden("plan-banner"));
+    await show({ ...main, plan: { name: "Pro", pro: true, expiresAt: "2099-01-01T00:00:00Z" } });
+    check("no warning, no banner", await hidden("plan-banner"));
+    await show({ ...main, plan: plan("soon", 2) });
+    await show(main);
+    check("a warning that is gone from the push leaves the screen", await hidden("plan-banner"));
+  });
+
   await attempt("each push replaces the state", async () => {
     // Go leaves empty fields out of the JSON; a field that is gone must not keep its old value.
     await show({ ...main, conn: "connecting", current: "", problem: "offline", strictKill: true, plan: { name: "Pro", pro: true } });
@@ -214,7 +253,7 @@ try {
 
   // No horizontal scroll at any size, in the states with the longest texts.
   const b2 = await chromium.launch();
-  const long = { ...main, email: "very.long.address.for.layout.checks@subdomain.example.com", keys: [{ id: "k1", name: "Очень длинное название ключа, которое не должно ломать верстку", country: "DE" }], key: "k1", plan: { name: "Очень длинный тариф для проверки", pro: true, expiresAt: "2099-01-01T00:00:00Z" }, update: { version: "1.3.0", notes: "Очень длинное описание обновления, которое не должно ломать баннер" } };
+  const long = { ...main, email: "very.long.address.for.layout.checks@subdomain.example.com", keys: [{ id: "k1", name: "Очень длинное название ключа, которое не должно ломать верстку", country: "DE" }], key: "k1", plan: { name: "Очень длинный тариф для проверки", pro: true, expiresAt: "2099-01-01T00:00:00Z", warn: "soon", daysLeft: 3 }, update: { version: "1.3.0", notes: "Очень длинное описание обновления, которое не должно ломать баннер" } };
   for (const [w, h] of [[360, 520], [480, 800], [1280, 800], [1920, 1080]]) {
     for (const scale of [1, 2]) {
       const pg = await (await b2.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: scale })).newPage();

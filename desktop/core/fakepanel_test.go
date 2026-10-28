@@ -37,6 +37,7 @@ type fakePanel struct {
 	removed    []string
 	serverPub  string
 	deleteOnce sync.Once
+	expiresAt  string // the plan's end sent by /me; empty for none
 }
 
 func newFakePanel(t *testing.T) *fakePanel {
@@ -56,7 +57,7 @@ func (p *fakePanel) set(f func()) { p.mu.Lock(); f(); p.mu.Unlock() }
 func (p *fakePanel) handle(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/")
 	p.mu.Lock()
-	down, forced, delay, hold := p.down, p.status[path], p.provDelay, p.deleteHold
+	down, forced, delay, hold, expires := p.down, p.status[path], p.provDelay, p.deleteHold, p.expiresAt
 	p.mu.Unlock()
 	if down {
 		panic(http.ErrAbortHandler)
@@ -75,7 +76,11 @@ func (p *fakePanel) handle(w http.ResponseWriter, r *http.Request) {
 	case path == "auth/logout":
 		reply(map[string]bool{"ok": true})
 	case path == "me":
-		reply(map[string]any{"user": User{ID: "u1", Email: "demo@example.com"}, "entitlement": map[string]any{"plan": "pro"}})
+		ent := map[string]any{"plan": "pro"}
+		if expires != "" {
+			ent["expiresAt"] = expires
+		}
+		reply(map[string]any{"user": User{ID: "u1", Email: "demo@example.com"}, "entitlement": ent})
 	case path == "servers":
 		reply(map[string]any{"servers": []Server{
 			{ID: "s-nl", Name: "NL 1", CountryCode: "NL", Load: .1, Protocols: []string{Protocol}, Host: "203.0.113.5"},

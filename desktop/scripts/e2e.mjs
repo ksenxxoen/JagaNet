@@ -262,6 +262,30 @@ try {
   await c.click("#boop");
   await c.until("off", async () => (await c.conn()) === "off");
   await c.stop();
+
+  /* ---------- 6. the plan ends soon (issue #4) ---------- */
+  // The panel's date is two days away: the window shows the banner with «Продлить».
+  panel.reset();
+  panel.expiresAt = new Date(Date.now() + 2 * 86_400_000).toISOString();
+  const d = await launch();
+  await signInByMail(d);
+  await d.until("plan warning banner", async () => !(await d.hidden("plan-banner")));
+  check("banner says two days", (await d.text("plan-banner-text")) === "Тариф заканчивается через 2 дня");
+  check("banner offers «Продлить»", (await d.text("plan-extend")) === "Продлить");
+  check("the state carries the warning", ((await d.state()).plan || {}).warn === "soon");
+  // Renewed on the site: after the next check (here: a reload, which asks the panel again) the banner is gone.
+  panel.expiresAt = new Date(Date.now() + 40 * 86_400_000).toISOString();
+  await d.page.reload();
+  await d.until("banner gone after renewal", async () => (await d.state()).plan && (await d.hidden("plan-banner")));
+  await d.stop();
+  // A plan without an end: no banner.
+  panel.reset();
+  panel.expiresAt = null;
+  const u = await launch();
+  await signInByMail(u);
+  await u.until("plan loaded", async () => !!(await u.state()).plan);
+  check("no end date, no banner", await u.hidden("plan-banner"));
+  await u.stop();
 } catch (e) {
   check(`unexpected error: ${e && e.stack || e}`, false);
 } finally {

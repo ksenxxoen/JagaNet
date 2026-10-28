@@ -89,4 +89,5 @@ func (a *App) Init() {
 	SetTunnelActive(func() bool { return a.Tunnel != nil && a.Tunnel.Up() })
 	Go("pings", a.pingAllLoop)
 	Go("updates", a.updateLoop)
+	Go("plan", a.planLoop)
 }
