@@ -48,6 +48,11 @@ fun Route.nodeApi(s: Services) {
         s.tunnels.renameFor(null, call.parameters["id"]!!, call.receive<dev.jaganet.api.RenameDeviceReq>().name)
         call.respond(OkRes())
     }
+    // Failed connection attempts the Boop apps report: ?server=<node id>&user=<e-mail or id>.
+    get("/admin/connection-failures") {
+        call.owner()
+        call.respond(s.tunnels.failures(call.request.queryParameters["server"], call.request.queryParameters["user"]))
+    }
     post("/admin/devices/{id}/rekey") { call.owner(); s.tunnels.requestRekey(call.parameters["id"]!!); call.respond(OkRes()) }
     get("/admin/analytics/users/{id}") { call.owner(); call.respond(s.analytics.user(call.parameters["id"]!!, call.request.queryParameters["period"])) }
     post("/admin/nodes") { call.owner(); call.respond(s.nodes.create(call.receive<NodeReq>())) }

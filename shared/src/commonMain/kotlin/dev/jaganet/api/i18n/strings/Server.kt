@@ -144,4 +144,7 @@ internal val serverStrings: List<S> = listOf(
     S("Enter an address", "Введите адрес", "Gib eine Adresse ein"),
     S("Choose another node", "Выберите другую ноду", "Wähle einen anderen Knoten"),
     S("Not enough room on {name}: {free} free places, {need} needed", "На «{name}» не хватает места. Свободно {free}, нужно {need}", "Nicht genug Platz auf {name}. Frei sind {free}, gebraucht {need}"),
+    // The Windows app's download and update manifest, before a build is published
+    S("The Windows app isn't uploaded yet", "Приложение для Windows ещё не загружено", "Die Windows-App ist noch nicht hochgeladen"),
+    S("No desktop build is published", "Сборка для компьютера ещё не опубликована", "Es ist noch keine Desktop-Version veröffentlicht"),
 )

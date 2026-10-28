@@ -924,7 +924,7 @@ async function analytics(params) {
 
 /* ---------------- admin panel (owners) ---------------- */
 
-const ADMIN_TABS = [["money", "Finance"], ["plans", "Plans"], ["nodes", "Nodes"], ["testers", "Test accounts"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"]];
+const ADMIN_TABS = [["money", "Finance"], ["plans", "Plans"], ["nodes", "Nodes"], ["failures", "Connection failures"], ["testers", "Test accounts"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"]];
 const payChannel = (k) => ({ web: t("Website"), telegram: "Telegram", app: t("Boop app"), apple: "App Store", google: "Google Play", dev: t("Test payments") })[k] || k;
 const NEW_SUB = C1, RENEWAL = C2;
 
@@ -961,6 +961,7 @@ async function admin(params) {
   const top = head(t("Admin panel")) + `<nav class="tabs">${ADMIN_TABS.map(([k, l]) => `<a class="${k === tab ? "on" : ""}" href="#/admin?tab=${k}">${t(l)}</a>`).join("")}</nav>`;
   if (tab === "money") return adminMoney(params, top);
   if (tab === "nodes") { view.innerHTML = top + `<div id="pane"></div>`; return nodesPane(); }
+  if (tab === "failures") { view.innerHTML = top + `<div id="pane"></div>`; return failuresPane(params); }
   if (tab === "testers") { view.innerHTML = top + `<div id="pane"></div>`; return testersPane(); }
   const s = await api("/admin/settings");
   if (!location.hash.startsWith("#/admin")) return;
@@ -1002,6 +1003,45 @@ async function adminMoney(params, top) {
     <td>${r.amount ? h(money(r.amount.minor, r.amount.currency)) : ""}</td><td>${h(payChannel(r.channel))}</td>
     <td><span class="status ${r.renewal ? "" : "active"}">${r.renewal ? t("Renewal") : t("New subscription")}</span></td></tr>`).join("") || `<tr><td colspan="6" class="muted">${t("No payments")}</td></tr>`}</tbody></table></div>`;
   wireCharts(view);
+}
+
+/* Failed connections the Boop apps report (handshake_failed, no_rx), with a count per node for 15 minutes. */
+const FAILURE_TYPES = { handshake_failed: "No handshake", no_rx: "No incoming data" };
+const FAILURE_REASONS = { blocked: "The network blocks VPN", offline: "No internet", no_handshake: "The node did not answer", stale_handshake: "The handshake is too old", no_rx: "No incoming data" };
+const NETWORK_KINDS = { wifi: () => "Wi-Fi", ethernet: () => t("Cable"), mobile: () => t("Mobile network"), unknown: () => t("Unknown") };
+
+async function failuresPane(params) {
+  const pane = document.getElementById("pane");
+  const server = params.get("server") || "", user = params.get("user") || "";
+  const q = new URLSearchParams();
+  if (server) q.set("server", server);
+  if (user) q.set("user", user);
+  const r = await api(`/admin/connection-failures${q.toString() ? `?${q}` : ""}`);
+  if (!document.body.contains(pane) || !location.hash.startsWith("#/admin")) return;
+  const link = (s, u) => `#/admin?tab=failures${s ? `&server=${encodeURIComponent(s)}` : ""}${u ? `&user=${encodeURIComponent(u)}` : ""}`;
+  const counts = r.nodes.map((n) => `<tr class="${n.serverId === server ? "on" : ""}"><td><a href="${link(n.serverId, user)}"><b>${h(n.name)}</b></a></td>
+    <td><span class="lvl ${n.last15m ? "critical" : "ok"}"><i></i>${n.last15m}</span></td></tr>`).join("");
+  const who = (f) => `${f.userId ? `<a href="${link(server, f.userId)}">${h(f.email || f.userId)}</a>` : ""}<div class="muted">${h(f.deviceName || "")}</div>`;
+  const row = (f) => `<tr><td>${h(dateTime(f.at))}</td><td>${t(FAILURE_TYPES[f.type] || f.type)}</td><td>${who(f)}</td>
+    <td>${h(f.serverName || f.serverId || "")}<div class="muted mono">${h(f.endpoint || "")}</div></td>
+    <td>${f.reason ? h(FAILURE_REASONS[f.reason] ? t(FAILURE_REASONS[f.reason]) : f.reason) : ""}</td>
+    <td>${f.network ? h((NETWORK_KINDS[f.network] || (() => f.network))()) : ""}</td>
+    <td>${h([f.platform, f.appVersion].filter(Boolean).join(" "))}</td></tr>`;
+  pane.innerHTML = `
+  <div class="card tablewrap section"><table class="data"><thead><tr><th>${t("Node")}</th><th>${t("Failures in 15 min")}</th></tr></thead>
+    <tbody>${counts}</tbody></table></div>
+  <form class="toolbar" id="ff">
+    <select id="fs" aria-label="${h(t("Node"))}"><option value="">${t("All nodes")}</option>${r.nodes.map((n) => `<option value="${h(n.serverId)}" ${n.serverId === server ? "selected" : ""}>${h(n.name)}</option>`).join("")}</select>
+    <input id="fu" type="search" value="${h(user)}" placeholder="${h(t("E-mail or user id"))}" aria-label="${h(t("User"))}">
+    <button class="btn secondary" type="submit">${t("Find")}</button>
+  </form>
+  <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Date")}</th><th>${t("Type")}</th><th>${t("User")}</th><th>${t("Node")}</th>
+    <th>${t("Reason")}</th><th>${t("Network")}</th><th>${t("App")}</th></tr></thead>
+    <tbody>${r.failures.map(row).join("") || `<tr><td colspan="7" class="muted">${t("No failures")}</td></tr>`}</tbody></table></div>
+  <p class="muted small hint">${t("The latest 200, kept 30 days")}</p>`;
+  const ff = document.getElementById("ff");
+  ff.onsubmit = (e) => { e.preventDefault(); go(link(val("fs"), val("fu"))); };
+  document.getElementById("fs").onchange = () => go(link(val("fs"), val("fu")));
 }
 
 const NODE_STATES = { waiting: ["warning", "Waiting for install"], online: ["ok", "Online"], offline: ["critical", "No contact"], disabled: ["unknown", "Turned off"] };

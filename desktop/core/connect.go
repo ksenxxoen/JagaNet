@@ -102,7 +102,7 @@ func (a *App) disconnect() {
 		Go("event", func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			_ = a.API.Event(ctx, "disconnected")
+			_ = a.API.Event(ctx, ConnEvent{Type: "disconnected"})
 		})
 	}
 }

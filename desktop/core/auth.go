@@ -134,7 +134,11 @@ func (a *App) unauthorized(err error) bool {
 	a.Store.DeviceID = ""
 	a.Store.SetCached(nil)
 	_ = a.Store.Save()
+	reports := a.reports
 	a.mu.Unlock()
+	if reports != nil {
+		reports.Clear()
+	}
 	a.Disconnect()
 	a.alert(ProbAuth)
 	a.emit() // Disconnect says nothing when already off, and the window must leave the main screen
@@ -202,7 +206,11 @@ func (a *App) cmdSignOut(ctx context.Context) (any, error) {
 	a.plan, a.applied, a.peerKey = nil, "", ""
 	a.hold = nil
 	_ = a.Store.Save()
+	reports := a.reports
 	a.mu.Unlock()
+	if reports != nil {
+		reports.Clear()
+	}
 	a.Disconnect() // a connect that slipped in while the panel was answering
 	a.emit()
 	return nil, nil

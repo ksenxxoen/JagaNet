@@ -144,6 +144,10 @@ func (a *App) applyStep(ctx context.Context, step Step) {
 		// No handshake / dead: ask the network outside the tunnel why (rate-limited).
 		a.diagnose(ctx, step.Problem)
 	}
+	if step.Report != "" {
+		// After diagnose, so a handshake report can carry the probe's verdict.
+		a.reportFailure(step)
+	}
 	if step.Release {
 		// Visible to the window and the notification before the adapter is torn down.
 		a.mu.Lock()
@@ -230,7 +234,7 @@ func (a *App) markOn() {
 	log.Printf("vpn: up")
 	a.emit()
 	a.remember()
-	Go("event", func() { _ = a.API.Event(context.Background(), "connected") })
+	Go("event", func() { _ = a.API.Event(context.Background(), ConnEvent{Type: "connected"}) })
 }
 
 func (a *App) releaseTunnel() {

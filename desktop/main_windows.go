@@ -80,6 +80,7 @@ func main() {
 	core.Protect = dpapi(true)
 	core.Unprotect = dpapi(false)
 	core.SocketControl = vpn.SocketControl
+	core.NetworkKind = vpn.NetworkKind
 
 	tun, _ := vpn.New()
 	exeDir := "."

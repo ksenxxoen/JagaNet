@@ -40,6 +40,7 @@ hosts use; no behaviour moved between layers.
 | `tunnel.go` | applying a config to the adapter, the connect-retry loop, the supervisor loop (`watch`), kill-switch release, the cached config |
 | `supervise.go` | the pure state machine that decides nudge / switch / release / wake (unchanged) |
 | `probe.go` | (issue #2) the check outside the tunnel when it stays silent: `/v1/health` and TCP `1.1.1.1:443` in parallel through `SocketControl`, ≤3 s, at most once per 30 s; `Classify` → `offline` / `blocked` / nothing |
+| `failures.go` | (issue #3) failure reports to the panel: the supervisor marks one `handshake_failed` (gave up, no handshake) or `no_rx` (dead) per problem (`Step.Report`); `reportFailure` adds node, endpoint, reason (the probe's verdict when there is one), network kind, version; `Reporter` sends them in the background through the physical interface, a minute apart, and keeps up to 20 in memory while the panel is unreachable |
 | `notify.go` | user-facing error text, notification texts (`phrase`), once-per-problem `alert` |
 | `settings.go` | settings commands, the first-hide tray hint |
 | `update.go` | manifest checks, staging and verifying the exe, the update loop |
