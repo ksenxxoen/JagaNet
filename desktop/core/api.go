@@ -23,7 +23,6 @@ var SocketControl func(network, address string, c syscall.RawConn) error
 type API struct {
 	Base  string
 	Token func() string
-	Lang  func() string
 	http  *http.Client
 }
 
@@ -35,12 +34,9 @@ type APIError struct {
 
 func (e *APIError) Error() string { return e.Message }
 
-func NewAPI(base string, token, lang func() string) *API {
+func NewAPI(base string, token func() string) *API {
 	if token == nil {
 		token = func() string { return "" }
-	}
-	if lang == nil {
-		lang = func() string { return "" }
 	}
 	d := &net.Dialer{Timeout: 8 * time.Second, Control: func(n, a string, c syscall.RawConn) error {
 		if SocketControl != nil {
@@ -55,7 +51,7 @@ func NewAPI(base string, token, lang func() string) *API {
 		IdleConnTimeout:     30 * time.Second,
 		ForceAttemptHTTP2:   true,
 	}
-	return &API{Base: strings.TrimRight(base, "/"), Token: token, Lang: lang, http: &http.Client{Transport: tr, Timeout: 15 * time.Second}}
+	return &API{Base: strings.TrimRight(base, "/"), Token: token, http: &http.Client{Transport: tr, Timeout: 15 * time.Second}}
 }
 
 func cachedDial(d *net.Dialer) func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -101,9 +97,7 @@ func (a *API) do(ctx context.Context, method, path string, body, out any) error 
 	if t := a.Token(); t != "" {
 		req.Header.Set("Authorization", "Bearer "+t)
 	}
-	if l := a.Lang(); l != "" {
-		req.Header.Set("Accept-Language", l)
-	}
+	req.Header.Set("Accept-Language", "ru")
 	res, err := a.http.Do(req)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrOffline, err)

@@ -168,7 +168,7 @@ func newTestApp(t *testing.T, panel *fakePanel, store *Store) *testApp {
 	tun := &vpn.Fake{Logf: func(string, ...any) {}}
 	ta := &testApp{panel: panel, tunnel: tun}
 	ta.App = &App{
-		API: NewAPI(panel.srv.URL, nil, nil), Store: store, Tunnel: tun,
+		API: NewAPI(panel.srv.URL, nil), Store: store, Tunnel: tun,
 		Ping:    func(context.Context, string) (time.Duration, error) { return 20 * time.Millisecond, nil },
 		Version: "test", Site: "https://panel.example",
 		OnState:  func(s UIState) { ta.smu.Lock(); ta.states = append(ta.states, s); ta.smu.Unlock() },

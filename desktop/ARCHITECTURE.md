@@ -72,8 +72,8 @@ Changing a name means changing the test, `app.js` and Go together.
 * Connection logic (`connect.go`, `tunnel.go`, `supervise.go`) does not touch
   `UIState` fields other than through `state()`. Changing the UI means changing
   `ui/` and, if a field is needed, `state.go` + the contract test.
-* New texts live in `ui/app.js` (`T`) for the window and in `notify.go`
-  (`phrase`) for notifications. Step 2 removes en/de from both.
+* New texts (Russian only) live in `ui/app.js` (`TXT`) and the markup for the window and in `notify.go`
+  (`phrase`) for notifications.
 
 ## Screenshots and UI checks
 

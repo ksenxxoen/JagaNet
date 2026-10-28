@@ -130,8 +130,8 @@ func TestDisconnectDuringApplyLeavesNothingBehind(t *testing.T) {
 	}
 }
 
-// Old state.json files (languages that step 2 of the redesign removes, extra
-// fields) must keep loading.
+// Old state.json files (with the removed language fields and unknown ones)
+// must keep loading.
 func TestOldStateFileLoads(t *testing.T) {
 	dir := t.TempDir()
 	old := `{"email":"demo@example.com","country":"DE","autoConnect":true,"lang":"de","langSet":true,"trayHint":true,"future":{"x":1}}`
@@ -139,11 +139,11 @@ func TestOldStateFileLoads(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := LoadStore(dir)
-	if s.Lang != "de" || !s.LangSet || s.Country != "DE" || !s.AutoConnect || s.Email != "demo@example.com" {
+	if s.Country != "DE" || !s.AutoConnect || s.Email != "demo@example.com" {
 		t.Fatalf("%+v", s)
 	}
 	a := newTestApp(t, newFakePanel(t), s)
-	if st := a.snapshot(); st.Lang != "de" || st.Country != "DE" || st.Screen != "signin" {
+	if st := a.snapshot(); st.Country != "DE" || st.Screen != "signin" {
 		t.Fatalf("%+v", st)
 	}
 	// And garbage must not stop the app either.

@@ -1,59 +1,25 @@
 "use strict";
 // Boop for Windows: the window only draws; the Go side keeps the state and calls window.boop.update.
 
-const T = {
-  ru: {
-    "Email": "Почта", "Get a code": "Получить код", "Sign in": "Войти", "Another e-mail": "Другая почта",
-    "Device code": "Код устройства", "Sign in through the website": "Войти через сайт", "Allow on the website": "Разрешите вход на сайте",
-    "Open the website": "Открыть сайт", "Back": "Назад", "Sign in by e-mail": "Войти по почте", "I have a device code": "У меня есть код устройства",
-    "Settings": "Настройки", "Close": "Закрыть", "Country": "Страна", "Account": "Аккаунт", "Plan": "Тариф", "Extend": "Продлить",
-    "Key": "Ключ", "Own key": "Автоматически", "In use": "Используется",
-    "Connect on start": "Подключаться при запуске", "Start with Windows": "Запускать с Windows", "Language": "Язык", "Sign out": "Выйти",
-    "Off": "Отключено", "Connecting": "Подключение", "Reconnecting": "Переподключение", "Connected": "Подключено", "Problem": "Проблема", "Fastest": "Самая быстрая",
-    "ms": "мс", "until": "до", "Free": "Бесплатный",
-    "No network, trying again…": "Нет сети, пробуем снова…",
-    "Server is not responding, trying again…": "Сервер не отвечает, пробуем ещё…",
-    "Could not connect. Internet is back on, still trying.": "Не удалось подключиться. Интернет снова доступен, пробуем ещё.",
-    "Server is not responding. Internet stays blocked until the VPN connects.": "Сервер не отвечает. Интернет заблокирован, пока VPN не подключится.",
-    "The VPN stopped passing traffic. Reconnecting…": "Связь с VPN пропала, переподключаемся…",
-    "The plan has ended": "Тариф закончился. Продлите его, чтобы включить VPN.",
-    "This key was removed": "Ключ удалён",
-    "Signed out": "Сессия закончилась, войдите снова",
-    "Update available": "Доступно обновление",
-    "Update": "Обновить",
-    "Strict kill switch": "Не возвращать интернет, пока нет VPN",
-    "Rename": "Переименовать",
-    "New name": "Новое имя"
-  },
-  en: { "Own key": "Automatic" },
-  de: {
-    "Email": "E-Mail", "Get a code": "Code erhalten", "Sign in": "Anmelden", "Another e-mail": "Andere E-Mail",
-    "Device code": "Gerätecode", "Sign in through the website": "Über die Website anmelden", "Allow on the website": "Auf der Website erlauben",
-    "Open the website": "Website öffnen", "Back": "Zurück", "Sign in by e-mail": "Mit E-Mail anmelden", "I have a device code": "Ich habe einen Gerätecode",
-    "Settings": "Einstellungen", "Close": "Schließen", "Country": "Land", "Account": "Konto", "Plan": "Tarif", "Extend": "Verlängern",
-    "Key": "Schlüssel", "Own key": "Automatisch", "In use": "In Benutzung",
-    "Connect on start": "Beim Start verbinden", "Start with Windows": "Mit Windows starten", "Language": "Sprache", "Sign out": "Abmelden",
-    "Off": "Getrennt", "Connecting": "Verbinde", "Reconnecting": "Verbinde neu", "Connected": "Verbunden", "Problem": "Problem", "Fastest": "Schnellstes",
-    "ms": "ms", "until": "bis", "Free": "Kostenlos",
-    "No network, trying again…": "Kein Netz, neuer Versuch…",
-    "Server is not responding, trying again…": "Server antwortet nicht, neuer Versuch…",
-    "Could not connect. Internet is back on, still trying.": "Verbindung fehlgeschlagen. Internet ist wieder da, neuer Versuch.",
-    "Server is not responding. Internet stays blocked until the VPN connects.": "Server antwortet nicht. Internet bleibt blockiert, bis das VPN steht.",
-    "The VPN stopped passing traffic. Reconnecting…": "Die VPN-Verbindung ist weg, verbinde neu…",
-    "The plan has ended": "Der Tarif ist zu Ende. Verlängern Sie ihn, um das VPN einzuschalten.",
-    "This key was removed": "Schlüssel wurde gelöscht",
-    "Signed out": "Sitzung beendet, bitte erneut anmelden",
-    "Update available": "Update verfügbar",
-    "Update": "Aktualisieren",
-    "Strict kill switch": "Internet aus, bis das VPN steht",
-    "Rename": "Umbenennen",
-    "New name": "Neuer Name"
-  },
+// Все тексты окна — русские; язык в приложении один.
+const TXT = {
+  own: "Автоматически", inUse: "Используется", rename: "Переименовать", fastest: "Самая быстрая",
+  ms: "мс", until: "до", free: "Бесплатный",
+  off: "Выключено", connecting: "Подключение…", reconnecting: "Переподключение…", on: "Подключено", problem: "Проблема",
+  hintOff: "Нажмите, чтобы подключиться",
+  extend: "Продлить", signIn: "Войти", changeCountry: "Сменить страну", changeKey: "Выбрать ключ",
+  offline: "Нет сети, пробуем снова…",
+  noHandshake: "Сервер не отвечает, пробуем ещё…",
+  released: "Не удалось подключиться. Интернет снова доступен, пробуем ещё.",
+  strict: "Сервер не отвечает. Интернет заблокирован, пока VPN не подключится.",
+  dead: "Связь с VPN пропала, переподключаемся…",
+  plan: "Тариф закончился. Продлите его, чтобы включить VPN.",
+  keyRemoved: "Ключ удалён",
+  signedOut: "Сессия закончилась, войдите снова",
+  updateAvailable: "Доступно обновление",
 };
 
-let S = { screen: "", lang: "ru", conn: "off", countries: [] };
-let lang = "ru";
-const t = (k) => (T[lang] && T[lang][k]) || k;
+let S = { screen: "", conn: "off", countries: [] };
 const $ = (id) => document.getElementById(id);
 
 /* ---------- bridge ---------- */
@@ -127,41 +93,45 @@ function flag(el, code) {
 }
 
 let names;
+try { names = new Intl.DisplayNames(["ru"], { type: "region" }); } catch { names = null; }
 function countryName(code) {
-  if (code === "auto") return t("Fastest");
-  try { return names.of(code) || code; } catch { return code; }
+  if (code === "auto") return TXT.fastest;
+  try { return (names && names.of(code)) || code; } catch { return code; }
 }
 
 function setPing(el, ms) {
   const em = el.querySelector("em");
-  if (ms == null) { el.dataset.q = "0"; em.textContent = ""; return; }
+  if (ms == null) { el.dataset.q = "0"; em.textContent = ""; el.removeAttribute("aria-label"); return; }
   el.dataset.q = ms < 80 ? "3" : ms < 160 ? "2" : "1";
-  em.textContent = `${Math.round(ms)} ${t("ms")}`;
+  em.textContent = `${Math.round(ms)} ${TXT.ms}`;
 }
 
 /* ---------- render ---------- */
 
-function applyLang(l) {
-  lang = T[l] ? l : "en";
-  document.documentElement.lang = lang;
-  try { names = new Intl.DisplayNames([lang], { type: "region" }); } catch { names = null; }
-  document.querySelectorAll("[data-t]").forEach((el) => (el.textContent = t(el.dataset.t)));
-  document.querySelectorAll("[data-label]").forEach((el) => el.setAttribute("aria-label", t(el.dataset.label)));
-  document.querySelectorAll("#s-lang button").forEach((b) => b.classList.toggle("on", b.dataset.lang === lang));
+const STATUS = { off: TXT.off, connecting: TXT.connecting, reconnecting: TXT.reconnecting, on: TXT.on, problem: TXT.problem };
+
+// One action under the status, chosen by the code of the problem.
+function problemAction() {
+  switch (S.problem) {
+    case "plan": return { action: "extend", label: TXT.extend };
+    case "auth": return { action: "signOut", label: TXT.signIn };
+    case "key_removed": return { action: "keys", label: TXT.changeKey };
+    case "no_handshake": case "dead": return { action: "places", label: TXT.changeCountry };
+    default: return null;
+  }
 }
 
 function render(next) {
   if (next.toast) return toast(next.toast);
   const prev = S;
   S = Object.assign({}, S, next);
-  if (S.lang !== lang || !names) applyLang(S.lang);
 
   $("signin").hidden = S.screen !== "signin";
   $("main").hidden = S.screen !== "main";
   const banner = $("update-banner");
   if (S.update && S.update.version) {
     banner.hidden = false;
-    banner.textContent = t("Update available") + " · " + S.update.version + (S.update.notes ? " — " + S.update.notes : "");
+    banner.textContent = TXT.updateAvailable + " · " + S.update.version + (S.update.notes ? " — " + S.update.notes : "");
   } else banner.hidden = true;
   if (S.screen === "signin" && prev.screen !== "signin") showForm("f-email");
   if (S.screen === "signin" && prev.webLogin && !S.webLogin && !$("f-web").hidden) showForm("f-email");
@@ -171,14 +141,15 @@ function render(next) {
   app.dataset.state = S.conn;
   boop.dataset.state = S.conn;
   if (prev.conn !== S.conn && S.conn === "on") { boop.classList.remove("bump"); void boop.offsetWidth; boop.classList.add("bump"); }
-  $("status").textContent = t({ off: "Off", connecting: "Connecting", reconnecting: "Reconnecting", on: "Connected", problem: "Problem" }[S.conn] || "Off");
-  const detail = detailText();
-  $("detail").textContent = detail;
+  $("status").textContent = STATUS[S.conn] || TXT.off;
+  $("hint").textContent = S.conn === "off" ? TXT.hintOff : "";
+  $("detail").textContent = detailText();
   const act = $("detail-btn");
-  if (S.problem === "plan" && S.conn !== "off") {
+  const pa = S.conn !== "off" && S.conn !== "on" ? problemAction() : null;
+  if (pa) {
     act.hidden = false;
-    act.dataset.action = "extend";
-    act.textContent = t("Extend");
+    act.dataset.action = pa.action;
+    act.textContent = pa.label;
   } else {
     act.hidden = true;
     delete act.dataset.action;
@@ -197,7 +168,7 @@ function render(next) {
   if (!$("places").hidden) renderPlaces();
   if (!$("keys").hidden) renderKeys();
   $("s-key").hidden = !(S.keys || []).length;
-  $("s-key-name").textContent = key ? key.name : t("Own key");
+  $("s-key-name").textContent = key ? key.name : TXT.own;
   $("s-email").textContent = S.email || "";
   $("s-plan").textContent = planText();
   $("s-auto").checked = !!S.autoConnect;
@@ -211,42 +182,43 @@ function render(next) {
 
 function detailText() {
   if (!S.problem || S.conn === "off") return "";
-  if (S.problem === "offline") return t("No network, trying again…");
-  if (S.problem === "plan") return t("The plan has ended");
-  if (S.problem === "key_removed") return t("This key was removed");
-  if (S.problem === "auth") return t("Signed out");
-  if (S.problem === "dead" && !S.released) return t("The VPN stopped passing traffic. Reconnecting…");
-  if (S.released) return t("Could not connect. Internet is back on, still trying.");
-  if (S.strictKill) return t("Server is not responding. Internet stays blocked until the VPN connects.");
-  if (S.problem === "no_handshake") return t("Server is not responding, trying again…");
-  if (S.problem === "dead") return t("The VPN stopped passing traffic. Reconnecting…");
+  if (S.problem === "offline") return TXT.offline;
+  if (S.problem === "plan") return TXT.plan;
+  if (S.problem === "key_removed") return TXT.keyRemoved;
+  if (S.problem === "auth") return TXT.signedOut;
+  if (S.problem === "dead" && !S.released) return TXT.dead;
+  if (S.released) return TXT.released;
+  if (S.strictKill) return TXT.strict;
+  if (S.problem === "no_handshake") return TXT.noHandshake;
+  if (S.problem === "dead") return TXT.dead;
   return "";
 }
 
 function planText() {
   const p = S.plan;
   if (!p) return "";
-  const name = p.name || (p.pro ? "Pro" : t("Free"));
+  const name = p.name || (p.pro ? "Pro" : TXT.free);
   if (!p.expiresAt) return name;
   const d = new Date(p.expiresAt);
-  return `${name}, ${t("until")} ${d.toLocaleDateString(lang, { day: "numeric", month: "short" })}`;
+  return `${name}, ${TXT.until} ${d.toLocaleDateString("ru", { day: "numeric", month: "short" })}`;
 }
+
+const CHECK = `<span class="check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>`;
 
 function renderPlaces(animate) {
   const list = $("place-list");
   const scroll = list.scrollTop;
   const items = [{ code: "auto", ping: (S.countries.find((c) => c.code === S.best) || {}).ping }].concat(
-    [...S.countries].sort((a, b) => countryName(a.code).localeCompare(countryName(b.code), lang)),
+    [...S.countries].sort((a, b) => countryName(a.code).localeCompare(countryName(b.code), "ru")),
   );
   const chosen = S.key ? "" : S.country || "auto";
   list.innerHTML = "";
   items.forEach((c, i) => {
     const b = document.createElement("button");
-    b.className = "item" + (c.code === chosen ? " selected" : "");
+    b.className = "list-item" + (c.code === chosen ? " selected" : "");
     if (animate) b.style.animationDelay = `${i * 18}ms`; else b.style.animation = "none";
     if (c.full) b.disabled = true;
-    b.innerHTML = `<span class="flag"></span><span class="place-name"><b></b></span><span class="ping"><i></i><i></i><i></i><em></em></span>` +
-      `<span class="check"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>`;
+    b.innerHTML = `<span class="flag"></span><span class="item-text"><b class="item-title"></b></span><span class="ping"><i></i><i></i><i></i><em></em></span>` + CHECK;
     flag(b.querySelector(".flag"), c.code);
     b.querySelector("b").textContent = countryName(c.code);
     setPing(b.querySelector(".ping"), c.ping);
@@ -260,20 +232,22 @@ function renderKeys(animate) {
   const list = $("key-list");
   const scroll = list.scrollTop;
   list.innerHTML = "";
-  [{ id: "", name: t("Own key") }].concat(S.keys || []).forEach((k, i) => {
+  [{ id: "", name: TXT.own }].concat(S.keys || []).forEach((k, i) => {
     const b = document.createElement("button");
-    b.className = "item" + (k.id === (S.key || "") ? " selected" : "");
+    b.className = "list-item" + (k.id === (S.key || "") ? " selected" : "");
     if (animate) b.style.animationDelay = `${i * 18}ms`; else b.style.animation = "none";
-    b.innerHTML = `<span class="flag"></span><span class="place-name"><b></b></span>${k.inUse ? `<span class="busy"></span>` : ""}` +
-      `<span class="check"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>`;
+    b.innerHTML = `<span class="flag"></span><span class="item-text"><b class="item-title"></b></span>${k.inUse ? `<span class="badge is-warn"></span>` : ""}` + CHECK;
     flag(b.querySelector(".flag"), k.id ? k.country || "" : "app");
     b.querySelector("b").textContent = k.name;
-    if (k.inUse) b.querySelector(".busy").textContent = t("In use");
+    if (k.inUse) b.querySelector(".badge").textContent = TXT.inUse;
     if (k.id) {
       const rn = document.createElement("span");
-      rn.className = "rename";
-      rn.textContent = t("Rename");
+      rn.className = "item-action rename";
+      rn.setAttribute("role", "button");
+      rn.tabIndex = 0;
+      rn.textContent = TXT.rename;
       rn.onclick = (e) => { e.stopPropagation(); renameKey(k); };
+      rn.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); renameKey(k); } };
       b.insertBefore(rn, b.querySelector(".check"));
     }
     b.onclick = async (e) => {
@@ -286,11 +260,26 @@ function renderKeys(animate) {
   list.scrollTop = scroll;
 }
 
-async function renameKey(k) {
-  const name = prompt(t("New name"), k.name || "");
-  if (!name || !name.trim() || name.trim() === k.name) return;
-  await call("renameKey", { id: k.id, name: name.trim() });
+// The rename dialog stands in for the browser's prompt().
+let renaming = null;
+function renameKey(k) {
+  renaming = k;
+  $("rename-input").value = k.name || "";
+  $("rename").hidden = false;
+  setTimeout(() => { $("rename-input").focus(); $("rename-input").select(); }, 30);
 }
+function closeRename() {
+  renaming = null;
+  $("rename").hidden = true;
+}
+$("rename-cancel").onclick = closeRename;
+$("f-rename").onsubmit = async (e) => {
+  e.preventDefault();
+  const k = renaming, name = $("rename-input").value.trim();
+  closeRename();
+  if (!k || !name || name === k.name) return;
+  try { await call("renameKey", { id: k.id, name }); } catch { /* the toast says why */ }
+};
 
 function tick() {
   const el = $("timer");
@@ -313,11 +302,13 @@ function toast(text) {
 
 /* ---------- sheets ---------- */
 
-const closing = {};
+const closing = {}, opener = {};
 function openSheet(id) {
   clearTimeout(closing[id]); // a close still running would hide the sheet that was just reopened
   $(id).hidden = false;
   $(id).classList.remove("closing");
+  opener[id] = document.activeElement;
+  setTimeout(() => { const c = $(id).querySelector("[data-close]"); if (c && !$(id).hidden) c.focus(); }, 30);
   if (id === "places") { renderPlaces(true); call("refreshPings", null, { silent: true }).catch(() => {}); }
   if (id === "keys") { renderKeys(true); call("refreshKeys", null, { silent: true }).catch(() => {}); }
 }
@@ -326,9 +317,15 @@ function closeSheet(id) {
   if (el.hidden) return;
   el.classList.add("closing");
   closing[id] = setTimeout(() => { el.hidden = true; el.classList.remove("closing"); }, 200);
+  const back = opener[id];
+  if (back && back.focus && !back.hidden) back.focus();
 }
 document.querySelectorAll("[data-close]").forEach((b) => (b.onclick = () => closeSheet(b.closest(".sheet").id)));
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") ["places", "keys", "settings"].forEach(closeSheet); });
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (!$("rename").hidden) closeRename();
+  else ["places", "keys", "settings"].forEach(closeSheet);
+});
 
 /* ---------- sign in ---------- */
 
@@ -339,7 +336,7 @@ function showForm(id) {
   if (input) setTimeout(() => input.focus(), 30);
 }
 async function busy(form, fn) {
-  const btn = form.querySelector(".primary");
+  const btn = form.querySelector(".btn-primary");
   btn.disabled = true;
   try { await fn(); } catch { /* the toast already says why */ } finally { btn.disabled = false; }
 }
@@ -396,10 +393,14 @@ $("s-auto").onchange = (e) => call("setAutoConnect", e.target.checked).catch(() 
 $("s-strict").onchange = (e) => call("setStrictKill", e.target.checked).catch(() => {});
 $("s-update").onclick = () => call("update").catch(() => {});
 $("update-banner").onclick = () => call("update").catch(() => {});
-$("detail-btn").onclick = (e) => { const a = e.currentTarget.dataset.action; if (a) call(a).catch(() => {}); };
+$("detail-btn").onclick = (e) => {
+  const a = e.currentTarget.dataset.action;
+  if (a === "places" || a === "keys") openSheet(a);
+  else if (a === "extend") call("extend").catch(() => {});
+  else if (a === "signOut") call("signOut").catch(() => {});
+};
 $("s-start").onchange = (e) => call("setAutostart", e.target.checked).catch(() => {});
 $("s-signout").onclick = () => { closeSheet("settings"); call("signOut").catch(() => {}); };
-document.querySelectorAll("#s-lang button").forEach((b) => (b.onclick = () => call("setLang", b.dataset.lang).catch(() => {})));
 document.addEventListener("contextmenu", (e) => { if (!e.target.matches("input")) e.preventDefault(); });
 
 /* ---------- start ---------- */

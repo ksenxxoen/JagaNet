@@ -12,7 +12,8 @@ var uiFiles embed.FS
 func page() string {
 	read := func(n string) string { b, _ := uiFiles.ReadFile("ui/" + n); return string(b) }
 	html := read("index.html")
-	html = strings.Replace(html, "/*CSS*/", read("app.css"), 1)
+	css := read("tokens.css") + read("components.css") + read("app.css")
+	html = strings.Replace(html, "/*CSS*/", css, 1)
 	return strings.Replace(html, "/*JS*/", strings.ReplaceAll(read("app.js"), "</script", "<\\/script"), 1)
 }
 
