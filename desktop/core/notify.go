@@ -10,6 +10,9 @@ import (
 const (
 	offline      = "Нет связи с сервером"
 	tunnelFailed = "Не удалось включить VPN"
+	// Same words as TXT.blocked / TXT.strictClosed in ui/app.js.
+	blockedText  = "Похоже, ваша сеть блокирует VPN. Попробуйте Wi\u2011Fi или другую страну."
+	strictClosed = "Интернет закрыт, пока VPN не подключится."
 )
 
 func (a *App) humanize(err error) error {
@@ -76,6 +79,11 @@ func phrase(code string, released, strict bool) string {
 		return "Тариф закончился. Продлите его, чтобы включить VPN."
 	case ProbKeyRemoved:
 		return "Ключ удалён"
+	case ProbBlocked:
+		if strict && !released {
+			return blockedText + " " + strictClosed
+		}
+		return blockedText
 	case ProbAuth:
 		return "Сессия закончилась, войдите снова"
 	case "update":

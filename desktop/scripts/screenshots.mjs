@@ -60,6 +60,9 @@ const states = {
   "problem-strict": { conn: "problem", problem: "no_handshake", strictKill: true },
   "problem-key-removed": { conn: "connecting", problem: "key_removed" },
   "problem-auth": { conn: "problem", problem: "auth" },
+  "problem-blocked": { conn: "problem", problem: "blocked", released: true },
+  "problem-blocked-strict": { conn: "problem", problem: "blocked", strictKill: true },
+  "problem-offline-probe": { conn: "problem", problem: "offline", released: true },
   "settings": { ...on, act: `openSheet("settings")` },
   "settings-long": { ...on, email: longEmail, keys: [{ id: "k1", name: longKey }], key: "k1", act: `openSheet("settings")` },
   "settings-expired": { ...on, plan: { name: "Pro", pro: true, expiresAt: "2026-12-01T00:00:00Z" }, act: `openSheet("settings")` },
@@ -78,12 +81,20 @@ const states = {
 };
 // Big pictures at a higher scale only for the main states, to keep the folder small.
 const CORE = ["signin-email", "off", "on", "problem-plan", "settings", "places", "keys"];
-const viewports = [
+// SHOT_VP picks sizes by name; a WxH name not listed here (e.g. 360x560) is taken at scale 1.
+const sizes = [
   { name: "360x520", width: 360, height: 520, scales: [1, 1.5, 2] },
   { name: "480x800", width: 480, height: 800, scales: [1, 1.5] },
   { name: "1280x800", width: 1280, height: 800, scales: [1, 1.5, 2] },
   { name: "1920x1080", width: 1920, height: 1080, scales: [1, 1.5] },
-].filter((v) => !process.env.SHOT_VP || process.env.SHOT_VP.split(",").includes(v.name)).flatMap((v) => v.scales.filter((sc) => !process.env.SHOT_SCALES || process.env.SHOT_SCALES.split(",").map(Number).includes(sc)).map((scale) => ({ name: `${v.name}${scale === 1 ? "" : `@${scale}x`}`, width: v.width, height: v.height, scale })));
+];
+for (const n of (process.env.SHOT_VP || "").split(",")) {
+  const m = /^(\d+)x(\d+)$/.exec(n);
+  if (m && !sizes.some((v) => v.name === n)) sizes.push({ name: n, width: +m[1], height: +m[2], scales: [1] });
+}
+// SHOT_STATES limits the run to the named states.
+const only = process.env.SHOT_STATES ? process.env.SHOT_STATES.split(",") : null;
+const viewports = sizes.filter((v) => !process.env.SHOT_VP || process.env.SHOT_VP.split(",").includes(v.name)).flatMap((v) => v.scales.filter((sc) => !process.env.SHOT_SCALES || process.env.SHOT_SCALES.split(",").map(Number).includes(sc)).map((scale) => ({ name: `${v.name}${scale === 1 ? "" : `@${scale}x`}`, width: v.width, height: v.height, scale })));
 const schemes = process.env.SHOT_SCHEMES ? process.env.SHOT_SCHEMES.split(",") : ["light", "dark"];
 
 const server = spawn("go", ["run", "."], {
@@ -117,6 +128,7 @@ try {
     await page.waitForTimeout(300);
     for (const [name, patch] of Object.entries(states)) {
       if (vp.scale > 1 && vp.width >= 1280 && !CORE.includes(name)) continue;
+      if (only && !only.includes(name)) continue;
       const { act, ...st } = patch;
       await page.evaluate(([state, act]) => {
         // Back to a clean window: no sheet, dialog or toast left from the previous state.

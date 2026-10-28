@@ -39,6 +39,7 @@ hosts use; no behaviour moved between layers.
 | `connect.go` | `Connect` / `Disconnect` / `Toggle`, `sync`, `establish` (what the panel says to run) |
 | `tunnel.go` | applying a config to the adapter, the connect-retry loop, the supervisor loop (`watch`), kill-switch release, the cached config |
 | `supervise.go` | the pure state machine that decides nudge / switch / release / wake (unchanged) |
+| `probe.go` | (issue #2) the check outside the tunnel when it stays silent: `/v1/health` and TCP `1.1.1.1:443` in parallel through `SocketControl`, ≤3 s, at most once per 30 s; `Classify` → `offline` / `blocked` / nothing |
 | `notify.go` | user-facing error text, notification texts (`phrase`), once-per-problem `alert` |
 | `settings.go` | settings commands, the first-hide tray hint |
 | `update.go` | manifest checks, staging and verifying the exe, the update loop |

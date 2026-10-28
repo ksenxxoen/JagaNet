@@ -28,6 +28,9 @@ const (
 	ProbPlan        = "plan"
 	ProbKeyRemoved  = "key_removed"
 	ProbAuth        = "auth"
+	// ProbBlocked: the internet works outside the tunnel, the node does not answer
+	// (the network drops VPN). Set by the probe (probe.go), never by the supervisor.
+	ProbBlocked = "blocked"
 )
 
 // Supervisor decides what a connected attempt should do. It does no I/O;

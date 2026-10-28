@@ -132,14 +132,17 @@ func (a *App) applyStep(ctx context.Context, step Step) {
 		a.released = false
 		a.skip = nil
 		a.told = nil
+		a.forgetVerdict()
 		a.mu.Unlock()
 	}
 	if step.Problem != "" {
 		a.mu.Lock()
 		if a.conn != "off" {
-			a.problem = step.Problem
+			a.problem = a.explain(step.Problem)
 		}
 		a.mu.Unlock()
+		// No handshake / dead: ask the network outside the tunnel why (rate-limited).
+		a.diagnose(ctx, step.Problem)
 	}
 	if step.Release {
 		// Visible to the window and the notification before the adapter is torn down.
@@ -155,7 +158,9 @@ func (a *App) applyStep(ctx context.Context, step Step) {
 	case "connecting", "reconnecting", "problem":
 		a.setConn(step.Phase)
 	}
-	if step.Notify != "" {
+	// A silent tunnel the supervisor gave up on is reported by diagnose, with the
+	// probe's verdict; "dead" while still reconnecting is said at once.
+	if step.Notify != "" && !(step.Problem != "" && silent(step.Notify)) {
 		a.alert(step.Notify)
 	}
 	if step.Release {
@@ -212,6 +217,7 @@ func (a *App) markOn() {
 	first := a.conn != "on"
 	a.conn = "on"
 	a.problem = ""
+	a.forgetVerdict()
 	a.released = false
 	a.asleep = false
 	if first {

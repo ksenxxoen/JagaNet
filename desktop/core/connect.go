@@ -60,6 +60,7 @@ func (a *App) connect() {
 	a.asleep = false
 	a.skip = nil
 	a.told = nil
+	a.forgetVerdict()
 	ctx, cancel := context.WithCancel(context.Background())
 	a.stop = cancel
 	a.resyncCh = make(chan struct{}, 1)
@@ -86,6 +87,7 @@ func (a *App) disconnect() {
 	}
 	a.conn, a.current, a.curHost, a.curPing = "off", "", "", nil
 	a.problem, a.released, a.asleep = "", false, false
+	a.forgetVerdict()
 	a.skip = nil
 	a.hold = nil
 	a.applied, a.peerKey = "", ""
