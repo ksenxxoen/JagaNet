@@ -88,3 +88,11 @@ Changing a name means changing the test, `app.js` and Go together.
   real 20 s / 45 s timeouts (`BOOP_FAKE_NOHANDSHAKE=1` keeps the stand-in tunnel from
   handshaking). About three minutes; `E2E_LOGS=<dir>` keeps each app's log.
   Manual checks for a real Windows machine: `docs/QA-1.2.0.md`.
+
+## Build and signing
+
+`./build.sh [version] [api]` builds `dist/Boop.exe`. Authenticode signing is an
+optional last step switched on by `BOOP_SIGN` (`osslsigncode` with a PFX, or `azure`
+for Azure Trusted Signing); without it the build is unsigned, as before. The update
+manifest's SHA-256 (and ed25519 signature) must be taken from the signed file.
+Details and the release order: `SIGNING.md`.

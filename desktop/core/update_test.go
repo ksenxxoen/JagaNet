@@ -114,3 +114,48 @@ func TestStageAndSwap(t *testing.T) {
 		t.Fatalf("rollback %q %v", back, err)
 	}
 }
+
+// Authenticode signing rewrites the exe (PE checksum, certificate table and
+// the signature appended at the end), so the manifest hash and the ed25519
+// signature must be made from the file after signing. See SIGNING.md.
+func TestManifestAfterAuthenticode(t *testing.T) {
+	unsigned := []byte("MZ boop-exe unsigned")
+	signed := append([]byte("MZ boop-exe signed!!"), []byte("<pkcs7 + timestamp>")...)
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := func(data []byte) Manifest {
+		sum := sha256.Sum256(data)
+		return Manifest{Version: "1.2.0", URL: "https://boopvpn.app/download/windows",
+			SHA256: hex.EncodeToString(sum[:]), Signature: base64.StdEncoding.EncodeToString(ed25519.Sign(priv, data))}
+	}
+	if err := VerifyPayload(manifest(unsigned), signed, pub); err == nil {
+		t.Fatal("a manifest made before signing accepted the signed exe")
+	}
+	if err := VerifyPayload(manifest(signed), signed, pub); err != nil {
+		t.Fatal(err)
+	}
+
+	// Optional check on a real signed build: BOOP_TEST_SIGNED_EXE=/abs/dist/Boop.exe
+	// next to the Boop.exe.sha256 that build.sh writes after signing.
+	exe := os.Getenv("BOOP_TEST_SIGNED_EXE")
+	if exe == "" {
+		return
+	}
+	data, err := os.ReadFile(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line, err := os.ReadFile(exe + ".sha256")
+	if err != nil || len(line) < 64 {
+		t.Fatalf("read %s.sha256: %v", exe, err)
+	}
+	m := Manifest{Version: "1.2.0", URL: "https://boopvpn.app/download/windows", SHA256: string(line[:64])}
+	if err := m.Validate("https://boopvpn.app"); err != nil {
+		t.Fatal(err)
+	}
+	if err := StageFile(filepath.Join(t.TempDir(), "Boop.exe.new"), data, m, nil); err != nil {
+		t.Fatalf("%s against its .sha256: %v", exe, err)
+	}
+}
