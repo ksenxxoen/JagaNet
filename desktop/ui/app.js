@@ -22,6 +22,8 @@ const TXT = {
   updateAvailable: "Доступно обновление",
   updating: "Скачиваем обновление…", installing: "Устанавливаем и перезапускаем…", updateFailed: "Не удалось обновить. Повторить",
   update: "Обновить", expired: "Закончился",
+  // Same words as planPhrase in core/planwarn.go (the tray says the same, plus a reason).
+  planSoon: "Тариф заканчивается через", planToday: "Тариф заканчивается сегодня", days: ["день", "дня", "дней"],
   full: "Нет мест", noResults: "Ничего не найдено", noResultsHint: "Попробуйте другое название.",
   noCountries: "Список стран недоступен", noCountriesHint: "Проверьте интернет и попробуйте ещё раз.", retry: "Обновить список",
   noKeys: "Других ключей пока нет. Их можно создать в личном кабинете на сайте.",
@@ -146,6 +148,7 @@ function render(next) {
   $("signin").hidden = S.screen !== "signin";
   $("main").hidden = S.screen !== "main";
   renderUpdate();
+  renderPlanWarn();
   if (S.screen === "signin" && prev.screen !== "signin") showForm("f-email");
   if (S.screen === "signin" && prev.webLogin && !S.webLogin && !$("f-web").hidden) showForm("f-email");
   if (S.screen !== "main") return;
@@ -228,6 +231,22 @@ function renderUpdate() {
   $("s-update").classList.toggle("is-loading", busyNow);
   $("s-update-title").textContent = busyNow || stage === "failed" ? text : TXT.update + " до " + u.version;
   $("s-update-sub").textContent = busyNow || stage === "failed" ? "" : u.notes || "";
+}
+
+// The plan ends in 1–3 days or today (Go decides by the computer's clock: S.plan.warn, S.plan.daysLeft).
+// Not on the sign-in screen and not next to the "plan has ended" problem, which says more.
+function renderPlanWarn() {
+  const p = S.screen === "main" && S.problem !== "plan" ? S.plan : null;
+  const warn = p ? p.warn : "";
+  $("plan-banner").hidden = !warn;
+  if (!warn) return;
+  $("plan-banner-text").textContent = warn === "today" ? TXT.planToday : `${TXT.planSoon} ${p.daysLeft} ${dayWord(p.daysLeft)}`;
+}
+
+// "день", "дня" or "дней" for n.
+function dayWord(n) {
+  const t = n % 100, u = n % 10;
+  return t >= 11 && t <= 14 ? TXT.days[2] : u === 1 ? TXT.days[0] : u >= 2 && u <= 4 ? TXT.days[1] : TXT.days[2];
 }
 
 function planExpired() {
@@ -605,6 +624,7 @@ $("s-auto").onchange = (e) => call("setAutoConnect", e.target.checked).catch(() 
 $("s-strict").onchange = (e) => call("setStrictKill", e.target.checked).catch(() => {});
 $("s-update").onclick = () => call("update").catch(() => {});
 $("update-banner").onclick = () => call("update").catch(() => {});
+$("plan-extend").onclick = () => call("extend").catch(() => {});
 $("detail-btn").onclick = (e) => {
   const a = e.currentTarget.dataset.action;
   if (a === "places" || a === "keys") openSheet(a);

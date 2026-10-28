@@ -126,9 +126,13 @@ button { background: none; border: 0; cursor: pointer; }
   background: color-mix(in srgb, var(--warning) 18%, var(--surface)); color: var(--text);
   font-weight: var(--fw-semibold); text-align: center; border: var(--border) solid color-mix(in srgb, var(--warning) 40%, var(--line));
 }
-.banner:hover:not(:disabled) { background: color-mix(in srgb, var(--warning) 26%, var(--surface)); }
+button.banner:hover:not(:disabled) { background: color-mix(in srgb, var(--warning) 26%, var(--surface)); }
 .banner:disabled { cursor: progress; }
 .banner.is-loading { display: flex; align-items: center; justify-content: center; gap: var(--s-2); }
+/* Banner with a text and its own button (the plan is about to end). */
+.banner-row { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2) var(--s-2) var(--s-2) var(--s-4); text-align: left; }
+.banner-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.banner-btn { flex: none; min-height: 2.25rem; padding: 0 var(--s-4); }
 
 /* Toast */
 .toast {

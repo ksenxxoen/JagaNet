@@ -28,6 +28,10 @@ type Plan struct {
 	Name      string `json:"name,omitempty"`
 	Pro       bool   `json:"pro"`
 	ExpiresAt string `json:"expiresAt,omitempty"`
+	// Warn is "soon" (DaysLeft 1–3) or "today" when the plan is about to end
+	// (planwarn.go); empty otherwise, also once it has ended.
+	Warn     string `json:"warn,omitempty"`
+	DaysLeft int    `json:"daysLeft,omitempty"`
 }
 
 // UIState is all the window shows.
@@ -69,7 +73,7 @@ type UpdateUI struct {
 func (a *App) state() UIState {
 	s := UIState{
 		Screen: "signin", Conn: a.conn, Country: a.Store.Country,
-		Email: a.Store.Email, Plan: a.plan, AutoConnect: a.Store.AutoConnect, Version: a.Version,
+		Email: a.Store.Email, Plan: withWarning(a.plan, time.Now()), AutoConnect: a.Store.AutoConnect, Version: a.Version,
 		Current: a.current, Ping: a.curPing, Countries: []Country{},
 		WebLogin: a.webLogin != nil,
 		Keys:     []KeyUI{}, Key: a.Store.KeyID,

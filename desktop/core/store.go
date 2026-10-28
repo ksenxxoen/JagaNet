@@ -27,6 +27,9 @@ type Store struct {
 	StrictKill bool `json:"strictKill,omitempty"`
 	// Where the window was left (see window.go).
 	Win *WindowPlacement `json:"window,omitempty"`
+	// The local day (YYYY-MM-DD) the plan warning was last shown in the tray,
+	// by level ("soon", "today"): at most one a day each (planwarn.go).
+	PlanWarned map[string]string `json:"planWarned,omitempty"`
 
 	cache *CachedTunnel
 

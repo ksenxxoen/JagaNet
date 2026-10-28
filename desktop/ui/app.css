@@ -17,6 +17,7 @@
   .status { margin-top: var(--s-3); }
 }
 .app > .banner { width: calc(100% - 2 * var(--s-4)); max-width: calc(var(--content-w) - 2 * var(--s-4)); }
+.app > .banner:not([hidden]) ~ .banner { margin-top: var(--s-2); }
 
 /* Soft colour behind the button that follows the state. */
 .glow {
