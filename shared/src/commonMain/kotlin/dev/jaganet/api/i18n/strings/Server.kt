@@ -147,4 +147,6 @@ internal val serverStrings: List<S> = listOf(
     // The Windows app's download and update manifest, before a build is published
     S("The Windows app isn't uploaded yet", "Приложение для Windows ещё не загружено", "Die Windows-App ist noch nicht hochgeladen"),
     S("No desktop build is published", "Сборка для компьютера ещё не опубликована", "Es ist noch keine Desktop-Version veröffentlicht"),
+    // Node status and notes for the apps (issue #10)
+    S("The note is too long: {n} characters at most", "Слишком длинное объявление: не больше {n} символов", "Die Notiz ist zu lang: höchstens {n} Zeichen"),
 )

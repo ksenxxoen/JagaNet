@@ -24,7 +24,11 @@ const TXT = {
   update: "Обновить", expired: "Закончился",
   // Same words as planPhrase in core/planwarn.go (the tray says the same, plus a reason).
   planSoon: "Тариф заканчивается через", planToday: "Тариф заканчивается сегодня", days: ["день", "дня", "дней"],
-  full: "Нет мест", noResults: "Ничего не найдено", noResultsHint: "Попробуйте другое название.",
+  full: "Нет мест",
+  // The owner's node status in the country list (issue #10).
+  degraded: "Возможны перебои", blocked2: "Часть провайдеров блокирует", maintenance: "Обслуживание",
+  maintenanceHint: "Страна на обслуживании, выберите другую",
+  noResults: "Ничего не найдено", noResultsHint: "Попробуйте другое название.",
   noCountries: "Список стран недоступен", noCountriesHint: "Проверьте интернет и попробуйте ещё раз.", retry: "Обновить список",
   noKeys: "Других ключей пока нет. Их можно создать в личном кабинете на сайте.",
   fastestNow: "Сейчас:", usedElsewhere: "Используется на другом устройстве",
@@ -149,6 +153,7 @@ function render(next) {
   $("main").hidden = S.screen !== "main";
   renderUpdate();
   renderPlanWarn();
+  renderNotice();
   if (S.screen === "signin" && prev.screen !== "signin") showForm("f-email");
   if (S.screen === "signin" && prev.webLogin && !S.webLogin && !$("f-web").hidden) showForm("f-email");
   if (S.screen !== "main") return;
@@ -243,6 +248,15 @@ function renderPlanWarn() {
   $("plan-banner-text").textContent = warn === "today" ? TXT.planToday : `${TXT.planSoon} ${p.daysLeft} ${dayWord(p.daysLeft)}`;
 }
 
+// The owner's note (S.notice): the node in use, else the one for everyone. Go leaves out a note
+// the person closed; closing hides it at once and tells Go, which keeps the text.
+let noticeClosed = "";
+function renderNotice() {
+  const text = S.screen === "main" && S.notice && S.notice !== noticeClosed ? S.notice : "";
+  $("notice-banner").hidden = !text;
+  $("notice-text").textContent = text;
+}
+
 // "день", "дня" or "дней" for n.
 function dayWord(n) {
   const t = n % 100, u = n % 10;
@@ -317,14 +331,20 @@ function renderPlaces(animate) {
     b.className = "list-item" + (c.code === chosen ? " selected" : "");
     if (c.code === chosen) b.setAttribute("aria-current", "true");
     if (animate) b.style.animationDelay = `${Math.min(i, 12) * 18}ms`; else b.style.animation = "none";
+    // Under maintenance: not chosen, like a full country. Degraded or blocked: chosen with a warning.
+    const off = c.status === "maintenance";
+    const warn = c.status === "degraded" ? TXT.degraded : c.status === "blocked" ? TXT.blocked2 : "";
     b.innerHTML = `<span class="flag"></span><span class="item-text"><b class="item-title"></b><small class="item-sub"></small></span>` +
-      (c.full ? `<span class="badge"></span>` : `<span class="ping"><i></i><i></i><i></i><em></em></span>`) + CHECK;
+      (c.full || off ? `<span class="badge"></span>` : `<span class="ping"><i></i><i></i><i></i><em></em></span>`) + CHECK;
     flag(b.querySelector(".flag"), c.code);
     b.querySelector("b").textContent = countryName(c.code);
-    b.querySelector("small").textContent = c.sub || "";
-    if (c.full) {
+    const small = b.querySelector("small");
+    small.textContent = c.sub || warn || "";
+    small.classList.toggle("is-warn", !!warn);
+    if (c.full || off) {
       b.disabled = true;
-      b.querySelector(".badge").textContent = TXT.full;
+      b.querySelector(".badge").textContent = off ? TXT.maintenance : TXT.full;
+      if (off) b.title = TXT.maintenanceHint;
     } else setPing(b.querySelector(".ping"), c.ping);
     b.onclick = async () => { closeSheet("places"); await call("setCountry", c.code); };
     list.appendChild(b);
@@ -625,6 +645,11 @@ $("s-strict").onchange = (e) => call("setStrictKill", e.target.checked).catch(()
 $("s-update").onclick = () => call("update").catch(() => {});
 $("update-banner").onclick = () => call("update").catch(() => {});
 $("plan-extend").onclick = () => call("extend").catch(() => {});
+$("notice-close").onclick = () => {
+  noticeClosed = S.notice || "";
+  renderNotice();
+  call("closeNotice", noticeClosed, { silent: true }).catch(() => {});
+};
 $("detail-btn").onclick = (e) => {
   const a = e.currentTarget.dataset.action;
   if (a === "places" || a === "keys") openSheet(a);

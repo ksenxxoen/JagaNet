@@ -83,6 +83,11 @@ func (a *App) watch(ctx context.Context) {
 	if a.Tunnel != nil {
 		st = a.Tunnel.Stats()
 	}
+	// The channel of this connection: a quick reconnect makes a new one while
+	// this loop is still on its way out.
+	a.mu.Lock()
+	resync := a.resyncCh
+	a.mu.Unlock()
 	var sup Supervisor
 	sup.Started(time.Now(), st.Rx)
 	tick := time.NewTicker(time.Second)
@@ -93,7 +98,7 @@ func (a *App) watch(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-a.resyncCh:
+		case <-resync:
 			a.sync(ctx)
 			lastSync = time.Now()
 		case <-tick.C:

@@ -229,6 +229,58 @@ try {
     check("a warning that is gone from the push leaves the screen", await hidden("plan-banner"));
   });
 
+  // ---- issue #10: the owner's node status and notes ----
+
+  await attempt("notice banner", async () => {
+    const note = "Сегодня ночью плановые работы на сервере в Нидерландах, возможны короткие перерывы";
+    await show({ ...main, notice: note });
+    check("the note shows in its banner", !(await hidden("notice-banner")) && (await page.evaluate(() => document.getElementById("notice-text").textContent)) === note);
+    check("the cross has a label", (await page.evaluate(() => document.getElementById("notice-close").getAttribute("aria-label"))) === "Закрыть объявление");
+    let closed = null;
+    await page.route("**/rpc/closeNotice", async (r) => { closed = JSON.parse(r.request().postData()); r.fulfill({ status: 200, body: "null", contentType: "application/json" }); });
+    await click("#notice-close");
+    await page.waitForTimeout(200);
+    check("closing hides it at once and tells Go the text", (await hidden("notice-banner")) && closed === note);
+    await show({ ...main, notice: note });
+    check("the same text pushed again stays hidden", await hidden("notice-banner"));
+    await show({ ...main, notice: "Другое объявление" });
+    check("a new text shows", !(await hidden("notice-banner")));
+    await page.unroute("**/rpc/closeNotice");
+    await show({ ...main, screen: "signin", notice: "Другое объявление" });
+    check("not on the sign-in screen", await hidden("notice-banner"));
+    await show(main);
+    check("a note that is gone leaves the screen", await hidden("notice-banner"));
+    // With the other two banners, in the smallest window: the connect button stays on screen.
+    await page.setViewportSize({ width: 360, height: 520 });
+    await show({ ...main, conn: "off", notice: note + " (ещё одно)", plan: { name: "Pro", pro: true, expiresAt: "2099-01-01T00:00:00Z", warn: "soon", daysLeft: 2 }, update: { version: "1.3.0" } });
+    await page.waitForTimeout(100);
+    const box = await page.evaluate(() => {
+      const r = (id) => document.getElementById(id).getBoundingClientRect();
+      return { plan: r("plan-banner"), note: r("notice-banner"), boop: r("boop"), h: innerHeight };
+    });
+    check("the note sits under the plan banner", box.note.bottom > box.note.top && box.note.top >= box.plan.bottom);
+    check("the connect button is below the banners and on screen", box.boop.top >= box.note.bottom && box.boop.bottom <= box.h);
+    await page.setViewportSize({ width: 360, height: 560 });
+  });
+
+  await attempt("countries marked by the owner's status", async () => {
+    await show({ ...main, country: "auto", best: "DE", countries: [{ code: "NL", ping: 12, status: "maintenance" }, { code: "DE", ping: 41 }, { code: "FI", ping: 50, status: "degraded" }, { code: "SE", ping: 60, status: "blocked" }] });
+    await click("#open-places");
+    await page.waitForTimeout(300);
+    const rows = await page.evaluate(() => [...document.querySelectorAll("#place-list .list-item")].map((b) => ({
+      name: b.querySelector(".item-title").textContent, sub: b.querySelector(".item-sub").textContent, warn: b.querySelector(".item-sub").classList.contains("is-warn"),
+      badge: (b.querySelector(".badge") || {}).textContent || "", disabled: b.disabled,
+    })));
+    const row = (name) => rows.find((r) => r.name === name) || {};
+    check("maintenance: not chosen, with a badge", row("Нидерланды").disabled && row("Нидерланды").badge === "Обслуживание");
+    check("degraded: chosen, with a warning", !row("Финляндия").disabled && row("Финляндия").warn && row("Финляндия").sub === "Возможны перебои");
+    check("blocked: chosen, with a warning", !row("Швеция").disabled && row("Швеция").sub === "Часть провайдеров блокирует");
+    check("ok: nothing added", !row("Германия").disabled && row("Германия").sub === "" && !row("Германия").warn);
+    check("fastest names the country Go picked", rows[0].sub === "Сейчас: Германия");
+    await closePlaces();
+    await page.waitForTimeout(300);
+  });
+
   await attempt("each push replaces the state", async () => {
     // Go leaves empty fields out of the JSON; a field that is gone must not keep its old value.
     await show({ ...main, conn: "connecting", current: "", problem: "offline", strictKill: true, plan: { name: "Pro", pro: true } });
@@ -253,7 +305,7 @@ try {
 
   // No horizontal scroll at any size, in the states with the longest texts.
   const b2 = await chromium.launch();
-  const long = { ...main, email: "very.long.address.for.layout.checks@subdomain.example.com", keys: [{ id: "k1", name: "Очень длинное название ключа, которое не должно ломать верстку", country: "DE" }], key: "k1", plan: { name: "Очень длинный тариф для проверки", pro: true, expiresAt: "2099-01-01T00:00:00Z", warn: "soon", daysLeft: 3 }, update: { version: "1.3.0", notes: "Очень длинное описание обновления, которое не должно ломать баннер" } };
+  const long = { ...main, email: "very.long.address.for.layout.checks@subdomain.example.com", keys: [{ id: "k1", name: "Очень длинное название ключа, которое не должно ломать верстку", country: "DE" }], key: "k1", plan: { name: "Очень длинный тариф для проверки", pro: true, expiresAt: "2099-01-01T00:00:00Z", warn: "soon", daysLeft: 3 }, update: { version: "1.3.0", notes: "Очень длинное описание обновления, которое не должно ломать баннер" }, notice: "Оченьдлинноеобъявлениебезпробелов".repeat(6), countries: [{ code: "NL", ping: 23, status: "blocked" }, { code: "DE", ping: 41, status: "maintenance" }, { code: "FI", status: "degraded" }] };
   for (const [w, h] of [[360, 520], [480, 800], [1280, 800], [1920, 1080]]) {
     for (const scale of [1, 2]) {
       const pg = await (await b2.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: scale })).newPage();

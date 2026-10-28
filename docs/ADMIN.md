@@ -33,6 +33,17 @@ Website `#/admin` (owners only):
   `stale_handshake`), network kind and app version; filters by node and user (e-mail or id) and
   a count per node for the last 15 minutes. One report per device per minute is kept (the rest
   are dropped quietly), for 30 days. Table `connection_failures` (migration V14).
+- **Nodes** (status and notes, issue #10): each node's edit form has **In the apps**: a status
+  (`ok`; `degraded`: works with problems, the apps pick it last; `blocked`: blocked by some
+  networks, "Fastest" skips it but a country picked by hand still connects; `maintenance`: the
+  apps don't pick it) and a note for the node's users (up to 200 characters). Above the list,
+  **Note for everyone**. The Boop app for Windows shows the note in a banner the person can close
+  (the same text does not come back). The node itself keeps working and keeps its devices; the
+  server's own pick (an app that asks for no node) puts `ok` first and `blocked` / `maintenance`
+  last. API: `PUT /v1/admin/nodes/{id}/status` `{status, notice}`, `PUT /v1/admin/settings/notice`
+  `{text}` (owner only); `GET /v1/servers` sends `status`, `notice` per node and `notice` for
+  everyone, `GET`/`POST /v1/tunnel` the node's `notice`. All optional: older apps ignore them.
+  Columns `servers.status`, `servers.notice` (migration V15); the note for everyone is in `settings`.
 - **E-mail**: SMTP of any provider (Brevo, Mailgun, Postmark, Amazon SES, Gmail, Zoho…), test e-mail.
   The password is stored encrypted.
 - **Alerts**: e-mail recipients and Telegram chat ids (the bot's `/myid` shows a chat's id).

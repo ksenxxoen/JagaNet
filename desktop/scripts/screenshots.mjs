@@ -36,6 +36,8 @@ const base = {
   autoConnect: true, autostart: true, version: "1.2.0-dev", webLogin: false,
   keys: [{ id: "k1", name: "Demo phone", country: "DE" }, { id: "k2", name: "Demo laptop", inUse: true }], key: "", update: null, problem: "", released: false,
 };
+// The Netherlands under maintenance, Finland unstable, Sweden blocked by some networks (issue #10).
+const marked = base.countries.map((c) => ({ ...c, status: { NL: "maintenance", FI: "degraded", SE: "blocked" }[c.code] }));
 const on = { conn: "on", current: "NL", ping: 24, since: NOW - 3_725_000 };
 // Each state: the UI state fed to window.boop.update, plus `act`, a snippet run in the page afterwards
 // (it calls the window's own functions, so the real code paths draw the sheets and dialogs).
@@ -55,6 +57,10 @@ const states = {
   "banner-plan-soon": { plan: { ...base.plan, expiresAt: "2027-01-17T09:00:00Z", warn: "soon", daysLeft: 2 } },
   "banner-plan-today": { ...on, plan: { ...base.plan, expiresAt: "2027-01-15T18:00:00Z", warn: "today" } },
   "banner-plan-update": { ...on, plan: { ...base.plan, expiresAt: "2027-01-17T09:00:00Z", warn: "soon", daysLeft: 2 }, update: { version: "1.3.0", notes: "Быстрее подключение" } },
+  // Issue #10: the owner's notes and node statuses.
+  "banner-notice": { notice: "Сегодня с 01:00 до 02:00 плановые работы, возможны короткие перерывы", best: "DE", countries: marked },
+  "banner-notice-node": { ...on, current: "DE", notice: "Сервер в Германии вечером может работать медленнее", countries: marked, best: "DE", plan: { ...base.plan, expiresAt: "2027-01-17T09:00:00Z", warn: "soon", daysLeft: 2 } },
+  "places-status": { ...on, current: "DE", best: "DE", countries: marked, act: `openSheet("places")` },
   "problem-plan": { conn: "problem", problem: "plan", released: true },
   "problem-server": { conn: "problem", problem: "no_handshake", released: true },
   "reconnecting": { ...on, conn: "reconnecting", problem: "dead" },

@@ -286,6 +286,43 @@ try {
   await u.until("plan loaded", async () => !!(await u.state()).plan);
   check("no end date, no banner", await u.hidden("plan-banner"));
   await u.stop();
+
+  /* ---------- 7. the owner's node status and notes (issue #10) ---------- */
+  // The Dutch node (the fastest) is under maintenance, the Finnish one unstable, the German one has a note.
+  panel.reset();
+  panel.statuses = { "s-nl": "maintenance", "s-fi": "degraded" };
+  panel.notices = { "s-de": "Вечером возможны задержки" };
+  panel.notice = "Сегодня ночью плановые работы";
+  const n = await launch();
+  await signInByMail(n);
+  await n.until("note for everyone in the banner", async () => !(await n.hidden("notice-banner")) && (await n.text("notice-text")) === "Сегодня ночью плановые работы");
+  await n.click("#open-places");
+  await n.until("country list", async () => !(await n.hidden("places")) && (await n.page.evaluate(() => document.querySelectorAll("#place-list .list-item").length)) === 4);
+  const rows = await n.page.evaluate(() => Object.fromEntries([...document.querySelectorAll("#place-list .list-item")].map((b) => [b.querySelector(".item-title").textContent, { disabled: b.disabled, sub: b.querySelector(".item-sub").textContent, badge: (b.querySelector(".badge") || {}).textContent || "" }])));
+  check("Netherlands under maintenance: not chosen", rows["Нидерланды"].disabled && rows["Нидерланды"].badge === "Обслуживание", rows);
+  check("Finland unstable: chosen with a warning", !rows["Финляндия"].disabled && rows["Финляндия"].sub === "Возможны перебои", rows);
+  await n.click("#places [data-close]");
+  await n.click("#boop");
+  await n.until("connected", async () => (await n.conn()) === "on");
+  const tok = Object.keys(panel.tunnels).at(-1); // this instance signed in last
+  check("fastest skipped the node under maintenance and the unstable one", tok && panel.tunnels[tok].serverID === "s-de", panel.tunnels);
+  await n.until("the node's note while connected to it", async () => (await n.text("notice-text")) === "Вечером возможны задержки" && !(await n.hidden("notice-banner")));
+  await n.click("#notice-close");
+  await n.until("closing shows the next note", async () => (await n.text("notice-text")) === "Сегодня ночью плановые работы");
+  await n.click("#notice-close");
+  await n.until("both closed", async () => await n.hidden("notice-banner"));
+  await n.click("#boop");
+  await n.until("off", async () => (await n.conn()) === "off");
+  await n.stop();
+  // A restart: closed notes stay closed, a new text shows.
+  const n2 = await launch({ data: n.data });
+  await n2.until("main screen after restart", async () => (await screen(n2)) === "main" && (await n2.state()).countries.length === 3);
+  await sleep(500);
+  check("a closed note does not come back after a restart", await n2.hidden("notice-banner"));
+  panel.notice = "Работы закончены";
+  await n2.page.reload();
+  await n2.until("a new note shows", async () => (await n2.text("notice-text")) === "Работы закончены" && !(await n2.hidden("notice-banner")));
+  await n2.stop();
 } catch (e) {
   check(`unexpected error: ${e && e.stack || e}`, false);
 } finally {

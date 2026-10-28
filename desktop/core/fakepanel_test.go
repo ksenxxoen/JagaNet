@@ -37,7 +37,10 @@ type fakePanel struct {
 	removed    []string
 	serverPub  string
 	deleteOnce sync.Once
-	expiresAt  string // the plan's end sent by /me; empty for none
+	expiresAt  string            // the plan's end sent by /me; empty for none
+	statuses   map[string]string // node id -> the owner's status sent by /servers
+	notices    map[string]string // node id -> the node's note
+	notice     string            // the note for everyone
 }
 
 func newFakePanel(t *testing.T) *fakePanel {
@@ -58,6 +61,7 @@ func (p *fakePanel) handle(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/")
 	p.mu.Lock()
 	down, forced, delay, hold, expires := p.down, p.status[path], p.provDelay, p.deleteHold, p.expiresAt
+	statuses, notices, notice := p.statuses, p.notices, p.notice
 	p.mu.Unlock()
 	if down {
 		panic(http.ErrAbortHandler)
@@ -82,10 +86,14 @@ func (p *fakePanel) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		reply(map[string]any{"user": User{ID: "u1", Email: "demo@example.com"}, "entitlement": ent})
 	case path == "servers":
-		reply(map[string]any{"servers": []Server{
+		list := []Server{
 			{ID: "s-nl", Name: "NL 1", CountryCode: "NL", Load: .1, Protocols: []string{Protocol}, Host: "203.0.113.5"},
 			{ID: "s-de", Name: "DE 1", CountryCode: "DE", Load: .1, Protocols: []string{Protocol}, Host: "203.0.113.6"},
-		}})
+		}
+		for i := range list {
+			list[i].Status, list[i].Notice = statuses[list[i].ID], notices[list[i].ID]
+		}
+		reply(ServerList{Servers: list, Notice: notice})
 	case path == "keys":
 		reply(map[string]any{"keys": []Key{}})
 	case path == "tunnel/events":

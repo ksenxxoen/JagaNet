@@ -41,6 +41,7 @@ type App struct {
 	mu         sync.Mutex
 	plan       *Plan
 	servers    []Server
+	notice     string // the owner's note for everyone (GET /servers)
 	keys       []Key
 	pings      map[string]float64 // by host
 	conn       string

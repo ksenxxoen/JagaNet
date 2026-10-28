@@ -117,11 +117,13 @@ class ApiClient(
     suspend fun saveAlertSettings(p: AlertSettings): AdminSettingsRes = put("admin/settings/alerts", p)
     suspend fun saveModeSettings(p: ModeSettings): AdminSettingsRes = put("admin/settings/modes", p)
     suspend fun saveNetworkSettings(p: NetworkSettings): AdminSettingsRes = put("admin/settings/network", p)
+    suspend fun saveNoticeSettings(p: NoticeSettings): AdminSettingsRes = put("admin/settings/notice", p)
     suspend fun sendTestEmail(to: String): OkRes = post("admin/settings/smtp/test", TestEmailReq(to))
     suspend fun adminFinance(period: ReferralPeriod): FinanceRes = get("admin/finance") { parameter("period", Protocols.json.encodeToString(ReferralPeriod.serializer(), period).trim('"')) }
     suspend fun adminNodes(): AdminNodesRes = get("admin/nodes")
     suspend fun createNode(req: NodeReq): NodeInstallRes = post("admin/nodes", req)
     suspend fun updateNode(id: String, req: NodeReq): AdminNode = put("admin/nodes/$id", req)
+    suspend fun setNodeStatus(id: String, req: NodeStatusReq): AdminNode = put("admin/nodes/$id/status", req)
     suspend fun newNodeToken(id: String): NodeInstallRes = post("admin/nodes/$id/token", OkRes())
     suspend fun installNode(id: String, req: NodeSshReq): NodeInstall = post("admin/nodes/$id/install", req)
     suspend fun nodeInstall(id: String): NodeInstall = get("admin/nodes/$id/install")

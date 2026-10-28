@@ -1045,6 +1045,8 @@ async function failuresPane(params) {
 }
 
 const NODE_STATES = { waiting: ["warning", "Waiting for install"], online: ["ok", "Online"], offline: ["critical", "No contact"], disabled: ["unknown", "Turned off"] };
+// What the owner tells the apps about a node (issue #10); "ok" shows nothing in the list.
+const NODE_STATUSES = { ok: ["ok", "Works normally"], degraded: ["warning", "Unstable"], blocked: ["critical", "Blocked in some networks"], maintenance: ["unknown", "Maintenance"] };
 const INSTALL_STATES = { running: ["warning", "Installing"], done: ["ok", "Installed"], failed: ["critical", "Install failed"] };
 const badge = ([cls, label]) => `<span class="lvl ${cls}"><i></i>${t(label)}</span>`;
 let installTimer = null;
@@ -1080,7 +1082,7 @@ function installCard(n, i) {
 async function nodesPane(command) {
   clearTimeout(installTimer);
   const pane = document.getElementById("pane");
-  const list = (await api("/admin/nodes")).nodes;
+  const [list, settings] = await Promise.all([api("/admin/nodes").then((r) => r.nodes), api("/admin/settings")]);
   if (!location.hash.startsWith("#/admin")) return;
   const seenKey = (n) => `install:${n.id}`;
   const shown = list.filter((n) => n.install && (n.install.state === "running" || store.get(seenKey(n)) !== n.install.startedAt));
@@ -1089,7 +1091,9 @@ async function nodesPane(command) {
   const seen = (iso) => (localDay(iso) === today ? clock(iso) : `${shortDate(localDay(iso))} ${clock(iso)}`);
   const loadNote = (x) => (x.rxBps == null ? "" : `${h(bits(x.rxBps))} / ${h(bits(x.txBps))}`);
   const stateOf = (x) => (x.install?.state === "running" ? badge(INSTALL_STATES.running) : badge(NODE_STATES[x.state]));
-  const row = (x) => `<tr class="${x.active ? "" : "muted"}"><td><b>${h(x.name)}</b><div class="muted">${h(x.city)}, ${h(x.countryCode)}${x.remote ? "" : `, ${t("main server")}`}</div></td>
+  const statusOf = (x) => (x.status && x.status !== "ok" ? `<div>${badge(NODE_STATUSES[x.status] || ["unknown", x.status])}</div>` : "") +
+    (x.notice ? `<div class="muted">${h(x.notice)}</div>` : "");
+  const row = (x) => `<tr class="${x.active ? "" : "muted"}"><td><b>${h(x.name)}</b><div class="muted">${h(x.city)}, ${h(x.countryCode)}${x.remote ? "" : `, ${t("main server")}`}</div>${statusOf(x)}</td>
     <td>${stateOf(x)}<div class="muted">${x.lastReportAt ? h(seen(x.lastReportAt)) : "&nbsp;"}</div></td><td>${x.peers} / ${x.maxPeers}<div class="muted">${t("{n} online", { n: x.online })}</div></td>
     <td><span class="mono">${h(x.endpoint || "")}</span>${x.hostname && x.publicIp ? `<div class="muted mono">${h(x.publicIp)}</div>` : ""}</td>
     <td>${x.cpu == null ? "" : percent(x.cpu * 100)}<div class="muted">${loadNote(x) || "&nbsp;"}</div></td>
@@ -1098,18 +1102,30 @@ async function nodesPane(command) {
   ${shown.map((n, k) => installCard(n, installs[k])).join("")}
   ${command ? `<div class="card section"><h3>${t("Install command")}</h3>
     <div class="formrow two"><input class="mono" id="cmd" readonly value="${h(command)}"><button class="btn" type="button" id="copycmd">${t("Copy")}</button></div></div>` : ""}
+  <form class="card adminform section" id="gf">
+    <h3>${t("Note for everyone")}</h3>
+    <p class="muted">${t("The Boop apps show it on the main screen until it is closed. Empty: no note.")}</p>
+    <div class="formrow two"><input id="gn" maxlength="200" value="${h(settings.notice?.text || "")}" placeholder="${h(t("Planned work tonight"))}">
+      <button class="btn" type="submit">${t("Save")}</button></div>
+    <p class="result" id="gres"></p></form>
   <div class="toolbar"><span></span><button class="btn" id="newn">${t("New node")}</button></div>
   <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Node")}</th><th>${t("Status")}</th><th>${t("Devices")}</th>
     <th>${t("Address")}</th><th>${t("Processor")}</th><th></th></tr></thead>
     <tbody>${list.map(row).join("")}</tbody></table></div>
   <form class="card adminform section" id="nf" hidden></form>
+  <form class="card adminform section" id="sf" hidden></form>
   <form class="card adminform section" id="mf" hidden></form>
   <form class="card adminform section" id="vf" hidden></form>`;
   if (command) document.getElementById("copycmd").onclick = (e) => copyText(e.target, command);
   for (const pre of pane.querySelectorAll("pre.log")) pre.scrollTop = pre.scrollHeight;
 
-  const nf = document.getElementById("nf"), mf = document.getElementById("mf"), vf = document.getElementById("vf");
-  const formOpen = () => !nf.hidden || !mf.hidden || !vf.hidden;
+  const nf = document.getElementById("nf"), mf = document.getElementById("mf"), vf = document.getElementById("vf"), sf = document.getElementById("sf");
+  const formOpen = () => !nf.hidden || !mf.hidden || !vf.hidden || !sf.hidden;
+  const gf = document.getElementById("gf");
+  gf.onsubmit = (e) => {
+    e.preventDefault();
+    saveWith(gf.querySelector("button[type=submit]"), "gres", () => api("/admin/settings/notice", { method: "PUT", body: { text: val("gn") || null } }));
+  };
   const nodeFields = (v, local) => `
       <div class="fields">
         ${field("nn", t("Name"), v.name, 'required maxlength="60" placeholder="Germany 1"')}
@@ -1124,7 +1140,7 @@ async function nodesPane(command) {
 
   // New node: the node's details and, optionally, the server to install it on.
   const openNew = () => {
-    mf.hidden = true; vf.hidden = true; nf.hidden = false;
+    mf.hidden = true; vf.hidden = true; sf.hidden = true; nf.hidden = false;
     nf.innerHTML = `<h3>${t("New node")}</h3>${nodeFields({ name: "", city: "", countryCode: "", maxPeers: 250, active: true, hostname: "" })}
       <h4>${t("Server")}</h4>${sshFields()}
       <div class="actionsrow"><button class="btn" type="submit">${t("Create and install")}</button><button class="btn secondary" type="button" id="ncancel">${t("Cancel")}</button>
@@ -1175,7 +1191,21 @@ async function nodesPane(command) {
       <div class="actionsrow"><button class="btn" type="submit">${t("Install")}</button>
         <button class="btn secondary" type="button" id="nmove">${t("Show the command instead")}</button></div>
       <p class="result" id="mres"></p>`;
-    document.getElementById("ncancel").onclick = () => { nf.hidden = true; mf.hidden = true; vf.hidden = true; };
+    document.getElementById("ncancel").onclick = () => { nf.hidden = true; mf.hidden = true; vf.hidden = true; sf.hidden = true; };
+    // What the apps are told: "Fastest" skips blocked and maintenance nodes and picks unstable ones last.
+    sf.hidden = false;
+    sf.innerHTML = `<h3>${t("In the apps")}</h3>
+      <p class="muted">${t("Fastest skips blocked nodes and nodes under maintenance, and picks unstable ones last. The node keeps working.")}</p>
+      <div class="fields">
+        <div><label for="ss">${t("Status")}</label><select id="ss">${Object.entries(NODE_STATUSES).map(([k, v]) => `<option value="${k}" ${(x.status || "ok") === k ? "selected" : ""}>${t(v[1])}</option>`).join("")}</select></div>
+        ${field("sn", t("Note for this node's users"), x.notice || "", 'maxlength="200"')}
+      </div>
+      <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button></div>
+      <p class="result" id="sres"></p>`;
+    sf.onsubmit = (e) => {
+      e.preventDefault();
+      saveWith(sf.querySelector("button[type=submit]"), "sres", () => api(`/admin/nodes/${encodeURIComponent(x.id)}/status`, { method: "PUT", body: { status: document.getElementById("ss").value, notice: val("sn") || null } }), () => nodesPane());
+    };
     // All devices of this node to another one (its address is blocked, it is retired…).
     const targets = list.filter((n) => n.id !== x.id && n.active && n.protocols.length);
     vf.hidden = false;

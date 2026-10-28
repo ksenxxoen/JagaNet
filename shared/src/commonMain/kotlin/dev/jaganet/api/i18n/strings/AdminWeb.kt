@@ -244,4 +244,23 @@ internal val adminWebStrings: List<S> = listOf(
     S("Reason", "Причина", "Grund"),
     S("Cable", "Кабель", "Kabel"),
     S("Mobile network", "Мобильная сеть", "Mobilfunk"),
+    // Node status and notes for the apps (issue #10)
+    S("Works normally", "Работает нормально", "Läuft normal"),
+    S("Unstable", "Работает с перебоями", "Instabil"),
+    S("Blocked in some networks", "Блокируется у части провайдеров", "In manchen Netzen gesperrt"),
+    S("Maintenance", "Обслуживание", "Wartung"),
+    S("In the apps", "В приложениях", "In den Apps"),
+    S(
+        "Fastest skips blocked nodes and nodes under maintenance, and picks unstable ones last. The node keeps working.",
+        "«Самая быстрая» пропускает заблокированные ноды и ноды на обслуживании, а ноды с перебоями выбирает в последнюю очередь. Сама нода продолжает работать.",
+        "\"Am schnellsten\" überspringt gesperrte Knoten und Knoten in Wartung und nimmt instabile zuletzt. Der Knoten selbst läuft weiter.",
+    ),
+    S("Note for this node's users", "Объявление для пользователей ноды", "Hinweis für die Nutzer dieses Knotens"),
+    S("Note for everyone", "Объявление для всех", "Hinweis für alle"),
+    S(
+        "The Boop apps show it on the main screen until it is closed. Empty: no note.",
+        "Приложения Boop показывают его на главном экране, пока его не закроют. Пустое поле: объявления нет.",
+        "Die Boop-Apps zeigen ihn auf dem Hauptbildschirm, bis er geschlossen wird. Leer: kein Hinweis.",
+    ),
+    S("Planned work tonight", "Сегодня ночью плановые работы", "Heute Nacht geplante Wartung"),
 )

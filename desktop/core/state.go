@@ -11,6 +11,9 @@ type Country struct {
 	Code string   `json:"code"`
 	Ping *float64 `json:"ping"`
 	Full bool     `json:"full,omitempty"`
+	// Status is the best of the owner's statuses among the country's nodes:
+	// empty (one works normally), "degraded", "blocked" or "maintenance".
+	Status string `json:"status,omitempty"`
 }
 
 // KeyUI is one of the account's VPN keys in the key list.
@@ -57,6 +60,8 @@ type UIState struct {
 	Released   bool      `json:"released,omitempty"`
 	StrictKill bool      `json:"strictKill,omitempty"`
 	Update     *UpdateUI `json:"update,omitempty"`
+	// Notice is the owner's note to show in the banner (nodestatus.go).
+	Notice string `json:"notice,omitempty"`
 }
 
 // UpdateUI is a newer desktop build the panel is offering.
@@ -78,6 +83,7 @@ func (a *App) state() UIState {
 		WebLogin: a.webLogin != nil,
 		Keys:     []KeyUI{}, Key: a.Store.KeyID,
 		Problem: a.problem, Released: a.released, StrictKill: a.Store.StrictKill,
+		Notice: a.noticeNow(),
 	}
 	if a.available != nil {
 		s.Update = &UpdateUI{Version: a.available.Version, Notes: a.available.Notes, Mandatory: a.available.Mandatory, Stage: a.updStage}
@@ -107,7 +113,9 @@ func (a *App) state() UIState {
 		s.Autostart = &on
 	}
 	byCode := map[string]*Country{}
-	best, bestMs := "", math.MaxFloat64
+	rank := map[string]int{}
+	// The country "fastest" would go to: the lowest ping among the nodes it may pick, by statusTier.
+	best, bestTier, bestMs := "", 0, math.MaxFloat64
 	for _, sv := range a.servers {
 		if !slices.Contains(sv.Protocols, Protocol) {
 			continue
@@ -116,21 +124,25 @@ func (a *App) state() UIState {
 		if c == nil {
 			c = &Country{Code: sv.CountryCode, Full: true}
 			byCode[sv.CountryCode] = c
+			rank[sv.CountryCode] = len(statusShown)
 		}
 		if sv.Load < 1 {
 			c.Full = false
 		}
+		rank[sv.CountryCode] = min(rank[sv.CountryCode], listRank(sv.Status))
 		if ms, ok := a.pings[sv.Host]; ok {
 			if c.Ping == nil || ms < *c.Ping {
 				v := ms
 				c.Ping = &v
 			}
-			if sv.Load < 1 && ms < bestMs {
-				best, bestMs = sv.CountryCode, ms
+			t := statusTier(sv.Status, true)
+			if sv.Load < 1 && t >= 0 && (best == "" || t < bestTier || (t == bestTier && ms < bestMs)) {
+				best, bestTier, bestMs = sv.CountryCode, t, ms
 			}
 		}
 	}
-	for _, c := range byCode {
+	for code, c := range byCode {
+		c.Status = statusShown[rank[code]]
 		s.Countries = append(s.Countries, *c)
 	}
 	slices.SortFunc(s.Countries, func(x, y Country) int { return strings.Compare(x.Code, y.Code) })

@@ -116,7 +116,7 @@ when the current one ends, each with its own terms.
 ## Data model
 
 `users` · `devices` · `sessions` · `otp_codes` · `pairing_codes` · `servers` (with
-`protocols jsonb`) · `tunnels` (one per device, `protocol`, `peer_key`, `client_params jsonb`) ·
+`protocols jsonb`, the owner's `status` and `notice` for the apps) · `tunnels` (one per device, `protocol`, `peer_key`, `client_params jsonb`) ·
 `subscriptions` (apple/google/dev/referral) · `traffic_samples` (hourly) · `connection_sessions` ·
 `connection_failures` (failure reports from the apps, 30 days).
 

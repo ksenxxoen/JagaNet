@@ -1,11 +1,13 @@
 // A stand-in for the panel's /v1 API with made-up data, for scripts/e2e.mjs.
 // The test steers it through the returned object: `down` drops connections, `status[path]` forces an
 // HTTP status for a path (after /v1/), `calls` records what the client asked for, `expiresAt` is the
-// plan's end that /v1/me sends (null: a plan without an end).
+// plan's end that /v1/me sends (null: a plan without an end), `statuses` / `notices` (node id -> value)
+// and `notice` are the owner's node statuses and notes that /v1/servers sends (issue #10).
 //
 // Run on its own it serves until stopped, for trying the dev build by hand:
 //
 //   FAKE_EXPIRES_DAYS=2 node scripts/fakepanel.mjs      # prints the URL; plan ends in 2 days
+//   FAKE_NOTICE="Плановые работы" FAKE_STATUS=s-nl:maintenance,s-fi:degraded node scripts/fakepanel.mjs
 //   BOOP_API=<that URL> go run .                        # sign in with demo@example.com / 123456
 import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
@@ -29,11 +31,15 @@ export async function startPanel() {
     emailCode: "123456",
     webAllowed: false, // flip to true: the next poll of the website login succeeds
     expiresAt: DEFAULT_EXPIRES,
+    statuses: {},
+    notices: {},
+    notice: null,
     tunnels: {}, // session token -> { serverID, version }: each signed-in device has its own tunnel
     url: "",
     close: () => new Promise((r) => srv.close(r)),
     reset() {
       p.down = false; p.status = {}; p.calls = []; p.webAllowed = false; p.expiresAt = DEFAULT_EXPIRES;
+      p.statuses = {}; p.notices = {}; p.notice = null;
     },
   };
   const servers = [
@@ -73,7 +79,10 @@ export async function startPanel() {
       if (path === "auth/app/poll") return reply(200, p.webAllowed ? { session: session("dev-web") } : {});
       if (path === "auth/logout") return reply(200, { ok: true });
       if (path === "me") return reply(200, { user: { id: "u1", email: "demo@example.com" }, entitlement: { plan: "pro", tariffName: "Pro", expiresAt: p.expiresAt } });
-      if (path === "servers") return reply(200, { servers });
+      if (path === "servers") {
+        const list = servers.map((s) => ({ ...s, status: p.statuses[s.id] || "ok", ...(p.notices[s.id] ? { notice: p.notices[s.id] } : {}) }));
+        return reply(200, { servers: list, ...(p.notice ? { notice: p.notice } : {}) });
+      }
       if (path === "keys") return reply(200, { keys: p.keys });
       let m = path.match(/^keys\/([^/]+)\/tunnel$/);
       if (m) {
@@ -87,7 +96,7 @@ export async function startPanel() {
         tun.serverID = body.serverId; tun.version++;
         return reply(200, config(tun.serverID));
       }
-      if (path === "tunnel") return reply(200, { config: config(tun.serverID), version: "v" + tun.version, countryCode: (servers.find((x) => x.id === tun.serverID) || {}).countryCode || "" });
+      if (path === "tunnel") return reply(200, { config: config(tun.serverID), version: "v" + tun.version, countryCode: (servers.find((x) => x.id === tun.serverID) || {}).countryCode || "", ...(p.notices[tun.serverID] ? { notice: p.notices[tun.serverID] } : {}) });
       m = path.match(/^devices\/(.+)$/);
       if (m && req.method === "PATCH") {
         const k = p.keys.find((x) => x.id === decodeURIComponent(m[1]));
@@ -107,6 +116,8 @@ export async function startPanel() {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const p = await startPanel();
+  if (process.env.FAKE_NOTICE) p.notice = process.env.FAKE_NOTICE;
+  for (const pair of (process.env.FAKE_STATUS || "").split(",").filter(Boolean)) { const [id, st] = pair.split(":"); p.statuses[id] = st; }
   if (process.env.FAKE_EXPIRES_DAYS) p.expiresAt = new Date(Date.now() + Number(process.env.FAKE_EXPIRES_DAYS) * 86_400_000).toISOString();
   console.log(`fake panel on ${p.url} (plan ends ${p.expiresAt || "never"}); sign in with demo@example.com, code ${p.emailCode}`);
 }

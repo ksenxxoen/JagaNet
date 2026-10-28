@@ -6,6 +6,7 @@ import dev.jaganet.api.ErrorCode
 import dev.jaganet.api.LinkLoginReq
 import dev.jaganet.api.ModeSettings
 import dev.jaganet.api.NetworkSettings
+import dev.jaganet.api.NoticeSettings
 import dev.jaganet.api.OkRes
 import dev.jaganet.api.PlanSettings
 import dev.jaganet.api.ReferralPeriod
@@ -50,6 +51,7 @@ fun Route.adminApi(s: Services) {
     put("/admin/settings/alerts") { call.owner(); s.settings.saveAlerts(call.receive<AlertSettings>()); call.respond(settings()) }
     put("/admin/settings/modes") { call.owner(); s.settings.saveModes(call.receive<ModeSettings>()); call.respond(settings()) }
     put("/admin/settings/network") { call.owner(); s.settings.saveNetwork(call.receive<NetworkSettings>()); call.respond(settings()) }
+    put("/admin/settings/notice") { call.owner(); s.settings.saveNotice(call.receive<NoticeSettings>()); call.respond(settings()) }
     post("/admin/settings/smtp/test") {
         call.owner()
         val to = call.receive<TestEmailReq>().to.trim()

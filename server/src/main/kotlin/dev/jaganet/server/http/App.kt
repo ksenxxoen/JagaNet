@@ -218,7 +218,7 @@ fun Application.jaganet(s: Services) {
 
             get("/servers") {
                 call.principal(s)
-                call.respond(ServersRes(s.tunnels.servers()))
+                call.respond(ServersRes(s.tunnels.servers(), ctx.live.notice))
             }
             post("/tunnel") {
                 val p = call.principal(s)
