@@ -82,6 +82,7 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
     val auth = AuthService(ctx)
     val ent = Entitlements(ctx)
     val tunnels = Tunnels(ctx, ent)
+    val diagnostics = dev.jaganet.server.services.Diagnostics(ctx)
     val traffic = Traffic(ctx, ent, tunnels, SpeedLimits(ctx))
     val stats = Stats(ctx)
     val nodes = Nodes(ctx).also { kotlinx.coroutines.runBlocking { it.failInterrupted() } }
@@ -218,7 +219,7 @@ fun Application.jaganet(s: Services) {
 
             get("/servers") {
                 call.principal(s)
-                call.respond(ServersRes(s.tunnels.servers()))
+                call.respond(ServersRes(s.tunnels.servers(), ctx.live.notice))
             }
             post("/tunnel") {
                 val p = call.principal(s)
@@ -260,6 +261,7 @@ fun Application.jaganet(s: Services) {
             monitorApi(s)
             adminApi(s)
             nodeApi(s)
+            diagnosticsApi(s)
             get("/referrals") { call.respond(s.referrals.get(call.principal(s))) }
             referralApi(s)
             salesApi(s)

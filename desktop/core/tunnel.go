@@ -83,17 +83,24 @@ func (a *App) watch(ctx context.Context) {
 	if a.Tunnel != nil {
 		st = a.Tunnel.Stats()
 	}
+	// The channel of this connection: a quick reconnect makes a new one while
+	// this loop is still on its way out.
+	a.mu.Lock()
+	resync := a.resyncCh
+	a.mu.Unlock()
 	var sup Supervisor
 	sup.Started(time.Now(), st.Rx)
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	lastSync := time.Now()
 	lastPing := time.Time{}
+	// One line of statistics in the log every StatsEvery (diagnostics.go).
+	lastStats, statsFrom := time.Now(), st
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-a.resyncCh:
+		case <-resync:
 			a.sync(ctx)
 			lastSync = time.Now()
 		case <-tick.C:
@@ -117,6 +124,10 @@ func (a *App) watch(ctx context.Context) {
 		if step.Phase == "on" && time.Since(lastPing) > pingEvery {
 			Go("ping", func() { a.pingCurrent(ctx) })
 			lastPing = time.Now()
+		}
+		if now.Sub(lastStats) >= StatsEvery {
+			a.logStats(now, statsFrom, st, now.Sub(lastStats))
+			lastStats, statsFrom = now, st
 		}
 		if time.Since(lastSync) > syncEvery {
 			a.sync(ctx)

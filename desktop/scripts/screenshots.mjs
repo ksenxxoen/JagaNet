@@ -36,6 +36,8 @@ const base = {
   autoConnect: true, autostart: true, version: "1.2.0-dev", webLogin: false,
   keys: [{ id: "k1", name: "Demo phone", country: "DE" }, { id: "k2", name: "Demo laptop", inUse: true }], key: "", update: null, problem: "", released: false,
 };
+// The Netherlands under maintenance, Finland unstable, Sweden blocked by some networks (issue #10).
+const marked = base.countries.map((c) => ({ ...c, status: { NL: "maintenance", FI: "degraded", SE: "blocked" }[c.code] }));
 const on = { conn: "on", current: "NL", ping: 24, since: NOW - 3_725_000 };
 // Each state: the UI state fed to window.boop.update, plus `act`, a snippet run in the page afterwards
 // (it calls the window's own functions, so the real code paths draw the sheets and dialogs).
@@ -55,6 +57,10 @@ const states = {
   "banner-plan-soon": { plan: { ...base.plan, expiresAt: "2027-01-17T09:00:00Z", warn: "soon", daysLeft: 2 } },
   "banner-plan-today": { ...on, plan: { ...base.plan, expiresAt: "2027-01-15T18:00:00Z", warn: "today" } },
   "banner-plan-update": { ...on, plan: { ...base.plan, expiresAt: "2027-01-17T09:00:00Z", warn: "soon", daysLeft: 2 }, update: { version: "1.3.0", notes: "Быстрее подключение" } },
+  // Issue #10: the owner's notes and node statuses.
+  "banner-notice": { notice: "Сегодня с 01:00 до 02:00 плановые работы, возможны короткие перерывы", best: "DE", countries: marked },
+  "banner-notice-node": { ...on, current: "DE", notice: "Сервер в Германии вечером может работать медленнее", countries: marked, best: "DE", plan: { ...base.plan, expiresAt: "2027-01-17T09:00:00Z", warn: "soon", daysLeft: 2 } },
+  "places-status": { ...on, current: "DE", best: "DE", countries: marked, act: `openSheet("places")` },
   "problem-plan": { conn: "problem", problem: "plan", released: true },
   "problem-server": { conn: "problem", problem: "no_handshake", released: true },
   "reconnecting": { ...on, conn: "reconnecting", problem: "dead" },
@@ -81,6 +87,13 @@ const states = {
   "keys-empty": { ...on, keys: [], act: `openSheet("keys")` },
   "rename": { ...on, act: `openSheet("keys"); renameKey({ id: "k1", name: "Demo phone" })` },
   "toast": { ...on, act: `toast("Не удалось подключиться. Проверьте интернет.")` },
+  // Issue #11: «Сообщить о проблеме» next to the problem, in the settings, the dialog and its results.
+  "report-main": { conn: "problem", problem: "blocked", released: true },
+  "report-settings": { ...on, act: `openSheet("settings"); $("s-report").scrollIntoView({ block: "center" })` },
+  "report-dialog": { conn: "problem", problem: "blocked", released: true, act: `openReport(); $("report-comment").value = "После обеда перестали открываться сайты, переподключение не помогает"` },
+  "report-sending": { conn: "problem", problem: "blocked", released: true, act: `openReport(); $("report-comment").value = "Не открываются сайты"; $("report-comment").disabled = true; $("report-send").disabled = true; $("report-send").classList.add("is-loading")` },
+  "report-sent": { conn: "problem", problem: "blocked", released: true, act: `openReport(); showReportResult({ sent: true, id: "1287" }, true)` },
+  "report-failed": { conn: "problem", problem: "offline", released: true, act: `openReport(); showReportResult({ sent: false, error: "Нет связи с сервером", file: "C:\\\\Users\\\\demo\\\\AppData\\\\Local\\\\Boop\\\\boop-report-20270115-101500.txt" }, true)` },
 };
 // Big pictures at a higher scale only for the main states, to keep the folder small.
 const CORE = ["signin-email", "off", "on", "problem-plan", "settings", "places", "keys"];
@@ -136,7 +149,7 @@ try {
       await page.evaluate(([state, act]) => {
         // Back to a clean window: no sheet, dialog or toast left from the previous state.
         ["places", "keys", "settings"].forEach((id) => { const el = document.getElementById(id); el.hidden = true; el.classList.remove("closing"); });
-        ["rename", "confirm", "toast"].forEach((id) => { document.getElementById(id).hidden = true; });
+        ["rename", "confirm", "report", "toast"].forEach((id) => { document.getElementById(id).hidden = true; });
         document.getElementById("place-search").value = "";
         syncPanel();
         showForm("f-email");

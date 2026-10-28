@@ -14,7 +14,7 @@ func (a *App) loadServers(ctx context.Context) []Server {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if err == nil {
-		a.servers = list
+		a.servers, a.notice = list.Servers, list.Notice
 	}
 	return slices.Clone(a.servers)
 }
@@ -42,6 +42,8 @@ func (a *App) serverSkipped(id string) bool {
 
 // pick chooses a node: the lowest ping, with busy nodes counting as slower.
 // Nodes that failed a handshake in this attempt are skipped until none remain.
+// The owner's status comes first (statusTier): "degraded" only when no node
+// works normally, "blocked" only in a country picked by hand, "maintenance" never.
 func (a *App) pick(want string, servers []Server) string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -60,7 +62,7 @@ func (a *App) pick(want string, servers []Server) string {
 }
 
 func (a *App) choose(want string, servers []Server, honorSkip bool) string {
-	best, score := "?", math.MaxFloat64
+	best, tier, score := "?", 0, math.MaxFloat64
 	for _, s := range servers {
 		if !slices.Contains(s.Protocols, Protocol) || s.Load >= 1 || (want != "auto" && s.CountryCode != want) {
 			continue
@@ -68,12 +70,16 @@ func (a *App) choose(want string, servers []Server, honorSkip bool) string {
 		if honorSkip && slices.Contains(a.skip, s.ID) {
 			continue
 		}
+		t := statusTier(s.Status, want == "auto")
+		if t < 0 {
+			continue
+		}
 		ms, ok := a.pings[s.Host]
 		if !ok {
 			ms = 400
 		}
-		if v := ms + s.Load*150; v < score {
-			best, score = s.ID, v
+		if v := ms + s.Load*150; best == "?" || t < tier || (t == tier && v < score) {
+			best, tier, score = s.ID, t, v
 		}
 	}
 	return best
@@ -88,6 +94,10 @@ func (a *App) pingAllLoop() {
 		ok := a.Store.Token != ""
 		a.mu.Unlock()
 		if ok {
+			// The list again too: the owner's statuses and notes change without a new connect.
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			a.loadServers(ctx)
+			cancel()
 			a.pingAll()
 		}
 	}
@@ -172,7 +182,7 @@ func (a *App) nodesLeft() int {
 	}
 	n := 0
 	for _, s := range a.servers {
-		if !slices.Contains(s.Protocols, Protocol) || s.Load >= 1 {
+		if !slices.Contains(s.Protocols, Protocol) || s.Load >= 1 || statusTier(s.Status, want == "auto") < 0 {
 			continue
 		}
 		if want != "auto" && s.CountryCode != want {

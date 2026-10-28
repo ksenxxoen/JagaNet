@@ -46,6 +46,12 @@ private val ID_TEXT = Regex("^[0-9a-fA-F-]{36}$")
 /** Trimmed, cut to [max] characters, null when empty. */
 private fun String?.clean(max: Int) = this?.trim()?.take(max)?.takeIf { it.isNotEmpty() }
 
+/**
+ * The owner's node status as a sort key for the server's own choice (no node asked for):
+ * ok first, then degraded; blocked and maintenance only when nothing else is left.
+ */
+private const val STATUS_RANK = "CASE s.status WHEN 'ok' THEN 0 WHEN 'degraded' THEN 1 ELSE 2 END"
+
 /** Active and, for a remote node, reporting in. */
 private const val USABLE = "s.active AND (s.agent_token_hash IS NULL OR s.last_report_at > ?)"
 
@@ -66,7 +72,10 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         sql.query("SELECT s.*, (SELECT count(*)::int FROM tunnels t WHERE t.server_id=s.id) AS peers FROM servers s WHERE $USABLE ORDER BY s.name", ctx.now().minus(NODE_OFFLINE))
             .map { s ->
                 val host = s.json("protocols").values.firstNotNullOfOrNull { ((it as? JsonObject)?.get("endpoint") as? JsonPrimitive)?.content }?.substringBeforeLast(':')
-                ServerLocation(s.str("id"), s.str("name"), s.str("city"), s.str("country_code"), minOf(1.0, s.int("peers").toDouble() / s.int("max_peers")), usable(s), host)
+                ServerLocation(
+                    s.str("id"), s.str("name"), s.str("city"), s.str("country_code"), minOf(1.0, s.int("peers").toDouble() / s.int("max_peers")), usable(s), host,
+                    status = s.str("status"), notice = s.strOrNull("notice"),
+                )
             }
             .filter { it.protocols.isNotEmpty() }
     }
@@ -194,10 +203,12 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
             mtu = server.int("mtu"),
             params = params,
         ).withEndpointIp(publicIp(server, proto))
+        // The note is left out of the version: a new note is nothing the tunnel has to apply.
         val version = java.security.MessageDigest.getInstance("SHA-256")
             .digest((Protocols.encode(cfg).toString() + "|" + t.str("peer_key")).toByteArray())
             .take(12).joinToString("") { "%02x".format(it) }
-        TunnelState(cfg, version, t.bool("rekey"), server.str("country_code").trim())
+        val notice = server.strOrNull("notice")
+        TunnelState(cfg.copy(notice = notice), version, t.bool("rekey"), server.str("country_code").trim(), notice)
     }
 
     suspend fun defaultProtocol(): String? = servers().flatMap { it.protocols }.toSet().let { offered -> ctx.drivers.ids().firstOrNull { it in offered } }
@@ -250,6 +261,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
                 dns = server.strings("dns"),
                 mtu = server.int("mtu"),
                 params = added.params,
+                notice = server.strOrNull("notice"),
             )
         }
     }
@@ -263,7 +275,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         return sql.one(
             """SELECT s.* FROM servers s WHERE $USABLE AND (s.protocols -> ?) IS NOT NULL
                   AND (SELECT count(*) FROM tunnels t WHERE t.server_id=s.id) < s.max_peers
-                ORDER BY (SELECT count(*) FROM tunnels t WHERE t.server_id=s.id)::float / s.max_peers LIMIT 1""",
+                ORDER BY $STATUS_RANK, (SELECT count(*) FROM tunnels t WHERE t.server_id=s.id)::float / s.max_peers LIMIT 1""",
             ctx.now().minus(NODE_OFFLINE), protocol,
         ) ?: throw AppError(503, ErrorCode.SERVER_FULL, "No server offers {protocol}", mapOf("protocol" to protocol))
     }

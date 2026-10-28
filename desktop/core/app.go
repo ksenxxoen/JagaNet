@@ -34,6 +34,11 @@ type App struct {
 	AutostartOn func() bool
 	Version     string
 	Site        string
+	// LogPath is boop.log; the problem report takes its last lines and is saved
+	// next to it when the panel cannot take it. Empty: no log file.
+	LogPath string
+	// Clipboard puts text on the system clipboard (Windows). Nil: the window copies.
+	Clipboard func(string) error
 	// Prober checks the network outside the tunnel when it stays silent. Init
 	// fills in the real one unless a test already did.
 	Prober Prober
@@ -41,6 +46,7 @@ type App struct {
 	mu         sync.Mutex
 	plan       *Plan
 	servers    []Server
+	notice     string // the owner's note for everyone (GET /servers)
 	keys       []Key
 	pings      map[string]float64 // by host
 	conn       string
@@ -69,6 +75,8 @@ type App struct {
 	verdict   string // what the last probe made of a silent tunnel: offline, blocked or ""
 
 	reports *Reporter // failure reports waiting for the panel (failures.go)
+
+	lastReport string // the text of the last problem report, for "copy again" (diagnostics.go)
 
 	webLogin    context.CancelFunc
 	webLoginURL string

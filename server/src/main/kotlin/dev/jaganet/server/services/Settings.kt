@@ -4,6 +4,7 @@ import dev.jaganet.api.AdminSettingsRes
 import dev.jaganet.api.AlertSettings
 import dev.jaganet.api.ModeSettings
 import dev.jaganet.api.NetworkSettings
+import dev.jaganet.api.NoticeSettings
 import dev.jaganet.api.PlanSettings
 import dev.jaganet.api.Protocols
 import dev.jaganet.api.SmtpSettings
@@ -22,7 +23,7 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * Settings the owner edits in the admin panel: the free plan and invite rewards, outgoing e-mail, alert
- * recipients and the test modes. Stored in the settings table, applied at once (ctx.live).
+ * recipients, the test modes and the note for everyone. Stored in the settings table, applied at once (ctx.live).
  * The SMTP password is stored encrypted.
  */
 class Settings(private val ctx: Ctx) {
@@ -36,6 +37,7 @@ class Settings(private val ctx: Ctx) {
         rows["alerts"]?.let { runCatching { Protocols.decode<AlertSettings>(it).let { a -> ctx.live.alertEmails = a.emails; ctx.live.alertTelegramChats = a.telegramChats } } }
         rows["modes"]?.let { runCatching { applyModes(Protocols.decode<ModeSettings>(it)) } }
         rows["network"]?.let { runCatching { applyNetwork(Protocols.decode<NetworkSettings>(it)) } }
+        rows["notice"]?.let { runCatching { ctx.live.notice = cleanNotice(Protocols.decode<NoticeSettings>(it).text) } }
         if (rows["smtp_off"] != null) ctx.live.smtp = null
     }
 
@@ -51,6 +53,7 @@ class Settings(private val ctx: Ctx) {
             alerts = AlertSettings(ctx.live.alertEmails, ctx.live.alertTelegramChats),
             modes = ModeSettings(ctx.live.showSignInCodes, ctx.live.paymentProvider == "test"),
             network = NetworkSettings(ctx.live.channelMbps, ctx.live.monthlyTrafficLimitBytes?.div(1_000_000_000)),
+            notice = NoticeSettings(ctx.live.notice),
             paymentsConnected = ctx.live.paymentProvider != null && ctx.live.paymentProvider != "test",
             botEnabled = botEnabled,
         )
@@ -108,6 +111,13 @@ class Settings(private val ctx: Ctx) {
         }
         applyNetwork(n)
         store("network", Protocols.encode(n))
+    }
+
+    /** The note for everyone, sent with the node list (GET /servers). Empty removes it. */
+    suspend fun saveNotice(n: NoticeSettings) {
+        val text = cleanNotice(n.text)
+        ctx.live.notice = text
+        store("notice", Protocols.encode(NoticeSettings(text)))
     }
 
     private fun applyNetwork(n: NetworkSettings) {

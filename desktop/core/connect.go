@@ -239,8 +239,12 @@ func (a *App) establish(ctx context.Context, moveNow bool) error {
 	if want == "" {
 		want = "auto"
 	}
+	// A node the owner put under maintenance (or marked blocked, for "fastest") is
+	// left for another one on the next connect, like a node that went away.
 	usable := func(id string) bool {
-		return slices.ContainsFunc(servers, func(s Server) bool { return s.ID == id && slices.Contains(s.Protocols, Protocol) })
+		return slices.ContainsFunc(servers, func(s Server) bool {
+			return s.ID == id && slices.Contains(s.Protocols, Protocol) && statusTier(s.Status, want == "auto") >= 0
+		})
 	}
 
 	away := st.Config != nil && a.serverSkipped(st.Config.ServerID)

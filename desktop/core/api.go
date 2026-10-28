@@ -154,6 +154,17 @@ type Server struct {
 	Load        float64  `json:"load"`
 	Protocols   []string `json:"protocols"`
 	Host        string   `json:"host"`
+	// Status is what the owner says about the node (nodestatus.go): "ok",
+	// "degraded", "blocked", "maintenance"; empty from an older panel.
+	Status string `json:"status"`
+	// Notice is the owner's note for the people using this node.
+	Notice string `json:"notice"`
+}
+
+// ServerList is GET /v1/servers: the nodes and the owner's note for everyone.
+type ServerList struct {
+	Servers []Server `json:"servers"`
+	Notice  string   `json:"notice"`
 }
 
 type TunnelConfig struct {
@@ -222,12 +233,10 @@ func (a *API) Me(ctx context.Context) (m Me, err error) {
 	return
 }
 
-func (a *API) Servers(ctx context.Context) ([]Server, error) {
-	var r struct {
-		Servers []Server `json:"servers"`
-	}
+func (a *API) Servers(ctx context.Context) (ServerList, error) {
+	var r ServerList
 	err := a.do(ctx, "GET", "servers", nil, &r)
-	return r.Servers, err
+	return r, err
 }
 
 type Key struct {

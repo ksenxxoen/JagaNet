@@ -132,10 +132,36 @@ data class ServerLocation(
     val protocols: List<String>,
     /** The VPN host, for measuring ping before connecting. */
     val host: String? = null,
+    /** One of [NodeStatus]; set by the owner. Apps that don't know a value treat it as "ok". */
+    val status: String = NodeStatus.OK,
+    /** A short note from the owner about this node for the people using it, e.g. planned work. */
+    val notice: String? = null,
 )
 
+/**
+ * What the owner says about a node. A plain string on the wire (not an enum), so an app that
+ * meets a value added later still reads the list.
+ */
+object NodeStatus {
+    /** Works normally. */
+    const val OK = "ok"
+    /** Works, but slower or with drops for some people: the apps pick it last. */
+    const val DEGRADED = "degraded"
+    /** Blocked by some networks: the apps don't pick it for "fastest". */
+    const val BLOCKED = "blocked"
+    /** Planned work: the apps don't pick it. */
+    const val MAINTENANCE = "maintenance"
+    val ALL = listOf(OK, DEGRADED, BLOCKED, MAINTENANCE)
+    /** The apps leave these out when they pick a node themselves. */
+    fun avoided(status: String) = status == BLOCKED || status == MAINTENANCE
+}
+
 @Serializable
-data class ServersRes(val servers: List<ServerLocation>)
+data class ServersRes(
+    val servers: List<ServerLocation>,
+    /** A note from the owner for everyone (the whole service), if any. */
+    val notice: String? = null,
+)
 
 /**
  * The core API is protocol-agnostic: everything protocol-specific travels in
@@ -160,6 +186,8 @@ data class TunnelConfig(
     val mtu: Int,
     /** Read only by the engine for [protocol]. */
     val params: JsonObject,
+    /** The node's note from the owner ([ServerLocation.notice]), if any. Not part of [TunnelState.version]. */
+    val notice: String? = null,
 )
 
 /** GET /tunnel: the device's tunnel as the server has it now. */
@@ -171,6 +199,8 @@ data class TunnelState(
     /** The app should make a new key pair and provision again (POST /tunnel) on the same server. */
     val rekey: Boolean = false,
     val countryCode: String? = null,
+    /** The node's note from the owner, if any (also in [config]). Changing it does not change [version]. */
+    val notice: String? = null,
 )
 
 @Serializable
@@ -234,6 +264,82 @@ data class NodeFailureCount(val serverId: String, val name: String, val last15m:
 /** GET /admin/connection-failures?server=&user= */
 @Serializable
 data class ConnectionFailuresRes(val failures: List<ConnectionFailure>, val nodes: List<NodeFailureCount>)
+
+/* ---------- problem reports ("Сообщить о проблеме" in the Boop apps) ---------- */
+
+/**
+ * POST /diagnostics from a signed-in device. [text] is the whole report as the person could read
+ * it (the app cuts out keys, tokens, configs and key links before sending); every other field is
+ * optional and only fills the admin panel's list. At most 256 KB per request, 5 per device per hour,
+ * kept 30 days.
+ */
+@Serializable
+data class DiagnosticsReq(
+    val text: String,
+    /** What the person wrote, if anything. */
+    val comment: String? = null,
+    val appVersion: String? = null,
+    val platform: String? = null,
+    /** e.g. "Windows 11 (10.0.22631)". */
+    val osVersion: String? = null,
+    /** The connection as the app shows it: off, connecting, reconnecting, on or problem. */
+    val state: String? = null,
+    /** The app's problem code: no_handshake, dead, blocked, offline, plan, key_removed, auth. */
+    val problem: String? = null,
+    val serverId: String? = null,
+    /** The chosen country (two letters) or "auto". */
+    val country: String? = null,
+    /** The node's host name and the addresses it resolves to now. */
+    val host: String? = null,
+    val resolved: List<String> = emptyList(),
+    /** Seconds since the last handshake; null when there was none. */
+    val handshakeAgeSec: Long? = null,
+    val rxBytes: Long? = null,
+    val txBytes: Long? = null,
+    /** The last network check outside the tunnel, e.g. "blocked (panel no, web yes, 1.2 s)". */
+    val probe: String? = null,
+)
+
+@Serializable
+data class DiagnosticsRes(val id: String)
+
+/** One report in the admin panel's list. */
+@Serializable
+data class DiagnosticsSummary(
+    val id: String,
+    val at: String,
+    val userId: String? = null,
+    val email: String? = null,
+    val deviceId: String? = null,
+    val deviceName: String? = null,
+    val appVersion: String? = null,
+    val platform: String? = null,
+    val osVersion: String? = null,
+    val state: String? = null,
+    val problem: String? = null,
+    val serverId: String? = null,
+    val serverName: String? = null,
+    val country: String? = null,
+    val hasComment: Boolean = false,
+)
+
+/** GET /admin/diagnostics?user= : the latest 200. */
+@Serializable
+data class DiagnosticsListRes(val reports: List<DiagnosticsSummary>)
+
+/** GET /admin/diagnostics/{id}: one report with its text. */
+@Serializable
+data class DiagnosticsReport(
+    val report: DiagnosticsSummary,
+    val comment: String? = null,
+    val host: String? = null,
+    val resolved: List<String> = emptyList(),
+    val handshakeAgeSec: Long? = null,
+    val rxBytes: Long? = null,
+    val txBytes: Long? = null,
+    val probe: String? = null,
+    val text: String,
+)
 
 /* ---------- devices ---------- */
 
@@ -756,6 +862,8 @@ data class AdminSettingsRes(
     val alerts: AlertSettings,
     val modes: ModeSettings,
     val network: NetworkSettings = NetworkSettings(),
+    /** The note for everyone ([ServersRes.notice]). */
+    val notice: NoticeSettings = NoticeSettings(),
     /** A real payment service is connected. */
     val paymentsConnected: Boolean,
     val botEnabled: Boolean,
@@ -848,10 +956,21 @@ data class AdminNode(
     val createdAt: String,
     /** The latest automatic install (the list leaves its log out). */
     val install: NodeInstall? = null,
+    /** [NodeStatus] and the note the apps show, set with PUT /admin/nodes/{id}/status. */
+    val status: String = NodeStatus.OK,
+    val notice: String? = null,
 )
 
 @Serializable
 data class AdminNodesRes(val nodes: List<AdminNode>)
+
+/** PUT /admin/nodes/{id}/status: the node's [NodeStatus] and its note for the apps (empty or null = none). */
+@Serializable
+data class NodeStatusReq(val status: String = NodeStatus.OK, val notice: String? = null)
+
+/** PUT /admin/settings/notice: one note for everyone, shown by the apps (empty or null = none). */
+@Serializable
+data class NoticeSettings(val text: String? = null)
 
 @Serializable
 data class NodeReq(

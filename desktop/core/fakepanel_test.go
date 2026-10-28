@@ -37,7 +37,11 @@ type fakePanel struct {
 	removed    []string
 	serverPub  string
 	deleteOnce sync.Once
-	expiresAt  string // the plan's end sent by /me; empty for none
+	expiresAt  string            // the plan's end sent by /me; empty for none
+	statuses   map[string]string // node id -> the owner's status sent by /servers
+	notices    map[string]string // node id -> the node's note
+	notice     string            // the note for everyone
+	diags      []Diagnostics     // problem reports received
 }
 
 func newFakePanel(t *testing.T) *fakePanel {
@@ -58,6 +62,7 @@ func (p *fakePanel) handle(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v1/")
 	p.mu.Lock()
 	down, forced, delay, hold, expires := p.down, p.status[path], p.provDelay, p.deleteHold, p.expiresAt
+	statuses, notices, notice := p.statuses, p.notices, p.notice
 	p.mu.Unlock()
 	if down {
 		panic(http.ErrAbortHandler)
@@ -82,10 +87,14 @@ func (p *fakePanel) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		reply(map[string]any{"user": User{ID: "u1", Email: "demo@example.com"}, "entitlement": ent})
 	case path == "servers":
-		reply(map[string]any{"servers": []Server{
+		list := []Server{
 			{ID: "s-nl", Name: "NL 1", CountryCode: "NL", Load: .1, Protocols: []string{Protocol}, Host: "203.0.113.5"},
 			{ID: "s-de", Name: "DE 1", CountryCode: "DE", Load: .1, Protocols: []string{Protocol}, Host: "203.0.113.6"},
-		}})
+		}
+		for i := range list {
+			list[i].Status, list[i].Notice = statuses[list[i].ID], notices[list[i].ID]
+		}
+		reply(ServerList{Servers: list, Notice: notice})
 	case path == "keys":
 		reply(map[string]any{"keys": []Key{}})
 	case path == "tunnel/events":
@@ -93,6 +102,11 @@ func (p *fakePanel) handle(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&b)
 		p.set(func() { p.events = append(p.events, b.Type); p.bodies = append(p.bodies, b) })
 		reply(map[string]bool{"ok": true})
+	case path == "diagnostics" && r.Method == "POST":
+		var d Diagnostics
+		_ = json.NewDecoder(r.Body).Decode(&d)
+		p.set(func() { p.diags = append(p.diags, d) })
+		reply(map[string]string{"id": "42"})
 	case path == "tunnel" && r.Method == "POST":
 		var b struct {
 			ServerID     string            `json:"serverId"`
@@ -172,7 +186,9 @@ type testApp struct {
 	notes  []string
 }
 
-func newTestApp(t *testing.T, panel *fakePanel, store *Store) *testApp {
+// newTestApp builds and starts the app; opts change it before Init, while no
+// background loop runs yet.
+func newTestApp(t *testing.T, panel *fakePanel, store *Store, opts ...func(*testApp)) *testApp {
 	t.Helper()
 	if store == nil {
 		store = LoadStore(t.TempDir())
@@ -186,6 +202,9 @@ func newTestApp(t *testing.T, panel *fakePanel, store *Store) *testApp {
 		OnState:  func(s UIState) { ta.smu.Lock(); ta.states = append(ta.states, s); ta.smu.Unlock() },
 		OnToast:  func(m string) { ta.smu.Lock(); ta.toasts = append(ta.toasts, m); ta.smu.Unlock() },
 		OnNotify: func(m string) { ta.smu.Lock(); ta.notes = append(ta.notes, m); ta.smu.Unlock() },
+	}
+	for _, o := range opts {
+		o(ta)
 	}
 	ta.Init()
 	t.Cleanup(func() { ta.Disconnect() })

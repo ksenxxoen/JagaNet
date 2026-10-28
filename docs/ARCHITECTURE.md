@@ -87,7 +87,8 @@ verbatim so new AWG versions need no app release.
 | Data | `resources/db/migration/` | Flyway SQL migrations |
 
 **Privacy by design.** The server stores byte counts per device per hour and session start/end
-times. It never stores destinations, DNS queries or user IPs. Failure reports
+times. It never stores destinations, DNS queries or user IPs (a problem report the person sends
+holds what the app knows about its own connection, never keys, tokens or configs). Failure reports
 (`handshake_failed`, `no_rx`) carry the node's address the app knocked on, never the user's. The connection log lives only on
 the device.
 
@@ -116,9 +117,10 @@ when the current one ends, each with its own terms.
 ## Data model
 
 `users` · `devices` · `sessions` · `otp_codes` · `pairing_codes` · `servers` (with
-`protocols jsonb`) · `tunnels` (one per device, `protocol`, `peer_key`, `client_params jsonb`) ·
+`protocols jsonb`, the owner's `status` and `notice` for the apps) · `tunnels` (one per device, `protocol`, `peer_key`, `client_params jsonb`) ·
 `subscriptions` (apple/google/dev/referral) · `traffic_samples` (hourly) · `connection_sessions` ·
-`connection_failures` (failure reports from the apps, 30 days).
+`connection_failures` (failure reports from the apps, 30 days) · `diagnostics` (problem reports the
+person sends from the app, with the end of the app's log, secrets cut out on the device; 30 days).
 
 ## Known gaps (next steps)
 

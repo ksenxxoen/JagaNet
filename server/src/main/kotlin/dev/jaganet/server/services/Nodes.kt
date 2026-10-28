@@ -7,6 +7,8 @@ import dev.jaganet.api.NodeSshReq
 import dev.jaganet.api.NodeInstallRes
 import dev.jaganet.api.NodeReq
 import dev.jaganet.api.NodeState
+import dev.jaganet.api.NodeStatus
+import dev.jaganet.api.NodeStatusReq
 import dev.jaganet.api.Protocols
 import dev.jaganet.api.ErrorCode
 import dev.jaganet.server.AppError
@@ -41,6 +43,16 @@ import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration.Companion.seconds
+
+/** Longest note for the apps (a node's or everyone's); the apps show it in one banner. */
+const val NOTICE_MAX = 200
+
+/** A note as stored: one line, trimmed, null when empty. Too long is refused, not cut. */
+fun cleanNotice(text: String?): String? {
+    val t = text?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    if (t.length > NOTICE_MAX) throw AppError(400, ErrorCode.BAD_REQUEST, "The note is too long: {n} characters at most", mapOf("n" to NOTICE_MAX))
+    return t
+}
 
 /** A node without a report for this long is offline: it gets no new devices and raises an alert. */
 val NODE_OFFLINE: Duration = Duration.ofMinutes(3)
@@ -193,7 +205,21 @@ class Nodes(private val ctx: Ctx) {
             lastReportAt = last?.toString(), cpu = rep?.system?.cpu, memUsed = rep?.system?.memUsed, memTotal = rep?.system?.memTotal,
             rxBps = rep?.rxBps, txBps = rep?.txBps, createdAt = r.instant("created_at").toString(),
             install = installOf(r)?.copy(log = ""),
+            status = r.str("status"), notice = r.strOrNull("notice"),
         )
+    }
+
+    /**
+     * The owner marks a node (ok, degraded, blocked, maintenance) and leaves a note for the
+     * people using it. Only the apps act on it: the node keeps working and keeps its devices.
+     */
+    suspend fun setStatus(id: String, req: NodeStatusReq): AdminNode {
+        val status = req.status.trim().lowercase()
+        if (status !in NodeStatus.ALL) throw badRequest("Some values are out of range")
+        val notice = cleanNotice(req.notice)
+        val n = ctx.db.run { it.exec("UPDATE servers SET status=?, notice=? WHERE id=?", status, notice, id) }
+        if (n == 0) throw notFound("Node not found")
+        return get(id)
     }
 
     private fun check(req: NodeReq): NodeReq {

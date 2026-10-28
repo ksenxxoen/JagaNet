@@ -9,7 +9,7 @@
 // detector, DNS re-resolving, the real kill switch. Banner and sheet behaviour with invented
 // states lives in scripts/ui-checks.mjs.
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, openSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, openSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -286,6 +286,76 @@ try {
   await u.until("plan loaded", async () => !!(await u.state()).plan);
   check("no end date, no banner", await u.hidden("plan-banner"));
   await u.stop();
+
+  /* ---------- 7. the owner's node status and notes (issue #10) ---------- */
+  // The Dutch node (the fastest) is under maintenance, the Finnish one unstable, the German one has a note.
+  panel.reset();
+  panel.statuses = { "s-nl": "maintenance", "s-fi": "degraded" };
+  panel.notices = { "s-de": "Вечером возможны задержки" };
+  panel.notice = "Сегодня ночью плановые работы";
+  const n = await launch();
+  await signInByMail(n);
+  await n.until("note for everyone in the banner", async () => !(await n.hidden("notice-banner")) && (await n.text("notice-text")) === "Сегодня ночью плановые работы");
+  await n.click("#open-places");
+  await n.until("country list", async () => !(await n.hidden("places")) && (await n.page.evaluate(() => document.querySelectorAll("#place-list .list-item").length)) === 4);
+  const rows = await n.page.evaluate(() => Object.fromEntries([...document.querySelectorAll("#place-list .list-item")].map((b) => [b.querySelector(".item-title").textContent, { disabled: b.disabled, sub: b.querySelector(".item-sub").textContent, badge: (b.querySelector(".badge") || {}).textContent || "" }])));
+  check("Netherlands under maintenance: not chosen", rows["Нидерланды"].disabled && rows["Нидерланды"].badge === "Обслуживание", rows);
+  check("Finland unstable: chosen with a warning", !rows["Финляндия"].disabled && rows["Финляндия"].sub === "Возможны перебои", rows);
+  await n.click("#places [data-close]");
+  await n.click("#boop");
+  await n.until("connected", async () => (await n.conn()) === "on");
+  const tok = Object.keys(panel.tunnels).at(-1); // this instance signed in last
+  check("fastest skipped the node under maintenance and the unstable one", tok && panel.tunnels[tok].serverID === "s-de", panel.tunnels);
+  await n.until("the node's note while connected to it", async () => (await n.text("notice-text")) === "Вечером возможны задержки" && !(await n.hidden("notice-banner")));
+  await n.click("#notice-close");
+  await n.until("closing shows the next note", async () => (await n.text("notice-text")) === "Сегодня ночью плановые работы");
+  await n.click("#notice-close");
+  await n.until("both closed", async () => await n.hidden("notice-banner"));
+  await n.click("#boop");
+  await n.until("off", async () => (await n.conn()) === "off");
+  await n.stop();
+  // A restart: closed notes stay closed, a new text shows.
+  const n2 = await launch({ data: n.data });
+  await n2.until("main screen after restart", async () => (await screen(n2)) === "main" && (await n2.state()).countries.length === 3);
+  await sleep(500);
+  check("a closed note does not come back after a restart", await n2.hidden("notice-banner"));
+  panel.notice = "Работы закончены";
+  await n2.page.reload();
+  await n2.until("a new note shows", async () => (await n2.text("notice-text")) === "Работы закончены" && !(await n2.hidden("notice-banner")));
+  await n2.stop();
+
+  /* ---------- 8. «Сообщить о проблеме» (issue #11) ---------- */
+  panel.reset();
+  const r = await launch();
+  await signInByMail(r);
+  await r.click("#boop");
+  await r.until("connected before the report", async () => (await r.conn()) === "on");
+  await r.click("#open-settings");
+  await r.until("settings open", async () => !(await r.hidden("settings")));
+  await r.click("#s-report");
+  await r.until("report dialog", async () => !(await r.hidden("report")) && !(await r.hidden("report-ask")));
+  await r.page.evaluate(() => { document.getElementById("report-comment").value = "Не открываются сайты, ключ https://panel.example.com/k/AbC123xYz"; });
+  await r.click("#report-send");
+  await r.until("report sent", async () => !(await r.hidden("report-done")) && (await r.text("report-title")) === "Отчёт отправлен");
+  check("the dialog gives the report's number", (await r.text("report-detail")) === "Номер отчёта: 1", await r.text("report-detail"));
+  const sent = panel.diagnostics[0] || {};
+  check("the panel got one report", panel.diagnostics.length === 1, panel.diagnostics.length);
+  check("the report says what the app knows", sent.state === "on" && /^s-/.test(sent.serverId || "") && sent.country === "auto" && sent.platform && sent.appVersion && (sent.text || "").includes("Отчёт Boop о проблеме"), { ...sent, text: (sent.text || "").slice(0, 200) });
+  check("the report carries the end of the log", (sent.text || "").includes("Журнал (последние 300 строк boop.log)") && (sent.text || "").includes("vpn: up"), (sent.text || "").slice(-300));
+  check("the comment is kept, the key link is cut out", (sent.comment || "").startsWith("Не открываются сайты") && !JSON.stringify(sent).includes("/k/") && !JSON.stringify(sent).includes("AbC123xYz"), sent.comment);
+  check("no session token in the report", !JSON.stringify(sent).includes("tok-dev-mail"));
+  await r.click("#report-close");
+  await r.until("dialog closed", async () => await r.hidden("report"));
+  // The panel refuses: the text is saved next to the log and offered for copying.
+  panel.status["diagnostics"] = 503;
+  await r.click("#s-report");
+  await r.until("report dialog again", async () => !(await r.hidden("report")) && !(await r.hidden("report-ask")));
+  await r.click("#report-send");
+  await r.until("report not sent", async () => (await r.text("report-title")) === "Не удалось отправить");
+  const file = await r.text("report-file");
+  check("the report is saved to a file next to the log", file.startsWith(r.data) && /boop-report-\d{8}-\d{6}\.txt$/.test(file) && existsSync(file), file);
+  check("copying is offered", !(await r.hidden("report-copy")));
+  await r.stop();
 } catch (e) {
   check(`unexpected error: ${e && e.stack || e}`, false);
 } finally {
