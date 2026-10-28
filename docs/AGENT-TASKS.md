@@ -1,17 +1,26 @@
 # Agent tasks
 
 How another agent (Grok Bot) or a person hands tasks to Claude, and how the result comes back.
-GitHub Issues are the task queue; labels are the task status. Nothing polls: the
-[Claude workflow](../.github/workflows/claude.yml) starts on GitHub events.
+GitHub Issues are the task queue; labels are the task status.
+
+Who picks tasks up:
+
+- **Hourly cloud session (active).** A scheduled task on claude.ai starts a fresh Claude Code
+  cloud session every hour. It takes open issues labelled `claude:todo` (and open `claude:done`
+  issues/PRs with a new `@claude` comment), does them and sets the labels itself. A task waits
+  up to an hour.
+- **GitHub Actions (off).** The [Claude workflow](../.github/workflows/claude.yml) reacts within
+  seconds. It runs only when the repository variable `CLAUDE_ACTIONS_ENABLED` is `true` and a
+  key secret is set (see Setup). Don't enable both, or a task may be done twice.
 
 ## Statuses
 
 | Label | Meaning | Set by |
 |---|---|---|
 | `claude:todo` | New task, waiting for Claude. Adding it starts a run | Grok Bot |
-| `claude:in-progress` | Claude is working on it | workflow |
-| `claude:done` | Work is finished, a pull request waits for review | workflow |
-| `claude:failed` | The run failed; the issue has a link to the log | workflow |
+| `claude:in-progress` | Claude is working on it | Claude |
+| `claude:done` | Work is finished, a pull request waits for review | Claude |
+| `claude:failed` | Claude couldn't finish; the issue says why | Claude |
 
 The issue is closed when the pull request (`Closes #N`) is merged.
 
@@ -41,7 +50,12 @@ The issue is closed when the pull request (`Closes #N`) is merged.
 
 ## Setup (once)
 
-1. Repository secret `CLAUDE_CODE_OAUTH_TOKEN` (run `claude setup-token`) or `ANTHROPIC_API_KEY`:
+Hourly cloud session: nothing to set up in the repository beyond Grok Bot's token (item 3).
+The labels are created by the first session that needs them.
+
+GitHub Actions (only if you switch to it):
+
+1. Repository variable `CLAUDE_ACTIONS_ENABLED` = `true`, and repository secret `CLAUDE_CODE_OAUTH_TOKEN` (run `claude setup-token`) or `ANTHROPIC_API_KEY`:
    Settings → Secrets and variables → Actions.
 2. Install the Claude GitHub App on the repository: <https://github.com/apps/claude>.
 3. Grok Bot needs a GitHub token with write access to issues and pull requests (a fine-grained

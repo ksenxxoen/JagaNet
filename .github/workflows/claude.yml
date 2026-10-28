@@ -26,11 +26,14 @@ concurrency:
 
 jobs:
   claude:
+    # Off by default: tasks are picked up by the hourly cloud session instead.
+    # Set the repository variable CLAUDE_ACTIONS_ENABLED=true (and a secret) to turn it on.
     if: |
+      vars.CLAUDE_ACTIONS_ENABLED == 'true' && (
       (github.event_name == 'issues' && github.event.label.name == 'claude:todo') ||
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
