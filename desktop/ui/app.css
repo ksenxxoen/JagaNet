@@ -1,5 +1,21 @@
 /* Screens: layout of the window. Built from tokens.css and components.css. */
-.app { position: relative; height: 100vh; overflow: hidden; overflow: clip; display: flex; flex-direction: column; align-items: center; }
+.app {
+  position: relative; height: 100vh; width: 100%; overflow: hidden; overflow: clip; display: flex; flex-direction: column; align-items: center;
+  opacity: 0; transition: opacity var(--dur) ease, padding-right var(--dur) var(--ease);
+}
+.app.ready { opacity: 1; }
+/* Wide window: the main screen makes room for the open panel. */
+@media (min-width: 56rem) {
+  .app[data-panel] { padding-right: var(--panel-w); }
+  .app[data-panel] .toast { right: calc(var(--panel-w) + var(--s-4)); }
+}
+/* Low window (360x520 and the like): the button gets smaller so everything still fits. */
+@media (max-height: 36rem) {
+  :root { --boop: clamp(7.5rem, 40vmin, 16rem); }
+  .brand-big { margin-top: var(--s-3); }
+  .brand-big svg { width: 3.5rem; height: 3.5rem; }
+  .status { margin-top: var(--s-3); }
+}
 .app > .banner { width: calc(100% - 2 * var(--s-4)); max-width: calc(var(--content-w) - 2 * var(--s-4)); }
 
 /* Soft colour behind the button that follows the state. */
@@ -28,7 +44,7 @@
 .brand-big .dot { fill: var(--on-accent); }
 .form { width: 100%; display: flex; flex-direction: column; gap: var(--s-3); animation: fade var(--dur) var(--ease) both; }
 .form .btn-primary { margin-top: var(--s-1); }
-.alts { margin-top: auto; padding-top: var(--s-4); display: flex; flex-direction: column; align-items: center; }
+.alts { margin-top: auto; width: 100%; padding-top: var(--s-4); display: flex; flex-direction: column; align-items: center; }
 .match {
   height: 4rem; border-radius: var(--r-md); display: grid; place-items: center;
   background: var(--surface); border: var(--border) solid var(--line);
@@ -43,7 +59,7 @@
 .brand .ring { fill: none; stroke: var(--brand-ring); stroke-width: 1.6; }
 .brand .dot { fill: var(--on-accent); }
 
-.stage { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--s-2) var(--s-4); }
+.stage { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: safe center; padding: var(--s-2) var(--s-4); overflow-y: auto; scrollbar-width: thin; }
 
 .boop {
   position: relative; width: var(--boop); aspect-ratio: 1; border-radius: 50%;

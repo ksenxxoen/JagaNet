@@ -53,6 +53,7 @@ type App struct {
 	skip       []string
 	hold       *tunnelHold
 	available  *Manifest
+	updStage   string // "", "downloading", "installing" or "failed": what the update is doing now
 	told       map[string]bool
 	lastToggle time.Time
 	stop       context.CancelFunc

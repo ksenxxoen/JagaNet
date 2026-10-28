@@ -74,11 +74,24 @@ var commands = map[string]handler{
 	// the connection
 	"toggle": none(func(a *App, _ context.Context) (any, error) { a.flip(); return nil, nil }),
 	// keys and places
-	"refreshKeys":  none((*App).cmdRefreshKeys),
-	"renameKey":    object((*App).cmdRenameKey),
-	"setKey":       text((*App).cmdSetKey),
-	"setCountry":   text((*App).cmdSetCountry),
-	"refreshPings": none(func(a *App, _ context.Context) (any, error) { Go("pings", a.pingAll); return nil, nil }),
+	"refreshKeys": none((*App).cmdRefreshKeys),
+	"renameKey":   object((*App).cmdRenameKey),
+	"setKey":      text((*App).cmdSetKey),
+	"setCountry":  text((*App).cmdSetCountry),
+	// Re-measures the pings; with an empty country list (the panel was down) it loads the list again first.
+	"refreshPings": none(func(a *App, _ context.Context) (any, error) {
+		Go("pings", func() {
+			a.mu.Lock()
+			empty := len(a.servers) == 0
+			a.mu.Unlock()
+			if empty {
+				a.refresh(false)
+			} else {
+				a.pingAll()
+			}
+		})
+		return nil, nil
+	}),
 	// settings
 	"setStrictKill":  flag((*App).cmdSetStrictKill),
 	"setAutoConnect": flag((*App).cmdSetAutoConnect),

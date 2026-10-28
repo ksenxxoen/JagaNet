@@ -69,6 +69,8 @@
   --flag: 2.125rem;
   --boop: clamp(10rem, 52vmin, 16rem);
   --content-w: 32rem;
+  --panel-w: 26rem;
+  --wide: 56rem;
 
   /* motion */
   --dur-fast: .15s;

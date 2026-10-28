@@ -60,6 +60,8 @@ type UpdateUI struct {
 	Version   string `json:"version"`
 	Notes     string `json:"notes,omitempty"`
 	Mandatory bool   `json:"mandatory,omitempty"`
+	// What installing it is doing: "downloading", "installing", "failed"; empty before the click.
+	Stage string `json:"stage,omitempty"`
 }
 
 /* ---------- state ---------- */
@@ -74,7 +76,7 @@ func (a *App) state() UIState {
 		Problem: a.problem, Released: a.released, StrictKill: a.Store.StrictKill,
 	}
 	if a.available != nil {
-		s.Update = &UpdateUI{Version: a.available.Version, Notes: a.available.Notes, Mandatory: a.available.Mandatory}
+		s.Update = &UpdateUI{Version: a.available.Version, Notes: a.available.Notes, Mandatory: a.available.Mandatory, Stage: a.updStage}
 	}
 	for _, k := range a.keys {
 		ui := KeyUI{ID: k.ID, Name: k.Name}
