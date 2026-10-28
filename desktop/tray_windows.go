@@ -37,35 +37,37 @@ var (
 )
 
 const (
-	wmClose      = 0x0010
-	wmTray       = 0x8001 // WM_APP+1; WM_APP itself carries the webview's own calls
-	wmLButtonUp  = 0x0202
-	wmRButtonUp  = 0x0205
-	wmLButtonDbl = 0x0203
-	nimAdd       = 0
-	nimModify    = 1
-	nimDelete    = 2
-	nifMessage   = 0x1
-	nifIcon      = 0x2
-	nifTip       = 0x4
-	nifInfo      = 0x10
-	niifUser     = 0x4
-	menuOpen     = 1
-	menuToggle   = 2
-	menuQuit     = 3
-	iconOn       = 1
-	iconOff      = 2
-	gwlpWndProc  = ^uintptr(3) // -4
-	swHide       = 0
-	swShow       = 5
-	tpmReturnCmd = 0x100
-	tpmRightBtn  = 0x2
-	mfString     = 0
-	mfSeparator  = 0x800
-	smCxSmIcon   = 49
-	smCySmIcon   = 50
-	imageIcon    = 1
-	lrShared     = 0x8000
+	wmClose        = 0x0010
+	wmTray         = 0x8001 // WM_APP+1; WM_APP itself carries the webview's own calls
+	wmLButtonUp    = 0x0202
+	wmRButtonUp    = 0x0205
+	wmLButtonDbl   = 0x0203
+	nimAdd         = 0
+	nimModify      = 1
+	nimDelete      = 2
+	nifMessage     = 0x1
+	nifIcon        = 0x2
+	nifTip         = 0x4
+	nifInfo        = 0x10
+	niifUser       = 0x4
+	menuOpen       = 1
+	menuToggle     = 2
+	menuQuit       = 3
+	iconOn         = 1
+	iconOff        = 2
+	iconConnecting = 3
+	iconProblem    = 4
+	gwlpWndProc    = ^uintptr(3) // -4
+	swHide         = 0
+	swShow         = 5
+	tpmReturnCmd   = 0x100
+	tpmRightBtn    = 0x2
+	mfString       = 0
+	mfSeparator    = 0x800
+	smCxSmIcon     = 49
+	smCySmIcon     = 50
+	imageIcon      = 1
+	lrShared       = 0x8000
 )
 
 type notifyIconData struct {
@@ -88,11 +90,14 @@ type notifyIconData struct {
 
 var trayText = map[string]map[string]string{
 	"ru": {"open": "Открыть Boop", "on": "Подключить", "off": "Отключить", "quit": "Выход",
-		"state.on": "Подключено", "state.off": "Отключено", "state.connecting": "Подключение", "hint": "Boop работает здесь"},
+		"state.on": "Подключено", "state.off": "Отключено", "state.connecting": "Подключение",
+		"state.reconnecting": "Переподключение", "state.problem": "Проблема", "hint": "Boop работает здесь"},
 	"en": {"open": "Open Boop", "on": "Connect", "off": "Disconnect", "quit": "Quit",
-		"state.on": "Connected", "state.off": "Off", "state.connecting": "Connecting", "hint": "Boop keeps running here"},
+		"state.on": "Connected", "state.off": "Off", "state.connecting": "Connecting",
+		"state.reconnecting": "Reconnecting", "state.problem": "Problem", "hint": "Boop keeps running here"},
 	"de": {"open": "Boop öffnen", "on": "Verbinden", "off": "Trennen", "quit": "Beenden",
-		"state.on": "Verbunden", "state.off": "Getrennt", "state.connecting": "Verbinde", "hint": "Boop läuft hier weiter"},
+		"state.on": "Verbunden", "state.off": "Getrennt", "state.connecting": "Verbinde",
+		"state.reconnecting": "Verbinde neu", "state.problem": "Problem", "hint": "Boop läuft hier weiter"},
 }
 
 type tray struct {
@@ -101,7 +106,7 @@ type tray struct {
 	quit    func()
 	oldProc uintptr
 	created uint32 // "TaskbarCreated": Explorer restarted, the icon must be added again
-	icons   [3]uintptr
+	icons   [5]uintptr
 	mu      sync.Mutex
 	conn    string
 	lang    string
@@ -114,7 +119,7 @@ func newTray(hwnd uintptr, app *core.App, quit func()) *tray {
 	_ = windows.GetModuleHandleEx(0, nil, &inst)
 	cx, _, _ := getSystemMetrics.Call(smCxSmIcon)
 	cy, _, _ := getSystemMetrics.Call(smCySmIcon)
-	for _, id := range []int{iconOn, iconOff} {
+	for _, id := range []int{iconOn, iconOff, iconConnecting, iconProblem} {
 		t.icons[id], _, _ = loadImage.Call(uintptr(inst), uintptr(id), imageIcon, cx, cy, lrShared)
 	}
 	name, _ := windows.UTF16PtrFromString("TaskbarCreated")
@@ -137,10 +142,7 @@ func (t *tray) notify(op uintptr, info string) {
 	defer t.mu.Unlock()
 	d := notifyIconData{HWnd: t.hwnd, UID: 1, UFlags: nifMessage | nifIcon | nifTip, UCallbackMessage: wmTray}
 	d.CbSize = uint32(unsafe.Sizeof(d))
-	d.HIcon = t.icons[iconOff]
-	if t.conn == "on" {
-		d.HIcon = t.icons[iconOn]
-	}
+	d.HIcon = t.icon()
 	copy(d.SzTip[:len(d.SzTip)-1], windows.StringToUTF16(title+"\n"+t.text("state."+t.conn)))
 	if info != "" {
 		d.UFlags |= nifInfo
@@ -152,6 +154,30 @@ func (t *tray) notify(op uintptr, info string) {
 		t.added = true
 	}
 	shellNotifyIcon.Call(op, uintptr(unsafe.Pointer(&d)))
+}
+
+func (t *tray) icon() uintptr {
+	id := iconOff
+	switch t.conn {
+	case "on":
+		id = iconOn
+	case "connecting", "reconnecting":
+		id = iconConnecting
+	case "problem":
+		id = iconProblem
+	}
+	if t.icons[id] == 0 {
+		return t.icons[iconOff]
+	}
+	return t.icons[id]
+}
+
+// balloon shows a system notification. It runs on the window's thread.
+func (t *tray) balloon(text string) {
+	if text == "" {
+		return
+	}
+	t.notify(nimModify, text)
 }
 
 // update follows the app's state; it runs on the window's thread.
@@ -248,14 +274,42 @@ func schtasks(args ...string) error {
 	return c.Run()
 }
 
-func autostartOn() bool { return schtasks("/Query", "/TN", taskName) == nil }
+var (
+	autoMu sync.Mutex
+	autoOn bool
+)
+
+// refreshAutostart asks the scheduler. state() must not: it used to spawn
+// schtasks.exe on every UI refresh and held the app lock while it did.
+func refreshAutostart() {
+	on := schtasks("/Query", "/TN", taskName) == nil
+	autoMu.Lock()
+	autoOn = on
+	autoMu.Unlock()
+}
+
+func autostartOn() bool {
+	autoMu.Lock()
+	defer autoMu.Unlock()
+	return autoOn
+}
+
+func setAutoCached(on bool) {
+	autoMu.Lock()
+	autoOn = on
+	autoMu.Unlock()
+}
 
 func setAutostart(on bool) error {
 	if !on {
 		if !autostartOn() {
 			return nil
 		}
-		return schtasks("/Delete", "/TN", taskName, "/F")
+		err := schtasks("/Delete", "/TN", taskName, "/F")
+		if err == nil {
+			setAutoCached(false)
+		}
+		return err
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -295,5 +349,9 @@ func setAutostart(on bool) error {
 	if err != nil {
 		return err
 	}
-	return schtasks("/Create", "/TN", taskName, "/XML", f.Name(), "/F")
+	err = schtasks("/Create", "/TN", taskName, "/XML", f.Name(), "/F")
+	if err == nil {
+		setAutoCached(true)
+	}
+	return err
 }

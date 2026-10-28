@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 )
@@ -57,56 +56,6 @@ func NewAPI(base string, token, lang func() string) *API {
 		ForceAttemptHTTP2:   true,
 	}
 	return &API{Base: strings.TrimRight(base, "/"), Token: token, Lang: lang, http: &http.Client{Transport: tr, Timeout: 15 * time.Second}}
-}
-
-var (
-	resolvedMu sync.Mutex
-	resolved   = map[string][]string{}
-)
-
-// Resolve looks a host up and remembers the answer: while a tunnel is broken
-// its DNS is too, and the last good answer still works.
-var outside = &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
-	d := net.Dialer{Timeout: 2 * time.Second, Control: func(n, a string, c syscall.RawConn) error {
-		if SocketControl != nil {
-			return SocketControl(n, a, c)
-		}
-		return nil
-	}}
-	c, err := d.DialContext(ctx, network, "1.1.1.1:53")
-	if err != nil {
-		c, err = d.DialContext(ctx, network, "8.8.8.8:53")
-	}
-	return c, err
-}}
-
-// ResolveFallback answers for names that don't resolve (the test server's made-up hosts).
-var ResolveFallback func(host string) []string
-
-func Resolve(ctx context.Context, host string) ([]string, error) {
-	if net.ParseIP(host) != nil {
-		return []string{host}, nil
-	}
-	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
-	defer cancel()
-	ips, err := net.DefaultResolver.LookupHost(ctx, host)
-	if err != nil {
-		// The system's DNS may sit behind a broken tunnel: ask a public resolver outside it.
-		ips, err = outside.LookupHost(ctx, host)
-	}
-	resolvedMu.Lock()
-	defer resolvedMu.Unlock()
-	if err == nil && len(ips) > 0 {
-		resolved[host] = ips
-		return ips, nil
-	}
-	if old := resolved[host]; len(old) > 0 {
-		return old, nil
-	}
-	if ResolveFallback != nil {
-		return ResolveFallback(host), nil
-	}
-	return nil, err
 }
 
 func cachedDial(d *net.Dialer) func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -328,4 +277,61 @@ func (a *API) Tunnel(ctx context.Context) (s TunnelState, err error) {
 
 func (a *API) Event(ctx context.Context, typ string) error {
 	return a.do(ctx, "POST", "tunnel/events", map[string]any{"type": typ, "at": time.Now().UTC().Format(time.RFC3339)}, nil)
+}
+
+func (a *API) RenameDevice(ctx context.Context, id, name string) error {
+	return a.do(ctx, "PATCH", "devices/"+url.PathEscape(id), map[string]string{"name": name}, nil)
+}
+
+func (a *API) RemoveDevice(ctx context.Context, id string) error {
+	return a.do(ctx, "DELETE", "devices/"+url.PathEscape(id), nil, nil)
+}
+
+// DesktopManifest is the public update document. 404 means nothing is published.
+func (a *API) DesktopManifest(ctx context.Context) (Manifest, error) {
+	var m Manifest
+	err := a.do(ctx, "GET", "app/desktop", nil, &m)
+	if err != nil {
+		return Manifest{}, err
+	}
+	m.Version = strings.TrimSpace(m.Version)
+	m.URL = strings.TrimSpace(m.URL)
+	m.SHA256 = strings.ToLower(strings.TrimSpace(m.SHA256))
+	m.Signature = strings.TrimSpace(m.Signature)
+	return m, nil
+}
+
+// Download fetches a URL (the update exe) through the same physical-interface transport.
+func (a *API) Download(ctx context.Context, rawURL string, limit int64) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	c := *a.http
+	c.Timeout = 2 * time.Minute
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 5 {
+			return errors.New("too many redirects")
+		}
+		if req.URL.Scheme != "https" && req.URL.Scheme != "http" {
+			return errors.New("bad redirect")
+		}
+		return nil
+	}
+	res, err := c.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrOffline, err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode/100 != 2 {
+		return nil, &APIError{Status: res.StatusCode, Message: fmt.Sprintf("HTTP %d", res.StatusCode)}
+	}
+	data, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, errors.New("download too large")
+	}
+	return data, nil
 }

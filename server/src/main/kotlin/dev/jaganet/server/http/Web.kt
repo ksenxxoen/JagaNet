@@ -88,6 +88,12 @@ fun Route.website(s: Services) {
         call.response.header(HttpHeaders.ContentDisposition, ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, "Boop.apk").toString())
         call.respondFile(apk)
     }
+    // Opt-in, same as the manifest: 404 until Boop.exe is placed in DOWNLOADS_DIR.
+    get("/download/windows") {
+        val exe = s.site.desktopExe() ?: throw notFound("The Windows app isn't uploaded yet")
+        call.response.header(HttpHeaders.ContentDisposition, ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, "Boop.exe").toString())
+        call.respondFile(exe)
+    }
 
     // Key links: the token is the secret. Never cache, never index, never leak it in a Referer.
     suspend fun ApplicationCall.key(): KeyConfig {

@@ -173,6 +173,12 @@ func (w *winTunnel) down() {
 	physical6.Store(0)
 }
 
+func (w *winTunnel) Up() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.dev != nil
+}
+
 func (w *winTunnel) Stats() Stats {
 	w.mu.Lock()
 	dev := w.dev

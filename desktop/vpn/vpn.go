@@ -27,4 +27,6 @@ type Tunnel interface {
 	Apply(c *Config) error
 	Down()
 	Stats() Stats
+	// Up reports whether the adapter is in place (and the kill switch with it).
+	Up() bool
 }

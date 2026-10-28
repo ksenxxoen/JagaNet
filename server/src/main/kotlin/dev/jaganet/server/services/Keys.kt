@@ -115,7 +115,7 @@ class Keys(private val ctx: Ctx, private val tunnels: Tunnels) {
             stored.copy(
                 params = it, mtu = server!!.int("mtu"), dns = server.strings("dns"), serverId = server.str("id"),
                 address = "${t!!.str("address")}/32", location = "${server.str("city")}, ${server.str("country_code").trim()}",
-            )
+            ).withEndpointIp(publicIp(server!!, stored.protocol))
         } ?: stored)
     }
 

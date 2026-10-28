@@ -8,8 +8,11 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"slices"
+	"time"
 	"unsafe"
 
 	"github.com/jchv/go-webview2"
@@ -37,9 +40,13 @@ var (
 )
 
 func main() {
-	// One window at a time: a second start brings the first one forward.
-	name, _ := windows.UTF16PtrFromString("Local\\BoopVPN")
-	if _, err := windows.CreateMutex(nil, false, name); err == windows.ERROR_ALREADY_EXISTS {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("panic: %v\n%s", r, debug.Stack())
+		}
+	}()
+	// One window at a time. After an update the new process waits out the old one.
+	if !acquireInstance() {
 		t, _ := windows.UTF16PtrFromString(title)
 		if h, _, _ := findWindow.Call(0, uintptr(unsafe.Pointer(t))); h != 0 {
 			showWindow.Call(h, 9 /* SW_RESTORE */)
@@ -50,14 +57,21 @@ func main() {
 
 	dir := filepath.Join(os.Getenv("LOCALAPPDATA"), "Boop")
 	_ = os.MkdirAll(dir, 0o700)
-	logPath := filepath.Join(dir, "boop.log")
-	if fi, err := os.Stat(logPath); err == nil && fi.Size() > 1<<20 {
-		_ = os.Rename(logPath, logPath+".old")
-	}
-	if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
-		log.SetOutput(f)
+	if lw, err := core.NewRotatingWriter(filepath.Join(dir, "boop.log"), 1<<20); err == nil {
+		log.SetFlags(log.LstdFlags)
+		log.SetOutput(lw)
 	}
 	log.Printf("Boop %s starting", version)
+	if exe, err := os.Executable(); err == nil {
+		_ = os.Remove(exe + ".old")
+	}
+	refreshAutostart()
+	core.Go("autostart", func() {
+		t := time.NewTicker(5 * time.Minute)
+		for range t.C {
+			refreshAutostart()
+		}
+	})
 
 	if err := placeWintun(); err != nil {
 		log.Printf("wintun: %v", err)
@@ -68,11 +82,16 @@ func main() {
 	core.SocketControl = vpn.SocketControl
 
 	tun, _ := vpn.New()
+	exeDir := "."
+	if exe, err := os.Executable(); err == nil {
+		exeDir = filepath.Dir(exe)
+	}
 	app := &core.App{
 		API: core.NewAPI(apiBase, nil, nil), Store: core.LoadStore(dir), Tunnel: tun, Ping: vpn.Ping,
-		Version: version, Site: apiBase, OpenURL: openURL,
+		Version: version, Site: apiBase, OpenURL: openURL, UpdateDir: exeDir,
 		Autostart: setAutostart, AutostartOn: autostartOn,
 	}
+	app.ApplyUpdate = func(staged string) error { return applyUpdate(app, staged) }
 
 	dpi := uint(96)
 	if r, _, _ := getDpiForSys.Call(); r != 0 {
@@ -107,15 +126,18 @@ func main() {
 			t.update(s)
 		})
 	}
-	app.OnToast = func(t string) {
-		b, _ := json.Marshal(map[string]string{"toast": t})
+	app.OnToast = func(msg string) {
+		b, _ := json.Marshal(map[string]string{"toast": msg})
 		push("window.boop && window.boop.update(" + string(b) + ")")
+	}
+	app.OnNotify = func(msg string) {
+		w.Dispatch(func() { t.balloon(msg) })
 	}
 	app.Init()
 
 	// Calls run off the window's thread; the answer comes back through boop.reply.
 	_ = w.Bind("boopSend", func(id int, method, arg string) {
-		go func() {
+		core.Go("call "+method, func() {
 			res, err := app.Call(method, json.RawMessage(arg))
 			out := map[string]any{"ok": err == nil, "value": res}
 			if err != nil {
@@ -123,7 +145,7 @@ func main() {
 			}
 			b, _ := json.Marshal(out)
 			push("window.boop.reply(" + itoa(id) + "," + string(b) + ")")
-		}()
+		})
 	})
 	w.SetHtml(page())
 	w.Run()
@@ -133,6 +155,51 @@ func main() {
 }
 
 func itoa(i int) string { b, _ := json.Marshal(i); return string(b) }
+
+// acquireInstance holds the single-instance mutex. A process started with
+// --updated waits until the previous one has exited, then takes over.
+func acquireInstance() bool {
+	name, _ := windows.UTF16PtrFromString("Local\\BoopVPN")
+	wait := slices.Contains(os.Args[1:], "--updated")
+	for attempt := 0; attempt < 50; attempt++ {
+		handle, err := windows.CreateMutex(nil, false, name)
+		if err != windows.ERROR_ALREADY_EXISTS {
+			return true // the handle stays open until the process exits
+		}
+		if handle != 0 {
+			windows.CloseHandle(handle)
+		}
+		if !wait || attempt == 49 {
+			return false
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return false
+}
+
+// applyUpdate swaps in a verified exe and starts it. Windows allows renaming
+// the running executable; the new process waits for this one to leave.
+func applyUpdate(app *core.App, staged string) error {
+	app.Disconnect()
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if err := core.SwapBinary(exe, staged); err != nil {
+		return err
+	}
+	args := append([]string{}, os.Args[1:]...)
+	if !slices.Contains(args, "--updated") {
+		args = append(args, "--updated")
+	}
+	cmd := exec.Command(exe, args...)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	log.Printf("update: starting %s", exe)
+	os.Exit(0)
+	return nil
+}
 
 // placeWintun puts wintun.dll next to the program, where the tunnel looks for it.
 func placeWintun() error {
