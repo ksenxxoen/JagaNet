@@ -23,7 +23,7 @@ const stop = () => { try { server.kill("SIGTERM"); } catch {} };
 process.on("exit", stop);
 
 const main = {
-  screen: "main", lang: "en", conn: "on", country: "NL", current: "NL", best: "NL", ping: 20, since: Date.now(),
+  screen: "main", conn: "on", country: "NL", current: "NL", best: "NL", ping: 20, since: Date.now(),
   countries: [{ code: "NL", ping: 23 }, { code: "DE", ping: 41 }], email: "demo@example.com", keys: [], key: "", version: "t",
 };
 let failed = 0;
@@ -71,7 +71,7 @@ try {
     check("failed refreshPings shows no toast", !(await toastShown()));
     // ...but a failed action the person asked for does.
     await page.route("**/rpc/setCountry", (r) => r.fulfill({ status: 400, body: '{"error":"no luck"}', contentType: "application/json" }));
-    await click("#place-list .item:nth-child(2)");
+    await click("#place-list .list-item:nth-child(2)");
     await page.waitForTimeout(300);
     check("failed setCountry shows a toast", await toastShown());
   });
@@ -87,11 +87,34 @@ try {
   });
 
   await attempt("problem action", async () => {
-    // The button under the status acts on the problem it shows (only a plan problem offers one).
+    // The button under the status acts on the problem it shows.
+    const action = () => page.evaluate(() => document.getElementById("detail-btn").dataset.action);
     await show({ ...main, conn: "problem", problem: "plan" });
-    check("plan problem shows an action", (await page.evaluate(() => document.getElementById("detail-btn").dataset.action)) === "extend");
+    check("plan problem offers extend", (await action()) === "extend");
+    await show({ ...main, conn: "problem", problem: "auth" });
+    check("auth problem offers sign-in", (await action()) === "signOut");
     await show({ ...main, conn: "problem", problem: "no_handshake" });
-    check("other problems show no action", (await hidden("detail-btn")) && !(await page.evaluate(() => document.getElementById("detail-btn").dataset.action)));
+    check("server problem offers a country change", (await action()) === "places");
+    await show({ ...main, conn: "problem", problem: "offline" });
+    check("offline problem shows no action", (await hidden("detail-btn")) && !(await action()));
+    await show({ ...main, conn: "off" });
+    check("no action while off", await hidden("detail-btn"));
+  });
+
+  await attempt("russian only", async () => {
+    await show({ ...main, conn: "off" });
+    check("document language is ru", (await page.evaluate(() => document.documentElement.lang)) === "ru");
+    check("status is in Russian", (await page.evaluate(() => document.getElementById("status").textContent)) === "Выключено");
+    check("no language switch", (await page.evaluate(() => !document.getElementById("s-lang"))));
+  });
+
+  await attempt("rename dialog", async () => {
+    await page.evaluate(() => { document.getElementById("keys").hidden = false; });
+    await show({ ...main, keys: [{ id: "k1", name: "Demo phone" }], key: "" });
+    await click("#key-list .rename");
+    check("rename dialog opens with the name", (await page.evaluate(() => document.getElementById("rename-input").value)) === "Demo phone" && !(await hidden("rename")));
+    await click("#rename-cancel");
+    check("rename dialog closes", await hidden("rename"));
   });
 
   await browser.close();

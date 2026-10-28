@@ -3,8 +3,6 @@ package core
 import (
 	"context"
 	"github.com/ksenxxoen/JagaNet/desktop/vpn"
-	"os"
-	"strings"
 	"sync"
 	"time"
 )
@@ -72,20 +70,8 @@ type App struct {
 func (a *App) Init() {
 	a.conn = "off"
 	a.pings = map[string]float64{}
-	if !a.Store.LangSet {
-		a.Store.Lang = defaultLang()
-	}
 	a.API.Token = func() string { a.mu.Lock(); defer a.mu.Unlock(); return a.Store.Token }
-	a.API.Lang = func() string { a.mu.Lock(); defer a.mu.Unlock(); return a.Store.Lang }
 	SetTunnelActive(func() bool { return a.Tunnel != nil && a.Tunnel.Up() })
 	Go("pings", a.pingAllLoop)
 	Go("updates", a.updateLoop)
-}
-
-// Russian unless BOOP_LANG says otherwise; the language can be changed in settings.
-func defaultLang() string {
-	if v := strings.ToLower(os.Getenv("BOOP_LANG")); v == "en" || v == "de" || v == "ru" {
-		return v
-	}
-	return "ru"
 }

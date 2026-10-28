@@ -25,7 +25,7 @@ mkdirSync(out, { recursive: true });
 
 const NOW = 1_800_000_000_000;
 const base = {
-  screen: "main", lang: "ru", conn: "off", country: "auto", best: "NL", ping: null,
+  screen: "main", conn: "off", country: "auto", best: "NL", ping: null,
   countries: [
     { code: "NL", ping: 23 }, { code: "DE", ping: 41 }, { code: "FI", ping: 58 },
     { code: "US", ping: 131 }, { code: "JP", ping: 210, full: true },
@@ -38,17 +38,22 @@ const states = {
   "signin": { screen: "signin" },
   "off": {},
   "connecting": { conn: "connecting" },
+  "reconnecting": { conn: "reconnecting", current: "NL", since: NOW - 3_725_000 },
   "on": { conn: "on", current: "NL", ping: 24, since: NOW - 3_725_000 },
   "problem-plan": { conn: "problem", problem: "plan", released: true },
+  "problem-auth": { conn: "problem", problem: "auth" },
   "problem-server": { conn: "problem", problem: "no_handshake", released: true },
   "settings": { conn: "on", current: "NL", ping: 24, since: NOW - 3_725_000, open: "settings" },
   "places": { conn: "on", current: "NL", ping: 24, since: NOW - 3_725_000, open: "places" },
+  "keys": { conn: "on", current: "NL", ping: 24, since: NOW - 3_725_000, open: "keys" },
 };
 const viewports = [
   { name: "360x560", width: 360, height: 560, scale: 1 },
   { name: "360x560@1.5x", width: 360, height: 560, scale: 1.5 },
   { name: "1280x800", width: 1280, height: 800, scale: 1 },
+  { name: "1280x800@1.5x", width: 1280, height: 800, scale: 1.5 },
 ];
+const schemes = ["light", "dark"];
 
 const server = spawn("go", ["run", "."], {
   cwd: root,
@@ -69,8 +74,8 @@ async function up() {
 try {
   await up();
   const browser = await chromium.launch();
-  for (const vp of viewports) {
-    const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.scale, locale: "ru-RU" });
+  for (const [vp, scheme] of viewports.flatMap((v) => schemes.map((c) => [v, c]))) {
+    const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.scale, locale: "ru-RU", colorScheme: scheme });
     await ctx.addInitScript(`Date.now = () => ${NOW};`);
     const page = await ctx.newPage();
     await page.goto(`http://127.0.0.1:${port}/`);
@@ -83,15 +88,15 @@ try {
         ["places", "keys", "settings"].forEach((id) => { document.getElementById(id).hidden = true; });
         window.boop.update(state);
         if (open) document.getElementById(open).hidden = false;
-        if (open === "places") window.boop.update({});
+        if (open === "places" || open === "keys") window.boop.update({});
       }, [{ ...base, ...s }, open]);
       await page.waitForTimeout(100);
-      await page.screenshot({ path: `${out}/${vp.name}-${name}.png` });
+      await page.screenshot({ path: `${out}/${vp.name}-${scheme}-${name}.png` });
     }
     await ctx.close();
   }
   await browser.close();
-  console.log(`wrote ${viewports.length * Object.keys(states).length} screenshots to ${out}`);
+  console.log(`wrote ${viewports.length * schemes.length * Object.keys(states).length} screenshots to ${out}`);
 } finally {
   stop();
 }

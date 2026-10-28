@@ -53,7 +53,7 @@ func main() {
 		}
 	}
 	app := &core.App{
-		API: core.NewAPI(base, nil, nil), Store: core.LoadStore(dir), Tunnel: tun, Ping: vpn.Ping,
+		API: core.NewAPI(base, nil), Store: core.LoadStore(dir), Tunnel: tun, Ping: vpn.Ping,
 		Version: version, Site: base,
 		OpenURL:     func(u string) { log.Printf("open %s", u) },
 		OnState:     func(s core.UIState) { send(s) },

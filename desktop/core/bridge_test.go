@@ -16,7 +16,7 @@ import (
 // ui/app.js is written against these names; changing one means changing both.
 var wantCommands = []string{
 	"cancelWebLogin", "extend", "openWebLogin", "ready", "redeemPairing", "refreshKeys", "refreshPings",
-	"renameKey", "setAutoConnect", "setAutostart", "setCountry", "setKey", "setLang", "setStrictKill",
+	"renameKey", "setAutoConnect", "setAutostart", "setCountry", "setKey", "setStrictKill",
 	"signOut", "startEmail", "startWebLogin", "toggle", "update", "verifyEmail",
 }
 
@@ -32,7 +32,7 @@ func TestBridgeCommands(t *testing.T) {
 		t.Fatalf("invoke unknown: %+v", r)
 	}
 	// Arguments that are missing or the wrong shape reach the handler as zero values.
-	for _, c := range []string{"setLang", "setStrictKill", "setAutoConnect", "refreshKeys", "extend", "openWebLogin", "cancelWebLogin"} {
+	for _, c := range []string{"setStrictKill", "setAutoConnect", "refreshKeys", "extend", "openWebLogin", "cancelWebLogin"} {
 		for _, arg := range []string{"", "null", "{}", "[1]"} {
 			if r := a.Invoke(c, json.RawMessage(arg)); !r.OK {
 				t.Errorf("%s(%q): %+v", c, arg, r)
@@ -82,7 +82,7 @@ func TestUIStateWireNames(t *testing.T) {
 	want := []string{
 		"autoConnect", "autostart", "best", "conn", "countries", "countries.code", "countries.full", "countries.ping",
 		"country", "current", "email", "key", "keys", "keys.country", "keys.id", "keys.inUse", "keys.name",
-		"lang", "ping", "plan", "plan.expiresAt", "plan.name", "plan.pro", "problem", "released", "screen",
+		"ping", "plan", "plan.expiresAt", "plan.name", "plan.pro", "problem", "released", "screen",
 		"since", "strictKill", "update", "update.mandatory", "update.notes", "update.version", "version", "webLogin",
 	}
 	if !slices.Equal(got, want) {
@@ -99,7 +99,7 @@ func TestUIStateAlwaysCarriesBaseFields(t *testing.T) {
 	}
 	var m map[string]json.RawMessage
 	_ = json.Unmarshal(b, &m)
-	for _, k := range []string{"screen", "lang", "conn", "country", "countries", "ping", "email", "autoConnect", "version", "webLogin", "keys", "key"} {
+	for _, k := range []string{"screen", "conn", "country", "countries", "ping", "email", "autoConnect", "version", "webLogin", "keys", "key"} {
 		if _, ok := m[k]; !ok {
 			t.Errorf("missing %q in %s", k, b)
 		}

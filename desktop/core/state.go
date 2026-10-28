@@ -33,7 +33,6 @@ type Plan struct {
 // UIState is all the window shows.
 type UIState struct {
 	Screen      string    `json:"screen"`
-	Lang        string    `json:"lang"`
 	Conn        string    `json:"conn"`
 	Since       int64     `json:"since,omitempty"`
 	Country     string    `json:"country"`
@@ -67,7 +66,7 @@ type UpdateUI struct {
 
 func (a *App) state() UIState {
 	s := UIState{
-		Screen: "signin", Lang: a.Store.Lang, Conn: a.conn, Country: a.Store.Country,
+		Screen: "signin", Conn: a.conn, Country: a.Store.Country,
 		Email: a.Store.Email, Plan: a.plan, AutoConnect: a.Store.AutoConnect, Version: a.Version,
 		Current: a.current, Ping: a.curPing, Countries: []Country{},
 		WebLogin: a.webLogin != nil,

@@ -88,16 +88,10 @@ type notifyIconData struct {
 	HBalloonIcon     uintptr
 }
 
-var trayText = map[string]map[string]string{
-	"ru": {"open": "Открыть Boop", "on": "Подключить", "off": "Отключить", "quit": "Выход",
-		"state.on": "Подключено", "state.off": "Отключено", "state.connecting": "Подключение",
-		"state.reconnecting": "Переподключение", "state.problem": "Проблема", "hint": "Boop работает здесь"},
-	"en": {"open": "Open Boop", "on": "Connect", "off": "Disconnect", "quit": "Quit",
-		"state.on": "Connected", "state.off": "Off", "state.connecting": "Connecting",
-		"state.reconnecting": "Reconnecting", "state.problem": "Problem", "hint": "Boop keeps running here"},
-	"de": {"open": "Boop öffnen", "on": "Verbinden", "off": "Trennen", "quit": "Beenden",
-		"state.on": "Verbunden", "state.off": "Getrennt", "state.connecting": "Verbinde",
-		"state.reconnecting": "Verbinde neu", "state.problem": "Problem", "hint": "Boop läuft hier weiter"},
+var trayText = map[string]string{
+	"open": "Открыть Boop", "on": "Подключить", "off": "Отключить", "quit": "Выход",
+	"state.on": "Подключено", "state.off": "Отключено", "state.connecting": "Подключение",
+	"state.reconnecting": "Переподключение", "state.problem": "Проблема", "hint": "Boop работает здесь",
 }
 
 type tray struct {
@@ -109,12 +103,11 @@ type tray struct {
 	icons   [5]uintptr
 	mu      sync.Mutex
 	conn    string
-	lang    string
 	added   bool
 }
 
 func newTray(hwnd uintptr, app *core.App, quit func()) *tray {
-	t := &tray{hwnd: hwnd, app: app, quit: quit, conn: "off", lang: "en"}
+	t := &tray{hwnd: hwnd, app: app, quit: quit, conn: "off"}
 	var inst windows.Handle
 	_ = windows.GetModuleHandleEx(0, nil, &inst)
 	cx, _, _ := getSystemMetrics.Call(smCxSmIcon)
@@ -131,10 +124,7 @@ func newTray(hwnd uintptr, app *core.App, quit func()) *tray {
 }
 
 func (t *tray) text(k string) string {
-	if m, ok := trayText[t.lang]; ok {
-		return m[k]
-	}
-	return trayText["en"][k]
+	return trayText[k]
 }
 
 func (t *tray) notify(op uintptr, info string) {
@@ -183,8 +173,8 @@ func (t *tray) balloon(text string) {
 // update follows the app's state; it runs on the window's thread.
 func (t *tray) update(s core.UIState) {
 	t.mu.Lock()
-	changed := t.conn != s.Conn || t.lang != s.Lang
-	t.conn, t.lang = s.Conn, s.Lang
+	changed := t.conn != s.Conn
+	t.conn = s.Conn
 	t.mu.Unlock()
 	if changed {
 		t.notify(nimModify, "")

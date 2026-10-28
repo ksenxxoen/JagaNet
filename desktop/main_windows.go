@@ -87,7 +87,7 @@ func main() {
 		exeDir = filepath.Dir(exe)
 	}
 	app := &core.App{
-		API: core.NewAPI(apiBase, nil, nil), Store: core.LoadStore(dir), Tunnel: tun, Ping: vpn.Ping,
+		API: core.NewAPI(apiBase, nil), Store: core.LoadStore(dir), Tunnel: tun, Ping: vpn.Ping,
 		Version: version, Site: apiBase, OpenURL: openURL, UpdateDir: exeDir,
 		Autostart: setAutostart, AutostartOn: autostartOn,
 	}

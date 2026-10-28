@@ -83,7 +83,6 @@ var commands = map[string]handler{
 	"setStrictKill":  flag((*App).cmdSetStrictKill),
 	"setAutoConnect": flag((*App).cmdSetAutoConnect),
 	"setAutostart":   flag((*App).cmdSetAutostart),
-	"setLang":        text((*App).cmdSetLang),
 	// the site and updates
 	"extend": none(func(a *App, _ context.Context) (any, error) {
 		if a.OpenURL != nil {

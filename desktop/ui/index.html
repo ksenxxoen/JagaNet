@@ -11,99 +11,123 @@
   <div class="glow" aria-hidden="true"></div>
   <button class="banner" id="update-banner" hidden></button>
 
-  <!-- Sign in -->
+  <!-- Вход -->
   <section class="screen signin" id="signin" hidden>
     <div class="brand-big"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" class="tile"/><circle cx="12" cy="12" r="6.5" class="ring"/><circle cx="12" cy="12" r="3.4" class="dot"/></svg><b>Boop</b></div>
     <form class="form" id="f-email">
-      <label for="email" data-t="Email"></label>
-      <input id="email" type="email" autocomplete="email" required placeholder="you@example.com">
-      <button class="primary" type="submit" data-t="Get a code"></button>
+      <div class="field">
+        <label for="email">Почта</label>
+        <input class="input" id="email" type="email" autocomplete="email" required placeholder="you@example.com">
+      </div>
+      <button class="btn btn-primary" type="submit">Получить код</button>
     </form>
     <form class="form" id="f-code" hidden>
-      <label for="code" id="code-label"></label>
-      <input id="code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required placeholder="000000">
-      <button class="primary" type="submit" data-t="Sign in"></button>
-      <button class="text" type="button" id="back" data-t="Another e-mail"></button>
+      <div class="field">
+        <label for="code" id="code-label"></label>
+        <input class="input input-code" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required placeholder="000000">
+      </div>
+      <button class="btn btn-primary" type="submit">Войти</button>
+      <button class="btn btn-text" type="button" id="back">Другая почта</button>
     </form>
     <form class="form" id="f-pair" hidden>
-      <label for="pair" data-t="Device code"></label>
-      <input id="pair" class="code" inputmode="numeric" maxlength="6" required placeholder="000000">
-      <button class="primary" type="submit" data-t="Sign in"></button>
-      <button class="text" type="button" id="pair-back" data-t="Sign in by e-mail"></button>
+      <div class="field">
+        <label for="pair">Код устройства</label>
+        <input class="input input-code" id="pair" inputmode="numeric" maxlength="6" required placeholder="000000">
+      </div>
+      <button class="btn btn-primary" type="submit">Войти</button>
+      <button class="btn btn-text" type="button" id="pair-back">Войти по почте</button>
     </form>
     <div class="form" id="f-web" hidden>
-      <label data-t="Allow on the website"></label>
-      <div class="match" id="web-code"></div>
-      <button class="primary" type="button" id="web-open" data-t="Open the website"></button>
-      <button class="text" type="button" id="web-back" data-t="Back"></button>
+      <span class="muted">Разрешите вход на сайте</span>
+      <div class="match" id="web-code" aria-live="polite"></div>
+      <button class="btn btn-primary" type="button" id="web-open">Открыть сайт</button>
+      <button class="btn btn-text" type="button" id="web-back">Назад</button>
     </div>
     <div class="alts" id="alts">
-      <button class="text" type="button" id="to-web" data-t="Sign in through the website"></button>
-      <button class="text" type="button" id="to-pair" data-t="I have a device code"></button>
+      <button class="btn btn-text" type="button" id="to-web">Войти через сайт</button>
+      <button class="btn btn-text" type="button" id="to-pair">У меня есть код устройства</button>
     </div>
   </section>
 
-  <!-- Main -->
+  <!-- Главный экран -->
   <section class="screen main" id="main" hidden>
     <header class="bar">
-      <button class="icon" id="open-settings" data-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/></svg></button>
+      <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" class="tile"/><circle cx="12" cy="12" r="6.5" class="ring"/><circle cx="12" cy="12" r="3.4" class="dot"/></svg><span>Boop</span></div>
+      <button class="icon-btn" id="open-settings" aria-label="Настройки"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/></svg></button>
     </header>
 
     <div class="stage">
-      <button class="boop" id="boop" data-state="off">
+      <button class="boop" id="boop" data-state="off" aria-label="Подключить или отключить VPN">
         <span class="wave w1"></span><span class="wave w2"></span><span class="wave w3"></span>
         <span class="ring"></span>
         <span class="core"><span class="spark"></span></span>
       </button>
-      <div class="status" id="status"></div>
-      <p class="detail" id="detail"></p>
-      <button class="text detail-btn" id="detail-btn" hidden></button>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
       <div class="timer" id="timer"></div>
+      <p class="hint" id="hint"></p>
+      <p class="detail" id="detail"></p>
+      <button class="btn btn-secondary detail-btn" id="detail-btn" hidden></button>
     </div>
 
-    <button class="place" id="open-places">
+    <button class="card card-link place" id="open-places" aria-label="Выбрать страну">
       <span class="flag" id="flag"></span>
-      <span class="place-name"><b id="country"></b><small id="keyname"></small></span>
+      <span class="item-text"><b class="item-title" id="country"></b><small class="item-sub" id="keyname"></small></span>
       <span class="ping" id="ping"><i></i><i></i><i></i><em></em></span>
       <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
     </button>
   </section>
 
-  <!-- Countries -->
-  <div class="sheet" id="places" hidden>
-    <div class="sheet-head"><b data-t="Country"></b><button class="icon" data-close data-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
-    <div class="list" id="place-list"></div>
+  <!-- Страны -->
+  <div class="sheet" id="places" role="dialog" aria-modal="true" aria-labelledby="places-title" hidden>
+    <div class="sheet-head"><h2 class="sheet-title" id="places-title">Страна</h2><button class="icon-btn" data-close aria-label="Закрыть"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="sheet-list" id="place-list"></div>
   </div>
 
-  <!-- Keys -->
-  <div class="sheet" id="keys" hidden>
-    <div class="sheet-head"><b data-t="Key"></b><button class="icon" data-close data-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
-    <div class="list" id="key-list"></div>
+  <!-- Ключи -->
+  <div class="sheet" id="keys" role="dialog" aria-modal="true" aria-labelledby="keys-title" hidden>
+    <div class="sheet-head"><h2 class="sheet-title" id="keys-title">Ключ</h2><button class="icon-btn" data-close aria-label="Закрыть"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="sheet-list" id="key-list"></div>
   </div>
 
-  <!-- Settings -->
-  <div class="sheet" id="settings" hidden>
-    <div class="sheet-head"><b data-t="Settings"></b><button class="icon" data-close data-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
-    <div class="group">
-      <div class="row"><span class="muted" data-t="Account"></span><span id="s-email" class="ellipsis"></span></div>
-      <div class="row"><span class="muted" data-t="Plan"></span><span id="s-plan"></span></div>
-      <button class="row link" id="s-key" hidden><span data-t="Key"></span><span class="row-val"><span id="s-key-name" class="ellipsis"></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></button>
-      <button class="row link" id="s-extend"><span data-t="Extend"></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+  <!-- Настройки -->
+  <div class="sheet" id="settings" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+    <div class="sheet-head"><h2 class="sheet-title" id="settings-title">Настройки</h2><button class="icon-btn" data-close aria-label="Закрыть"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="sheet-scroll">
+      <div class="group">
+        <div class="setting-row"><span class="muted">Аккаунт</span><span id="s-email" class="ellipsis"></span></div>
+        <div class="setting-row"><span class="muted">Тариф</span><span id="s-plan"></span></div>
+        <button class="setting-row is-link" id="s-key" hidden><span>Ключ</span><span class="row-value"><span id="s-key-name" class="ellipsis"></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></button>
+        <button class="setting-row is-link" id="s-extend"><span>Продлить</span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+      </div>
+      <div class="group">
+        <label class="setting-row switch-row" id="s-start-row" hidden><span>Запускать с Windows</span><input type="checkbox" class="switch" id="s-start"><i></i></label>
+        <label class="setting-row switch-row"><span>Подключаться при запуске</span><input type="checkbox" class="switch" id="s-auto"><i></i></label>
+        <label class="setting-row switch-row"><span>Не возвращать интернет, пока нет VPN</span><input type="checkbox" class="switch" id="s-strict"><i></i></label>
+        <button class="setting-row is-link" id="s-update" hidden><span>Обновить</span><span class="row-value"><span id="s-update-ver" class="ellipsis"></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></button>
+      </div>
+      <div class="group">
+        <button class="setting-row is-danger" id="s-signout">Выйти</button>
+      </div>
+      <div class="version" id="s-version"></div>
     </div>
-    <div class="group">
-      <label class="row toggle" id="s-start-row" hidden><span data-t="Start with Windows"></span><input type="checkbox" id="s-start"><i></i></label>
-      <label class="row toggle"><span data-t="Connect on start"></span><input type="checkbox" id="s-auto"><i></i></label>
-      <label class="row toggle"><span data-t="Strict kill switch"></span><input type="checkbox" id="s-strict"><i></i></label>
-      <button class="row link" id="s-update" hidden><span data-t="Update"></span><span class="row-val"><span id="s-update-ver" class="ellipsis"></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></button>
-      <div class="row"><span data-t="Language"></span><span class="seg" id="s-lang"><button data-lang="ru">RU</button><button data-lang="en">EN</button><button data-lang="de">DE</button></span></div>
-    </div>
-    <div class="group">
-      <button class="row danger" id="s-signout" data-t="Sign out"></button>
-    </div>
-    <div class="version" id="s-version"></div>
   </div>
 
-  <div class="toast" id="toast" hidden></div>
+  <!-- Переименование ключа -->
+  <div class="dialog-wrap" id="rename" hidden>
+    <form class="card dialog" id="f-rename" role="dialog" aria-modal="true" aria-labelledby="rename-title">
+      <h2 class="sheet-title" id="rename-title">Переименовать ключ</h2>
+      <div class="field">
+        <label for="rename-input">Новое имя</label>
+        <input class="input" id="rename-input" maxlength="60" required>
+      </div>
+      <div class="dialog-actions">
+        <button class="btn btn-text" type="button" id="rename-cancel">Отмена</button>
+        <button class="btn btn-primary" type="submit">Сохранить</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="toast" id="toast" role="alert" hidden></div>
 </div>
 <script>/*JS*/</script>
 </body>

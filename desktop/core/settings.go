@@ -43,14 +43,3 @@ func (a *App) cmdSetAutostart(_ context.Context, v bool) (any, error) {
 	}
 	return nil, nil
 }
-
-func (a *App) cmdSetLang(_ context.Context, l string) (any, error) {
-	a.mu.Lock()
-	if l == "ru" || l == "en" || l == "de" {
-		a.Store.Lang, a.Store.LangSet = l, true
-	}
-	_ = a.Store.Save()
-	a.mu.Unlock()
-	a.emit()
-	return nil, nil
-}
