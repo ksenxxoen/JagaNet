@@ -106,6 +106,9 @@ var commands = map[string]handler{
 		return nil, nil
 	}),
 	"update": none((*App).cmdUpdate),
+	// "Сообщить о проблеме": build, send and copy the report; copy the last one again
+	"reportProblem": object((*App).cmdReportProblem),
+	"copyReport":    none((*App).cmdCopyReport),
 }
 
 // Commands lists the names the window may call, sorted.

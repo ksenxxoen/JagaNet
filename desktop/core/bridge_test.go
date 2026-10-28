@@ -15,8 +15,8 @@ import (
 
 // ui/app.js is written against these names; changing one means changing both.
 var wantCommands = []string{
-	"cancelWebLogin", "closeNotice", "extend", "openWebLogin", "ready", "redeemPairing", "refreshKeys", "refreshPings",
-	"renameKey", "setAutoConnect", "setAutostart", "setCountry", "setKey", "setStrictKill",
+	"cancelWebLogin", "closeNotice", "copyReport", "extend", "openWebLogin", "ready", "redeemPairing", "refreshKeys", "refreshPings",
+	"renameKey", "reportProblem", "setAutoConnect", "setAutostart", "setCountry", "setKey", "setStrictKill",
 	"signOut", "startEmail", "startWebLogin", "toggle", "update", "verifyEmail",
 }
 

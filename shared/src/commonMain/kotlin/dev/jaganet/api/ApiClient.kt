@@ -85,6 +85,7 @@ class ApiClient(
     suspend fun servers(): ServersRes = get("servers")
     suspend fun provisionTunnel(req: TunnelProvisionReq): TunnelConfig = post("tunnel", req)
     suspend fun connectionEvent(req: ConnectionEventReq): OkRes = post("tunnel/events", req)
+    suspend fun sendDiagnostics(req: DiagnosticsReq): DiagnosticsRes = post("diagnostics", req)
 
     // devices
     suspend fun devices(): DevicesRes = get("devices")
@@ -135,6 +136,8 @@ class ApiClient(
     suspend fun adminRekeyDevice(id: String): OkRes = post("admin/devices/$id/rekey", OkRes())
     suspend fun connectionFailures(server: String? = null, user: String? = null): ConnectionFailuresRes =
         get("admin/connection-failures") { if (server != null) parameter("server", server); if (user != null) parameter("user", user) }
+    suspend fun adminDiagnostics(user: String? = null): DiagnosticsListRes = get("admin/diagnostics") { if (user != null) parameter("user", user) }
+    suspend fun adminDiagnosticsReport(id: String): DiagnosticsReport = get("admin/diagnostics/$id")
     suspend fun analytics(period: String = "7d"): AnalyticsOverviewRes = get("admin/analytics") { parameter("period", period) }
     suspend fun analyticsServer(id: String, period: String = "7d"): AnalyticsServerRes = get("admin/analytics/servers/$id") { parameter("period", period) }
     suspend fun analyticsUsers(period: String = "7d", q: String? = null): AnalyticsUsersRes = get("admin/analytics/users") { parameter("period", period); if (q != null) parameter("q", q) }

@@ -265,6 +265,82 @@ data class NodeFailureCount(val serverId: String, val name: String, val last15m:
 @Serializable
 data class ConnectionFailuresRes(val failures: List<ConnectionFailure>, val nodes: List<NodeFailureCount>)
 
+/* ---------- problem reports ("Сообщить о проблеме" in the Boop apps) ---------- */
+
+/**
+ * POST /diagnostics from a signed-in device. [text] is the whole report as the person could read
+ * it (the app cuts out keys, tokens, configs and key links before sending); every other field is
+ * optional and only fills the admin panel's list. At most 256 KB per request, 5 per device per hour,
+ * kept 30 days.
+ */
+@Serializable
+data class DiagnosticsReq(
+    val text: String,
+    /** What the person wrote, if anything. */
+    val comment: String? = null,
+    val appVersion: String? = null,
+    val platform: String? = null,
+    /** e.g. "Windows 11 (10.0.22631)". */
+    val osVersion: String? = null,
+    /** The connection as the app shows it: off, connecting, reconnecting, on or problem. */
+    val state: String? = null,
+    /** The app's problem code: no_handshake, dead, blocked, offline, plan, key_removed, auth. */
+    val problem: String? = null,
+    val serverId: String? = null,
+    /** The chosen country (two letters) or "auto". */
+    val country: String? = null,
+    /** The node's host name and the addresses it resolves to now. */
+    val host: String? = null,
+    val resolved: List<String> = emptyList(),
+    /** Seconds since the last handshake; null when there was none. */
+    val handshakeAgeSec: Long? = null,
+    val rxBytes: Long? = null,
+    val txBytes: Long? = null,
+    /** The last network check outside the tunnel, e.g. "blocked (panel no, web yes, 1.2 s)". */
+    val probe: String? = null,
+)
+
+@Serializable
+data class DiagnosticsRes(val id: String)
+
+/** One report in the admin panel's list. */
+@Serializable
+data class DiagnosticsSummary(
+    val id: String,
+    val at: String,
+    val userId: String? = null,
+    val email: String? = null,
+    val deviceId: String? = null,
+    val deviceName: String? = null,
+    val appVersion: String? = null,
+    val platform: String? = null,
+    val osVersion: String? = null,
+    val state: String? = null,
+    val problem: String? = null,
+    val serverId: String? = null,
+    val serverName: String? = null,
+    val country: String? = null,
+    val hasComment: Boolean = false,
+)
+
+/** GET /admin/diagnostics?user= : the latest 200. */
+@Serializable
+data class DiagnosticsListRes(val reports: List<DiagnosticsSummary>)
+
+/** GET /admin/diagnostics/{id}: one report with its text. */
+@Serializable
+data class DiagnosticsReport(
+    val report: DiagnosticsSummary,
+    val comment: String? = null,
+    val host: String? = null,
+    val resolved: List<String> = emptyList(),
+    val handshakeAgeSec: Long? = null,
+    val rxBytes: Long? = null,
+    val txBytes: Long? = null,
+    val probe: String? = null,
+    val text: String,
+)
+
 /* ---------- devices ---------- */
 
 @Serializable

@@ -30,6 +30,15 @@ func main() {
 	if dir == "" {
 		dir = filepath.Join(os.TempDir(), "boop-desktop")
 	}
+	// The log goes to the terminal and, like boop.log on Windows, to a file the
+	// problem report reads.
+	_ = os.MkdirAll(dir, 0o700)
+	logPath := filepath.Join(dir, "boop.log")
+	if lw, err := core.NewRotatingWriter(logPath, 1<<20); err == nil {
+		log.SetOutput(io.MultiWriter(os.Stderr, lw))
+	} else {
+		logPath = ""
+	}
 	tun, _ := vpn.New()
 	if f, ok := tun.(*vpn.Fake); ok {
 		f.NoHandshake = os.Getenv("BOOP_FAKE_NOHANDSHAKE") != ""
@@ -57,7 +66,7 @@ func main() {
 	}
 	app := &core.App{
 		API: core.NewAPI(base, nil), Store: core.LoadStore(dir), Tunnel: tun, Ping: vpn.Ping,
-		Version: version, Site: base,
+		Version: version, Site: base, LogPath: logPath,
 		OpenURL:     func(u string) { log.Printf("open %s", u) },
 		OnState:     func(s core.UIState) { send(s) },
 		OnToast:     func(t string) { send(map[string]string{"toast": t}) },

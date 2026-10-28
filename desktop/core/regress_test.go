@@ -107,9 +107,12 @@ func (b *blockTunnel) Apply(c *vpn.Config) error {
 // connection's node and country behind, shown while off and reused next time.
 func TestDisconnectDuringApplyLeavesNothingBehind(t *testing.T) {
 	p := newFakePanel(t)
-	a := newTestApp(t, p, nil)
-	bt := &blockTunnel{Tunnel: a.tunnel, entered: make(chan struct{}), release: make(chan struct{})}
-	a.Tunnel = bt
+	var bt *blockTunnel
+	// The tunnel is swapped before Init: the background loops read a.Tunnel from the start.
+	a := newTestApp(t, p, nil, func(ta *testApp) {
+		bt = &blockTunnel{Tunnel: ta.tunnel, entered: make(chan struct{}), release: make(chan struct{})}
+		ta.Tunnel = bt
+	})
 	a.signIn(t)
 	a.Connect()
 	select {

@@ -924,7 +924,7 @@ async function analytics(params) {
 
 /* ---------------- admin panel (owners) ---------------- */
 
-const ADMIN_TABS = [["money", "Finance"], ["plans", "Plans"], ["nodes", "Nodes"], ["failures", "Connection failures"], ["testers", "Test accounts"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"]];
+const ADMIN_TABS = [["money", "Finance"], ["plans", "Plans"], ["nodes", "Nodes"], ["failures", "Connection failures"], ["reports", "Problem reports"], ["testers", "Test accounts"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"]];
 const payChannel = (k) => ({ web: t("Website"), telegram: "Telegram", app: t("Boop app"), apple: "App Store", google: "Google Play", dev: t("Test payments") })[k] || k;
 const NEW_SUB = C1, RENEWAL = C2;
 
@@ -962,6 +962,7 @@ async function admin(params) {
   if (tab === "money") return adminMoney(params, top);
   if (tab === "nodes") { view.innerHTML = top + `<div id="pane"></div>`; return nodesPane(); }
   if (tab === "failures") { view.innerHTML = top + `<div id="pane"></div>`; return failuresPane(params); }
+  if (tab === "reports") { view.innerHTML = top + `<div id="pane"></div>`; return params.get("id") ? reportPane(params.get("id")) : reportsPane(params); }
   if (tab === "testers") { view.innerHTML = top + `<div id="pane"></div>`; return testersPane(); }
   const s = await api("/admin/settings");
   if (!location.hash.startsWith("#/admin")) return;
@@ -1042,6 +1043,73 @@ async function failuresPane(params) {
   const ff = document.getElementById("ff");
   ff.onsubmit = (e) => { e.preventDefault(); go(link(val("fs"), val("fu"))); };
   document.getElementById("fs").onchange = () => go(link(val("fs"), val("fu")));
+}
+
+/* Problem reports the Boop apps send ("Сообщить о проблеме", issue #11): the list and one report. */
+const APP_STATES = { off: "VPN off", connecting: "Connecting", reconnecting: "Reconnecting", on: "VPN on", problem: "Problem" };
+const APP_PROBLEMS = {
+  no_handshake: "The node did not answer", dead: "The connection went quiet", blocked: "The network blocks VPN", offline: "No internet",
+  plan: "The plan has ended", key_removed: "The key was removed", auth: "Signed out",
+};
+const reportLink = (id, user) => `#/admin?tab=reports${id ? `&id=${encodeURIComponent(id)}` : ""}${user ? `&user=${encodeURIComponent(user)}` : ""}`;
+const reportState = (r) => {
+  const state = r.state ? h(t(APP_STATES[r.state] || r.state)) : "", problem = r.problem ? h(t(APP_PROBLEMS[r.problem] || r.problem)) : "";
+  return state && problem ? `${state}<div class="muted">${problem}</div>` : state || problem;
+};
+const reportWho = (x) => `${x.userId ? `<a href="${reportLink("", x.userId)}">${h(x.email || x.userId)}</a>` : ""}<div class="muted">${h(x.deviceName || "")}</div>`;
+/** The country the person chose: a code, or "auto" for the fastest. */
+const reportCountry = (c) => (!c ? "" : c === "auto" ? t("Automatic") : c);
+const reportApp = (r) => `${h([r.platform, r.appVersion].filter(Boolean).join(" "))}<div class="muted">${h(r.osVersion || "")}</div>`;
+
+async function reportsPane(params) {
+  const pane = document.getElementById("pane");
+  const user = params.get("user") || "";
+  const r = await api(`/admin/diagnostics${user ? `?user=${encodeURIComponent(user)}` : ""}`);
+  if (!document.body.contains(pane) || !location.hash.startsWith("#/admin")) return;
+  const row = (x) => `<tr><td><a href="${reportLink(x.id, "")}"><b>${h(dateTime(x.at))}</b></a></td><td>${reportWho(x)}</td><td>${reportApp(x)}</td>
+    <td>${reportState(x)}</td><td>${h(x.serverName || x.serverId || "")}<div class="muted">${h(reportCountry(x.country))}</div></td>
+    <td>${x.hasComment ? t("Yes") : ""}</td></tr>`;
+  pane.innerHTML = `
+  <form class="toolbar" id="rf">
+    <input id="ru" type="search" value="${h(user)}" placeholder="${h(t("E-mail or user id"))}" aria-label="${h(t("User"))}">
+    <button class="btn secondary" type="submit">${t("Find")}</button>
+  </form>
+  <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Date")}</th><th>${t("User")}</th><th>${t("App")}</th><th>${t("Connection")}</th>
+    <th>${t("Node")}</th><th>${t("Comment")}</th></tr></thead>
+    <tbody>${r.reports.map(row).join("") || `<tr><td colspan="6" class="muted">${t("No reports")}</td></tr>`}</tbody></table></div>
+  <p class="muted small hint">${t("The latest 200, kept 30 days")}</p>`;
+  document.getElementById("rf").onsubmit = (e) => { e.preventDefault(); go(reportLink("", val("ru"))); };
+}
+
+async function reportPane(id) {
+  const pane = document.getElementById("pane");
+  const r = await api(`/admin/diagnostics/${encodeURIComponent(id)}`);
+  if (!document.body.contains(pane) || !location.hash.startsWith("#/admin")) return;
+  const x = r.report;
+  const kv = (k, v) => (v ? `<div><div class="k">${k}</div><div class="v">${v}</div></div>` : "");
+  const ago = r.handshakeAgeSec == null ? "" : t("{n} s ago", { n: r.handshakeAgeSec });
+  const traffic = r.rxBytes == null && r.txBytes == null ? "" : `${h(bytes(r.rxBytes || 0))} / ${h(bytes(r.txBytes || 0))}`;
+  pane.innerHTML = `
+  <p class="section"><a href="${reportLink("", "")}">${t("All reports")}</a></p>
+  <div class="card section"><div class="kv">
+    ${kv(t("Date"), h(dateTime(x.at)))}
+    ${kv(t("User"), reportWho(x))}
+    ${kv(t("App"), reportApp(x))}
+    ${kv(t("Connection"), reportState(x))}
+    ${kv(t("Node"), h(x.serverName || x.serverId || ""))}
+    ${kv(t("Country"), h(reportCountry(x.country)))}
+    ${kv(t("Host"), r.host ? `<span class="mono">${h(r.host)}</span><div class="muted mono">${h(r.resolved.join(" "))}</div>` : "")}
+    ${kv(t("Last handshake"), h(ago))}
+    ${kv(t("Received and sent"), traffic)}
+    ${kv(t("Network check"), h(r.probe || ""))}
+  </div>
+  ${r.comment ? `<p class="section"><b>${t("Comment")}</b></p><p>${h(r.comment)}</p>` : ""}
+  </div>
+  <div class="card section"><div class="toolbar"><b>${t("Report text")}</b><button class="btn secondary" type="button" id="rcopy">${t("Copy")}</button></div>
+    <pre class="log" id="rtext">${h(r.text)}</pre></div>`;
+  document.getElementById("rcopy").onclick = (e) => {
+    navigator.clipboard.writeText(r.text).then(() => { e.target.textContent = t("Copied"); }).catch(() => {});
+  };
 }
 
 const NODE_STATES = { waiting: ["warning", "Waiting for install"], online: ["ok", "Online"], offline: ["critical", "No contact"], disabled: ["unknown", "Turned off"] };

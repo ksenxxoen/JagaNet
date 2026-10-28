@@ -76,6 +76,7 @@
       <p class="hint" id="hint"></p>
       <p class="detail" id="detail"></p>
       <button class="btn btn-secondary detail-btn" id="detail-btn" hidden></button>
+      <button class="btn btn-text report-link" id="report-btn" hidden>Сообщить о проблеме</button>
     </div>
 
     <button class="card card-link place" id="open-places" aria-label="Выбрать страну">
@@ -120,6 +121,9 @@
         <button class="setting-row is-link" id="s-update"><span class="setting-text"><span id="s-update-title">Обновить</span><small id="s-update-sub"></small></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
       </div>
       <div class="group">
+        <button class="setting-row is-link" id="s-report"><span class="setting-text"><span>Сообщить о проблеме</span><small>Отправим журнал и состояние подключения в поддержку.</small></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+      </div>
+      <div class="group">
         <button class="setting-row is-danger" id="s-signout">Выйти</button>
       </div>
       <div class="version" id="s-version"></div>
@@ -137,6 +141,31 @@
       <div class="dialog-actions">
         <button class="btn btn-text" type="button" id="rename-cancel">Отмена</button>
         <button class="btn btn-primary" type="submit">Сохранить</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Сообщить о проблеме -->
+  <div class="dialog-wrap" id="report" hidden>
+    <form class="card dialog" id="f-report" role="dialog" aria-modal="true" aria-labelledby="report-title" aria-describedby="report-note" novalidate>
+      <h2 class="sheet-title" id="report-title">Сообщить о проблеме</h2>
+      <div class="report-ask" id="report-ask">
+        <p class="form-note" id="report-note">Отправим в поддержку версии Boop и Windows, состояние подключения и последние строки журнала. Ключи, токены и ссылки на ключи в отчёт не попадают.</p>
+        <div class="field">
+          <label for="report-comment">Что случилось? Можно не писать</label>
+          <textarea class="input input-area" id="report-comment" maxlength="2000" rows="3" placeholder="Например: сайты не открываются после подключения"></textarea>
+        </div>
+      </div>
+      <div class="report-done" id="report-done" role="status" hidden>
+        <p class="form-note" id="report-detail"></p>
+        <p class="report-file" id="report-file" hidden></p>
+        <p class="form-note" id="report-copied"></p>
+      </div>
+      <div class="dialog-actions">
+        <button class="btn btn-text" type="button" id="report-cancel">Отмена</button>
+        <button class="btn btn-secondary" type="button" id="report-copy" hidden>Скопировать</button>
+        <button class="btn btn-primary" type="submit" id="report-send">Отправить</button>
+        <button class="btn btn-primary" type="button" id="report-close" hidden>Готово</button>
       </div>
     </form>
   </div>

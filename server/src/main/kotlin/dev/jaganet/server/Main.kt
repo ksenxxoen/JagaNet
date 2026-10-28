@@ -75,9 +75,10 @@ fun serve(ctx: Ctx, collectEveryMs: Long, wait: Boolean = true) {
                 .onSuccess { log.info("VPN peers in place: {}", it) }.onFailure { log.error("peer sync failed", it) }
         }
         launch {
-            // Failure reports from the apps are kept 30 days.
+            // Failure reports and problem reports from the apps are kept 30 days.
             while (true) {
                 runCatching { services.tunnels.pruneFailures() }.onFailure { log.error("failure cleanup failed", it) }
+                runCatching { services.diagnostics.prune() }.onFailure { log.error("problem report cleanup failed", it) }
                 delay(3_600_000L)
             }
         }

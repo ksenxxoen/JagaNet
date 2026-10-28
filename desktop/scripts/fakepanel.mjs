@@ -2,7 +2,8 @@
 // The test steers it through the returned object: `down` drops connections, `status[path]` forces an
 // HTTP status for a path (after /v1/), `calls` records what the client asked for, `expiresAt` is the
 // plan's end that /v1/me sends (null: a plan without an end), `statuses` / `notices` (node id -> value)
-// and `notice` are the owner's node statuses and notes that /v1/servers sends (issue #10).
+// and `notice` are the owner's node statuses and notes that /v1/servers sends (issue #10); `diagnostics`
+// holds the problem reports POST /v1/diagnostics received (issue #11).
 //
 // Run on its own it serves until stopped, for trying the dev build by hand:
 //
@@ -34,12 +35,13 @@ export async function startPanel() {
     statuses: {},
     notices: {},
     notice: null,
+    diagnostics: [],
     tunnels: {}, // session token -> { serverID, version }: each signed-in device has its own tunnel
     url: "",
     close: () => new Promise((r) => srv.close(r)),
     reset() {
       p.down = false; p.status = {}; p.calls = []; p.webAllowed = false; p.expiresAt = DEFAULT_EXPIRES;
-      p.statuses = {}; p.notices = {}; p.notice = null;
+      p.statuses = {}; p.notices = {}; p.notice = null; p.diagnostics = [];
     },
   };
   const servers = [
@@ -92,6 +94,10 @@ export async function startPanel() {
         return reply(200, { config: config(id), privateKey: b64(), version: "k-" + k.id, countryCode: id === "s-de" ? "DE" : "NL" });
       }
       if (path === "tunnel/events") return reply(200, { ok: true });
+      if (path === "diagnostics" && req.method === "POST") {
+        p.diagnostics.push(body);
+        return reply(200, { id: String(p.diagnostics.length) });
+      }
       if (path === "tunnel" && req.method === "POST") {
         tun.serverID = body.serverId; tun.version++;
         return reply(200, config(tun.serverID));

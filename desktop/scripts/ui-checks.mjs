@@ -290,6 +290,80 @@ try {
     check("a plan that is gone is not shown", (await page.evaluate(() => S.plan)) === undefined);
   });
 
+  await attempt("problem report", async () => {
+    // «Сообщить о проблеме» sits next to the problem's text, and only there.
+    await show({ ...main, conn: "problem", problem: "blocked", released: true });
+    check("report button next to the problem text", !(await hidden("report-btn")) && (await page.evaluate(() => document.getElementById("report-btn").textContent)) === "Сообщить о проблеме");
+    await show({ ...main, conn: "on" });
+    check("no report button while connected", await hidden("report-btn"));
+    await show({ ...main, conn: "off" });
+    check("no report button while off", await hidden("report-btn"));
+    await show({ ...main, conn: "connecting", problem: "offline" });
+    check("report button while the network is gone", !(await hidden("report-btn")));
+
+    // From the settings: the dialog asks for an optional comment, Esc closes it.
+    await show(main);
+    await click("#open-settings");
+    await page.waitForTimeout(100);
+    await click("#s-report");
+    await page.waitForTimeout(100);
+    check("settings row opens the report dialog", !(await hidden("report")) && !(await hidden("report-ask")) && (await hidden("report-done")));
+    check("the comment field has the focus", await page.evaluate(() => document.activeElement.id === "report-comment"));
+    for (let i = 0; i < 8; i++) await page.keyboard.press("Tab");
+    check("Tab stays in the report dialog", await page.evaluate(() => document.getElementById("report").contains(document.activeElement)));
+    await page.keyboard.press("Escape");
+    check("Esc closes the report dialog, the sheet stays", (await hidden("report")) && !(await hidden("settings")));
+
+    // Sent: the number and the clipboard; the comment goes to Go as typed.
+    let asked = null;
+    await page.route("**/rpc/reportProblem", (r) => { asked = JSON.parse(r.request().postData() || "null"); r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ sent: true, id: "17", copied: true, text: "Отчёт" }) }); });
+    await click("#s-report");
+    await page.waitForTimeout(80);
+    await page.evaluate(() => { document.getElementById("report-comment").value = "Не открываются сайты"; });
+    await click("#report-send");
+    await page.waitForFunction(() => !document.getElementById("report-done").hidden);
+    const txt = (id) => page.evaluate((id) => document.getElementById(id).textContent, id);
+    check("the comment goes to Go", asked && asked.comment === "Не открываются сайты");
+    check("sent: title and number", (await txt("report-title")) === "Отчёт отправлен" && (await txt("report-detail")) === "Номер отчёта: 17");
+    check("sent: says it is on the clipboard", (await txt("report-copied")).startsWith("Текст отчёта скопирован"));
+    check("sent: one button, no copy offer", (await hidden("report-copy")) && (await hidden("report-send")) && (await hidden("report-cancel")) && !(await hidden("report-close")));
+    await click("#report-close");
+    check("«Готово» closes it", await hidden("report"));
+
+    // Not sent: the reason, the file, and copying offered; the window copies when Go could not.
+    await page.unroute("**/rpc/reportProblem");
+    await page.route("**/rpc/reportProblem", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ sent: false, error: "Нет связи с сервером", file: "/tmp/boop-report-20270115-101500.txt", copied: false, text: "текст отчёта" }) }));
+    let copiedByGo = 0;
+    await page.route("**/rpc/copyReport", (r) => { copiedByGo++; r.fulfill({ status: 200, contentType: "application/json", body: "false" }); });
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: `http://127.0.0.1:${port}` });
+    await click("#s-report");
+    await page.waitForTimeout(80);
+    await click("#report-send");
+    await page.waitForFunction(() => !document.getElementById("report-done").hidden);
+    check("not sent: title, reason and file", (await txt("report-title")) === "Не удалось отправить" && (await txt("report-detail")) === "Нет связи с сервером. Отчёт сохранён в файл:" && (await txt("report-file")) === "/tmp/boop-report-20270115-101500.txt" && !(await hidden("report-file")));
+    check("not sent: copying offered", !(await hidden("report-copy")));
+    check("Go could not copy: the window did", (await page.evaluate(() => navigator.clipboard.readText())) === "текст отчёта" && (await txt("report-copied")).startsWith("Текст отчёта скопирован"));
+    await page.evaluate(() => navigator.clipboard.writeText(""));
+    await click("#report-copy");
+    await page.waitForTimeout(150);
+    check("«Скопировать» asks Go, then copies itself", copiedByGo === 1 && (await page.evaluate(() => navigator.clipboard.readText())) === "текст отчёта" && (await txt("report-copy")) === "Скопировано");
+
+    // Go itself failed (an error, not a result).
+    await page.unroute("**/rpc/reportProblem");
+    await page.route("**/rpc/reportProblem", (r) => r.fulfill({ status: 400, contentType: "application/json", body: '{"error":"boom"}' }));
+    await click("#report-close");
+    await click("#s-report");
+    await page.waitForTimeout(80);
+    await click("#report-send");
+    await page.waitForFunction(() => !document.getElementById("report-done").hidden);
+    check("an error still ends in the result view", (await txt("report-title")) === "Не удалось отправить" && (await txt("report-detail")) === "boom" && !(await toastShown()));
+    await click("#report-close");
+    await page.unroute("**/rpc/reportProblem");
+    await page.unroute("**/rpc/copyReport");
+    await click("#settings [data-close]");
+    await page.waitForTimeout(300);
+  });
+
   await attempt("focus stays in the sheet", async () => {
     await show(main);
     await click("#open-settings");
@@ -316,14 +390,17 @@ try {
         const out = [];
         const scan = (name) => {
           // #app is left out: its glow and waves overflow on purpose and are clipped.
-          const els = [document.documentElement, document.body, ...document.querySelectorAll(".sheet:not([hidden]), .screen:not([hidden])")];
+          const els = [document.documentElement, document.body, ...document.querySelectorAll(".sheet:not([hidden]), .screen:not([hidden]), .dialog-wrap:not([hidden]) .dialog")];
           for (const el of els) if (el.scrollWidth > el.clientWidth + 1) out.push(`${name}: ${el.id || el.className} ${el.scrollWidth}>${el.clientWidth}`);
         };
-        for (const [name, st, open] of [["signin", { screen: "signin" }], ["main", {}], ["problem", { conn: "problem", problem: "no_handshake" }], ["settings", {}, "settings"], ["keys", {}, "keys"], ["places", {}, "places"]]) {
-          ["places", "keys", "settings"].forEach((id) => { document.getElementById(id).hidden = true; });
+        for (const [name, st, open] of [["signin", { screen: "signin" }], ["main", {}], ["problem", { conn: "problem", problem: "no_handshake" }], ["settings", {}, "settings"], ["keys", {}, "keys"], ["places", {}, "places"], ["report", {}, "report"]]) {
+          ["places", "keys", "settings", "report"].forEach((id) => { document.getElementById(id).hidden = true; });
           syncPanel();
           window.boop.update({ ...long, ...st });
-          if (open) openSheet(open, false);
+          if (open === "report") {
+            openReport();
+            showReportResult({ sent: false, error: "Слишком много отчётов с этого устройства, попробуйте через час", file: "C:\\Users\\очень.длинное.имя.пользователя\\AppData\\Local\\Boop\\boop-report-20270115-101500.txt" }, false);
+          } else if (open) openSheet(open, false);
           scan(name);
         }
         return out;

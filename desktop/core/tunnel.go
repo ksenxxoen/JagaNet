@@ -94,6 +94,8 @@ func (a *App) watch(ctx context.Context) {
 	defer tick.Stop()
 	lastSync := time.Now()
 	lastPing := time.Time{}
+	// One line of statistics in the log every StatsEvery (diagnostics.go).
+	lastStats, statsFrom := time.Now(), st
 	for {
 		select {
 		case <-ctx.Done():
@@ -122,6 +124,10 @@ func (a *App) watch(ctx context.Context) {
 		if step.Phase == "on" && time.Since(lastPing) > pingEvery {
 			Go("ping", func() { a.pingCurrent(ctx) })
 			lastPing = time.Now()
+		}
+		if now.Sub(lastStats) >= StatsEvery {
+			a.logStats(now, statsFrom, st, now.Sub(lastStats))
+			lastStats, statsFrom = now, st
 		}
 		if time.Since(lastSync) > syncEvery {
 			a.sync(ctx)

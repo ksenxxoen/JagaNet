@@ -87,6 +87,13 @@ const states = {
   "keys-empty": { ...on, keys: [], act: `openSheet("keys")` },
   "rename": { ...on, act: `openSheet("keys"); renameKey({ id: "k1", name: "Demo phone" })` },
   "toast": { ...on, act: `toast("Не удалось подключиться. Проверьте интернет.")` },
+  // Issue #11: «Сообщить о проблеме» next to the problem, in the settings, the dialog and its results.
+  "report-main": { conn: "problem", problem: "blocked", released: true },
+  "report-settings": { ...on, act: `openSheet("settings"); $("s-report").scrollIntoView({ block: "center" })` },
+  "report-dialog": { conn: "problem", problem: "blocked", released: true, act: `openReport(); $("report-comment").value = "После обеда перестали открываться сайты, переподключение не помогает"` },
+  "report-sending": { conn: "problem", problem: "blocked", released: true, act: `openReport(); $("report-comment").value = "Не открываются сайты"; $("report-comment").disabled = true; $("report-send").disabled = true; $("report-send").classList.add("is-loading")` },
+  "report-sent": { conn: "problem", problem: "blocked", released: true, act: `openReport(); showReportResult({ sent: true, id: "1287" }, true)` },
+  "report-failed": { conn: "problem", problem: "offline", released: true, act: `openReport(); showReportResult({ sent: false, error: "Нет связи с сервером", file: "C:\\\\Users\\\\demo\\\\AppData\\\\Local\\\\Boop\\\\boop-report-20270115-101500.txt" }, true)` },
 };
 // Big pictures at a higher scale only for the main states, to keep the folder small.
 const CORE = ["signin-email", "off", "on", "problem-plan", "settings", "places", "keys"];
@@ -142,7 +149,7 @@ try {
       await page.evaluate(([state, act]) => {
         // Back to a clean window: no sheet, dialog or toast left from the previous state.
         ["places", "keys", "settings"].forEach((id) => { const el = document.getElementById(id); el.hidden = true; el.classList.remove("closing"); });
-        ["rename", "confirm", "toast"].forEach((id) => { document.getElementById(id).hidden = true; });
+        ["rename", "confirm", "report", "toast"].forEach((id) => { document.getElementById(id).hidden = true; });
         document.getElementById("place-search").value = "";
         syncPanel();
         showForm("f-email");
