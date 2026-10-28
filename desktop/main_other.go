@@ -31,6 +31,9 @@ func main() {
 		dir = filepath.Join(os.TempDir(), "boop-desktop")
 	}
 	tun, _ := vpn.New()
+	if f, ok := tun.(*vpn.Fake); ok {
+		f.NoHandshake = os.Getenv("BOOP_FAKE_NOHANDSHAKE") != ""
+	}
 	core.ResolveFallback = func(h string) []string {
 		n := 0
 		for _, c := range h {

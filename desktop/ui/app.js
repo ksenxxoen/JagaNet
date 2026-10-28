@@ -134,7 +134,9 @@ function problemAction() {
 function render(next) {
   if (next.toast) return toast(next.toast);
   const prev = S;
-  S = Object.assign({}, S, next);
+  // Every push is the whole state, and Go leaves empty fields out (omitempty): merging into the old
+  // state kept a cleared problem, "released", the plan or the current country on screen.
+  S = Object.assign({ screen: "", conn: "off", countries: [] }, next);
   $("app").classList.add("ready");
 
   $("signin").hidden = S.screen !== "signin";
