@@ -161,5 +161,15 @@ internal val webStrings: List<S> = listOf(
     S("Key for AmneziaVPN", "Ключ для AmneziaVPN", "Schlüssel für AmneziaVPN"),
     S("In AmneziaVPN tap Add server, then Insert key, and paste it.", "В AmneziaVPN нажмите «Добавить сервер», затем «Вставить ключ» и вставьте его.", "Tippe in AmneziaVPN auf Server hinzufügen, dann auf Schlüssel einfügen, und füge ihn ein."),
     S("Copy key", "Скопировать ключ", "Schlüssel kopieren"),
+
+    // The VLESS key every user gets on top of the plan's devices (issue #33).
+    S("This key comes with your access and can't be deleted", "Этот ключ входит в ваш доступ, удалить его нельзя", "Dieser Schlüssel gehört zu deinem Zugang und kann nicht gelöscht werden"),
+    S("This key is off until access is renewed", "Ключ не работает, пока доступ не продлён", "Der Schlüssel ist aus, bis der Zugang verlängert wird"),
+    S("Backup key", "Запасной ключ", "Ersatzschlüssel"),
+    S("Subscription link", "Ссылка-подписка", "Abo-Link"),
+    S("For Happ, v2RayTun, Hiddify and v2rayNG", "Для Happ, v2RayTun, Hiddify и v2rayNG", "Für Happ, v2RayTun, Hiddify und v2rayNG"),
+    S("One more key", "Ещё один ключ", "Noch ein Schlüssel"),
+    S("Not counted in the device limit", "Не входит в лимит устройств", "Zählt nicht zum Gerätelimit"),
+    S("outside the limit", "вне лимита", "außerhalb des Limits"),
     S("Scan the QR code above in the app, paste the key for AmneziaVPN or import the {file} file.", "Отсканируйте QR-код выше в приложении, вставьте ключ для AmneziaVPN или импортируйте файл {file}.", "Scanne den QR-Code oben in der App, füge den Schlüssel für AmneziaVPN ein oder importiere die Datei {file}."),
 )

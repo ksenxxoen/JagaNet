@@ -124,6 +124,21 @@ side: the agent in VLESS mode (docs/SERVER.md, "VLESS nodes").
 - **Counters** come from the agent's report (Xray `statsquery`: uplink = `rx`, downlink = `tx`);
   `lastHandshake` is when the user's counters last grew. The free plan's speed limit is not applied
   on VLESS nodes (no traffic.py there).
+- **Everyone's VLESS key** (issue #33, `services/VlessKeys.kt`, V18). Each user with access (the
+  same rule as for AmneziaWG keys: free period not over, data not used up) has one VLESS key on top
+  of the plan: a system device `devices.kind = 'vless_bonus'` (the device limit counts only
+  `kind = 'device'`; users can't delete or rename it) with a tunnel on the least loaded active
+  VLESS node (`max_peers` is not a cap for it). `vless_keys` keeps its UUID and link token, so the
+  UUID never changes: when access ends the tunnel is dropped (the agent removes the UUID), when it
+  is back the tunnel is made again; a node switched off moves it to another node. `VlessKeys.sync`
+  runs at startup (backfill) and every 5 minutes, idempotent; `GET /v1/keys` with vless in
+  `supportedProtocols` runs it for that user. Where it shows: `/k/<token>` of the VLESS key (page
+  with links, QR, copy), `/k/<token>/vless` subscription (base64 of the `vless://` links, Vision
+  first then XHTTP, named "🇫🇮 Финляндия", "🇫🇮 Финляндия 2"; headers `profile-title`,
+  `profile-update-interval`, `subscription-userinfo`) which also works with the user's AmneziaWG
+  key-link tokens, `/k/<token>/vless/<n>.png` and `sub.png` QR codes; `KeysRes.vless` and
+  `Device.outsideLimit` only for callers sending vless in `supportedProtocols`; admin user page
+  marks it "outside the limit".
 
 ## Server (`server/`)
 

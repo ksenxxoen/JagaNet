@@ -67,9 +67,10 @@ class Entitlements(private val ctx: Ctx) {
         userId, monthStart(ctx.now()),
     )!!.long("total")
 
+    /** Devices with a tunnel that count against the plan: the VLESS key (kind vless_bonus, issue #33) does not. */
     fun activeTunnelCount(sql: Sql, userId: String, exceptDeviceId: String? = null): Int = sql.one(
         """SELECT count(*)::int AS n FROM tunnels t JOIN devices d ON d.id=t.device_id
-            WHERE d.user_id=?::uuid AND d.removed_at IS NULL AND (?::uuid IS NULL OR d.id <> ?::uuid)""",
+            WHERE d.user_id=?::uuid AND d.removed_at IS NULL AND d.kind = 'device' AND (?::uuid IS NULL OR d.id <> ?::uuid)""",
         userId, exceptDeviceId, exceptDeviceId,
     )!!.int("n")
 
