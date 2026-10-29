@@ -22,7 +22,7 @@ class TestAccounts(private val ctx: Ctx, private val keys: Keys, private val tun
         val rows = ctx.db.run { sql ->
             sql.query(
                 """SELECT u.id, u.email, u.note, u.created_at, s.device_limit, s.expires_at
-                     FROM users u JOIN subscriptions s ON s.user_id = u.id AND s.source = 'test'
+                     FROM users u JOIN subscriptions s ON s.user_id = u.id AND s.source = 'test' AND s.external_id = 'test:' || u.id::text
                     ORDER BY u.created_at, u.id""",
             )
         }
@@ -93,7 +93,7 @@ class TestAccounts(private val ctx: Ctx, private val keys: Keys, private val tun
      */
     suspend fun assign(id: String, email: String): AssignTestAccountRes = ctx.db.tx { sql ->
         if (!UUID.matches(id)) throw notFound("Account not found")
-        sql.one("SELECT 1 FROM subscriptions WHERE user_id=?::uuid AND source='test' FOR UPDATE", id) ?: throw notFound("Account not found")
+        sql.one("SELECT 1 FROM subscriptions WHERE user_id=?::uuid AND source='test' AND external_id='test:'||user_id::text FOR UPDATE", id) ?: throw notFound("Account not found")
         val to = sql.one("SELECT id, email FROM users WHERE lower(email)=lower(?)", email.trim())
             ?: throw notFound("No user with this e-mail")
         val toId = to.str("id")
@@ -116,7 +116,7 @@ class TestAccounts(private val ctx: Ctx, private val keys: Keys, private val tun
 
     /** Removes the account, its keys (from the VPN too) and its data. */
     suspend fun delete(id: String) {
-        val ok = ctx.db.run { it.one("SELECT 1 FROM subscriptions WHERE user_id=?::uuid AND source='test'", id) } != null
+        val ok = ctx.db.run { it.one("SELECT 1 FROM subscriptions WHERE user_id=?::uuid AND source='test' AND external_id='test:'||user_id::text", id) } != null
         if (!ok) throw notFound("Account not found")
         for (k in keys.list(id)) keys.remove(id, k.id)
         ctx.db.run { it.exec("DELETE FROM users WHERE id=?::uuid AND role='user'", id) }

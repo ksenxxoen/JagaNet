@@ -53,6 +53,10 @@ data class Config(
     val trafficClassesFile: String = "/run/boop/traffic.json",
     /** Where the free plan's speed limit for this machine's VPN is written for traffic.py; null = not written. */
     val speedLimitsFile: String? = null,
+    /** Days of Pro given to every new (non-owner) account on sign-up; 0 = none. */
+    val signupProDays: Int = 0,
+    /** true = every user sees the referral program; false = only admins (owners). */
+    val referralsPublic: Boolean = false,
 ) {
     companion object {
         fun load(env: Map<String, String> = System.getenv()): Config {
@@ -88,6 +92,8 @@ data class Config(
                         "EUR" to Price(num("PRICE_EUR_MONTHLY", 499), num("PRICE_EUR_YEARLY", 3_999)),
                     ),
                 ),
+                signupProDays = num("SIGNUP_PRO_DAYS", 0).toInt().coerceAtLeast(0),
+                referralsPublic = env["REFERRALS_PUBLIC"] == "1",
                 paymentProvider = env["PAYMENT_PROVIDER"]?.takeIf { it.isNotBlank() } ?: "test".takeIf { mode != Mode.PRODUCTION },
                 telegramBotToken = env["TELEGRAM_BOT_TOKEN"]?.takeIf { it.isNotBlank() },
                 androidAppUrl = env["ANDROID_APP_URL"]?.takeIf { it.isNotBlank() },

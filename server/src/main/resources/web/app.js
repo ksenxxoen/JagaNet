@@ -78,7 +78,7 @@ function go(hash) { if (location.hash === hash) render(); else location.hash = h
 function renderNav() {
   const here = (location.hash.slice(1) || "/").split("?")[0];
   const items = store.get("token")
-    ? [...(role === "owner" ? [["/analytics", t("Analytics")], ["/admin", t("Admin panel")], ["/status", t("Server status")]] : []), ["/referrals", t("Referral program")], ["/account", t("My account")]]
+    ? [...(role === "owner" ? [["/analytics", t("Analytics")], ["/admin", t("Admin panel")], ["/status", t("Server status")]] : []), ...(role === "owner" || site?.referralsPublic ? [["/referrals", t("Referral program")]] : []), ["/account", t("My account")]]
     : [];
   const link = ([p, l]) => `<a class="item ${p === here ? "on" : ""}" href="#${p}">${l}</a>`;
   const langs = `<span class="langs">${LANGS.map(([c, name]) => `<button type="button" class="${c === lang ? "on" : ""}" data-lang="${c}" title="${name}" lang="${c}">${c.toUpperCase()}</button>`).join("")}</span>`;
@@ -474,6 +474,8 @@ async function referrals(params) {
   const period = params.get("period") || store.get("refPeriod") || "30d";
   store.set("refPeriod", period);
   const me = await api("/me");
+  // The referral program is for admins only.
+  if (me.user.role !== "owner" && !site?.referralsPublic) return go("#/account");
   const owner = me.user.role === "owner" && params.get("view") === "all";
   const q = (extra) => `#/referrals?period=${period}${extra}`;
   const tabs = `<div class="chips">${PERIODS.map(([k, l]) => `<a class="chip ${k === period ? "on" : ""}" href="#/referrals?period=${k}${owner ? "&view=all" : ""}">${t(l)}</a>`).join("")}</div>`;
@@ -1663,6 +1665,7 @@ async function render() {
   // The role decides the owner's extra menu item; asked once per sign-in.
   if (!store.get("token")) role = null;
   else if (role == null) role = await api("/me").then((me) => me.user.role).catch(() => null);
+  if (!site) site = await api("/site").catch(() => null);
   renderNav();
   const [path, query] = (location.hash.slice(1) || "/").split("?");
   const params = new URLSearchParams(query || "");

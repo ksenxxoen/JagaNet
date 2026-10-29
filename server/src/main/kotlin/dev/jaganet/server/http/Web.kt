@@ -51,6 +51,7 @@ fun Route.salesApi(s: Services) {
                 paymentsEnabled = s.payments.provider != null,
                 emailSignIn = s.auth.emailSignInAvailable(),
                 testCodes = s.ctx.live.showSignInCodes,
+                referralsPublic = s.ctx.cfg.referralsPublic,
             ),
         )
     }
@@ -216,23 +217,30 @@ ${bot?.let { """<a class="btn" href="https://t.me/${esc(it)}">${t("Back to Teleg
 private fun period(q: String?): ReferralPeriod =
     ReferralPeriod.entries.firstOrNull { Protocols.json.encodeToString(ReferralPeriod.serializer(), it).trim('"') == q } ?: ReferralPeriod.D30
 
+/** The referral program is shown to admins (owners) only, unless REFERRALS_PUBLIC=1; for everyone else it does not exist. */
+fun Services.referralsFor(role: Role) = role == Role.OWNER || ctx.cfg.referralsPublic
+
+fun Services.requireReferrals(role: Role) {
+    if (!referralsFor(role)) throw notFound("The referral program is not available")
+}
+
 /** /v1 endpoints of the referral program. */
 fun Route.referralApi(s: Services) {
     get("/referrals/stats") {
-        val p = call.principal(s)
+        val p = call.principal(s).also { s.requireReferrals(it.user.role) }
         call.respond(s.referrals.stats(p.user.id, period(call.request.queryParameters["period"])))
     }
     post("/referrals/links") {
-        val p = call.principal(s)
+        val p = call.principal(s).also { s.requireReferrals(it.user.role) }
         val b = call.receive<CreateReferralLinkReq>()
         call.respond(s.referrals.createLink(p.user.id, b.name, b.code))
     }
     patch("/referrals/links/{id}") {
-        s.referrals.rename(call.principal(s).user.id, call.parameters["id"]!!, call.receive<RenameReferralLinkReq>().name)
+        s.referrals.rename(call.principal(s).also { s.requireReferrals(it.user.role) }.user.id, call.parameters["id"]!!, call.receive<RenameReferralLinkReq>().name)
         call.respond(OkRes())
     }
     delete("/referrals/links/{id}") {
-        s.referrals.archive(call.principal(s).user.id, call.parameters["id"]!!)
+        s.referrals.archive(call.principal(s).also { s.requireReferrals(it.user.role) }.user.id, call.parameters["id"]!!)
         call.respond(OkRes())
     }
     get("/admin/referrals") {

@@ -30,4 +30,22 @@ class Billing(private val ctx: Ctx, private val tariffs: Tariffs) {
         )
     }
 
+    companion object {
+        /**
+         * Gift Pro for a new account: [days] from [now], never shortening a longer active subscription.
+         * Stored as source 'test' (not counted as sales) with external_id 'gift:<user id>', so it is
+         * not a test account; at most one per user.
+         */
+        fun grantSignupPro(sql: Sql, userId: String, days: Int, now: Instant) {
+            if (days <= 0) return
+            sql.exec(
+                """INSERT INTO subscriptions (user_id, product_id, source, external_id, started_at, expires_at, auto_renew, tariff_name, device_limit, created_at)
+                   SELECT ?::uuid, 'gift', 'test', 'gift:' || ?, ?,
+                          greatest(?::timestamptz, coalesce((SELECT max(s.expires_at) FROM subscriptions s WHERE s.user_id=?::uuid AND s.status='active'), ?::timestamptz)),
+                          false, 'Pro', NULL, ?
+                   ON CONFLICT (source, external_id) DO NOTHING""",
+                userId, userId, now, now.plus(java.time.Duration.ofDays(days.toLong())), userId, now, now,
+            )
+        }
+    }
 }

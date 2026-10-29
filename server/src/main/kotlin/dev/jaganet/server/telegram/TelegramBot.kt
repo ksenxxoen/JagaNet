@@ -10,6 +10,7 @@ import dev.jaganet.api.i18n.Lang
 import dev.jaganet.server.AppError
 import dev.jaganet.server.http.Services
 import dev.jaganet.server.http.translate
+import dev.jaganet.server.services.Billing
 import dev.jaganet.server.services.Channel
 import dev.jaganet.server.services.Crypto
 import dev.jaganet.server.services.Keys
@@ -153,7 +154,9 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
             for (t in tariffs) { appendLine(); appendLine(); append("${t.name}, ${period(t, u.lang)}, ${Format.terms(t.deviceLimit, t.monthlyDataLimitBytes, u.lang)}") }
             if (pro != null) { appendLine(); appendLine(); append(u.t("Your Pro is active until {date}.", "date" to Format.date(pro.toString(), u.lang))) }
         }
-        send(u, text, buyButtons(u, tariffs) + listOf(listOf(Btn(u.t("My VPN key"), "key"), Btn(u.t("Get the app"), "app")), listOf(Btn(u.t("Invite friends"), "invite"), Btn(u.t("Language") + " " + u.lang.nativeName, "language"))))
+        val lang = Btn(u.t("Language") + " " + u.lang.nativeName, "language")
+        // The referral program is for admins only.
+        send(u, text, buyButtons(u, tariffs) + listOf(listOf(Btn(u.t("My VPN key"), "key"), Btn(u.t("Get the app"), "app")), if (referralsFor(u.userId)) listOf(Btn(u.t("Invite friends"), "invite"), lang) else listOf(lang)))
     }
 
     private suspend fun languageAction(u: Who) =
@@ -220,6 +223,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
 
     /** The user's main referral link and a 30-day summary; details are on the website. */
     private suspend fun inviteAction(u: Who) {
+        if (!referralsFor(u.userId)) return menu(u)
         val st = s.referrals.stats(u.userId, ReferralPeriod.D30)
         val main = st.links.first { it.main }
         val f = st.totals
@@ -289,6 +293,11 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
         listOf(Btn(u.t("{product} for {price}", "product" to t.name, "price" to Format.money(t.priceMinor, t.currency, u.lang)), data = "buy:${t.id}"))
     }
 
+    /** Whether this user sees the referral program (admins only, unless REFERRALS_PUBLIC=1). */
+    private suspend fun referralsFor(userId: String): Boolean = ctx.db.run { sql ->
+        ctx.cfg.referralsPublic || sql.one("SELECT 1 FROM users WHERE id=?::uuid AND role='owner'", userId) != null
+    }
+
     /** Pro expiry, or null on the free plan. */
     private suspend fun isPro(userId: String): Instant? = ctx.db.run { sql ->
         s.ent.entitlement(sql, userId).takeIf { it.plan == PlanId.PRO }?.let { e -> e.expiresAt?.let(Instant::parse) ?: Instant.parse("2999-12-31T00:00:00Z") }
@@ -303,9 +312,9 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
                 val referrer = Referrals.resolve(sql, referral)
                 sql.one(
                     """INSERT INTO users (email, referral_code, referred_by, referral_link_id, telegram_id, created_at) VALUES (?,?,?::uuid,?::uuid,?,?)
-                       ON CONFLICT (email) DO UPDATE SET telegram_id=EXCLUDED.telegram_id RETURNING id, lang""",
+                       ON CONFLICT (email) DO UPDATE SET telegram_id=EXCLUDED.telegram_id RETURNING id, lang, (xmax = 0) AS inserted""",
                     email, Crypto.referralCode("tg@x"), referrer?.userId, referrer?.linkId, tgId, ctx.now(),
-                )!!
+                )!!.also { if (it.bool("inserted")) Billing.grantSignupPro(sql, it.str("id"), ctx.cfg.signupProDays, ctx.now()) }
             }
         }
         return Who(row.str("id"), chat, Lang.of(row.strOrNull("lang")) ?: Lang.DEFAULT)
@@ -343,7 +352,6 @@ class TelegramBot(private val s: Services, private val api: TelegramApi) {
             "key" to "My VPN key",
             "app" to "Get the app",
             "status" to "My subscription",
-            "invite" to "Invite friends",
             "login" to "Sign in on the website",
             "language" to "Language",
         )
