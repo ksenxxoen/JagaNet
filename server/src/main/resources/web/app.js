@@ -297,7 +297,7 @@ async function account(params) {
         : `<div class="notice bad">${t("Not paid yet")} <a href="${h(o.checkoutUrl || "#/account")}">${t("Try again")}</a></div>`;
     } catch {}
   }
-  const [me, keys, plans, pays] = await Promise.all([api("/me"), api("/keys"), api("/billing/plans"), api("/me/payments")]);
+  const [me, keys, plans, pays] = await Promise.all([api("/me"), api("/keys?supportedProtocols=amneziawg,wireguard,vless"), api("/billing/plans"), api("/me/payments")]);
   const e = me.entitlement, isPro = e.plan === "pro";
   const sourceName = { web: t("Website"), telegram: "Telegram", app: t("Boop app"), apple: "App Store", google: "Google Play", referral: t("Invite reward"), dev: t("Simulation") };
   const who = me.user.email.endsWith("@telegram.invalid") ? t("Telegram account") : me.user.email;
@@ -327,7 +327,7 @@ async function account(params) {
   </div>
 
   <div class="h2row"><h2>${t("VPN keys")}</h2>${isPro || keys.keys.length ? `<button class="btn secondary" id="newkey">${t("New key")}</button>` : ""}</div>
-  <div class="keys" id="keys">${keys.keys.map(keyCard).join("") || `<div class="card muted">${isPro ? t("No keys yet") : t("Keys come with Pro")}</div>`}</div>
+  <div class="keys" id="keys">${keys.vless ? vlessCard(keys.vless) : ""}${keys.keys.map(keyCard).join("") || (keys.vless ? "" : `<div class="card muted">${isPro ? t("No keys yet") : t("Keys come with Pro")}</div>`)}</div>
 
   <div class="h2row"><h2>${t("Apps")}</h2></div>
   ${downloads()}
@@ -355,10 +355,28 @@ async function account(params) {
       catch (x) { alert(x.message); }
     };
   };
+  for (const b of document.querySelectorAll("[data-vcopy]")) b.onclick = () => copyText(b, b.dataset.vcopy);
   for (const b of document.querySelectorAll("[data-del]")) b.onclick = async () => {
     if (!confirm(t("Delete this key? Apps using it will stop connecting."))) return;
     try { await api("/keys/" + b.dataset.del, { method: "DELETE" }); render(); } catch (e) { alert(e.message); }
   };
+}
+
+/** The VLESS key every user with access has, outside the device limit: links to copy, QR, subscription. */
+function vlessCard(v) {
+  const withLang = (u) => u + (u.includes("?") ? "&" : "?") + "lang=" + lang;
+  return `<div class="card keycard">
+    ${v.active ? `<img class="qr" src="${h(v.qrUrl)}" alt="${t("QR code of your VPN key")}" loading="lazy">` : ""}
+    <div>
+      <h3>${h(v.name)}</h3>
+      <p class="muted">${t("Not counted in the device limit")}</p>
+      ${v.active ? "" : `<p class="notice bad">${t("This key is off until access is renewed")}</p>`}
+      <div class="keyactions">
+        ${v.links.length ? `<button class="btn" data-vcopy="${h(v.links[0])}">${t("Copy key")}</button>` : ""}
+        ${v.links.length ? `<button class="btn secondary" data-vcopy="${h(v.subscriptionUrl)}">${t("Subscription link")}</button>` : ""}
+        <a class="btn secondary" href="${h(withLang(v.pageUrl))}" target="_blank" rel="noreferrer">${t("Open key link")}</a>
+      </div>
+    </div></div>`;
 }
 
 function keyCard(k) {
@@ -865,7 +883,7 @@ async function analytics(params) {
           || `<tr><td colspan="5" class="muted">${t("No traffic")}</td></tr>`}</tbody></table></div>
       <div class="h2row"><h2>${t("Devices")}</h2></div>
       <div class="card tablewrap"><table class="data"><thead><tr><th>${t("Device")}</th><th class="opt">${t("Server")}</th><th>${t("Traffic")}</th><th>${t("Torrents")}</th><th class="opt">${t("Last seen")}</th><th></th></tr></thead>
-        <tbody>${r.devices.map((d) => `<tr class="${d.removed ? "muted" : ""}"><td><b>${h(d.name)}</b><div class="muted">${h(platformName(d.platform))}${d.removed ? `, ${t("removed")}` : ""}</div></td>
+        <tbody>${r.devices.map((d) => `<tr class="${d.removed ? "muted" : ""}"><td><b>${h(d.name)}</b><div class="muted">${h(platformName(d.platform))}${d.removed ? `, ${t("removed")}` : ""}${d.outsideLimit ? `, <span class="tag">${t("outside the limit")}</span>` : ""}</div></td>
           <td class="opt">${d.serverName ? `${h(d.serverName)}<div class="muted">${h(d.countryCode || "")}</div>` : `<span class="muted">${t("none")}</span>`}</td>
           <td>${h(bytes(total(d.traffic)))}</td><td>${torrentCell(d.traffic)}</td><td class="opt">${seenText(d.lastSeenAt)}</td>
           <td class="actions">${!d.removed ? `<button class="btn secondary small" data-dev="${h(d.id)}">${t("Edit")}</button>` : ""}</td></tr>`).join("")

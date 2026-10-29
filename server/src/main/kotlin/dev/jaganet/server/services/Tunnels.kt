@@ -52,10 +52,10 @@ private fun String?.clean(max: Int) = this?.trim()?.take(max)?.takeIf { it.isNot
  * The owner's node status as a sort key for the server's own choice (no node asked for):
  * ok first, then degraded; blocked and maintenance only when nothing else is left.
  */
-private const val STATUS_RANK = "CASE s.status WHEN 'ok' THEN 0 WHEN 'degraded' THEN 1 ELSE 2 END"
+internal const val STATUS_RANK = "CASE s.status WHEN 'ok' THEN 0 WHEN 'degraded' THEN 1 ELSE 2 END"
 
 /** Active and, for a remote node, reporting in. */
-private const val USABLE = "s.active AND (s.agent_token_hash IS NULL OR s.last_report_at > ?)"
+internal const val USABLE = "s.active AND (s.agent_token_hash IS NULL OR s.last_report_at > ?)"
 
 class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
     /**
@@ -396,18 +396,22 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         ConnectionFailuresRes(list, nodes)
     }
 
-    suspend fun devices(p: Principal): List<Device> = ctx.db.run { sql ->
+    /** [withVless]: the app runs VLESS (supportedProtocols), so the user's VLESS key is listed too. */
+    suspend fun devices(p: Principal, withVless: Boolean = false): List<Device> = ctx.db.run { sql ->
         val now = ctx.now()
         sql.query(
-            """SELECT d.*, t.protocol, t.address, t.last_seen_at AS tunnel_seen
+            """SELECT d.*, t.protocol, t.address, t.last_seen_at AS tunnel_seen, t.server_id
                  FROM devices d LEFT JOIN tunnels t ON t.device_id=d.id
-                WHERE d.user_id=?::uuid AND d.removed_at IS NULL ORDER BY d.created_at""",
-            p.user.id,
+                WHERE d.user_id=?::uuid AND d.removed_at IS NULL AND (d.kind = 'device' OR ?) ORDER BY d.created_at""",
+            p.user.id, withVless,
         ).map { r ->
             val seen = r.instantOrNull("tunnel_seen")
+            val bonus = r.str("kind") != "device"
+            val name = if (!bonus) r.str("name")
+            else r.strOrNull("server_id")?.let { sql.one("SELECT * FROM servers WHERE id=?", it) }?.let(VlessKeys::displayName) ?: r.str("name")
             Device(
                 id = r.str("id"),
-                name = r.str("name"),
+                name = name,
                 platform = runCatching { Platform.valueOf(r.str("platform").uppercase()) }.getOrDefault(Platform.OTHER),
                 protocol = r.strOrNull("protocol"),
                 tunnelAddress = r.strOrNull("address"),
@@ -415,6 +419,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
                 online = seen != null && Duration.between(seen, now) < ONLINE,
                 isCurrent = r.str("id") == p.deviceId,
                 createdAt = r.instant("created_at").toString(),
+                outsideLimit = bonus,
             )
         }
     }
@@ -428,7 +433,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         if (!Regex("^[0-9a-fA-F-]{36}$").matches(id)) throw notFound("Device not found")
         val rows = ctx.db.run {
             if (userId == null) it.exec("UPDATE devices SET name=? WHERE id=?::uuid AND removed_at IS NULL", n, id)
-            else it.exec("UPDATE devices SET name=? WHERE id=?::uuid AND user_id=?::uuid AND removed_at IS NULL", n, id, userId)
+            else it.exec("UPDATE devices SET name=? WHERE id=?::uuid AND user_id=?::uuid AND removed_at IS NULL AND kind = 'device'", n, id, userId)
         }
         if (rows == 0) throw notFound("Device not found")
     }
@@ -437,7 +442,9 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
     suspend fun remove(p: Principal, id: String) = removeFor(p.user.id, id)
 
     suspend fun removeFor(userId: String, id: String) = ctx.db.tx { sql ->
-        sql.one("SELECT 1 FROM devices WHERE id=?::uuid AND user_id=?::uuid AND removed_at IS NULL", id, userId) ?: throw notFound("Device not found")
+        val d = sql.one("SELECT kind FROM devices WHERE id=?::uuid AND user_id=?::uuid AND removed_at IS NULL", id, userId) ?: throw notFound("Device not found")
+        // The VLESS key comes with access itself (VlessKeys): it is not the user's to delete.
+        if (d.str("kind") != "device") throw badRequest("This key comes with your access and can't be deleted")
         revoke(sql, id)
         sql.exec("UPDATE devices SET removed_at=? WHERE id=?::uuid", ctx.now(), id)
         sql.exec("UPDATE sessions SET revoked_at=? WHERE device_id=?::uuid AND revoked_at IS NULL", ctx.now(), id)

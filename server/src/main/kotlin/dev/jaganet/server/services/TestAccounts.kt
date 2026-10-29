@@ -107,6 +107,9 @@ class TestAccounts(private val ctx: Ctx, private val keys: Keys, private val tun
             n++
             sql.exec("UPDATE devices SET name=? WHERE id=?::uuid", if (n == 1) "VPN key" else "VPN key $n", k.str("device_id"))
         }
+        // The test account's VLESS key stays behind (the user has or gets their own): off the node, then gone with the account.
+        sql.query("SELECT id FROM devices WHERE user_id=?::uuid AND kind <> 'device'", id).forEach { tunnels.revoke(sql, it.str("id")) }
+        sql.exec("DELETE FROM devices WHERE user_id=?::uuid AND kind <> 'device'", id)
         sql.exec("UPDATE devices SET user_id=?::uuid WHERE user_id=?::uuid", toId, id)
         sql.exec("UPDATE access_keys SET user_id=?::uuid WHERE user_id=?::uuid", toId, id)
         sql.exec("UPDATE subscriptions SET user_id=?::uuid WHERE user_id=?::uuid", toId, id)
@@ -119,6 +122,7 @@ class TestAccounts(private val ctx: Ctx, private val keys: Keys, private val tun
         val ok = ctx.db.run { it.one("SELECT 1 FROM subscriptions WHERE user_id=?::uuid AND source='test' AND external_id='test:'||user_id::text", id) } != null
         if (!ok) throw notFound("Account not found")
         for (k in keys.list(id)) keys.remove(id, k.id)
+        ctx.db.tx { sql -> sql.query("SELECT id FROM devices WHERE user_id=?::uuid AND kind <> 'device'", id).forEach { tunnels.revoke(sql, it.str("id")) } }
         ctx.db.run { it.exec("DELETE FROM users WHERE id=?::uuid AND role='user'", id) }
     }
 }
