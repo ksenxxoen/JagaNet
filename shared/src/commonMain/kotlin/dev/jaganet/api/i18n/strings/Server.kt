@@ -144,4 +144,14 @@ internal val serverStrings: List<S> = listOf(
     S("Enter an address", "Введите адрес", "Gib eine Adresse ein"),
     S("Choose another node", "Выберите другую ноду", "Wähle einen anderen Knoten"),
     S("Not enough room on {name}: {free} free places, {need} needed", "На «{name}» не хватает места. Свободно {free}, нужно {need}", "Nicht genug Platz auf {name}. Frei sind {free}, gebraucht {need}"),
+    // The Windows app's download and update manifest, before a build is published
+    S("The Windows app isn't uploaded yet", "Приложение для Windows ещё не загружено", "Die Windows-App ist noch nicht hochgeladen"),
+    S("No desktop build is published", "Сборка для компьютера ещё не опубликована", "Es ist noch keine Desktop-Version veröffentlicht"),
+    // Node status and notes for the apps (issue #10)
+    S("The note is too long: {n} characters at most", "Слишком длинное объявление: не больше {n} символов", "Die Notiz ist zu lang: höchstens {n} Zeichen"),
+    // Problem reports from the Boop apps (issue #11)
+    S("The report is empty", "Отчёт пустой", "Der Bericht ist leer"),
+    S("The report is too large", "Отчёт слишком большой", "Der Bericht ist zu groß"),
+    S("Too many reports from this device, try again in an hour", "Слишком много отчётов с этого устройства, попробуйте через час", "Zu viele Berichte von diesem Gerät, versuche es in einer Stunde erneut"),
+    S("No such report", "Такого отчёта нет", "Diesen Bericht gibt es nicht"),
 )

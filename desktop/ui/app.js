@@ -7,19 +7,28 @@ const TXT = {
   ms: "мс", until: "до", free: "Бесплатный",
   off: "Выключено", connecting: "Подключение…", reconnecting: "Переподключение…", on: "Подключено", problem: "Проблема",
   hintOff: "Нажмите, чтобы подключиться",
-  extend: "Продлить", signIn: "Войти", changeCountry: "Сменить страну", changeKey: "Выбрать ключ",
+  extend: "Продлить", signIn: "Войти", changeCountry: "Сменить страну", otherCountry: "Другая страна", changeKey: "Выбрать ключ",
   offline: "Нет сети, пробуем снова…",
   noHandshake: "Сервер не отвечает, пробуем ещё…",
   released: "Не удалось подключиться. Интернет снова доступен, пробуем ещё.",
   strict: "Сервер не отвечает. Интернет заблокирован, пока VPN не подключится.",
   dead: "Связь с VPN пропала, переподключаемся…",
+  // Same words as blockedText / strictClosed in core/notify.go (the tray says the same).
+  blocked: "Похоже, ваша сеть блокирует VPN. Попробуйте Wi\u2011Fi или другую страну.",
+  strictClosed: "Интернет закрыт, пока VPN не подключится.",
   plan: "Тариф закончился. Продлите его, чтобы включить VPN.",
   keyRemoved: "Ключ удалён",
   signedOut: "Сессия закончилась, войдите снова",
   updateAvailable: "Доступно обновление",
   updating: "Скачиваем обновление…", installing: "Устанавливаем и перезапускаем…", updateFailed: "Не удалось обновить. Повторить",
   update: "Обновить", expired: "Закончился",
-  full: "Нет мест", noResults: "Ничего не найдено", noResultsHint: "Попробуйте другое название.",
+  // Same words as planPhrase in core/planwarn.go (the tray says the same, plus a reason).
+  planSoon: "Тариф заканчивается через", planToday: "Тариф заканчивается сегодня", days: ["день", "дня", "дней"],
+  full: "Нет мест",
+  // The owner's node status in the country list (issue #10).
+  degraded: "Возможны перебои", blocked2: "Часть провайдеров блокирует", maintenance: "Обслуживание",
+  maintenanceHint: "Страна на обслуживании, выберите другую",
+  noResults: "Ничего не найдено", noResultsHint: "Попробуйте другое название.",
   noCountries: "Список стран недоступен", noCountriesHint: "Проверьте интернет и попробуйте ещё раз.", retry: "Обновить список",
   noKeys: "Других ключей пока нет. Их можно создать в личном кабинете на сайте.",
   fastestNow: "Сейчас:", usedElsewhere: "Используется на другом устройстве",
@@ -27,6 +36,12 @@ const TXT = {
   signOutTitle: "Выйти из аккаунта?", signOutText: "VPN будет отключён. Чтобы вернуться, войдите снова.", signOut: "Выйти",
   connect: "Подключить VPN", disconnect: "Отключить VPN", wait: "Подождите, идёт подключение",
   codeSent: "Мы отправили код на", renameKey: "Переименовать ключ",
+  // «Сообщить о проблеме» (issue #11).
+  report: "Сообщить о проблеме", reportSend: "Отправить", reportSent: "Отчёт отправлен", reportNotSent: "Не удалось отправить",
+  reportNumber: "Номер отчёта:", reportSaved: "Отчёт сохранён в файл:",
+  reportCopied: "Текст отчёта скопирован в буфер обмена: его можно вставить в письмо или сообщение в поддержку.",
+  reportNotCopied: "Скопировать текст не получилось. Нажмите «Скопировать».",
+  reportCopiedAgain: "Скопировано", copyReport: "Скопировать", done: "Готово", cancel: "Отмена",
 };
 
 let S = { screen: "", conn: "off", countries: [] };
@@ -127,6 +142,7 @@ function problemAction() {
     case "auth": return { action: "signOut", label: TXT.signIn };
     case "key_removed": return { action: "keys", label: TXT.changeKey };
     case "no_handshake": case "dead": return { action: "places", label: TXT.changeCountry };
+    case "blocked": return { action: "places", label: TXT.otherCountry };
     default: return null;
   }
 }
@@ -142,6 +158,8 @@ function render(next) {
   $("signin").hidden = S.screen !== "signin";
   $("main").hidden = S.screen !== "main";
   renderUpdate();
+  renderPlanWarn();
+  renderNotice();
   if (S.screen === "signin" && prev.screen !== "signin") showForm("f-email");
   if (S.screen === "signin" && prev.webLogin && !S.webLogin && !$("f-web").hidden) showForm("f-email");
   if (S.screen !== "main") return;
@@ -166,6 +184,8 @@ function render(next) {
     act.hidden = true;
     delete act.dataset.action;
   }
+  // «Сообщить о проблеме» next to the problem's text.
+  $("report-btn").hidden = !$("detail").textContent;
   tick();
 
   // The place card shows where we are, or where we'd go.
@@ -197,6 +217,7 @@ function detailText() {
   if (S.problem === "plan") return TXT.plan;
   if (S.problem === "key_removed") return TXT.keyRemoved;
   if (S.problem === "auth") return TXT.signedOut;
+  if (S.problem === "blocked") return S.strictKill && !S.released ? TXT.blocked + " " + TXT.strictClosed : TXT.blocked;
   if (S.problem === "dead" && !S.released) return TXT.dead;
   if (S.released) return TXT.released;
   if (S.strictKill) return TXT.strict;
@@ -223,6 +244,31 @@ function renderUpdate() {
   $("s-update").classList.toggle("is-loading", busyNow);
   $("s-update-title").textContent = busyNow || stage === "failed" ? text : TXT.update + " до " + u.version;
   $("s-update-sub").textContent = busyNow || stage === "failed" ? "" : u.notes || "";
+}
+
+// The plan ends in 1–3 days or today (Go decides by the computer's clock: S.plan.warn, S.plan.daysLeft).
+// Not on the sign-in screen and not next to the "plan has ended" problem, which says more.
+function renderPlanWarn() {
+  const p = S.screen === "main" && S.problem !== "plan" ? S.plan : null;
+  const warn = p ? p.warn : "";
+  $("plan-banner").hidden = !warn;
+  if (!warn) return;
+  $("plan-banner-text").textContent = warn === "today" ? TXT.planToday : `${TXT.planSoon} ${p.daysLeft} ${dayWord(p.daysLeft)}`;
+}
+
+// The owner's note (S.notice): the node in use, else the one for everyone. Go leaves out a note
+// the person closed; closing hides it at once and tells Go, which keeps the text.
+let noticeClosed = "";
+function renderNotice() {
+  const text = S.screen === "main" && S.notice && S.notice !== noticeClosed ? S.notice : "";
+  $("notice-banner").hidden = !text;
+  $("notice-text").textContent = text;
+}
+
+// "день", "дня" or "дней" for n.
+function dayWord(n) {
+  const t = n % 100, u = n % 10;
+  return t >= 11 && t <= 14 ? TXT.days[2] : u === 1 ? TXT.days[0] : u >= 2 && u <= 4 ? TXT.days[1] : TXT.days[2];
 }
 
 function planExpired() {
@@ -293,14 +339,20 @@ function renderPlaces(animate) {
     b.className = "list-item" + (c.code === chosen ? " selected" : "");
     if (c.code === chosen) b.setAttribute("aria-current", "true");
     if (animate) b.style.animationDelay = `${Math.min(i, 12) * 18}ms`; else b.style.animation = "none";
+    // Under maintenance: not chosen, like a full country. Degraded or blocked: chosen with a warning.
+    const off = c.status === "maintenance";
+    const warn = c.status === "degraded" ? TXT.degraded : c.status === "blocked" ? TXT.blocked2 : "";
     b.innerHTML = `<span class="flag"></span><span class="item-text"><b class="item-title"></b><small class="item-sub"></small></span>` +
-      (c.full ? `<span class="badge"></span>` : `<span class="ping"><i></i><i></i><i></i><em></em></span>`) + CHECK;
+      (c.full || off ? `<span class="badge"></span>` : `<span class="ping"><i></i><i></i><i></i><em></em></span>`) + CHECK;
     flag(b.querySelector(".flag"), c.code);
     b.querySelector("b").textContent = countryName(c.code);
-    b.querySelector("small").textContent = c.sub || "";
-    if (c.full) {
+    const small = b.querySelector("small");
+    small.textContent = c.sub || warn || "";
+    small.classList.toggle("is-warn", !!warn);
+    if (c.full || off) {
       b.disabled = true;
-      b.querySelector(".badge").textContent = TXT.full;
+      b.querySelector(".badge").textContent = off ? TXT.maintenance : TXT.full;
+      if (off) b.title = TXT.maintenanceHint;
     } else setPing(b.querySelector(".ping"), c.ping);
     b.onclick = async () => { closeSheet("places"); await call("setCountry", c.code); };
     list.appendChild(b);
@@ -395,6 +447,81 @@ function closeConfirm(result) {
 $("confirm-cancel").onclick = () => closeConfirm(false);
 $("f-confirm").onsubmit = (e) => { e.preventDefault(); closeConfirm(true); };
 
+// «Сообщить о проблеме»: an optional comment, then Go builds the report (secrets cut out), sends it to
+// the panel and puts it on the clipboard. When the panel cannot take it, Go saves it next to the log.
+let reportText = "";
+function openReport(from) {
+  reportText = "";
+  $("report-title").textContent = TXT.report;
+  $("report-ask").hidden = false;
+  $("report-done").hidden = true;
+  $("report-comment").value = "";
+  $("report-cancel").hidden = false;
+  $("report-cancel").textContent = TXT.cancel;
+  $("report-copy").hidden = true;
+  $("report-copy").textContent = TXT.copyReport;
+  const send = $("report-send");
+  send.hidden = false;
+  send.disabled = false;
+  send.classList.remove("is-loading");
+  send.textContent = TXT.reportSend;
+  $("report-close").hidden = true;
+  openDialog("report", from, "report-comment");
+}
+function closeReport() { closeDialog("report"); }
+// The window's own copy, for when Go has no clipboard of its own (the dev build) or it failed.
+async function copyHere(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
+}
+function showReportResult(r, copied) {
+  $("report-title").textContent = r.sent ? TXT.reportSent : TXT.reportNotSent;
+  $("report-ask").hidden = true;
+  $("report-done").hidden = false;
+  $("report-detail").textContent = r.sent ? `${TXT.reportNumber} ${r.id}` : r.file ? `${r.error}. ${TXT.reportSaved}` : r.error || "";
+  $("report-file").hidden = r.sent || !r.file;
+  $("report-file").textContent = r.file || "";
+  $("report-copied").textContent = copied ? TXT.reportCopied : TXT.reportNotCopied;
+  $("report-cancel").hidden = true;
+  $("report-copy").hidden = r.sent && copied;
+  $("report-send").hidden = true;
+  const close = $("report-close");
+  close.textContent = TXT.done;
+  close.hidden = false;
+  setTimeout(() => close.focus(), 30);
+}
+$("f-report").onsubmit = async (e) => {
+  e.preventDefault();
+  const send = $("report-send");
+  if (send.disabled || send.hidden) return;
+  send.disabled = true;
+  send.classList.add("is-loading");
+  $("report-comment").disabled = true;
+  try {
+    const r = await call("reportProblem", { comment: $("report-comment").value }, { silent: true });
+    reportText = r.text || "";
+    const copied = r.copied || (reportText ? await copyHere(reportText) : false);
+    if (!$("report").hidden) showReportResult(r, copied);
+  } catch (err) {
+    showReportResult({ sent: false, error: String((err && err.message) || err).replace(/^Error: /, "") }, false);
+  } finally {
+    send.disabled = false;
+    send.classList.remove("is-loading");
+    $("report-comment").disabled = false;
+  }
+};
+$("report-comment").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("f-report").requestSubmit(); }
+});
+$("report-cancel").onclick = closeReport;
+$("report-close").onclick = closeReport;
+$("report-copy").onclick = async () => {
+  let ok = false;
+  try { ok = await call("copyReport", null, { silent: true }); } catch { ok = false; }
+  if (!ok && reportText) ok = await copyHere(reportText);
+  $("report-copied").textContent = ok ? TXT.reportCopied : TXT.reportNotCopied;
+  if (ok) $("report-copy").textContent = TXT.reportCopiedAgain;
+};
+
 function tick() {
   const el = $("timer");
   if (S.conn !== "on" || !S.since) { el.textContent = ""; return; }
@@ -464,7 +591,7 @@ function closeDialog(id) {
 
 // The topmost thing that holds the keyboard: a dialog, else a sheet on a narrow window.
 function modal() {
-  for (const id of ["confirm", "rename"]) if (!$(id).hidden) return $(id);
+  for (const id of ["confirm", "rename", "report"]) if (!$(id).hidden) return $(id);
   if (!wide.matches) return SHEETS.map($).find((el) => !el.hidden && !el.classList.contains("closing")) || null;
   return null;
 }
@@ -472,6 +599,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (!$("confirm").hidden) closeConfirm(false);
     else if (!$("rename").hidden) closeRename();
+    else if (!$("report").hidden) closeReport();
     else SHEETS.forEach((id) => closeSheet(id));
     return;
   }
@@ -479,7 +607,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Tab") {
     const m = modal();
     if (!m) return;
-    const items = [...m.querySelectorAll("button, input, [tabindex]")].filter((el) => !el.disabled && !el.hidden && el.tabIndex >= 0 && el.offsetParent !== null);
+    const items = [...m.querySelectorAll("button, input, textarea, [tabindex]")].filter((el) => !el.disabled && !el.hidden && el.tabIndex >= 0 && el.offsetParent !== null);
     if (!items.length) return;
     const first = items[0], last = items[items.length - 1];
     if (!m.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
@@ -600,12 +728,20 @@ $("s-auto").onchange = (e) => call("setAutoConnect", e.target.checked).catch(() 
 $("s-strict").onchange = (e) => call("setStrictKill", e.target.checked).catch(() => {});
 $("s-update").onclick = () => call("update").catch(() => {});
 $("update-banner").onclick = () => call("update").catch(() => {});
+$("plan-extend").onclick = () => call("extend").catch(() => {});
+$("notice-close").onclick = () => {
+  noticeClosed = S.notice || "";
+  renderNotice();
+  call("closeNotice", noticeClosed, { silent: true }).catch(() => {});
+};
 $("detail-btn").onclick = (e) => {
   const a = e.currentTarget.dataset.action;
   if (a === "places" || a === "keys") openSheet(a);
   else if (a === "extend") call("extend").catch(() => {});
   else if (a === "signOut") call("signOut").catch(() => {});
 };
+$("s-report").onclick = (e) => openReport(e.currentTarget);
+$("report-btn").onclick = (e) => openReport(e.currentTarget);
 $("s-start").onchange = (e) => call("setAutostart", e.target.checked).catch(() => {});
 $("s-signout").onclick = async (e) => {
   const ok = await confirmDialog({ title: TXT.signOutTitle, text: TXT.signOutText, ok: TXT.signOut }, e.currentTarget);

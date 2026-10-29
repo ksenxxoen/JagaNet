@@ -15,8 +15,8 @@ import (
 
 // ui/app.js is written against these names; changing one means changing both.
 var wantCommands = []string{
-	"cancelWebLogin", "extend", "openWebLogin", "ready", "redeemPairing", "refreshKeys", "refreshPings",
-	"renameKey", "setAutoConnect", "setAutostart", "setCountry", "setKey", "setStrictKill",
+	"cancelWebLogin", "closeNotice", "copyReport", "extend", "openWebLogin", "ready", "redeemPairing", "refreshKeys", "refreshPings",
+	"renameKey", "reportProblem", "setAutoConnect", "setAutostart", "setCountry", "setKey", "setStrictKill",
 	"signOut", "startEmail", "startWebLogin", "toggle", "update", "verifyEmail",
 }
 
@@ -80,9 +80,9 @@ func TestUIStateWireNames(t *testing.T) {
 	}
 	slices.Sort(got)
 	want := []string{
-		"autoConnect", "autostart", "best", "conn", "countries", "countries.code", "countries.full", "countries.ping",
+		"autoConnect", "autostart", "best", "conn", "countries", "countries.code", "countries.full", "countries.ping", "countries.status",
 		"country", "current", "email", "key", "keys", "keys.country", "keys.id", "keys.inUse", "keys.name",
-		"ping", "plan", "plan.expiresAt", "plan.name", "plan.pro", "problem", "released", "screen",
+		"notice", "ping", "plan", "plan.daysLeft", "plan.expiresAt", "plan.name", "plan.pro", "plan.warn", "problem", "released", "screen",
 		"since", "strictKill", "update", "update.mandatory", "update.notes", "update.stage", "update.version", "version", "webLogin",
 	}
 	if !slices.Equal(got, want) {

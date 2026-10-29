@@ -17,6 +17,7 @@
   .status { margin-top: var(--s-3); }
 }
 .app > .banner { width: calc(100% - 2 * var(--s-4)); max-width: calc(var(--content-w) - 2 * var(--s-4)); }
+.app > .banner:not([hidden]) ~ .banner { margin-top: var(--s-2); }
 
 /* Soft colour behind the button that follows the state. */
 .glow {
@@ -125,6 +126,14 @@
 .timer { margin-top: var(--s-1); font-size: var(--fs-md); color: var(--text-2); font-variant-numeric: tabular-nums; min-height: 1.5rem; letter-spacing: .04em; }
 .timer:empty { display: none; }
 .detail-btn { margin-top: var(--s-3); }
+.report-link { margin-top: var(--s-1); }
+
+/* ---------- problem report ---------- */
+.report-ask, .report-done { display: flex; flex-direction: column; gap: var(--s-3); }
+.report-file {
+  padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text);
+  font-size: var(--fs-xs); overflow-wrap: anywhere; user-select: text;
+}
 
 .place { margin: 0 var(--s-4) var(--s-4); width: calc(100% - 2 * var(--s-4)); min-height: 4.125rem; }
 .place .item-title { font-size: var(--fs-md); }

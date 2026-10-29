@@ -28,6 +28,9 @@ const (
 	ProbPlan        = "plan"
 	ProbKeyRemoved  = "key_removed"
 	ProbAuth        = "auth"
+	// ProbBlocked: the internet works outside the tunnel, the node does not answer
+	// (the network drops VPN). Set by the probe (probe.go), never by the supervisor.
+	ProbBlocked = "blocked"
 )
 
 // Supervisor decides what a connected attempt should do. It does no I/O;
@@ -49,6 +52,7 @@ type Supervisor struct {
 	GraceUntil  time.Time // a retry after release may hold the kill switch only this long
 	Nudges      int
 	EnteredOn   bool
+	Reported    bool // this problem's failure report went out; again only after the tunnel is up
 }
 
 // Sample is one observation of the tunnel.
@@ -73,6 +77,7 @@ type Step struct {
 	Resolve bool // periodic re-resolve; apply only if the address changed
 	Notify  string
 	Reason  string
+	Report  string // a failure report for the panel: EvHandshakeFailed or EvNoRx, once per problem
 }
 
 // Started begins a fresh attempt. rx is the counter at apply time.
@@ -111,6 +116,7 @@ func (s *Supervisor) Tick(sm Sample) Step {
 		s.DeadSince = time.Time{}
 		s.RxFlatSince = time.Time{}
 		s.Nudges = 0
+		s.Reported = false
 		step := Step{Phase: "on", Clear: true, Reason: "up"}
 		if from != "on" {
 			s.EnteredOn = true
@@ -129,7 +135,12 @@ func (s *Supervisor) Tick(sm Sample) Step {
 			s.RxAtAttempt = sm.Rx
 			s.Nudges = 1
 			s.RxFlatSince = time.Time{}
-			return Step{Phase: "reconnecting", Nudge: true, Notify: ProbDead, Reason: why}
+			step := Step{Phase: "reconnecting", Nudge: true, Notify: ProbDead, Reason: why}
+			if !s.Reported {
+				s.Reported = true
+				step.Report = EvNoRx
+			}
+			return step
 		}
 		if sm.Now.Sub(s.LastResolve) >= EndpointRefresh {
 			s.LastResolve = sm.Now
@@ -205,6 +216,10 @@ func (s *Supervisor) giveUp(sm Sample, code string, attemptDone bool) Step {
 	step := Step{Phase: "problem", Problem: code, Reason: "budget"}
 	if first {
 		step.Notify = code
+	}
+	if code == ProbNoHandshake && !s.Reported {
+		s.Reported = true
+		step.Report = EvHandshakeFailed
 	}
 	if !sm.Strict {
 		if !s.Released {

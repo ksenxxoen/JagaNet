@@ -9,7 +9,7 @@
 // detector, DNS re-resolving, the real kill switch. Banner and sheet behaviour with invented
 // states lives in scripts/ui-checks.mjs.
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, openSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, openSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -231,16 +231,21 @@ try {
 
   /* ---------- 5. the server is silent (blocked node) ---------- */
   // Real timeouts: problem text after 20 s, the connection is given back (kill switch released) after 45 s.
+  // Then the probe outside the tunnel finds the panel answering (its /v1/health here is a 404, which
+  // still counts), so the silence is put down to the network: "blocked" with "Другая страна".
   panel.reset();
   const c = await launch({ env: { BOOP_FAKE_NOHANDSHAKE: "1" } });
   await signInByMail(c);
   await c.click("#boop");
   await c.until("connecting, no handshake yet", async () => (await c.conn()) === "connecting");
   await c.until("internet is given back after the connect budget", async () => (await c.state()).released === true, 60000);
-  check("released text is shown", (await detail(c)) === (await TXT(c)).released);
+  await c.until("the probe calls it blocked", async () => (await c.state()).problem === "blocked", 10000);
+  check("blocked text is shown", (await detail(c)) === (await TXT(c)).blocked);
+  check("blocked: the action is 'Другая страна'", !(await c.hidden("detail-btn")) && (await c.text("detail-btn")) === (await TXT(c)).otherCountry);
   check("released: the button can still cancel", (await c.conn()) !== "off");
-  // 30 s later it tries again on its own: the problem text stays, the internet is held again
-  await c.until("'server does not answer' on the retry", async () => (await detail(c)) === (await TXT(c)).noHandshake, 40000);
+  // 30 s later it tries again on its own, the internet is held again; the explanation stays
+  await c.until("retry holds the internet again", async () => (await c.state()).released !== true, 40000);
+  check("blocked text stays on the retry", (await detail(c)) === (await TXT(c)).blocked);
   await c.click("#boop");
   await c.until("off", async () => (await c.conn()) === "off");
 
@@ -250,12 +255,107 @@ try {
   await sleep(500);
   await c.page.keyboard.press("Escape");
   await c.click("#boop");
-  await c.until("strict: 'internet is blocked' text", async () => (await detail(c)) === (await TXT(c)).strict, 60000);
+  await c.until("strict: 'internet is blocked' text", async () => { const t = await TXT(c); const d = await detail(c); return d === t.strict || d === t.blocked + " " + t.strictClosed; }, 60000);
+  await c.until("strict: blocked, internet closed", async () => (await detail(c)) === (await TXT(c)).blocked + " " + (await TXT(c)).strictClosed, 10000);
   await sleep(10000);
   check("strict: still not released after the budget", (await c.state()).released !== true);
   await c.click("#boop");
   await c.until("off", async () => (await c.conn()) === "off");
   await c.stop();
+
+  /* ---------- 6. the plan ends soon (issue #4) ---------- */
+  // The panel's date is two days away: the window shows the banner with «Продлить».
+  panel.reset();
+  panel.expiresAt = new Date(Date.now() + 2 * 86_400_000).toISOString();
+  const d = await launch();
+  await signInByMail(d);
+  await d.until("plan warning banner", async () => !(await d.hidden("plan-banner")));
+  check("banner says two days", (await d.text("plan-banner-text")) === "Тариф заканчивается через 2 дня");
+  check("banner offers «Продлить»", (await d.text("plan-extend")) === "Продлить");
+  check("the state carries the warning", ((await d.state()).plan || {}).warn === "soon");
+  // Renewed on the site: after the next check (here: a reload, which asks the panel again) the banner is gone.
+  panel.expiresAt = new Date(Date.now() + 40 * 86_400_000).toISOString();
+  await d.page.reload();
+  await d.until("banner gone after renewal", async () => (await d.state()).plan && (await d.hidden("plan-banner")));
+  await d.stop();
+  // A plan without an end: no banner.
+  panel.reset();
+  panel.expiresAt = null;
+  const u = await launch();
+  await signInByMail(u);
+  await u.until("plan loaded", async () => !!(await u.state()).plan);
+  check("no end date, no banner", await u.hidden("plan-banner"));
+  await u.stop();
+
+  /* ---------- 7. the owner's node status and notes (issue #10) ---------- */
+  // The Dutch node (the fastest) is under maintenance, the Finnish one unstable, the German one has a note.
+  panel.reset();
+  panel.statuses = { "s-nl": "maintenance", "s-fi": "degraded" };
+  panel.notices = { "s-de": "Вечером возможны задержки" };
+  panel.notice = "Сегодня ночью плановые работы";
+  const n = await launch();
+  await signInByMail(n);
+  await n.until("note for everyone in the banner", async () => !(await n.hidden("notice-banner")) && (await n.text("notice-text")) === "Сегодня ночью плановые работы");
+  await n.click("#open-places");
+  await n.until("country list", async () => !(await n.hidden("places")) && (await n.page.evaluate(() => document.querySelectorAll("#place-list .list-item").length)) === 4);
+  const rows = await n.page.evaluate(() => Object.fromEntries([...document.querySelectorAll("#place-list .list-item")].map((b) => [b.querySelector(".item-title").textContent, { disabled: b.disabled, sub: b.querySelector(".item-sub").textContent, badge: (b.querySelector(".badge") || {}).textContent || "" }])));
+  check("Netherlands under maintenance: not chosen", rows["Нидерланды"].disabled && rows["Нидерланды"].badge === "Обслуживание", rows);
+  check("Finland unstable: chosen with a warning", !rows["Финляндия"].disabled && rows["Финляндия"].sub === "Возможны перебои", rows);
+  await n.click("#places [data-close]");
+  await n.click("#boop");
+  await n.until("connected", async () => (await n.conn()) === "on");
+  const tok = Object.keys(panel.tunnels).at(-1); // this instance signed in last
+  check("fastest skipped the node under maintenance and the unstable one", tok && panel.tunnels[tok].serverID === "s-de", panel.tunnels);
+  await n.until("the node's note while connected to it", async () => (await n.text("notice-text")) === "Вечером возможны задержки" && !(await n.hidden("notice-banner")));
+  await n.click("#notice-close");
+  await n.until("closing shows the next note", async () => (await n.text("notice-text")) === "Сегодня ночью плановые работы");
+  await n.click("#notice-close");
+  await n.until("both closed", async () => await n.hidden("notice-banner"));
+  await n.click("#boop");
+  await n.until("off", async () => (await n.conn()) === "off");
+  await n.stop();
+  // A restart: closed notes stay closed, a new text shows.
+  const n2 = await launch({ data: n.data });
+  await n2.until("main screen after restart", async () => (await screen(n2)) === "main" && (await n2.state()).countries.length === 3);
+  await sleep(500);
+  check("a closed note does not come back after a restart", await n2.hidden("notice-banner"));
+  panel.notice = "Работы закончены";
+  await n2.page.reload();
+  await n2.until("a new note shows", async () => (await n2.text("notice-text")) === "Работы закончены" && !(await n2.hidden("notice-banner")));
+  await n2.stop();
+
+  /* ---------- 8. «Сообщить о проблеме» (issue #11) ---------- */
+  panel.reset();
+  const r = await launch();
+  await signInByMail(r);
+  await r.click("#boop");
+  await r.until("connected before the report", async () => (await r.conn()) === "on");
+  await r.click("#open-settings");
+  await r.until("settings open", async () => !(await r.hidden("settings")));
+  await r.click("#s-report");
+  await r.until("report dialog", async () => !(await r.hidden("report")) && !(await r.hidden("report-ask")));
+  await r.page.evaluate(() => { document.getElementById("report-comment").value = "Не открываются сайты, ключ https://panel.example.com/k/AbC123xYz"; });
+  await r.click("#report-send");
+  await r.until("report sent", async () => !(await r.hidden("report-done")) && (await r.text("report-title")) === "Отчёт отправлен");
+  check("the dialog gives the report's number", (await r.text("report-detail")) === "Номер отчёта: 1", await r.text("report-detail"));
+  const sent = panel.diagnostics[0] || {};
+  check("the panel got one report", panel.diagnostics.length === 1, panel.diagnostics.length);
+  check("the report says what the app knows", sent.state === "on" && /^s-/.test(sent.serverId || "") && sent.country === "auto" && sent.platform && sent.appVersion && (sent.text || "").includes("Отчёт Boop о проблеме"), { ...sent, text: (sent.text || "").slice(0, 200) });
+  check("the report carries the end of the log", (sent.text || "").includes("Журнал (последние 300 строк boop.log)") && (sent.text || "").includes("vpn: up"), (sent.text || "").slice(-300));
+  check("the comment is kept, the key link is cut out", (sent.comment || "").startsWith("Не открываются сайты") && !JSON.stringify(sent).includes("/k/") && !JSON.stringify(sent).includes("AbC123xYz"), sent.comment);
+  check("no session token in the report", !JSON.stringify(sent).includes("tok-dev-mail"));
+  await r.click("#report-close");
+  await r.until("dialog closed", async () => await r.hidden("report"));
+  // The panel refuses: the text is saved next to the log and offered for copying.
+  panel.status["diagnostics"] = 503;
+  await r.click("#s-report");
+  await r.until("report dialog again", async () => !(await r.hidden("report")) && !(await r.hidden("report-ask")));
+  await r.click("#report-send");
+  await r.until("report not sent", async () => (await r.text("report-title")) === "Не удалось отправить");
+  const file = await r.text("report-file");
+  check("the report is saved to a file next to the log", file.startsWith(r.data) && /boop-report-\d{8}-\d{6}\.txt$/.test(file) && existsSync(file), file);
+  check("copying is offered", !(await r.hidden("report-copy")));
+  await r.stop();
 } catch (e) {
   check(`unexpected error: ${e && e.stack || e}`, false);
 } finally {

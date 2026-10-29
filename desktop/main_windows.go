@@ -57,7 +57,8 @@ func main() {
 
 	dir := filepath.Join(os.Getenv("LOCALAPPDATA"), "Boop")
 	_ = os.MkdirAll(dir, 0o700)
-	if lw, err := core.NewRotatingWriter(filepath.Join(dir, "boop.log"), 1<<20); err == nil {
+	logPath := filepath.Join(dir, "boop.log")
+	if lw, err := core.NewRotatingWriter(logPath, 1<<20); err == nil {
 		log.SetFlags(log.LstdFlags)
 		log.SetOutput(lw)
 	}
@@ -80,6 +81,8 @@ func main() {
 	core.Protect = dpapi(true)
 	core.Unprotect = dpapi(false)
 	core.SocketControl = vpn.SocketControl
+	core.NetworkKind = vpn.NetworkKind
+	core.OSVersion = windowsVersion
 
 	tun, _ := vpn.New()
 	exeDir := "."
@@ -89,7 +92,7 @@ func main() {
 	app := &core.App{
 		API: core.NewAPI(apiBase, nil), Store: core.LoadStore(dir), Tunnel: tun, Ping: vpn.Ping,
 		Version: version, Site: apiBase, OpenURL: openURL, UpdateDir: exeDir,
-		Autostart: setAutostart, AutostartOn: autostartOn,
+		Autostart: setAutostart, AutostartOn: autostartOn, LogPath: logPath,
 	}
 	app.ApplyUpdate = func(staged string) error { return applyUpdate(app, staged) }
 
@@ -141,6 +144,17 @@ func main() {
 	app.OnToast = func(msg string) {
 		b, _ := json.Marshal(map[string]string{"toast": msg})
 		push("window.boop && window.boop.update(" + string(b) + ")")
+	}
+	// The clipboard belongs to the window: set it on the window's thread.
+	app.Clipboard = func(text string) error {
+		done := make(chan error, 1)
+		w.Dispatch(func() { done <- setClipboard(hwnd, text) })
+		select {
+		case err := <-done:
+			return err
+		case <-time.After(5 * time.Second):
+			return errClipboardBusy
+		}
 	}
 	app.OnNotify = func(msg string) {
 		w.Dispatch(func() { t.balloon(msg) })

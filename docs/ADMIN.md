@@ -27,6 +27,34 @@ Website `#/admin` (owners only):
   rubles and euros, devices, data per month (empty = unlimited), badge, order, status. Changes
   apply to new purchases only; bought subscriptions keep their terms. Tariffs are archived, not
   deleted. Below: free plan limits and invite rewards.
+- **Connection failures**: failed connections the Boop apps report (`handshake_failed`: the node
+  never answered; `no_rx`: a working tunnel went quiet), the latest 200 with user, device, node,
+  the node's address, the app's reason (`blocked`, `offline`, `no_handshake`, `no_rx`,
+  `stale_handshake`), network kind and app version; filters by node and user (e-mail or id) and
+  a count per node for the last 15 minutes. One report per device per minute is kept (the rest
+  are dropped quietly), for 30 days. Table `connection_failures` (migration V14).
+- **Problem reports** (issue #11): what the Boop app for Windows sends when the person presses
+  «Сообщить о проблеме» (in the settings, and next to the problem on the main screen). The list
+  (latest 200, filter by e-mail or user id) shows the date, user and device, app and Windows
+  versions, the connection and its problem code, the node and the chosen country, and whether there
+  is a comment; a report opens with the node's host name and the addresses it resolved to, the
+  handshake's age, traffic, the last network check, the comment and the whole text (with the last
+  300 lines of the app's log) and a Copy button. The app cuts keys, tokens, configs and key links out
+  before sending. API: `POST /v1/diagnostics` (`DiagnosticsReq`, any signed-in device; 256 KB at most,
+  413 above; 5 per device per hour, 429 above), `GET /v1/admin/diagnostics?user=` and
+  `GET /v1/admin/diagnostics/{id}` (owner only). Kept 30 days (hourly cleanup). Table `diagnostics`
+  (migration V16).
+- **Nodes** (status and notes, issue #10): each node's edit form has **In the apps**: a status
+  (`ok`; `degraded`: works with problems, the apps pick it last; `blocked`: blocked by some
+  networks, "Fastest" skips it but a country picked by hand still connects; `maintenance`: the
+  apps don't pick it) and a note for the node's users (up to 200 characters). Above the list,
+  **Note for everyone**. The Boop app for Windows shows the note in a banner the person can close
+  (the same text does not come back). The node itself keeps working and keeps its devices; the
+  server's own pick (an app that asks for no node) puts `ok` first and `blocked` / `maintenance`
+  last. API: `PUT /v1/admin/nodes/{id}/status` `{status, notice}`, `PUT /v1/admin/settings/notice`
+  `{text}` (owner only); `GET /v1/servers` sends `status`, `notice` per node and `notice` for
+  everyone, `GET`/`POST /v1/tunnel` the node's `notice`. All optional: older apps ignore them.
+  Columns `servers.status`, `servers.notice` (migration V15); the note for everyone is in `settings`.
 - **E-mail**: SMTP of any provider (Brevo, Mailgun, Postmark, Amazon SES, Gmail, Zoho…), test e-mail.
   The password is stored encrypted.
 - **Alerts**: e-mail recipients and Telegram chat ids (the bot's `/myid` shows a chat's id).

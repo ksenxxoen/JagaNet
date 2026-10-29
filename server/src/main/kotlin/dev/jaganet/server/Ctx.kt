@@ -33,4 +33,6 @@ class Live(cfg: Config) {
     @Volatile var monthlyTrafficLimitBytes: Long? = cfg.monitor.monthlyTrafficLimitBytes
     /** "test" or a real provider id; null = selling is off. */
     @Volatile var paymentProvider: String? = cfg.paymentProvider
+    /** The owner's note for everyone, shown by the apps (GET /servers); null = none. */
+    @Volatile var notice: String? = null
 }

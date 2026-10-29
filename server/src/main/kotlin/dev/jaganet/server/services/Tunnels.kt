@@ -2,6 +2,9 @@ package dev.jaganet.server.services
 
 import dev.jaganet.api.ConnectionEventReq
 import dev.jaganet.api.ConnectionEventType
+import dev.jaganet.api.ConnectionFailure
+import dev.jaganet.api.ConnectionFailuresRes
+import dev.jaganet.api.NodeFailureCount
 import dev.jaganet.api.Device
 import dev.jaganet.api.ErrorCode
 import dev.jaganet.api.Platform
@@ -32,6 +35,23 @@ fun Row.node(protocol: String) = ServerNode(
     remote = strOrNull("agent_token_hash") != null,
 )
 
+/** Failure reports: one per device per [FAILURE_EVERY], kept [FAILURE_KEEP], counted per node over [FAILURE_RECENT]. */
+private val FAILURE_EVERY = Duration.ofMinutes(1)
+private val FAILURE_KEEP = Duration.ofDays(30)
+private val FAILURE_RECENT = Duration.ofMinutes(15)
+private val FAILURE_TYPES = mapOf(ConnectionEventType.HANDSHAKE_FAILED to "handshake_failed", ConnectionEventType.NO_RX to "no_rx")
+private val NETWORKS = setOf("wifi", "ethernet", "mobile", "unknown")
+private val ID_TEXT = Regex("^[0-9a-fA-F-]{36}$")
+
+/** Trimmed, cut to [max] characters, null when empty. */
+private fun String?.clean(max: Int) = this?.trim()?.take(max)?.takeIf { it.isNotEmpty() }
+
+/**
+ * The owner's node status as a sort key for the server's own choice (no node asked for):
+ * ok first, then degraded; blocked and maintenance only when nothing else is left.
+ */
+private const val STATUS_RANK = "CASE s.status WHEN 'ok' THEN 0 WHEN 'degraded' THEN 1 ELSE 2 END"
+
 /** Active and, for a remote node, reporting in. */
 private const val USABLE = "s.active AND (s.agent_token_hash IS NULL OR s.last_report_at > ?)"
 
@@ -52,7 +72,10 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         sql.query("SELECT s.*, (SELECT count(*)::int FROM tunnels t WHERE t.server_id=s.id) AS peers FROM servers s WHERE $USABLE ORDER BY s.name", ctx.now().minus(NODE_OFFLINE))
             .map { s ->
                 val host = s.json("protocols").values.firstNotNullOfOrNull { ((it as? JsonObject)?.get("endpoint") as? JsonPrimitive)?.content }?.substringBeforeLast(':')
-                ServerLocation(s.str("id"), s.str("name"), s.str("city"), s.str("country_code"), minOf(1.0, s.int("peers").toDouble() / s.int("max_peers")), usable(s), host)
+                ServerLocation(
+                    s.str("id"), s.str("name"), s.str("city"), s.str("country_code"), minOf(1.0, s.int("peers").toDouble() / s.int("max_peers")), usable(s), host,
+                    status = s.str("status"), notice = s.strOrNull("notice"),
+                )
             }
             .filter { it.protocols.isNotEmpty() }
     }
@@ -180,10 +203,12 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
             mtu = server.int("mtu"),
             params = params,
         ).withEndpointIp(publicIp(server, proto))
+        // The note is left out of the version: a new note is nothing the tunnel has to apply.
         val version = java.security.MessageDigest.getInstance("SHA-256")
             .digest((Protocols.encode(cfg).toString() + "|" + t.str("peer_key")).toByteArray())
             .take(12).joinToString("") { "%02x".format(it) }
-        TunnelState(cfg, version, t.bool("rekey"), server.str("country_code").trim())
+        val notice = server.strOrNull("notice")
+        TunnelState(cfg.copy(notice = notice), version, t.bool("rekey"), server.str("country_code").trim(), notice)
     }
 
     suspend fun defaultProtocol(): String? = servers().flatMap { it.protocols }.toSet().let { offered -> ctx.drivers.ids().firstOrNull { it in offered } }
@@ -236,6 +261,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
                 dns = server.strings("dns"),
                 mtu = server.int("mtu"),
                 params = added.params,
+                notice = server.strOrNull("notice"),
             )
         }
     }
@@ -249,16 +275,18 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         return sql.one(
             """SELECT s.* FROM servers s WHERE $USABLE AND (s.protocols -> ?) IS NOT NULL
                   AND (SELECT count(*) FROM tunnels t WHERE t.server_id=s.id) < s.max_peers
-                ORDER BY (SELECT count(*) FROM tunnels t WHERE t.server_id=s.id)::float / s.max_peers LIMIT 1""",
+                ORDER BY $STATUS_RANK, (SELECT count(*) FROM tunnels t WHERE t.server_id=s.id)::float / s.max_peers LIMIT 1""",
             ctx.now().minus(NODE_OFFLINE), protocol,
         ) ?: throw AppError(503, ErrorCode.SERVER_FULL, "No server offers {protocol}", mapOf("protocol" to protocol))
     }
 
     suspend fun connectionEvent(p: Principal, ev: ConnectionEventReq) {
         val at = minOf(runCatching { Instant.parse(ev.at) }.getOrElse { throw badRequest("bad timestamp") }, ctx.now())
+        if (ev.type.failure) return connectionFailure(p, ev, at)
         val (t, server) = ctx.db.run { sql ->
             val t = sql.one("SELECT * FROM tunnels WHERE device_id=?::uuid", p.deviceId) ?: throw notFound("No tunnel for this device")
             when (ev.type) {
+                ConnectionEventType.HANDSHAKE_FAILED, ConnectionEventType.NO_RX -> error("failures are stored by connectionFailure")
                 ConnectionEventType.CONNECTED -> {
                     sql.exec("UPDATE connection_sessions SET ended_at=? WHERE device_id=?::uuid AND ended_at IS NULL", at, p.deviceId)
                     sql.exec("INSERT INTO connection_sessions (device_id, protocol, started_at) VALUES (?::uuid,?,?)", p.deviceId, t.str("protocol"), at)
@@ -272,6 +300,77 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         }
         val proto = t.str("protocol")
         if (server != null) ctx.drivers[proto]?.onConnectionEvent(server.node(proto), t.str("peer_key"), ev.type == ConnectionEventType.CONNECTED)
+    }
+
+    /**
+     * A failed attempt (handshake_failed, no_rx): stored for the admin panel, nothing else.
+     * Sessions and the node's driver are not touched. At most one per device per minute;
+     * the rest are dropped without an error, so an app never retries them. Works without
+     * a tunnel too (a device whose key was just removed may still report).
+     */
+    private suspend fun connectionFailure(p: Principal, ev: ConnectionEventReq, at: Instant) {
+        val now = ctx.now()
+        // A report kept on the device for a long time is no longer news.
+        if (at.isBefore(now.minus(FAILURE_KEEP))) return
+        ctx.db.run { sql ->
+            val tunnelServer = sql.one("SELECT server_id FROM tunnels WHERE device_id=?::uuid", p.deviceId)?.str("server_id")
+            val asked = ev.serverId?.trim()?.takeIf { it.isNotEmpty() && it.length <= 64 }
+            val serverId = asked?.takeIf { sql.one("SELECT 1 AS one FROM servers WHERE id=?", it) != null } ?: tunnelServer
+            sql.exec(
+                """INSERT INTO connection_failures (device_id, user_id, server_id, type, reason, endpoint, network, app_version, platform, at, received_at)
+                   SELECT ?::uuid, ?::uuid, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    WHERE NOT EXISTS (SELECT 1 FROM connection_failures WHERE device_id=?::uuid AND received_at > ?)""",
+                p.deviceId, p.user.id, serverId, FAILURE_TYPES.getValue(ev.type),
+                ev.reason.clean(40), ev.endpoint.clean(64), ev.network?.trim()?.lowercase()?.let { if (it in NETWORKS) it else "unknown" },
+                ev.appVersion.clean(32), ev.platform.clean(16), at, now,
+                p.deviceId, now.minus(FAILURE_EVERY),
+            )
+        }
+    }
+
+    /** Failures older than 30 days go. Runs every hour. */
+    suspend fun pruneFailures(): Int = ctx.db.run { it.exec("DELETE FROM connection_failures WHERE at < ?", ctx.now().minus(FAILURE_KEEP)) }
+
+    /** The admin panel's list: the latest 200, by node and/or user (e-mail or id), and every node's count for 15 minutes. */
+    suspend fun failures(server: String?, user: String?): ConnectionFailuresRes = ctx.db.run { sql ->
+        val where = mutableListOf("TRUE")
+        val args = mutableListOf<Any?>()
+        server?.trim()?.takeIf { it.isNotEmpty() }?.let { where += "f.server_id = ?"; args += it }
+        user?.trim()?.takeIf { it.isNotEmpty() }?.let { q ->
+            if (ID_TEXT.matches(q)) { where += "f.user_id = ?::uuid"; args += q } else { where += "u.email ILIKE ?"; args += "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%" }
+        }
+        val list = sql.query(
+            """SELECT f.*, u.email, d.name AS device_name, s.name AS server_name
+                 FROM connection_failures f
+                 LEFT JOIN users u ON u.id = f.user_id
+                 LEFT JOIN devices d ON d.id = f.device_id
+                 LEFT JOIN servers s ON s.id = f.server_id
+                WHERE ${where.joinToString(" AND ")}
+                ORDER BY f.at DESC, f.id DESC LIMIT 200""",
+            *args.toTypedArray(),
+        ).map { r ->
+            ConnectionFailure(
+                at = r.instant("at").toString(),
+                type = FAILURE_TYPES.entries.first { it.value == r.str("type") }.key,
+                userId = r.strOrNull("user_id"),
+                email = r.strOrNull("email"),
+                deviceId = r.str("device_id"),
+                deviceName = r.strOrNull("device_name"),
+                serverId = r.strOrNull("server_id"),
+                serverName = r.strOrNull("server_name"),
+                reason = r.strOrNull("reason"),
+                endpoint = r.strOrNull("endpoint"),
+                network = r.strOrNull("network"),
+                appVersion = r.strOrNull("app_version"),
+                platform = r.strOrNull("platform"),
+            )
+        }
+        val nodes = sql.query(
+            """SELECT s.id, s.name, (SELECT count(*)::int FROM connection_failures f WHERE f.server_id = s.id AND f.at > ?) AS n
+                 FROM servers s WHERE s.active ORDER BY s.name""",
+            ctx.now().minus(FAILURE_RECENT),
+        ).map { NodeFailureCount(it.str("id"), it.str("name"), it.int("n")) }
+        ConnectionFailuresRes(list, nodes)
     }
 
     suspend fun devices(p: Principal): List<Device> = ctx.db.run { sql ->

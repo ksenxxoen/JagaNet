@@ -100,18 +100,8 @@ func (a *App) signedIn(s Session, err error) (any, error) {
 func (a *App) refresh(connect bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	if me, err := a.API.Me(ctx); err == nil {
-		p := &Plan{Pro: me.Entitlement.Plan == "pro"}
-		if me.Entitlement.TariffName != nil {
-			p.Name = *me.Entitlement.TariffName
-		}
-		if me.Entitlement.ExpiresAt != nil {
-			p.ExpiresAt = *me.Entitlement.ExpiresAt
-		}
-		a.mu.Lock()
-		a.plan = p
-		a.Store.Email = me.User.Email
-		a.mu.Unlock()
+	if err := a.loadPlan(ctx); err == nil {
+		a.warnPlan(time.Now())
 	} else if a.unauthorized(err) {
 		return
 	}
@@ -134,7 +124,11 @@ func (a *App) unauthorized(err error) bool {
 	a.Store.DeviceID = ""
 	a.Store.SetCached(nil)
 	_ = a.Store.Save()
+	reports := a.reports
 	a.mu.Unlock()
+	if reports != nil {
+		reports.Clear()
+	}
 	a.Disconnect()
 	a.alert(ProbAuth)
 	a.emit() // Disconnect says nothing when already off, and the window must leave the main screen
@@ -202,7 +196,11 @@ func (a *App) cmdSignOut(ctx context.Context) (any, error) {
 	a.plan, a.applied, a.peerKey = nil, "", ""
 	a.hold = nil
 	_ = a.Store.Save()
+	reports := a.reports
 	a.mu.Unlock()
+	if reports != nil {
+		reports.Clear()
+	}
 	a.Disconnect() // a connect that slipped in while the panel was answering
 	a.emit()
 	return nil, nil

@@ -9,7 +9,7 @@ body {
   user-select: none;
   overflow: hidden;
 }
-button, input { font: inherit; color: inherit; }
+button, input, textarea { font: inherit; color: inherit; }
 button { background: none; border: 0; cursor: pointer; }
 [hidden] { display: none !important; }
 :focus { outline: none; }
@@ -81,6 +81,7 @@ button { background: none; border: 0; cursor: pointer; }
 .list-item .item-title { font-weight: var(--fw-medium); }
 .item-sub { display: block; font-size: var(--fs-xs); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .item-sub:empty { display: none; }
+.item-sub.is-warn { color: var(--warning); }
 .check { width: 1.375rem; height: 1.375rem; border-radius: 50%; flex: none; display: grid; place-items: center; }
 .check svg { width: .8125rem; height: .8125rem; fill: none; stroke: var(--on-accent); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
 .list-item.selected .check { background: var(--accent-btn); }
@@ -126,9 +127,16 @@ button { background: none; border: 0; cursor: pointer; }
   background: color-mix(in srgb, var(--warning) 18%, var(--surface)); color: var(--text);
   font-weight: var(--fw-semibold); text-align: center; border: var(--border) solid color-mix(in srgb, var(--warning) 40%, var(--line));
 }
-.banner:hover:not(:disabled) { background: color-mix(in srgb, var(--warning) 26%, var(--surface)); }
+button.banner:hover:not(:disabled) { background: color-mix(in srgb, var(--warning) 26%, var(--surface)); }
 .banner:disabled { cursor: progress; }
 .banner.is-loading { display: flex; align-items: center; justify-content: center; gap: var(--s-2); }
+/* Banner with a text and its own button (the plan is about to end). */
+.banner-row { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2) var(--s-2) var(--s-2) var(--s-4); text-align: left; }
+.banner-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.banner-btn { flex: none; min-height: 2.25rem; padding: 0 var(--s-4); }
+/* Banner with a note from the owner and a close cross. */
+.banner-notice .banner-text { font-weight: var(--fw-medium); }
+.banner-close { flex: none; width: 2.25rem; height: 2.25rem; }
 
 /* Toast */
 .toast {
@@ -153,7 +161,7 @@ button { background: none; border: 0; cursor: pointer; }
 .sheet-list { flex: 1; overflow-y: auto; padding: var(--s-1) var(--s-3) var(--s-4); scrollbar-width: thin; }
 .dialog-wrap { position: absolute; inset: 0; z-index: var(--z-dialog); display: grid; place-items: center; padding: var(--s-4); background: var(--overlay); animation: fade var(--dur-fast) both; }
 .dialog { width: 100%; max-width: 22rem; padding: var(--s-5); display: flex; flex-direction: column; gap: var(--s-3); box-shadow: var(--shadow-2); }
-.dialog-actions { display: flex; gap: var(--s-2); justify-content: flex-end; }
+.dialog-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); justify-content: flex-end; }
 
 /* Field */
 .field { display: flex; flex-direction: column; gap: var(--s-2); }
@@ -169,6 +177,8 @@ button { background: none; border: 0; cursor: pointer; }
 .form-note { color: var(--text-2); font-size: var(--fs-sm); line-height: var(--lh-base); overflow-wrap: anywhere; }
 .input:focus-visible { outline: .125rem solid var(--focus); outline-offset: .0625rem; }
 .input::placeholder { color: var(--text-2); opacity: .8; }
+/* Several lines of text (the comment to a problem report). */
+.input-area { height: auto; min-height: 5.5rem; padding: var(--s-3) var(--s-4); line-height: var(--lh-base); resize: vertical; max-height: 12rem; }
 .input-code { text-align: center; font-size: var(--fs-code); letter-spacing: .4em; font-variant-numeric: tabular-nums; padding-left: calc(var(--s-4) + .4em); }
 
 /* Status badge: .badge plus .is-ok / .is-warn */

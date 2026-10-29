@@ -34,10 +34,19 @@ type App struct {
 	AutostartOn func() bool
 	Version     string
 	Site        string
+	// LogPath is boop.log; the problem report takes its last lines and is saved
+	// next to it when the panel cannot take it. Empty: no log file.
+	LogPath string
+	// Clipboard puts text on the system clipboard (Windows). Nil: the window copies.
+	Clipboard func(string) error
+	// Prober checks the network outside the tunnel when it stays silent. Init
+	// fills in the real one unless a test already did.
+	Prober Prober
 
 	mu         sync.Mutex
 	plan       *Plan
 	servers    []Server
+	notice     string // the owner's note for everyone (GET /servers)
 	keys       []Key
 	pings      map[string]float64 // by host
 	conn       string
@@ -60,6 +69,15 @@ type App struct {
 	resyncCh   chan struct{}
 	signingOut bool // sign-out in progress: connect() refuses
 
+	probing   bool      // a probe is running
+	probeAt   time.Time // when the last probe finished
+	probeLast Reach
+	verdict   string // what the last probe made of a silent tunnel: offline, blocked or ""
+
+	reports *Reporter // failure reports waiting for the panel (failures.go)
+
+	lastReport string // the text of the last problem report, for "copy again" (diagnostics.go)
+
 	webLogin    context.CancelFunc
 	webLoginURL string
 
@@ -71,8 +89,13 @@ type App struct {
 func (a *App) Init() {
 	a.conn = "off"
 	a.pings = map[string]float64{}
+	if a.Prober.Panel == nil && a.Prober.Web == nil {
+		a.Prober = netProber(a.API)
+	}
 	a.API.Token = func() string { a.mu.Lock(); defer a.mu.Unlock(); return a.Store.Token }
+	a.reports = NewReporter(a.API.Event)
 	SetTunnelActive(func() bool { return a.Tunnel != nil && a.Tunnel.Up() })
 	Go("pings", a.pingAllLoop)
 	Go("updates", a.updateLoop)
+	Go("plan", a.planLoop)
 }

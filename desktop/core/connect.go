@@ -60,6 +60,7 @@ func (a *App) connect() {
 	a.asleep = false
 	a.skip = nil
 	a.told = nil
+	a.forgetVerdict()
 	ctx, cancel := context.WithCancel(context.Background())
 	a.stop = cancel
 	a.resyncCh = make(chan struct{}, 1)
@@ -86,6 +87,7 @@ func (a *App) disconnect() {
 	}
 	a.conn, a.current, a.curHost, a.curPing = "off", "", "", nil
 	a.problem, a.released, a.asleep = "", false, false
+	a.forgetVerdict()
 	a.skip = nil
 	a.hold = nil
 	a.applied, a.peerKey = "", ""
@@ -100,7 +102,7 @@ func (a *App) disconnect() {
 		Go("event", func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			_ = a.API.Event(ctx, "disconnected")
+			_ = a.API.Event(ctx, ConnEvent{Type: "disconnected"})
 		})
 	}
 }
@@ -237,8 +239,12 @@ func (a *App) establish(ctx context.Context, moveNow bool) error {
 	if want == "" {
 		want = "auto"
 	}
+	// A node the owner put under maintenance (or marked blocked, for "fastest") is
+	// left for another one on the next connect, like a node that went away.
 	usable := func(id string) bool {
-		return slices.ContainsFunc(servers, func(s Server) bool { return s.ID == id && slices.Contains(s.Protocols, Protocol) })
+		return slices.ContainsFunc(servers, func(s Server) bool {
+			return s.ID == id && slices.Contains(s.Protocols, Protocol) && statusTier(s.Status, want == "auto") >= 0
+		})
 	}
 
 	away := st.Config != nil && a.serverSkipped(st.Config.ServerID)

@@ -154,6 +154,17 @@ type Server struct {
 	Load        float64  `json:"load"`
 	Protocols   []string `json:"protocols"`
 	Host        string   `json:"host"`
+	// Status is what the owner says about the node (nodestatus.go): "ok",
+	// "degraded", "blocked", "maintenance"; empty from an older panel.
+	Status string `json:"status"`
+	// Notice is the owner's note for the people using this node.
+	Notice string `json:"notice"`
+}
+
+// ServerList is GET /v1/servers: the nodes and the owner's note for everyone.
+type ServerList struct {
+	Servers []Server `json:"servers"`
+	Notice  string   `json:"notice"`
 }
 
 type TunnelConfig struct {
@@ -222,12 +233,10 @@ func (a *API) Me(ctx context.Context) (m Me, err error) {
 	return
 }
 
-func (a *API) Servers(ctx context.Context) ([]Server, error) {
-	var r struct {
-		Servers []Server `json:"servers"`
-	}
+func (a *API) Servers(ctx context.Context) (ServerList, error) {
+	var r ServerList
 	err := a.do(ctx, "GET", "servers", nil, &r)
-	return r.Servers, err
+	return r, err
 }
 
 type Key struct {
@@ -269,8 +278,25 @@ func (a *API) Tunnel(ctx context.Context) (s TunnelState, err error) {
 	return
 }
 
-func (a *API) Event(ctx context.Context, typ string) error {
-	return a.do(ctx, "POST", "tunnel/events", map[string]any{"type": typ, "at": time.Now().UTC().Format(time.RFC3339)}, nil)
+// ConnEvent is one POST /v1/tunnel/events. Type and At are all an older panel
+// knows; the rest (failure reports, see failures.go) is left out when empty.
+type ConnEvent struct {
+	Type       string `json:"type"`
+	At         string `json:"at"`
+	Endpoint   string `json:"endpoint,omitempty"` // the node's address:port
+	ServerID   string `json:"serverId,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+	Network    string `json:"network,omitempty"`
+	AppVersion string `json:"appVersion,omitempty"`
+	Platform   string `json:"platform,omitempty"`
+}
+
+// Event tells the panel about the connection. An empty At means now.
+func (a *API) Event(ctx context.Context, ev ConnEvent) error {
+	if ev.At == "" {
+		ev.At = time.Now().UTC().Format(time.RFC3339)
+	}
+	return a.do(ctx, "POST", "tunnel/events", ev, nil)
 }
 
 func (a *API) RenameDevice(ctx context.Context, id, name string) error {

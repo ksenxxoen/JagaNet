@@ -83,17 +83,24 @@ func (a *App) watch(ctx context.Context) {
 	if a.Tunnel != nil {
 		st = a.Tunnel.Stats()
 	}
+	// The channel of this connection: a quick reconnect makes a new one while
+	// this loop is still on its way out.
+	a.mu.Lock()
+	resync := a.resyncCh
+	a.mu.Unlock()
 	var sup Supervisor
 	sup.Started(time.Now(), st.Rx)
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	lastSync := time.Now()
 	lastPing := time.Time{}
+	// One line of statistics in the log every StatsEvery (diagnostics.go).
+	lastStats, statsFrom := time.Now(), st
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-a.resyncCh:
+		case <-resync:
 			a.sync(ctx)
 			lastSync = time.Now()
 		case <-tick.C:
@@ -118,6 +125,10 @@ func (a *App) watch(ctx context.Context) {
 			Go("ping", func() { a.pingCurrent(ctx) })
 			lastPing = time.Now()
 		}
+		if now.Sub(lastStats) >= StatsEvery {
+			a.logStats(now, statsFrom, st, now.Sub(lastStats))
+			lastStats, statsFrom = now, st
+		}
 		if time.Since(lastSync) > syncEvery {
 			a.sync(ctx)
 			lastSync = time.Now()
@@ -132,14 +143,21 @@ func (a *App) applyStep(ctx context.Context, step Step) {
 		a.released = false
 		a.skip = nil
 		a.told = nil
+		a.forgetVerdict()
 		a.mu.Unlock()
 	}
 	if step.Problem != "" {
 		a.mu.Lock()
 		if a.conn != "off" {
-			a.problem = step.Problem
+			a.problem = a.explain(step.Problem)
 		}
 		a.mu.Unlock()
+		// No handshake / dead: ask the network outside the tunnel why (rate-limited).
+		a.diagnose(ctx, step.Problem)
+	}
+	if step.Report != "" {
+		// After diagnose, so a handshake report can carry the probe's verdict.
+		a.reportFailure(step)
 	}
 	if step.Release {
 		// Visible to the window and the notification before the adapter is torn down.
@@ -155,7 +173,9 @@ func (a *App) applyStep(ctx context.Context, step Step) {
 	case "connecting", "reconnecting", "problem":
 		a.setConn(step.Phase)
 	}
-	if step.Notify != "" {
+	// A silent tunnel the supervisor gave up on is reported by diagnose, with the
+	// probe's verdict; "dead" while still reconnecting is said at once.
+	if step.Notify != "" && !(step.Problem != "" && silent(step.Notify)) {
 		a.alert(step.Notify)
 	}
 	if step.Release {
@@ -212,6 +232,7 @@ func (a *App) markOn() {
 	first := a.conn != "on"
 	a.conn = "on"
 	a.problem = ""
+	a.forgetVerdict()
 	a.released = false
 	a.asleep = false
 	if first {
@@ -224,7 +245,7 @@ func (a *App) markOn() {
 	log.Printf("vpn: up")
 	a.emit()
 	a.remember()
-	Go("event", func() { _ = a.API.Event(context.Background(), "connected") })
+	Go("event", func() { _ = a.API.Event(context.Background(), ConnEvent{Type: "connected"}) })
 }
 
 func (a *App) releaseTunnel() {

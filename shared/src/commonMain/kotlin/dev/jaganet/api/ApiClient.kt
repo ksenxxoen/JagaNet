@@ -85,6 +85,7 @@ class ApiClient(
     suspend fun servers(): ServersRes = get("servers")
     suspend fun provisionTunnel(req: TunnelProvisionReq): TunnelConfig = post("tunnel", req)
     suspend fun connectionEvent(req: ConnectionEventReq): OkRes = post("tunnel/events", req)
+    suspend fun sendDiagnostics(req: DiagnosticsReq): DiagnosticsRes = post("diagnostics", req)
 
     // devices
     suspend fun devices(): DevicesRes = get("devices")
@@ -117,11 +118,13 @@ class ApiClient(
     suspend fun saveAlertSettings(p: AlertSettings): AdminSettingsRes = put("admin/settings/alerts", p)
     suspend fun saveModeSettings(p: ModeSettings): AdminSettingsRes = put("admin/settings/modes", p)
     suspend fun saveNetworkSettings(p: NetworkSettings): AdminSettingsRes = put("admin/settings/network", p)
+    suspend fun saveNoticeSettings(p: NoticeSettings): AdminSettingsRes = put("admin/settings/notice", p)
     suspend fun sendTestEmail(to: String): OkRes = post("admin/settings/smtp/test", TestEmailReq(to))
     suspend fun adminFinance(period: ReferralPeriod): FinanceRes = get("admin/finance") { parameter("period", Protocols.json.encodeToString(ReferralPeriod.serializer(), period).trim('"')) }
     suspend fun adminNodes(): AdminNodesRes = get("admin/nodes")
     suspend fun createNode(req: NodeReq): NodeInstallRes = post("admin/nodes", req)
     suspend fun updateNode(id: String, req: NodeReq): AdminNode = put("admin/nodes/$id", req)
+    suspend fun setNodeStatus(id: String, req: NodeStatusReq): AdminNode = put("admin/nodes/$id/status", req)
     suspend fun newNodeToken(id: String): NodeInstallRes = post("admin/nodes/$id/token", OkRes())
     suspend fun installNode(id: String, req: NodeSshReq): NodeInstall = post("admin/nodes/$id/install", req)
     suspend fun nodeInstall(id: String): NodeInstall = get("admin/nodes/$id/install")
@@ -131,6 +134,10 @@ class ApiClient(
     suspend fun adminRenameDevice(id: String, name: String): OkRes =
         http.patch("admin/devices/$id") { auth(); contentType(ContentType.Application.Json); setBody(RenameDeviceReq(name)) }.read()
     suspend fun adminRekeyDevice(id: String): OkRes = post("admin/devices/$id/rekey", OkRes())
+    suspend fun connectionFailures(server: String? = null, user: String? = null): ConnectionFailuresRes =
+        get("admin/connection-failures") { if (server != null) parameter("server", server); if (user != null) parameter("user", user) }
+    suspend fun adminDiagnostics(user: String? = null): DiagnosticsListRes = get("admin/diagnostics") { if (user != null) parameter("user", user) }
+    suspend fun adminDiagnosticsReport(id: String): DiagnosticsReport = get("admin/diagnostics/$id")
     suspend fun analytics(period: String = "7d"): AnalyticsOverviewRes = get("admin/analytics") { parameter("period", period) }
     suspend fun analyticsServer(id: String, period: String = "7d"): AnalyticsServerRes = get("admin/analytics/servers/$id") { parameter("period", period) }
     suspend fun analyticsUsers(period: String = "7d", q: String? = null): AnalyticsUsersRes = get("admin/analytics/users") { parameter("period", period); if (q != null) parameter("q", q) }

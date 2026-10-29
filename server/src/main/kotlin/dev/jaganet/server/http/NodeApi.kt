@@ -5,6 +5,7 @@ import dev.jaganet.api.MoveDevicesReq
 import dev.jaganet.api.MoveDevicesRes
 import dev.jaganet.api.NodeReq
 import dev.jaganet.api.NodeSshReq
+import dev.jaganet.api.NodeStatusReq
 import dev.jaganet.api.OkRes
 import dev.jaganet.api.Role
 import dev.jaganet.server.forbidden
@@ -48,10 +49,17 @@ fun Route.nodeApi(s: Services) {
         s.tunnels.renameFor(null, call.parameters["id"]!!, call.receive<dev.jaganet.api.RenameDeviceReq>().name)
         call.respond(OkRes())
     }
+    // Failed connection attempts the Boop apps report: ?server=<node id>&user=<e-mail or id>.
+    get("/admin/connection-failures") {
+        call.owner()
+        call.respond(s.tunnels.failures(call.request.queryParameters["server"], call.request.queryParameters["user"]))
+    }
     post("/admin/devices/{id}/rekey") { call.owner(); s.tunnels.requestRekey(call.parameters["id"]!!); call.respond(OkRes()) }
     get("/admin/analytics/users/{id}") { call.owner(); call.respond(s.analytics.user(call.parameters["id"]!!, call.request.queryParameters["period"])) }
     post("/admin/nodes") { call.owner(); call.respond(s.nodes.create(call.receive<NodeReq>())) }
     put("/admin/nodes/{id}") { call.owner(); call.respond(s.nodes.update(call.parameters["id"]!!, call.receive<NodeReq>())) }
+    // What the apps are told about a node: ok / degraded / blocked / maintenance and a note.
+    put("/admin/nodes/{id}/status") { call.owner(); call.respond(s.nodes.setStatus(call.parameters["id"]!!, call.receive<NodeStatusReq>())) }
     post("/admin/nodes/{id}/token") { call.owner(); call.respond(s.nodes.newToken(call.parameters["id"]!!)) }
     post("/admin/nodes/{id}/install") { call.owner(); call.respond(s.nodes.startInstall(call.parameters["id"]!!, call.receive<NodeSshReq>())) }
     post("/admin/nodes/{id}/move-devices") {
