@@ -49,7 +49,7 @@ if [ -n "${BOOP_SIGN:-}" ]; then
       [ -n "$pfx" ] && [ -f "$pfx" ] || { echo "sign: set BOOP_SIGN_PFX (path) or BOOP_SIGN_PFX_BASE64" >&2; exit 1; }
       # The password goes through a private file, never the command line.
       (umask 077; printf '%s' "${BOOP_SIGN_PASSWORD:-}" >"$signtmp/pass")
-      ts=(); [ "${TSA:=http://timestamp.digicert.com}" = none ] || ts=(-ts "$TSA")
+      ts=(); [ "${TSA:=https://timestamp.acs.microsoft.com}" = none ] || ts=(-ts "$TSA")
       osslsigncode sign -pkcs12 "$pfx" -readpass "$signtmp/pass" -h sha256 \
         -n "${BOOP_SIGN_NAME:-Boop}" -i "${BOOP_SIGN_URL:-$API}" ${ts[@]+"${ts[@]}"} \
         -in dist/Boop.exe -out "$signtmp/Boop.exe"
