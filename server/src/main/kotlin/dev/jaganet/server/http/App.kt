@@ -262,7 +262,7 @@ fun Application.jaganet(s: Services) {
             adminApi(s)
             nodeApi(s)
             diagnosticsApi(s)
-            get("/referrals") { call.respond(s.referrals.get(call.principal(s))) }
+            get("/referrals") { call.respond(s.referrals.get(call.principal(s).also { s.requireReferrals(it.user.role) })) }
             referralApi(s)
             salesApi(s)
             get("/admin/overview") {

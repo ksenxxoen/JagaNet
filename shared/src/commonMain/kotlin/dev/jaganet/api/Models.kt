@@ -665,6 +665,8 @@ data class SiteInfo(
     val emailSignIn: Boolean = true,
     /** Sign-in codes are shown on screen (test mode). */
     val testCodes: Boolean = false,
+    /** Everyone sees the referral program; false = only admins (owners). */
+    val referralsPublic: Boolean = false,
 )
 
 /* ---------- server monitoring (owner only) ---------- */

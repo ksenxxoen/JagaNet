@@ -35,10 +35,10 @@ object TestPg {
 
 fun key(n: Int): String = Base64.getEncoder().encodeToString(ByteArray(32) { n.toByte() })
 
-class Harness(val b: ApplicationTestBuilder) {
+class Harness(val b: ApplicationTestBuilder, env: Map<String, String> = emptyMap()) {
     var clock: Instant = Instant.parse("2026-10-15T12:00:00Z")
     val mail = mutableMapOf<String, String>()
-    val cfg = Config.load(mapOf("JAGANET_MODE" to "test", "OWNER_EMAIL" to "owner@test.dev", "EXPOSE_OTP" to "0", "PRICE_RUB_MONTHLY" to "30000", "PRICE_RUB_YEARLY" to "250000", "PRICE_EUR_MONTHLY" to "500", "PRICE_EUR_YEARLY" to "4800"))
+    val cfg = Config.load(mapOf("JAGANET_MODE" to "test", "OWNER_EMAIL" to "owner@test.dev", "EXPOSE_OTP" to "0", "PRICE_RUB_MONTHLY" to "30000", "PRICE_RUB_YEARLY" to "250000", "PRICE_EUR_MONTHLY" to "500", "PRICE_EUR_YEARLY" to "4800", "REFERRALS_PUBLIC" to "1") + env)
     val drivers = SimulatedDriver.registry { clock }
     /** false = e-mail "not set up" (sign-in by e-mail unavailable unless codes are shown). */
     var mailReady = true
@@ -83,6 +83,7 @@ const val MONTH = "Pro на месяц"
 const val YEAR = "Pro на год"
 
 fun harness(block: suspend Harness.() -> Unit) = testApplication { Harness(this).block() }
+fun harness(env: Map<String, String>, block: suspend Harness.() -> Unit) = testApplication { Harness(this, env).block() }
 
 /** "OK" or the API error code. */
 suspend fun code(block: suspend () -> Any?): String = try {

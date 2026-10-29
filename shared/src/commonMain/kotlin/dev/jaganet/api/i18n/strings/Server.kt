@@ -137,6 +137,7 @@ internal val serverStrings: List<S> = listOf(
     S("Name must be 1 to 80 characters", "Имя: от 1 до 80 символов", "Der Name muss 1 bis 80 Zeichen lang sein"),
     S("Devices: 1 to 20 per account", "Устройств: от 1 до 20 на аккаунт", "Geräte: 1 bis 20 pro Konto"),
     S("Account not found", "Аккаунт не найден", "Konto nicht gefunden"),
+    S("The referral program is not available", "Реферальная программа недоступна", "Das Empfehlungsprogramm ist nicht verfügbar"),
     S("Your free period has ended, choose a plan", "Бесплатный период закончился, выберите тариф", "Der kostenlose Zeitraum ist vorbei, wähle einen Tarif"),
     S("No user with this e-mail", "Нет пользователя с такой почтой", "Kein Nutzer mit dieser E-Mail"),
     S("Choose a registered user, not a test account", "Выберите зарегистрированного пользователя, а не тестовый аккаунт", "Wähle einen registrierten Nutzer, kein Testkonto"),
