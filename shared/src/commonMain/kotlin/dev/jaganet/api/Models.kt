@@ -136,7 +136,24 @@ data class ServerLocation(
     val status: String = NodeStatus.OK,
     /** A short note from the owner about this node for the people using it, e.g. planned work. */
     val notice: String? = null,
+    /** The country's name in Russian (e.g. "Финляндия"), for the list; [countryCode] is ISO 3166-1 alpha-2. */
+    val countryName: String? = null,
+    /** Where to measure the ping before connecting. Null from older servers: ping [host] the old way. */
+    val ping: PingTarget? = null,
 )
+
+/**
+ * How an app measures a node's ping. [method] "tcp": the time to open a TCP connection to
+ * host:port (VLESS nodes). "icmp": the existing way, an ICMP echo to [host] (AmneziaWG and
+ * WireGuard nodes, whose [port] is UDP and only informative). An unknown method: use "icmp".
+ */
+@Serializable
+data class PingTarget(val host: String, val port: Int? = null, val method: String) {
+    companion object {
+        const val TCP = "tcp"
+        const val ICMP = "icmp"
+    }
+}
 
 /**
  * What the owner says about a node. A plain string on the wire (not an enum), so an app that
@@ -961,6 +978,10 @@ data class AdminNode(
     /** [NodeStatus] and the note the apps show, set with PUT /admin/nodes/{id}/status. */
     val status: String = NodeStatus.OK,
     val notice: String? = null,
+    /** The country's name the apps show, in Russian, if the owner set one (else the standard name). */
+    val countryName: String? = null,
+    /** A VLESS node's settings (no secrets), for the edit form; null for other protocols. */
+    val vless: Vless.NodeSettings? = null,
 )
 
 @Serializable
@@ -987,6 +1008,15 @@ data class NodeReq(
      * keep working when the node moves to another machine: point the name at the new address.
      */
     val hostname: String? = null,
+    /**
+     * Only when creating: the node's protocol. null or "amneziawg" = the installer sets up
+     * AmneziaWG; "vless" = Xray is set up on the machine by hand and [vless] describes it.
+     */
+    val protocol: String? = null,
+    /** A VLESS node's settings: required to create one, optional (unchanged) when editing. */
+    val vless: Vless.NodeSettings? = null,
+    /** The country's name in Russian for the apps; null or empty = the standard name. */
+    val countryName: String? = null,
 )
 
 /** A new node or a new token: [command] is run once as root on the node. Shown only now. */

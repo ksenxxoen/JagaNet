@@ -32,7 +32,8 @@ The control plane and the VPN node can share one Linux machine to start.
    systemd (`infra/jaganet.service`). It needs `CAP_NET_ADMIN` to call `awg`/`wg`.
 5. Put it behind HTTPS (Caddy, nginx) and set `PUBLIC_URL`.
 
-`PROTOCOLS=amneziawg,wireguard` sets which drivers run and their preference order.
+`PROTOCOLS=amneziawg,wireguard,vless` sets which drivers run and their preference order. A server
+whose environment file still says `amneziawg,wireguard` serves no VLESS nodes: add `vless` (last).
 
 ## More VPN nodes (other machines)
 
@@ -72,6 +73,93 @@ raises an alert and the node gets no new devices.
   them again.
 
 Logs on a node: `journalctl -u jaganet-node`, `awg show`.
+
+## VLESS nodes (Xray, VLESS+Reality)
+
+A VLESS node runs Xray-core (26.x or newer) set up by you; the main server never sees its
+Reality private key. The agent only adds and removes users through Xray's API, never restarts
+Xray and never edits its config. For the panel and the apps the node is the address the apps
+connect to: in a cascade (entry ru1 → exit fi1) that is the entry, and the exit is the entry's
+own business. Parameter format for the apps: docs/ARCHITECTURE.md, "VLESS+Reality".
+
+1. **Xray config** on the node (`/usr/local/etc/xray/config.json`), next to your inbounds and
+   outbounds. The API listens on localhost only; users are told apart by `email` (= their UUID),
+   and per-user traffic needs the `stats` and `policy` sections:
+   ```json
+   {
+     "api": {"tag": "api", "listen": "127.0.0.1:10085", "services": ["HandlerService", "StatsService"]},
+     "stats": {},
+     "policy": {"levels": {"0": {"statsUserUplink": true, "statsUserDownlink": true}}},
+     "inbounds": [
+       {"tag": "vision", "port": 443, "protocol": "vless",
+        "settings": {"clients": [], "decryption": "none"},
+        "streamSettings": {"network": "raw", "security": "reality",
+          "realitySettings": {"dest": "127.0.0.1:4443", "serverNames": ["ru1.vpn.example.com"],
+            "privateKey": "<xray x25519: PrivateKey>", "shortIds": ["a1b2c3d4"]}}},
+       {"tag": "xhttp", "port": 8443, "protocol": "vless",
+        "settings": {"clients": [], "decryption": "none"},
+        "streamSettings": {"network": "xhttp", "xhttpSettings": {"path": "/<secret>", "mode": "auto"},
+          "security": "reality",
+          "realitySettings": {"dest": "127.0.0.1:4443", "serverNames": ["ru1.vpn.example.com"],
+            "privateKey": "<the same private key>", "shortIds": ["a1b2c3d4"]}}}
+     ]
+   }
+   ```
+   `dest` is a real TLS 1.3 site (here your nginx on 127.0.0.1:4443 with its own certificate for the `serverNames`
+   domain); Reality needs it even for valid clients. Users added through the API live in memory
+   only: the agent puts them all back within 25 seconds after Xray restarts. Users you keep in
+   `clients` yourself (emails that are not UUIDs) are left alone.
+2. **Admin panel** › Nodes › New node › Protocol *VLESS+Reality (Xray)*: the inbounds' public data
+   (address for the apps, SNI, Reality public key, i.e. the `Password` line of `xray x25519`, short
+   ids, fingerprint `firefox`, Vision port, XHTTP port, path and mode). docs/ADMIN.md has the fields.
+3. **Agent**: run the shown command as root on the node (or press Create and install):
+   ```sh
+   curl -fsSL https://<main>/node/install.sh | JAGANET_URL=https://<main> NODE_TOKEN=<token> PROTOCOL=vless bash
+   ```
+   With `PROTOCOL=vless` the installer installs no VPN: it checks that `xray api` answers and that
+   every inbound tag exists, registers the machine's address, and starts the agent. Optional
+   variables: `XRAY_BIN` (default: `xray` on the PATH), `XRAY_API` (`127.0.0.1:10085`),
+   `XRAY_INBOUNDS` (`vision,xhttp`), `XRAY_SERVICE` (`xray.service`). By hand, without the
+   installer, the same two files:
+
+   `/etc/jaganet-node/env` (mode 600):
+   ```sh
+   JAGANET_URL=https://<main>
+   NODE_TOKEN=<token from the panel>
+   PROTOCOL=vless
+   XRAY_BIN=/usr/local/bin/xray
+   XRAY_API=127.0.0.1:10085
+   # Inbound tags, in any order. "tag:flow" sets the flow; without it the panel's flow for that
+   # tag is used (Vision on TCP, none on XHTTP).
+   XRAY_INBOUNDS=vision,xhttp
+   WAN_IF=eth0
+   ```
+   `/etc/systemd/system/jaganet-node.service`:
+   ```ini
+   [Unit]
+   Description=Boop node agent (VLESS, Xray API)
+   After=network-online.target xray.service
+   Wants=network-online.target
+
+   [Service]
+   ExecStart=/usr/bin/python3 /opt/jaganet-node/agent.py
+   Restart=always
+   RestartSec=5
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+   with `/opt/jaganet-node/agent.py` from `https://<main>/node/agent.py`, then
+   `systemctl daemon-reload && systemctl enable --now jaganet-node`. A node without the
+   registration step gets online with its first report.
+4. **Check**: `journalctl -u jaganet-node -f` shows `xray users: N now, …`;
+   `xray api inbounduser --server=127.0.0.1:10085 -tag=vision` lists the UUIDs;
+   `xray api statsquery --server=127.0.0.1:10085 -pattern 'user>>>'` the counters the agent sends.
+
+The agent (same file, same `User-Agent: BoopNodeAgent/1`, same `JAGANET_URL` / `NODE_TOKEN`) runs
+AmneziaWG nodes exactly as before when `PROTOCOL` is `amneziawg` or `wireguard`. The main server
+needs `vless` in `PROTOCOLS` (the default list has it). Apps get VLESS nodes only when they ask
+`GET /v1/servers?supportedProtocols=…,vless`; older apps never see them.
 
 ## AmneziaWG 3.1
 

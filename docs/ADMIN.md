@@ -55,6 +55,17 @@ Website `#/admin` (owners only):
   `{text}` (owner only); `GET /v1/servers` sends `status`, `notice` per node and `notice` for
   everyone, `GET`/`POST /v1/tunnel` the node's `notice`. All optional: older apps ignore them.
   Columns `servers.status`, `servers.notice` (migration V15); the note for everyone is in `settings`.
+- **VLESS nodes** (issue #28): **New node** › **Protocol** › *VLESS+Reality (Xray)* shows the
+  node's Xray settings: the address the apps connect to (the cascade's entry), the Reality server
+  name (SNI), the Reality **public** key, the short ids, the fingerprint (`firefox`), the Vision
+  port (TCP, 443) and the XHTTP port, path and mode (8443, `auto`). An empty port leaves that
+  transport out; the apps try Vision first, then XHTTP. The private key is never entered: it stays
+  in the node's Xray config. **Country name in the apps** (any node) overrides the Russian name the
+  apps show for the country code (`servers.country_name`, migration V17). The protocol can't be
+  changed later; the VLESS settings can (Edit). Setting up the machine: docs/SERVER.md, "VLESS
+  nodes". API: `POST /v1/admin/nodes` `{…, protocol: "vless", vless: {host, publicKey, shortIds,
+  sni, fingerprint, transports: [{type, port, tag, flow, path, mode}]}, countryName}`;
+  `PUT /v1/admin/nodes/{id}` takes `vless` and `countryName` too; `GET /v1/admin/nodes` returns them.
 - **E-mail**: SMTP of any provider (Brevo, Mailgun, Postmark, Amazon SES, Gmail, Zoho…), test e-mail.
   The password is stored encrypted.
 - **Alerts**: e-mail recipients and Telegram chat ids (the bot's `/myid` shows a chat's id).

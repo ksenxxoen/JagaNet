@@ -222,7 +222,11 @@ fun Application.jaganet(s: Services) {
 
             get("/servers") {
                 call.principal(s)
-                call.respond(ServersRes(s.tunnels.servers(), ctx.live.notice))
+                // ?supportedProtocols=amneziawg,vless: the protocols this app runs. Without it (apps
+                // from before VLESS) opt-in protocols are left out, see Protocols.OPT_IN.
+                val supported = call.request.queryParameters["supportedProtocols"]
+                    ?.split(',')?.map { it.trim().lowercase() }?.filter { Protocols.ID.matches(it) }?.toSet()
+                call.respond(ServersRes(s.tunnels.servers(supported), ctx.live.notice))
             }
             post("/tunnel") {
                 val p = call.principal(s)

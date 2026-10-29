@@ -7,6 +7,7 @@ import dev.jaganet.api.KeyTunnel
 import dev.jaganet.api.Protocols
 import dev.jaganet.api.TunnelConfig
 import dev.jaganet.api.TunnelProvisionReq
+import dev.jaganet.api.Vless
 import dev.jaganet.api.WireGuard
 import dev.jaganet.server.AppError
 import dev.jaganet.server.Ctx
@@ -105,10 +106,10 @@ class Keys(private val ctx: Ctx, private val tunnels: Tunnels) {
         // The node's current settings (port, obfuscation profile), not the ones from the day
         // the key was made: after a node changes them, importing the key again is enough.
         val stored = Protocols.decode<TunnelConfig>(r.json("config"))
-        val t = sql.one("SELECT server_id, protocol, address FROM tunnels WHERE device_id=?::uuid", r.str("device_id"))
+        val t = sql.one("SELECT server_id, protocol, address, peer_key FROM tunnels WHERE device_id=?::uuid", r.str("device_id"))
         val server = t?.let { sql.one("SELECT * FROM servers WHERE id=?", it.str("server_id")) }
         val current = if (t != null && server != null && t.str("protocol") == stored.protocol)
-            ctx.drivers[stored.protocol]?.currentParams(server.node(stored.protocol))
+            ctx.drivers[stored.protocol]?.currentParams(server.node(stored.protocol), t.str("peer_key"))
         else null
         // The device may have moved to another node: its address and location there.
         r to (current?.let {
@@ -182,6 +183,8 @@ class Keys(private val ctx: Ctx, private val tunnels: Tunnels) {
                 Protocols.AMNEZIAWG -> Protocols.decode<AmneziaWG.ServerParams>(c.params)
                 Protocols.WIREGUARD -> Protocols.decode<WireGuard.ServerParams>(c.params)
                     .let { AmneziaWG.ServerParams(it.serverPublicKey, it.endpoint, it.allowedIps, it.persistentKeepalive, emptyMap()) }
+                // No config file: the standard vless:// links, one per transport, for other apps.
+                Protocols.VLESS -> return Vless.links(Protocols.decode<Vless.ServerParams>(c.params), "Boop ${c.location}").joinToString("\n", postfix = "\n")
                 else -> throw AppError(400, ErrorCode.UNSUPPORTED_PROTOCOL, "No config file for {protocol}", mapOf("protocol" to c.protocol))
             }
             return AmneziaWG.quickConfig(privateKey, c.address, c.dns, c.mtu, p)

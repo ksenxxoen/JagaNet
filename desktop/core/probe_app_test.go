@@ -4,7 +4,12 @@ package core
 
 import (
 	"context"
+	"fmt"
+	"log"
+	"os"
 	"slices"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -122,5 +127,44 @@ func TestReconnectReusesRecentProbe(t *testing.T) {
 	}
 	if n := runs.Load(); n != 1 {
 		t.Fatalf("probed %d times", n)
+	}
+}
+
+// probeWatch is a log writer that, when the probe logs its result, records what
+// another goroutine sees under mu at that moment.
+type probeWatch struct {
+	a    *testApp
+	mu   sync.Mutex
+	seen []string
+}
+
+func (w *probeWatch) Write(b []byte) (int, error) {
+	if strings.Contains(string(b), "probe: "+ProbNoHandshake) {
+		w.a.mu.Lock()
+		s := fmt.Sprintf("probing=%v verdict=%q", w.a.probing, w.a.verdict)
+		w.a.mu.Unlock()
+		w.mu.Lock()
+		w.seen = append(w.seen, s)
+		w.mu.Unlock()
+	}
+	return len(b), nil
+}
+
+// Issue #27: a reader (reportFailure) must never see the probe finished without
+// its verdict, or the failure report goes out as no_handshake instead of blocked.
+// The probe logs its result between finishing and settling, so the log writer is
+// a reader that runs at exactly that point.
+func TestProbeFinishesWithItsVerdict(t *testing.T) {
+	a, _, ctx := probeApp(t, ok, fail)
+	w := &probeWatch{a: a}
+	log.SetOutput(w)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	a.diagnose(ctx, ProbNoHandshake)
+	waitFor(t, "probe logged", func() bool { w.mu.Lock(); defer w.mu.Unlock(); return len(w.seen) > 0 })
+	w.mu.Lock()
+	got := w.seen[0]
+	w.mu.Unlock()
+	if want := fmt.Sprintf("probing=false verdict=%q", ProbBlocked); got != want {
+		t.Fatalf("after the probe: %s, want %s", got, want)
 	}
 }

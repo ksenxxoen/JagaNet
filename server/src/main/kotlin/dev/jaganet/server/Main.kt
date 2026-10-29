@@ -6,6 +6,7 @@ import dev.jaganet.server.http.jaganet
 import dev.jaganet.server.protocols.DriverRegistry
 import dev.jaganet.server.protocols.ProtocolDriver
 import dev.jaganet.server.protocols.AmneziaWgDriver
+import dev.jaganet.server.protocols.VlessDriver
 import dev.jaganet.server.protocols.WireGuardDriver
 import dev.jaganet.server.services.LiveMailer
 import dev.jaganet.server.telegram.HttpTelegramApi
@@ -20,6 +21,7 @@ import org.slf4j.LoggerFactory
 val AVAILABLE_DRIVERS: Map<String, () -> ProtocolDriver> = mapOf(
     "amneziawg" to { AmneziaWgDriver() },
     "wireguard" to { WireGuardDriver() },
+    "vless" to { VlessDriver() },
 )
 
 /** Production entry: real PostgreSQL (DATABASE_URL), real protocol drivers. */
