@@ -119,5 +119,7 @@ class SimulatedDriver(
                 },
                 now = now,
             ))
+            // The real VLESS driver: it only makes UUIDs and parameters, users live on the nodes.
+            .register(VlessDriver())
     }
 }

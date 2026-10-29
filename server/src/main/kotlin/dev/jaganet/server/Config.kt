@@ -76,7 +76,7 @@ data class Config(
                 authSecret = secret.ifEmpty { "simulation-only-secret-do-not-use-in-production" },
                 publicUrl = env["PUBLIC_URL"] ?: "http://localhost:4000",
                 ownerEmail = env["OWNER_EMAIL"]?.lowercase()?.takeIf { it.isNotBlank() },
-                protocols = (env["PROTOCOLS"] ?: "amneziawg,wireguard").split(',').map { it.trim() }.filter { it.isNotEmpty() },
+                protocols = (env["PROTOCOLS"] ?: "amneziawg,wireguard,vless").split(',').map { it.trim() }.filter { it.isNotEmpty() },
                 // Production: only with TEST_SHOW_SIGNIN_CODES=1, for a server that has no email set up yet.
                 // Anyone can then sign in as anyone; turn it off before real users arrive.
                 exposeOtp = if (mode == Mode.PRODUCTION) env["TEST_SHOW_SIGNIN_CODES"] == "1" else env["EXPOSE_OTP"] != "0",

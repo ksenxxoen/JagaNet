@@ -7,8 +7,10 @@ import dev.jaganet.api.ConnectionFailuresRes
 import dev.jaganet.api.NodeFailureCount
 import dev.jaganet.api.Device
 import dev.jaganet.api.ErrorCode
+import dev.jaganet.api.PingTarget
 import dev.jaganet.api.Platform
 import dev.jaganet.api.ServerLocation
+import dev.jaganet.api.Vless
 import dev.jaganet.api.TunnelConfig
 import dev.jaganet.api.TunnelState
 import dev.jaganet.api.Protocols
@@ -68,16 +70,37 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
     private fun driver(protocol: String): ProtocolDriver =
         ctx.drivers[protocol] ?: throw AppError(400, ErrorCode.UNSUPPORTED_PROTOCOL, "Protocol {protocol} is not available", mapOf("protocol" to protocol))
 
-    suspend fun servers(): List<ServerLocation> = ctx.db.run { sql ->
+    /**
+     * The nodes for the apps. [supported]: the protocols the asking app runs (its
+     * `supportedProtocols`); null (apps from before VLESS) = everything but [Protocols.OPT_IN].
+     * A node left with no protocol for the app is not listed at all.
+     */
+    suspend fun servers(supported: Set<String>? = null): List<ServerLocation> = ctx.db.run { sql ->
         sql.query("SELECT s.*, (SELECT count(*)::int FROM tunnels t WHERE t.server_id=s.id) AS peers FROM servers s WHERE $USABLE ORDER BY s.name", ctx.now().minus(NODE_OFFLINE))
             .map { s ->
-                val host = s.json("protocols").values.firstNotNullOfOrNull { ((it as? JsonObject)?.get("endpoint") as? JsonPrimitive)?.content }?.substringBeforeLast(':')
+                val offered = usable(s).filter { if (supported == null) it !in Protocols.OPT_IN else it in supported }
+                val ping = offered.firstOrNull()?.let { pingTarget(s, it) }
+                val host = ping?.host ?: s.json("protocols").values.firstNotNullOfOrNull { ((it as? JsonObject)?.get("endpoint") as? JsonPrimitive)?.content }?.substringBeforeLast(':')
+                val cc = s.str("country_code").trim()
                 ServerLocation(
-                    s.str("id"), s.str("name"), s.str("city"), s.str("country_code"), minOf(1.0, s.int("peers").toDouble() / s.int("max_peers")), usable(s), host,
+                    s.str("id"), s.str("name"), s.str("city"), cc, minOf(1.0, s.int("peers").toDouble() / s.int("max_peers")), offered, host,
                     status = s.str("status"), notice = s.strOrNull("notice"),
+                    countryName = s.strOrNull("country_name") ?: Countries.ru(cc), ping = ping,
                 )
             }
             .filter { it.protocols.isNotEmpty() }
+    }
+
+    /** Where the apps measure the ping: TCP to the first transport for VLESS, ICMP to the endpoint host otherwise. */
+    private fun pingTarget(s: Row, protocol: String): PingTarget? {
+        val o = s.json("protocols")[protocol] as? JsonObject ?: return null
+        if (protocol == Protocols.VLESS) {
+            val v = runCatching { Protocols.decode<Vless.NodeSettings>(o) }.getOrNull() ?: return null
+            val t = v.transports.firstOrNull() ?: return null
+            return PingTarget(t.host ?: v.host, t.port, PingTarget.TCP)
+        }
+        val endpoint = (o["endpoint"] as? JsonPrimitive)?.content ?: return null
+        return PingTarget(endpoint.substringBeforeLast(':'), endpoint.substringAfterLast(':').toIntOrNull(), PingTarget.ICMP)
     }
 
     suspend fun provision(p: Principal, req: TunnelProvisionReq): TunnelConfig = provisionFor(p.user.id, p.deviceId, req)
@@ -193,7 +216,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         val t = sql.one("SELECT * FROM tunnels WHERE device_id=?::uuid", p.deviceId) ?: return@run TunnelState()
         val server = sql.one("SELECT * FROM servers WHERE id=?", t.str("server_id")) ?: return@run TunnelState(rekey = true)
         val proto = t.str("protocol")
-        val params = ctx.drivers[proto]?.currentParams(server.node(proto)) ?: return@run TunnelState(rekey = t.bool("rekey"))
+        val params = ctx.drivers[proto]?.currentParams(server.node(proto), t.str("peer_key")) ?: return@run TunnelState(rekey = t.bool("rekey"))
         val cfg = TunnelConfig(
             protocol = proto,
             serverId = server.str("id"),

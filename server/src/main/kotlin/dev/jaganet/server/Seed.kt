@@ -88,6 +88,19 @@ class Seed(private val ctx: Ctx) {
             ago(Duration.ofDays(20)), ago(Duration.ofSeconds(40)),
             Jsonb("""{"at":${now.toEpochMilli()},"system":{"cpu":0.18,"memUsed":700000000,"memTotal":2000000000,"classes":"ok"},"rxBps":84000000,"txBps":91000000}"""),
         )
+        // A VLESS+Reality node (Xray): a cascade whose entry the apps connect to, Vision first, then XHTTP.
+        // Only the Reality public key is here; apps from before VLESS don't get it in their list.
+        sql.exec(
+            """INSERT INTO servers (id, name, city, country_code, subnet, protocols, max_peers, agent_token_hash, registered_at, last_report_at, report)
+               VALUES ('sim-3','Финляндия','Helsinki','FI','10.9.0.0/16',?,1000,'sim-agent-vless',?,?,?)""",
+            Jsonb(
+                """{"vless":{"host":"fi1.sim.jaganet.dev","publicKey":"c2ltdWxhdGVkLXJlYWxpdHktcHVibGljLWtleS0wMQ0","shortIds":["a1b2c3d4"],
+                   "sni":"fi1.sim.jaganet.dev","fingerprint":"firefox","transports":[{"type":"tcp","port":443,"tag":"vision","flow":"xtls-rprx-vision"},
+                   {"type":"xhttp","port":8443,"tag":"xhttp","flow":"","path":"/sim-xhttp","mode":"auto"}],"endpoint":"fi1.sim.jaganet.dev:443","publicIp":"203.0.113.50"}}""",
+            ),
+            ago(Duration.ofDays(2)), ago(Duration.ofSeconds(30)),
+            Jsonb("""{"at":${now.toEpochMilli()},"system":{"cpu":0.07,"memUsed":400000000,"memTotal":2000000000,"classes":"off"},"rxBps":12000000,"txBps":13000000}"""),
+        )
         sql.exec("INSERT INTO users (email, role, referral_code, created_at) VALUES ('owner@jaganet.dev','owner','OWNER-0000',?)", ago(Duration.ofDays(120)))
 
         val alex = user(sql, "alex@example.com")

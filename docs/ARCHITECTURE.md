@@ -25,7 +25,7 @@ interface when you add servers.
 One Kotlin source of truth for everything that crosses the network:
 
 - `Models.kt`: every request/response type (`MeRes`, `TunnelConfig`, `StatsRes`, …)
-- `Protocols.kt`: per-protocol parameter shapes (`WireGuard`, `AmneziaWG`)
+- `Protocols.kt`: per-protocol parameter shapes (`WireGuard`, `AmneziaWG`, `Vless`)
 - `ApiClient.kt`: typed client used by the apps *and* the server tests
 - `Format.kt`: byte/speed/duration formatting
 
@@ -53,7 +53,7 @@ Adding a protocol touches only:
 No table, endpoint or screen changes. The database stores protocol data in `jsonb`.
 
 **Choosing a protocol.** The server lists each node's protocols in preference order (the
-`PROTOCOLS` setting, default `amneziawg,wireguard`). On "Automatic", the app picks the first one
+`PROTOCOLS` setting, default `amneziawg,wireguard,vless`). On "Automatic", the app picks the first one
 the device can run. Users can pin one in Settings › Protocol.
 
 ### AmneziaWG (default)
@@ -72,6 +72,58 @@ verbatim so new AWG versions need no app release.
   the AmneziaWG and WireGuard libraries ship the same native library name and can't share an app.
 - `jaga-custom` is a demo protocol that exists only in the simulator. It shows the plug-in path
   for a protocol whose server issues a token instead of taking a key.
+
+### VLESS+Reality (Xray)
+
+A second protocol on an equal footing with AmneziaWG: each node runs exactly one of them (nl1
+AmneziaWG, ru1 VLESS…). People only see countries and pings; the protocol is for the app.
+Shapes: `Vless` in `shared/.../Protocols.kt`; driver `server/.../protocols/VlessDriver.kt`; node
+side: the agent in VLESS mode (docs/SERVER.md, "VLESS nodes").
+
+- **No device key.** `clientParams` is `{}`. The server makes a UUID v4 per device (kept in
+  `tunnels.client_params`, so moves and resyncs keep it); it is the tunnel's `peer_key`, and on
+  the node both the Xray user's `id` and its `email`. A new provision (rekey) gives a new UUID.
+- **Node settings** (`servers.protocols.vless`, entered in the admin panel, no secrets):
+  `{host, publicKey, shortIds[], sni, fingerprint, transports: [{type: "tcp"|"xhttp", port, tag,
+  flow, path?, mode?, host?}]}`. The Reality private key stays in the node's Xray config.
+- **`TunnelConfig.params`** for `protocol = "vless"` (`Vless.ServerParams`):
+
+  ```json
+  {
+    "uuid": "6286d380-3d9c-4118-b62e-8b761a279e20",
+    "variants": [
+      {"transport": "tcp", "host": "ru1.example.com", "port": 443, "flow": "xtls-rprx-vision",
+       "security": "reality", "sni": "ru1.example.com", "pbk": "<Reality public key>",
+       "sid": "a1b2c3d4", "fp": "firefox"},
+      {"transport": "xhttp", "host": "ru1.example.com", "port": 8443, "flow": "",
+       "security": "reality", "sni": "ru1.example.com", "pbk": "<Reality public key>",
+       "sid": "a1b2c3d4", "fp": "firefox", "path": "/secret", "mode": "auto"}
+    ],
+    "endpointIps": ["203.0.113.70"]
+  }
+  ```
+
+  The app tries `variants` in order (Vision on 443 first, then XHTTP) and keeps the first that
+  connects. Names are the `vless://` link's query keys; `path`/`mode` only for `xhttp`, empty
+  `flow` = none. `endpointIps` (optional, as for AmneziaWG) is the address the node registered
+  with. `address`, `mtu` and `dns` of the TunnelConfig mean nothing to VLESS. Unknown keys must
+  be ignored (new ones may come).
+- **Xray client config** from one variant: outbound `vless`, `vnext[0] = {address: host, port,
+  users: [{id: uuid, encryption: "none", flow}]}`, `streamSettings = {network: "raw" for tcp or
+  "xhttp" (with `xhttpSettings: {path, mode}`), security: "reality", realitySettings:
+  {serverName: sni, publicKey: pbk, shortId: sid, fingerprint: fp}}`.
+- **Share link** (`Vless.link`, key files, other apps), exact format, one per variant:
+  `vless://<uuid>@<host>:<port>?encryption=none&security=reality&pbk=<pbk>&sid=<sid>&sni=<sni>&fp=<fp>&type=<tcp|xhttp>[&flow=xtls-rprx-vision][&path=<path>&mode=<mode>]#<name>`,
+  values and name percent-encoded (UTF-8, all but `A-Za-z0-9-._~`), IPv6 hosts in brackets.
+- **Server list.** `GET /v1/servers?supportedProtocols=amneziawg,vless` lists VLESS nodes; without
+  the parameter (every app from before VLESS) protocols in `Protocols.OPT_IN` are left out, and a
+  node left with none isn't listed. Each `ServerLocation` has `countryCode` (ISO 3166-1),
+  `countryName` (Russian, `servers.country_name` or the JDK's name), `protocols` (for the app,
+  never shown) and `ping`: `{host, port, method}`, `tcp` = time a TCP connect to host:port (VLESS),
+  `icmp` = the existing ICMP ping to host (AmneziaWG; its port is UDP).
+- **Counters** come from the agent's report (Xray `statsquery`: uplink = `rx`, downlink = `tx`);
+  `lastHandshake` is when the user's counters last grew. The free plan's speed limit is not applied
+  on VLESS nodes (no traffic.py there).
 
 ## Server (`server/`)
 
