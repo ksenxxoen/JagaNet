@@ -100,3 +100,11 @@ Changing a name means changing the test, `app.js` and Go together.
   build against the made-up panel by hand (e.g. the plan-ends-soon banner, issue #4).
   `FAKE_NOTICE=<text>` and `FAKE_STATUS=s-nl:maintenance,s-fi:degraded` add the owner's note and
   node statuses (issue #10).
+
+## Build and signing
+
+`./build.sh [version] [api]` builds `dist/Boop.exe`. Authenticode signing is an
+optional last step switched on by `BOOP_SIGN` (`osslsigncode` with a PFX, or `azure`
+for Azure Trusted Signing); without it the build is unsigned, as before. The update
+manifest's SHA-256 (and ed25519 signature) must be taken from the signed file.
+Details and the release order: `SIGNING.md`.

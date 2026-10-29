@@ -26,6 +26,8 @@ DerivedData/
 *.keystore
 *.p8
 *.p12
+*.pfx
+*.pvk
 
 .DS_Store
 node_modules/
