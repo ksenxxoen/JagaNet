@@ -78,7 +78,9 @@ jobs:
 
   ui:
     name: ui-checks, e2e (Chromium, fakes)
-    runs-on: ubuntu-latest
+    # Not ubuntu-latest: Playwright installs Chromium and its system packages only
+    # for Ubuntu releases it knows, and 1.56 does not know 26.04. Bump both together.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       # The scripts require("playwright") from desktop/scripts; there is no
