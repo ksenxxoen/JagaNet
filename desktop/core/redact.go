@@ -8,7 +8,7 @@ import (
 // Redact cuts secrets out of text that leaves the computer (the problem report,
 // issue #11): WireGuard / AmneziaWG keys in base64 and in hex (UAPI), the values
 // of private_key / preshared_key / token / secret / password and the like, Bearer
-// tokens, key links (/k/…) and vpn:// config links, and long opaque tokens.
+// tokens, key links (/k/…), vpn:// and vless:// links, and long opaque tokens.
 // Addresses, host names, versions and problem codes stay: they are what the
 // report is for.
 func Redact(s string) string {
@@ -44,6 +44,8 @@ var (
 		// Key links of the panel (https://…/k/<token>, also without the host) and AmneziaVPN's vpn:// links.
 		{regexp.MustCompile(`(?i)(?:https?://[^\s"'<>]*)?/k/[^\s"'<>]+`), hiddenLink},
 		{regexp.MustCompile(`(?i)\bvpn://[^\s"'<>]+`), hiddenLink},
+		// vless:// links (issue #29): the UUID in them is the VLESS credential.
+		{regexp.MustCompile(`(?i)\bvless://[^\s"'<>]+`), hiddenLink},
 		// Authorization: Bearer <token>.
 		{regexp.MustCompile(`(?i)\b(bearer)\s+[^\s"',;]+`), "$1 " + hidden},
 		// name=value, name: value and "name":"value" for names that hold secrets.

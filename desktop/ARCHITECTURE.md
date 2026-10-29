@@ -8,7 +8,7 @@ to the window; the window asks for things through a small named-command bridge.
      ▲                                            │
      └──── window.boop.update(UIState) ◀── App.emit ◀── App (core/*.go)
                                                     │
-                          API (panel /v1)  ·  vpn.Tunnel (Windows: AmneziaWG + WFP; Linux: helper.Client → boop-helper; dev: Fake)
+                          API (panel /v1)  ·  vpn.Tunnel (Windows: AmneziaWG or VLESS + WFP; Linux: helper.Client → boop-helper; dev: Fake)
 ```
 
 Hosts: `main_windows.go` (WebView2, tray, DPAPI, autostart, updates, clipboard and
@@ -52,6 +52,7 @@ hosts use; no behaviour moved between layers.
 | `notify.go` | user-facing error text, notification texts (`phrase`), once-per-problem `alert` |
 | `settings.go` | settings commands, the first-hide tray hint |
 | `update.go` | manifest checks, staging and verifying the exe, the update loop |
+| `vless.go` | (issue #29) VLESS nodes: `SupportedProtocols` (sent as `GET /v1/servers?supportedProtocols=amneziawg,vless`), `protocolOf` (the first of a node's protocols the app runs, in the panel's order), `applyVless` (resolve each variant's host outside the tunnel like AmneziaWG's endpoint, then `vpn.Config{Vless: …}`), `refreshVless` (re-resolve; apply only a moved node), `tcpPing` |
 | `store.go`, `conf.go`, `resolve.go`, `api.go`, `log.go` | unchanged: persisted state, AmneziaWG config, DNS, panel client, `Go` / `Catch` |
 
 ### The bridge
@@ -85,6 +86,79 @@ Changing a name means changing the test, `app.js` and Go together.
 * New texts (Russian only) live in `ui/app.js` (`TXT`) and the markup for the window and in `notify.go`
   (`phrase`) for notifications.
 
+## VLESS+Reality (issue #29)
+
+Nodes run AmneziaWG or VLESS+Reality (Xray); people only see countries and pings. The panel's
+format is in `docs/ARCHITECTURE.md` ("VLESS+Reality (Xray)", issue #28).
+
+```
+ apps ─▶ Wintun adapter "Boop" ─▶ vpn/xray.Stack (gVisor netstack) ─▶ vpn/xray.Engine (Xray-core) ─▶ node
+         (default route, DNS,       ends TCP and UDP flows here,        VLESS outbound, Reality,
+          WFP kill switch)          opens each one again via Engine     Vision on TCP or XHTTP
+```
+
+* **Getting a tunnel.** `establish` picks a node as before (`pick`; a node counts when
+  `protocolOf` finds a protocol the app runs). For a VLESS node it sends
+  `POST /v1/tunnel {protocol: "vless", serverId, clientParams: {}}` — no device key; the panel's
+  UUID in `params` is the credential (kept like the key: in the DPAPI part of `state.json`, never
+  logged; `Redact` also cuts `vless://` links). `params` = `{uuid, variants: [...]}`; address, DNS
+  and MTU of the config are ignored.
+* **The adapter** (`vpn/windows.go`, `upVless`): the same Wintun adapter, WFP firewall (block all
+  but the adapter, loopback, DHCP/NDP and this program; DNS only to the adapter's servers), IPv4
+  default route and metric as AmneziaWG. Its own address `198.18.0.1/30` (benchmarking range,
+  never a LAN), DNS `1.1.1.1`/`1.0.0.1` (queries go through the tunnel), MTU 1500 (TCP ends in
+  the netstack, nothing is wrapped). IPv6 is not routed into the adapter and the firewall blocks
+  it outside: no leak. Moving between an AmneziaWG and a VLESS node rebuilds the adapter (a moment
+  without the kill switch); moves between VLESS nodes and new parameters are applied in place
+  (`Engine.Update`).
+* **Xray's own traffic** never loops into the tunnel: `xray.SetSocketControl(vpn.SocketControl)`
+  binds every socket Xray opens to the physical interface (`IP_UNICAST_IF`, the interface the
+  default route used before; `monitorDefaultRoutes` keeps it current), as AmneziaWG's UDP socket
+  is bound; WFP lets this program out (`permitWireGuardService`). Xray never resolves a name: the
+  app resolves each variant's host outside the tunnel (live DNS, then the address in use, then the
+  panel's `endpointIps`) and gives Xray IP addresses.
+* **The TUN side: a netstack, not Xray's TUN inbound.** The Xray-core release usable with this
+  project's Go (`v1.251208.0`, the last with `go 1.25`; newer ones need Go 1.25.5+ / 1.26) has no
+  TUN inbound, and its later TUN inbound is new. So `vpn/xray.Stack` is the tun2socks idea without
+  SOCKS: gVisor's netstack (Apache-2.0, the same one amneziawg-go and Xray use) on the adapter's
+  packets, promiscuous; each TCP connection and UDP flow is opened again with `Engine.Dial`, which
+  hands it to Xray's dispatcher in-process. TCP half-close is passed on; UDP flows end after 60 s
+  of quiet. ICMP is not carried.
+* **The config** (`vpn/xray/config.go`): no inbounds; one VLESS outbound to the node's IP, `flow`
+  from the variant, Reality (`fingerprint` from the variant, `firefox` by default, `serverName`,
+  `publicKey`, `shortId`), raw TCP or XHTTP (`path`, `mode`, Xray's own defaults for the rest); Mux
+  only for UDP (`concurrency -1`, XUDP 8, UDP/443 refused so browsers keep QUIC off and use TCP).
+* **Variants** (`switch.go`, pure; `engine.go` does the I/O): the first variant (Vision) starts;
+  a probe (a DNS query over TCP to `1.1.1.1:53` through the node; any answer with the query's id)
+  or any reply bytes make it count. No answer within 8 s (`ConnectTimeout`), or apps sending with
+  nothing back for 8 s and a probe failing then, starts the next variant (XHTTP), then round again.
+  With no reply for 25 s it probes anyway, so `Stats.Handshake` (the last sign of life) stays fresh
+  for the supervisor, which treats it like AmneziaWG's handshake. The switch is invisible to the
+  window; the log says `vless: tcp:443: no connection, next variant` / `vless: using xhttp:8443`.
+* **Pings** (`catalog.go`): each node is measured the way `ping` in `GET /v1/servers` says: `tcp`
+  is a TCP connect to host:port through the physical interface (`tcpPing`), `icmp` the ICMP echo
+  as before (an older panel without `ping`: ICMP to `host`). A failed measurement marks the node
+  down; a country whose nodes are all down is `down` in `UIState` («недоступен» in the list), and
+  `choose` takes such a node only last. While a VLESS tunnel is up ICMP goes into it and is not
+  carried, so a failed ICMP ping then keeps the last result. Pings are measured again when the
+  country list opens (`refreshPings`) and every 2 minutes.
+* **Licences.** Xray-core and REALITY are MPL-2.0 (source of the exact versions is public, unmodified);
+  gVisor, gRPC, go-proxyproto Apache-2.0; quic-go, brotli, blake3 MIT; uTLS, circl, miekg/dns,
+  protobuf, gorilla/websocket BSD; juju/ratelimit (used by REALITY) LGPL-3.0 with a static-linking
+  exception. Xray-core also imports two packages of sagernet/sing (GPL-3.0): `go.mod` replaces that
+  module with `third_party/sing-nogpl`, Boop's own stand-in for the two names it needs (see its
+  README), so no GPL code is linked. `go mod tidy` must be run as `go mod tidy -e` (tests of
+  Xray-core's own packages import more of sing; they are not built here).
+* **Tests** (`vpn/xray/*_test.go`, Linux, no TUN): the config from the panel's parameters
+  (`config_test.go`), the switch logic (`switch_test.go`), and a real Xray node in the test process
+  (VLESS + Reality with a local TLS 1.3 target, Vision and XHTTP inbounds, freedom to a local echo
+  server): the engine carries 3 MB both ways and UDP on each variant, moves from a dead Vision port
+  to XHTTP by itself, and `TestStackThroughNode` runs the whole path short of Wintun — a second
+  gVisor stack plays Windows, its TCP connection and UDP datagrams go as IP packets through
+  `Stack` and `Engine` to the node (2 MB each way), IPv6 goes nowhere. Under `-race`, Xray's
+  Vision (checkptr) and XHTTP client (a data race inside it) cannot run, so those tests use raw TCP
+  with Reality there; CI runs `go test ./vpn/xray/` once more without `-race`.
+  Not tested here: the real Wintun adapter, routes and WFP with VLESS (Windows only).
 ## Linux (issue #25)
 
 The tunnel needs root, the window must not have it, so on Linux they are two processes:
@@ -123,14 +197,15 @@ says "при входе в систему" instead of "с Windows"), `UpdateUI.l
   (stand-in tunnel) → a made-up panel (`scripts/fakepanel.mjs`). Sign-in three ways,
   connect / disconnect, country and key changes on the way, rename, strict mode across a
   restart, the panel's problems (offline, plan, removed key, 401), the plan-ends-soon banner, node statuses and notes (issue #10), the problem report (issue #11: sent, then
-  refused and saved to a file) and a silent node with the
+  refused and saved to a file), VLESS nodes in the list and a move to one and back (issue #29:
+  `supportedProtocols`, a TCP ping that answers and one that does not, «недоступен») and a silent node with the
   real 20 s / 45 s timeouts (`BOOP_FAKE_NOHANDSHAKE=1` keeps the stand-in tunnel from
   handshaking). About three minutes; `E2E_LOGS=<dir>` keeps each app's log.
   Manual checks for a real Windows machine: `docs/QA-1.2.0.md`.
 * `FAKE_EXPIRES_DAYS=2 node scripts/fakepanel.mjs`, then `BOOP_API=<its URL> go run .` — the dev
   build against the made-up panel by hand (e.g. the plan-ends-soon banner, issue #4).
   `FAKE_NOTICE=<text>` and `FAKE_STATUS=s-nl:maintenance,s-fi:degraded` add the owner's note and
-  node statuses (issue #10).
+  node statuses (issue #10); `FAKE_VLESS=1` adds two VLESS nodes, one unreachable (issue #29).
 
 ## Build and signing
 
@@ -151,7 +226,8 @@ Linux runners only, no secrets:
 
 * job `build`: `./build.sh 0.0.0-ci+<short sha>` (unsigned: no `BOOP_SIGN`), then
   `go vet ./...`, `GOOS=windows GOARCH=amd64 go vet ./...` (after the build, which fetches
-  the embedded `build/wintun.dll`) and `go test -race -count=1 ./...`. The exe's SHA-256 is
+  the embedded `build/wintun.dll`), `go test -race -count=1 ./...` and `go test -count=1 ./vpn/xray/`
+  (VLESS over Vision and XHTTP, which `-race` cannot run). The exe's SHA-256 is
   in the log and the run's summary; the exe itself is the artifact `Boop.exe-<sha>` on the
   run's page (kept 7 days). It is a test build for a Windows machine, not a release.
 * job `ui`: `node scripts/ui-checks.mjs` and `node scripts/e2e.mjs` against Playwright's

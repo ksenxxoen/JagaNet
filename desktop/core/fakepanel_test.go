@@ -42,6 +42,11 @@ type fakePanel struct {
 	notices    map[string]string // node id -> the node's note
 	notice     string            // the note for everyone
 	diags      []Diagnostics     // problem reports received
+
+	extra      []Server // more nodes after s-nl and s-de (VLESS ones: id prefix "v-")
+	serversRaw string   // the query string of the last GET /servers
+	protocols  []string // the protocol of each POST tunnel, in order
+	vlessUUID  string   // the UUID the panel made for this device
 }
 
 func newFakePanel(t *testing.T) *fakePanel {
@@ -91,6 +96,10 @@ func (p *fakePanel) handle(w http.ResponseWriter, r *http.Request) {
 			{ID: "s-nl", Name: "NL 1", CountryCode: "NL", Load: .1, Protocols: []string{Protocol}, Host: "203.0.113.5"},
 			{ID: "s-de", Name: "DE 1", CountryCode: "DE", Load: .1, Protocols: []string{Protocol}, Host: "203.0.113.6"},
 		}
+		p.mu.Lock()
+		list = append(list, p.extra...)
+		p.serversRaw = r.URL.RawQuery
+		p.mu.Unlock()
 		for i := range list {
 			list[i].Status, list[i].Notice = statuses[list[i].ID], notices[list[i].ID]
 		}
@@ -109,14 +118,23 @@ func (p *fakePanel) handle(w http.ResponseWriter, r *http.Request) {
 		reply(map[string]string{"id": "42"})
 	case path == "tunnel" && r.Method == "POST":
 		var b struct {
+			Protocol     string            `json:"protocol"`
 			ServerID     string            `json:"serverId"`
 			ClientParams map[string]string `json:"clientParams"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&b)
 		time.Sleep(delay)
 		p.set(func() {
+			p.protocols = append(p.protocols, b.Protocol)
 			p.provisions = append(p.provisions, b.ClientParams["publicKey"])
-			p.clientPub, p.serverID = b.ClientParams["publicKey"], b.ServerID
+			p.serverID = b.ServerID
+			if b.Protocol == ProtocolVless {
+				if p.vlessUUID == "" {
+					p.vlessUUID = "6286d380-3d9c-4118-b62e-8b761a279e20"
+				}
+			} else {
+				p.clientPub = b.ClientParams["publicKey"]
+			}
 			p.version++
 		})
 		reply(p.config())
@@ -140,6 +158,10 @@ func (p *fakePanel) config() *TunnelConfig {
 	if p.serverID == "" {
 		return nil
 	}
+	if strings.HasPrefix(p.serverID, "v-") {
+		return &TunnelConfig{Protocol: ProtocolVless, ServerID: p.serverID, Address: "10.9.0.2/32", MTU: 1280,
+			Params: json.RawMessage(fakeVlessParams(p.vlessUUID))}
+	}
 	host := map[string]string{"s-nl": "203.0.113.5", "s-de": "203.0.113.6"}[p.serverID]
 	params, _ := json.Marshal(awgParams{
 		ServerPublicKey: p.serverPub, Endpoint: host + ":51820", AllowedIps: []string{"0.0.0.0/0"},
@@ -153,6 +175,11 @@ func (p *fakePanel) state() TunnelState {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	cc := map[string]string{"s-nl": "NL", "s-de": "DE"}[p.serverID]
+	for _, s := range p.extra {
+		if s.ID == p.serverID {
+			cc = s.CountryCode
+		}
+	}
 	return TunnelState{Config: c, Version: "v" + string(rune('0'+p.version)), CountryCode: cc}
 }
 
@@ -251,7 +278,7 @@ func (ta *testApp) signIn(t *testing.T) {
 	t.Helper()
 	ta.mustCall(t, "startEmail", "demo@example.com")
 	ta.mustCall(t, "verifyEmail", map[string]string{"email": "demo@example.com", "code": "123456"})
-	waitFor(t, "servers loaded", func() bool { return len(ta.snapshot().Countries) == 2 })
+	waitFor(t, "servers loaded", func() bool { return len(ta.snapshot().Countries) >= 2 })
 }
 
 func waitFor(t *testing.T, what string, ok func() bool) {

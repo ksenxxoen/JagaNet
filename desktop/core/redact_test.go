@@ -32,6 +32,7 @@ func TestRedactCutsSecrets(t *testing.T) {
 		{"key link with host", "open https://panel.example.com/k/" + token + "?fmt=conf now", token},
 		{"key link without host", "GET /k/abcDEF123", "abcDEF123"},
 		{"amnezia vpn link", "imported vpn://AAAAeNqrVkrOz0vOz8lMSlWyMjQ", "AAAAeNqrVkrOz0vOz8lMSlWyMjQ"},
+		{"vless link", "vless://6286d380-3d9c-4118-b62e-8b761a279e20@ru1.example.com:443?security=reality&sid=a1b2#ru", "6286d380-3d9c-4118-b62e-8b761a279e20"},
 		{"pasted config", "[Interface]\nAddress = 10.8.0.2/32\nPrivateKey = " + b64Key + "\nJc = 4\n[Peer]\nEndpoint = vpn.example.com:51820\n\nafter", "Jc = 4"},
 	}
 	for _, c := range cases {
@@ -62,6 +63,8 @@ func TestRedactKeepsWhatHelps(t *testing.T) {
 		"stats: node s-de (de1.example.com), on, handshake 35s ago, rx +1.2 MB tx +340 KB in 10m0s",
 		"report: handshake_failed (blocked) 203.0.113.5:51820",
 		"token expired",
+		"vless: tcp:443: no connection, next variant",
+		"vless: using xhttp:8443",
 	}
 	for _, s := range keep {
 		if got := Redact(s); got != s {

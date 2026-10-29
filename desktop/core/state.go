@@ -8,9 +8,13 @@ import (
 )
 
 type Country struct {
-	Code string   `json:"code"`
+	Code string `json:"code"`
+	// Name is the panel's Russian name (issue #28); empty: the window names it by the code.
+	Name string   `json:"name,omitempty"`
 	Ping *float64 `json:"ping"`
-	Full bool     `json:"full,omitempty"`
+	// Down: every node of the country was measured and none answered («недоступен»).
+	Down bool `json:"down,omitempty"`
+	Full bool `json:"full,omitempty"`
 	// Status is the best of the owner's statuses among the country's nodes:
 	// empty (one works normally), "degraded", "blocked" or "maintenance".
 	Status string `json:"status,omitempty"`
@@ -118,10 +122,11 @@ func (a *App) state() UIState {
 	}
 	byCode := map[string]*Country{}
 	rank := map[string]int{}
+	up := map[string]bool{} // a node of the country answered or is not measured yet
 	// The country "fastest" would go to: the lowest ping among the nodes it may pick, by statusTier.
 	best, bestTier, bestMs := "", 0, math.MaxFloat64
 	for _, sv := range a.servers {
-		if !slices.Contains(sv.Protocols, Protocol) {
+		if protocolOf(sv) == "" {
 			continue
 		}
 		c := byCode[sv.CountryCode]
@@ -130,11 +135,18 @@ func (a *App) state() UIState {
 			byCode[sv.CountryCode] = c
 			rank[sv.CountryCode] = len(statusShown)
 		}
+		if c.Name == "" {
+			c.Name = strings.TrimSpace(sv.CountryName)
+		}
 		if sv.Load < 1 {
 			c.Full = false
 		}
 		rank[sv.CountryCode] = min(rank[sv.CountryCode], listRank(sv.Status))
-		if ms, ok := a.pings[sv.Host]; ok {
+		key := pingTarget(sv).key()
+		if !a.down[key] {
+			up[sv.CountryCode] = true
+		}
+		if ms, ok := a.pings[key]; ok {
 			if c.Ping == nil || ms < *c.Ping {
 				v := ms
 				c.Ping = &v
@@ -147,6 +159,7 @@ func (a *App) state() UIState {
 	}
 	for code, c := range byCode {
 		c.Status = statusShown[rank[code]]
+		c.Down = !up[code]
 		s.Countries = append(s.Countries, *c)
 	}
 	slices.SortFunc(s.Countries, func(x, y Country) int { return strings.Compare(x.Code, y.Code) })

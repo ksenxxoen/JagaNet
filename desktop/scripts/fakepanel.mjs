@@ -3,11 +3,15 @@
 // HTTP status for a path (after /v1/), `calls` records what the client asked for, `expiresAt` is the
 // plan's end that /v1/me sends (null: a plan without an end), `statuses` / `notices` (node id -> value)
 // and `notice` are the owner's node statuses and notes that /v1/servers sends (issue #10); `diagnostics`
-// holds the problem reports POST /v1/diagnostics received (issue #11).
+// holds the problem reports POST /v1/diagnostics received (issue #11). With `vless` on, an app that sends
+// `supportedProtocols=…,vless` also gets two VLESS nodes (issue #29): Sweden, whose TCP ping goes to this
+// panel's own port (it answers), and Poland, whose ping port is closed («недоступен»); `serversQuery`
+// is the query of the last GET /v1/servers and `protocols` the protocol of each POST /v1/tunnel.
 //
 // Run on its own it serves until stopped, for trying the dev build by hand:
 //
 //   FAKE_EXPIRES_DAYS=2 node scripts/fakepanel.mjs      # prints the URL; plan ends in 2 days
+//   FAKE_VLESS=1 node scripts/fakepanel.mjs              # with the two VLESS nodes
 //   FAKE_NOTICE="Плановые работы" FAKE_STATUS=s-nl:maintenance,s-fi:degraded node scripts/fakepanel.mjs
 //   BOOP_API=<that URL> go run .                        # sign in with demo@example.com / 123456
 import { createServer } from "node:http";
@@ -36,22 +40,46 @@ export async function startPanel() {
     notices: {},
     notice: null,
     diagnostics: [],
+    vless: false,
+    serversQuery: "",
+    protocols: [],
     tunnels: {}, // session token -> { serverID, version }: each signed-in device has its own tunnel
     url: "",
     close: () => new Promise((r) => srv.close(r)),
     reset() {
       p.down = false; p.status = {}; p.calls = []; p.webAllowed = false; p.expiresAt = DEFAULT_EXPIRES;
       p.statuses = {}; p.notices = {}; p.notice = null; p.diagnostics = [];
+      p.vless = false; p.serversQuery = ""; p.protocols = [];
     },
   };
   const servers = [
-    { id: "s-nl", name: "NL 1", countryCode: "NL", load: 0.1, protocols: ["amneziawg"], host: "203.0.113.5" },
-    { id: "s-de", name: "DE 1", countryCode: "DE", load: 0.1, protocols: ["amneziawg"], host: "203.0.113.6" },
-    { id: "s-fi", name: "FI 1", countryCode: "FI", load: 0.2, protocols: ["amneziawg"], host: "203.0.113.7" },
+    { id: "s-nl", name: "NL 1", countryCode: "NL", countryName: "Нидерланды", load: 0.1, protocols: ["amneziawg"], host: "203.0.113.5" },
+    { id: "s-de", name: "DE 1", countryCode: "DE", countryName: "Германия", load: 0.1, protocols: ["amneziawg"], host: "203.0.113.6" },
+    { id: "s-fi", name: "FI 1", countryCode: "FI", countryName: "Финляндия", load: 0.2, protocols: ["amneziawg"], host: "203.0.113.7" },
   ];
+  // VLESS nodes (issue #28's shape), listed only with p.vless and only to an app that names vless.
+  const vlessServers = () => [
+    { id: "v-se", name: "SE 1", countryCode: "SE", countryName: "Швеция", load: 0.1, protocols: ["vless"], host: "198.51.100.30",
+      ping: { host: "127.0.0.1", port: Number(new URL(p.url).port), method: "tcp" } },
+    { id: "v-pl", name: "PL 1", countryCode: "PL", countryName: "Польша", load: 0.1, protocols: ["vless"], host: "198.51.100.31",
+      ping: { host: "127.0.0.1", port: 1, method: "tcp" } },
+  ];
+  const pbk = randomBytes(32).toString("base64url");
+  const vlessConfig = (s) => ({
+    protocol: "vless", serverId: s.id, address: "10.9.0.2/32", dns: [], mtu: 1280,
+    params: {
+      uuid: "6286d380-3d9c-4118-b62e-8b761a279e20",
+      variants: [
+        { transport: "tcp", host: s.host, port: 443, flow: "xtls-rprx-vision", security: "reality", sni: "www.example.com", pbk, sid: "a1b2c3d4", fp: "firefox" },
+        { transport: "xhttp", host: s.host, port: 8443, flow: "", security: "reality", sni: "www.example.com", pbk, sid: "a1b2c3d4", fp: "firefox", path: "/x", mode: "auto" },
+      ],
+    },
+  });
   let sessions = 0;
   const session = (device) => ({ token: `tok-${device}-${++sessions}`, user: { id: "u1", email: "demo@example.com" }, deviceId: device });
   const config = (id) => {
+    const v = vlessServers().find((x) => x.id === id);
+    if (v) return vlessConfig(v);
     const s = servers.find((x) => x.id === id);
     if (!s) return null;
     return {
@@ -82,7 +110,10 @@ export async function startPanel() {
       if (path === "auth/logout") return reply(200, { ok: true });
       if (path === "me") return reply(200, { user: { id: "u1", email: "demo@example.com" }, entitlement: { plan: "pro", tariffName: "Pro", expiresAt: p.expiresAt } });
       if (path === "servers") {
-        const list = servers.map((s) => ({ ...s, status: p.statuses[s.id] || "ok", ...(p.notices[s.id] ? { notice: p.notices[s.id] } : {}) }));
+        p.serversQuery = (req.url || "").split("?")[1] || "";
+        const named = (new URLSearchParams(p.serversQuery).get("supportedProtocols") || "").split(",");
+        const all = p.vless && named.includes("vless") ? servers.concat(vlessServers()) : servers;
+        const list = all.map((s) => ({ ...s, status: p.statuses[s.id] || "ok", ...(p.notices[s.id] ? { notice: p.notices[s.id] } : {}) }));
         return reply(200, { servers: list, ...(p.notice ? { notice: p.notice } : {}) });
       }
       if (path === "keys") return reply(200, { keys: p.keys });
@@ -100,9 +131,10 @@ export async function startPanel() {
       }
       if (path === "tunnel" && req.method === "POST") {
         tun.serverID = body.serverId; tun.version++;
+        p.protocols.push(body.protocol);
         return reply(200, config(tun.serverID));
       }
-      if (path === "tunnel") return reply(200, { config: config(tun.serverID), version: "v" + tun.version, countryCode: (servers.find((x) => x.id === tun.serverID) || {}).countryCode || "", ...(p.notices[tun.serverID] ? { notice: p.notices[tun.serverID] } : {}) });
+      if (path === "tunnel") return reply(200, { config: config(tun.serverID), version: "v" + tun.version, countryCode: (servers.concat(vlessServers()).find((x) => x.id === tun.serverID) || {}).countryCode || "", ...(p.notices[tun.serverID] ? { notice: p.notices[tun.serverID] } : {}) });
       m = path.match(/^devices\/(.+)$/);
       if (m && req.method === "PATCH") {
         const k = p.keys.find((x) => x.id === decodeURIComponent(m[1]));
@@ -123,6 +155,7 @@ export async function startPanel() {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const p = await startPanel();
   if (process.env.FAKE_NOTICE) p.notice = process.env.FAKE_NOTICE;
+  if (process.env.FAKE_VLESS) p.vless = true;
   for (const pair of (process.env.FAKE_STATUS || "").split(",").filter(Boolean)) { const [id, st] = pair.split(":"); p.statuses[id] = st; }
   if (process.env.FAKE_EXPIRES_DAYS) p.expiresAt = new Date(Date.now() + Number(process.env.FAKE_EXPIRES_DAYS) * 86_400_000).toISOString();
   console.log(`fake panel on ${p.url} (plan ends ${p.expiresAt || "never"}); sign in with demo@example.com, code ${p.emailCode}`);

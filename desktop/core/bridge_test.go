@@ -80,7 +80,7 @@ func TestUIStateWireNames(t *testing.T) {
 	}
 	slices.Sort(got)
 	want := []string{
-		"autoConnect", "autostart", "best", "conn", "countries", "countries.code", "countries.full", "countries.ping", "countries.status",
+		"autoConnect", "autostart", "best", "conn", "countries", "countries.code", "countries.down", "countries.full", "countries.name", "countries.ping", "countries.status",
 		"country", "current", "email", "key", "keys", "keys.country", "keys.id", "keys.inUse", "keys.name",
 		"notice", "ping", "plan", "plan.daysLeft", "plan.expiresAt", "plan.name", "plan.pro", "plan.warn", "platform", "problem", "released", "screen",
 		"since", "strictKill", "update", "update.link", "update.mandatory", "update.notes", "update.stage", "update.version", "version", "webLogin",

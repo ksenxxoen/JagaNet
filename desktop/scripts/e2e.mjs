@@ -75,14 +75,14 @@ const detail = (t) => t.text("detail");
 const TXT = (t) => t.page.evaluate(() => TXT);
 
 // Signs in by e-mail through the form and waits for the main screen.
-async function signInByMail(t) {
+async function signInByMail(t, countries = 3) {
   await t.until("sign-in screen", async () => (await screen(t)) === "signin");
   await t.type("email", "demo@example.com");
   await t.submit("f-email");
   await t.until("code form", async () => !(await t.hidden("f-code")));
   await t.type("code", panel.emailCode);
   await t.submit("f-code");
-  await t.until("main screen after sign-in", async () => (await screen(t)) === "main" && (await t.state()).countries.length === 3);
+  await t.until("main screen after sign-in", async () => (await screen(t)) === "main" && (await t.state()).countries.length === countries);
 }
 
 try {
@@ -357,6 +357,33 @@ try {
   check("the report is saved to a file next to the log", file.startsWith(r.data) && /boop-report-\d{8}-\d{6}\.txt$/.test(file) && existsSync(file), file);
   check("copying is offered", !(await r.hidden("report-copy")));
   await r.stop();
+
+  /* ---------- 9. VLESS nodes next to AmneziaWG ones (issue #29) ---------- */
+  // The panel lists two VLESS nodes to an app that names vless: Sweden answers its TCP ping, Poland does not.
+  panel.reset();
+  panel.vless = true;
+  const v = await launch();
+  await signInByMail(v, 5); // three AmneziaWG countries and two VLESS ones
+  check("the app names the protocols it runs", panel.serversQuery === "supportedProtocols=amneziawg,vless", panel.serversQuery);
+  await v.click("#open-places");
+  const vrow = (name) => v.page.evaluate((name) => {
+    const b = [...document.querySelectorAll("#place-list .list-item")].find((x) => x.querySelector(".item-title").textContent === name);
+    return b && { ping: b.querySelector(".ping em").textContent, q: b.querySelector(".ping").dataset.q, flag: !!b.querySelector(".flag svg") || b.querySelector(".flag").textContent };
+  }, name);
+  await v.until("Sweden with its ping", async () => { const r = await vrow("Швеция"); return r && /^\d+ мс$/.test(r.ping); });
+  await v.until("Poland is unreachable", async () => { const r = await vrow("Польша"); return r && r.ping === "недоступен" && r.q === "down"; });
+  const listText = await v.page.evaluate(() => document.getElementById("place-list").textContent);
+  check("no protocol words in the list", !/vless|amnezia|awg|wireguard|протокол|reality|xray/i.test(listText), listText);
+  await v.page.evaluate(() => { [...document.querySelectorAll("#place-list button.list-item")].find((b) => b.textContent.includes("Швеция")).click(); });
+  await v.until("connected to Sweden", async () => { const s = await v.state(); return s.conn === "on" && s.current === "SE"; }, 15000);
+  check("the tunnel was asked for over VLESS", panel.protocols.at(-1) === "vless", panel.protocols);
+  check("the place card shows Sweden", (await v.text("country")) === "Швеция", await v.text("country"));
+  // Back to an AmneziaWG country without disconnecting.
+  await v.click("#open-places");
+  await v.page.evaluate(() => { [...document.querySelectorAll("#place-list button.list-item")].find((b) => b.textContent.includes("Герм")).click(); });
+  await v.until("moved to Germany", async () => { const s = await v.state(); return s.conn === "on" && s.current === "DE"; }, 15000);
+  check("Germany over AmneziaWG", panel.protocols.at(-1) === "amneziawg", panel.protocols);
+  await v.stop();
 } catch (e) {
   check(`unexpected error: ${e && e.stack || e}`, false);
 } finally {

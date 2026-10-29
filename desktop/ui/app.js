@@ -28,6 +28,8 @@ const TXT = {
   // Same words as planPhrase in core/planwarn.go (the tray says the same, plus a reason).
   planSoon: "Тариф заканчивается через", planToday: "Тариф заканчивается сегодня", days: ["день", "дня", "дней"],
   full: "Нет мест",
+  // A node that did not answer its ping (issue #29).
+  unreachable: "недоступен", unreachableHint: "Сервер не ответил на проверку связи",
   // The owner's node status in the country list (issue #10).
   degraded: "Возможны перебои", blocked2: "Часть провайдеров блокирует", maintenance: "Обслуживание",
   maintenanceHint: "Страна на обслуживании, выберите другую",
@@ -122,16 +124,27 @@ function flag(el, code) {
 
 let names;
 try { names = new Intl.DisplayNames(["ru"], { type: "region" }); } catch { names = null; }
+// The panel's Russian name when it sends one (countries[].name), else the browser's.
 function countryName(code) {
   if (code === "auto") return TXT.fastest;
+  const c = (S.countries || []).find((x) => x.code === code);
+  if (c && c.name) return c.name;
   try { return (names && names.of(code)) || code; } catch { return code; }
 }
 
-function setPing(el, ms) {
+// The bars and the number; "down" (no answer to the ping) shows «недоступен» instead.
+function setPing(el, ms, down) {
   const em = el.querySelector("em");
+  el.removeAttribute("title");
+  if (down && ms == null) {
+    el.dataset.q = "down"; em.textContent = TXT.unreachable; el.title = TXT.unreachableHint;
+    el.setAttribute("aria-label", TXT.unreachable);
+    return;
+  }
   if (ms == null) { el.dataset.q = "0"; em.textContent = ""; el.removeAttribute("aria-label"); return; }
   el.dataset.q = ms < 80 ? "3" : ms < 160 ? "2" : "1";
   em.textContent = `${Math.round(ms)} ${TXT.ms}`;
+  el.removeAttribute("aria-label");
 }
 
 /* ---------- render ---------- */
@@ -198,7 +211,7 @@ function render(next) {
   flag($("flag"), shown);
   $("country").textContent = countryName(shown);
   const row = (S.countries || []).find((c) => c.code === (shown === "auto" ? S.best : shown));
-  setPing($("ping"), S.conn === "on" ? S.ping : row ? row.ping : null);
+  setPing($("ping"), S.conn === "on" ? S.ping : row ? row.ping : null, S.conn !== "on" && !!row && !!row.down);
 
   if (!$("places").hidden) renderPlaces();
   if (!$("keys").hidden) renderKeys();
@@ -361,7 +374,7 @@ function renderPlaces(animate) {
       b.disabled = true;
       b.querySelector(".badge").textContent = off ? TXT.maintenance : TXT.full;
       if (off) b.title = TXT.maintenanceHint;
-    } else setPing(b.querySelector(".ping"), c.ping);
+    } else setPing(b.querySelector(".ping"), c.ping, c.down);
     b.onclick = async () => { closeSheet("places"); await call("setCountry", c.code); };
     list.appendChild(b);
   });

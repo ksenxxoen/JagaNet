@@ -78,7 +78,8 @@ verbatim so new AWG versions need no app release.
 A second protocol on an equal footing with AmneziaWG: each node runs exactly one of them (nl1
 AmneziaWG, ru1 VLESS…). People only see countries and pings; the protocol is for the app.
 Shapes: `Vless` in `shared/.../Protocols.kt`; driver `server/.../protocols/VlessDriver.kt`; node
-side: the agent in VLESS mode (docs/SERVER.md, "VLESS nodes").
+side: the agent in VLESS mode (docs/SERVER.md, "VLESS nodes"). Windows app: Xray-core in the
+process behind the Wintun adapter (desktop/ARCHITECTURE.md, "VLESS+Reality").
 
 - **No device key.** `clientParams` is `{}`. The server makes a UUID v4 per device (kept in
   `tunnels.client_params`, so moves and resyncs keep it); it is the tunnel's `peer_key`, and on

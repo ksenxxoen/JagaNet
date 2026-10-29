@@ -22,6 +22,7 @@ import (
 	"github.com/amnezia-vpn/amneziawg-go/v3/tun"
 	"github.com/amnezia-vpn/amneziawg-windows/v3/tunnel/winipcfg"
 	"github.com/ksenxxoen/JagaNet/desktop/vpn/firewall"
+	"github.com/ksenxxoen/JagaNet/desktop/vpn/xray"
 	"golang.org/x/sys/windows"
 )
 
@@ -32,7 +33,9 @@ var adapterGUID = windows.GUID{Data1: 0x6f1c2b7e, Data2: 0x8d4a, Data3: 0x4b5f, 
 
 type winTunnel struct {
 	mu   sync.Mutex
-	dev  *device.Device
+	dev  *device.Device // AmneziaWG
+	vl   *xray.Engine   // or VLESS: Xray-core
+	ns   *xray.Stack    // and the netstack between the adapter and it
 	nt   *tun.NativeTun
 	luid winipcfg.LUID
 	cbs  []winipcfg.ChangeCallback
@@ -43,14 +46,42 @@ type winTunnel struct {
 // for sockets that must not go through the tunnel.
 var physical4, physical6 atomic.Uint32
 
-func New() (Tunnel, error) { return &winTunnel{}, nil }
+func New() (Tunnel, error) {
+	// Every socket Xray opens (to the VLESS node) is bound to the physical
+	// network like AmneziaWG's, so it never loops into the adapter; the
+	// firewall lets this program's own traffic out (permitWireGuardService).
+	if err := xray.SetSocketControl(SocketControl); err != nil {
+		return nil, err
+	}
+	xray.SetLog(log.Printf)
+	return &winTunnel{}, nil
+}
 
 func (w *winTunnel) Apply(c *Config) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.dev == nil {
-		if err := w.up(c); err != nil {
+	if w.dev != nil || w.vl != nil {
+		if (c.Vless != nil) != (w.vl != nil) {
+			// From AmneziaWG to VLESS or back: a new adapter for the other engine.
+			log.Printf("vpn: changing protocol")
 			w.down()
+		}
+	}
+	if w.dev == nil && w.vl == nil {
+		up := w.up
+		if c.Vless != nil {
+			up = w.upVless
+		}
+		if err := up(c); err != nil {
+			w.down()
+			return err
+		}
+		w.cur = c
+		return nil
+	}
+	if c.Vless != nil {
+		// In place: new parameters for the same engine; the adapter and routes stay.
+		if err := w.vl.Update(c.Vless.Params, c.Vless.Addrs); err != nil {
 			return err
 		}
 		w.cur = c
@@ -151,6 +182,86 @@ func (w *winTunnel) up(c *Config) error {
 	return nil
 }
 
+// upVless brings up the adapter for a VLESS node: the same adapter, firewall
+// (kill switch, IPv6 blocked, DNS only to the tunnel's servers), default route
+// and DNS as AmneziaWG, with Xray-core and a netstack behind it instead of the
+// WireGuard device. Only IPv4 is routed into the adapter; IPv6 has no route
+// there and the firewall drops it outside.
+func (w *winTunnel) upVless(c *Config) error {
+	mtu := c.MTU
+	if mtu <= 0 {
+		mtu = VlessMTU
+	}
+	t, err := tun.CreateTUNWithRequestedGUID(adapterName, &adapterGUID, mtu)
+	if err != nil {
+		return fmt.Errorf("adapter: %w", err)
+	}
+	w.nt = t.(*tun.NativeTun)
+	w.luid = winipcfg.LUID(w.nt.LUID())
+
+	firewall.DisableFirewall()
+	if err := firewall.EnableFirewall(uint64(w.luid), false, ips(c.DNS)); err != nil {
+		log.Printf("vpn: firewall: %v", err)
+	}
+	// Find the physical network before the default route moves to the adapter;
+	// SocketControl binds Xray's sockets to it from then on.
+	for _, fam := range []winipcfg.AddressFamily{windows.AF_INET, windows.AF_INET6} {
+		cbs, err := monitorDefaultRoutes(fam, noBind{}, w.luid)
+		if err != nil {
+			if fam == windows.AF_INET {
+				return fmt.Errorf("bind: %w", err)
+			}
+			log.Printf("vpn: no IPv6 route to follow: %v", err)
+			continue
+		}
+		w.cbs = append(w.cbs, cbs...)
+	}
+
+	eng, err := xray.NewEngine(c.Vless.Params, c.Vless.Addrs, xray.Options{Logf: log.Printf})
+	if err != nil {
+		return err
+	}
+	if err := eng.Start(); err != nil {
+		return err
+	}
+	w.vl = eng
+	ns, err := xray.NewStack(w.nt, mtu, eng, log.Printf)
+	if err != nil {
+		return err
+	}
+	w.ns = ns
+
+	if err := w.luid.SetIPAddressesForFamily(windows.AF_INET, []net.IPNet{ipnet(c.Address)}); err != nil {
+		return err
+	}
+	route := &winipcfg.RouteData{Destination: net.IPNet{IP: net.IPv4zero.To4(), Mask: net.CIDRMask(0, 32)}, NextHop: net.IPv4zero.To4()}
+	if err := w.luid.SetRoutesForFamily(windows.AF_INET, []*winipcfg.RouteData{route}); err != nil {
+		return err
+	}
+	ipif, err := w.luid.IPInterface(windows.AF_INET)
+	if err != nil {
+		return err
+	}
+	ipif.UseAutomaticMetric = false
+	ipif.Metric = 0
+	ipif.NLMTU = uint32(mtu)
+	if err := ipif.Set(); err != nil {
+		return err
+	}
+	w.nt.ForceMTU(mtu)
+	if err := w.luid.SetDNS(windows.AF_INET, ips(c.DNS), nil); err != nil {
+		return fmt.Errorf("dns: %w", err)
+	}
+	return nil
+}
+
+// noBind is for monitorDefaultRoutes when there is no WireGuard socket to bind:
+// it only keeps physical4/physical6 up to date for SocketControl.
+type noBind struct{}
+
+func (noBind) BindSocketToInterface4(uint32, bool) error { return nil }
+func (noBind) BindSocketToInterface6(uint32, bool) error { return nil }
+
 func (w *winTunnel) Down() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -162,12 +273,19 @@ func (w *winTunnel) down() {
 		_ = cb.Unregister()
 	}
 	w.cbs = nil
-	if w.dev != nil {
+	switch {
+	case w.dev != nil:
 		w.dev.Close() // closes the adapter too
-	} else if w.nt != nil {
-		w.nt.Close()
+	case w.nt != nil:
+		w.nt.Close() // first: it unblocks the netstack's reader
 	}
-	w.dev, w.nt, w.cur = nil, nil, nil
+	if w.ns != nil {
+		w.ns.Close()
+	}
+	if w.vl != nil {
+		w.vl.Close()
+	}
+	w.dev, w.vl, w.ns, w.nt, w.cur = nil, nil, nil, nil, nil
 	firewall.DisableFirewall()
 	physical4.Store(0)
 	physical6.Store(0)
@@ -176,14 +294,18 @@ func (w *winTunnel) down() {
 func (w *winTunnel) Up() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.dev != nil
+	return w.dev != nil || w.vl != nil
 }
 
 func (w *winTunnel) Stats() Stats {
 	w.mu.Lock()
-	dev := w.dev
+	dev, vl := w.dev, w.vl
 	w.mu.Unlock()
 	var s Stats
+	if vl != nil {
+		s.Rx, s.Tx, s.Handshake = vl.Stats()
+		return s
+	}
 	if dev == nil {
 		return s
 	}

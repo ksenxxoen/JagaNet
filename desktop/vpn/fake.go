@@ -28,11 +28,15 @@ func New() (Tunnel, error) { return &Fake{Logf: log.Printf}, nil }
 func (f *Fake) Apply(c *Config) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	kind := "amneziawg"
+	if c.Vless != nil {
+		kind = "vless " + c.Vless.Params.Variants[0].Name()
+	}
 	if f.cfg == nil {
 		f.ups++
-		f.Logf("vpn: up #%d %s via %s", f.ups, c.Address, c.Endpoint)
+		f.Logf("vpn: up #%d %s %s via %s", f.ups, kind, c.Address, c.Endpoint)
 	} else {
-		f.Logf("vpn: changed in place %s via %s (replace peer: %v)", c.Address, c.Endpoint, strings.Contains(c.UAPI, "replace_peers=true"))
+		f.Logf("vpn: changed in place %s %s via %s (replace peer: %v)", kind, c.Address, c.Endpoint, strings.Contains(c.UAPI, "replace_peers=true"))
 	}
 	f.cfg = c
 	f.hs = time.Time{}
@@ -60,6 +64,13 @@ func (f *Fake) Up() bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.cfg != nil
+}
+
+// Config is the config applied last (nil when down), for tests.
+func (f *Fake) Config() *Config {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.cfg
 }
 
 func (f *Fake) Stats() Stats {
