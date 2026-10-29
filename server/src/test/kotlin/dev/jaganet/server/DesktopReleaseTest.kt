@@ -3,6 +3,7 @@ package dev.jaganet.server
 import dev.jaganet.api.Protocols
 import dev.jaganet.api.TunnelConfig
 import dev.jaganet.server.services.loadDesktopManifest
+import dev.jaganet.server.services.loadLinuxManifest
 import dev.jaganet.server.services.withEndpointIp
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -37,6 +38,30 @@ class DesktopReleaseTest {
         assertEquals("abc", m.signature)
         File(dir, "desktop.json").writeText("not json")
         assertNull(loadDesktopManifest(dir, "https://boopvpn.app"))
+    }
+}
+
+class LinuxReleaseTest {
+    @Test fun `the Linux build is its own document and never the Windows one`() {
+        val dir = kotlin.io.path.createTempDirectory("boop-rel").toFile()
+        File(dir, "Boop.exe").writeBytes(byteArrayOf(1, 2, 3, 4))
+        File(dir, "desktop.json").writeText("""{"version":"1.1.0"}""")
+        assertNull(loadLinuxManifest(dir, "https://boopvpn.app", "ubuntu24.04"))
+        File(dir, "desktop-linux.json").writeText("""{"version":"1.3.0","notes":"Linux","mandatory":true}""")
+        assertNull(loadLinuxManifest(dir, "https://boopvpn.app", "ubuntu24.04"))
+        File(dir, "boop-ubuntu24.04.deb").writeBytes("deb".toByteArray())
+        val m = loadLinuxManifest(dir, "https://boopvpn.app/", "ubuntu24.04")!!
+        assertEquals("1.3.0", m.version)
+        assertEquals("https://boopvpn.app/download/linux/ubuntu24.04", m.url)
+        assertEquals(64, m.sha256.length)
+        assertEquals("Linux", m.notes)
+        assertEquals(true, m.mandatory)
+        // Another release without its .deb, an unknown one, none at all: nothing.
+        assertNull(loadLinuxManifest(dir, "https://boopvpn.app", "ubuntu22.04"))
+        assertNull(loadLinuxManifest(dir, "https://boopvpn.app", "../Boop.exe"))
+        assertNull(loadLinuxManifest(dir, "https://boopvpn.app", null))
+        // The Windows document is untouched.
+        assertEquals("1.1.0", loadDesktopManifest(dir, "https://boopvpn.app")!!.version)
     }
 }
 

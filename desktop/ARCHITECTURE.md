@@ -1,4 +1,4 @@
-# Boop for Windows: how the client is put together
+# Boop for Windows and Linux: how the client is put together
 
 The window (`ui/`) only draws. Go keeps all state and pushes it whole (`UIState`)
 to the window; the window asks for things through a small named-command bridge.
@@ -8,13 +8,16 @@ to the window; the window asks for things through a small named-command bridge.
      ▲                                            │
      └──── window.boop.update(UIState) ◀── App.emit ◀── App (core/*.go)
                                                     │
-                          API (panel /v1)  ·  vpn.Tunnel (Windows: AmneziaWG + WFP; elsewhere: Fake)
+                          API (panel /v1)  ·  vpn.Tunnel (Windows: AmneziaWG + WFP; Linux: helper.Client → boop-helper; dev: Fake)
 ```
 
 Hosts: `main_windows.go` (WebView2, tray, DPAPI, autostart, updates, clipboard and
-Windows version in `clipboard_windows.go`) and `main_other.go` (dev server on
-`127.0.0.1:5199` with the stand-in tunnel; its log also goes to `$BOOP_DATA/boop.log`). Both
-call `App.Call` / `App.Invoke`; neither knows a command by name.
+Windows version in `clipboard_windows.go`), `main_linux.go` (built with `-tags boopapp` by
+`build-linux.sh`: WebKitGTK through webview_go, `~/.config/boop`, autostart file, the tunnel in
+`boop-helper`; see "Linux" below) and `main_other.go` (dev server on
+`127.0.0.1:5199` with the stand-in tunnel; its log also goes to `$BOOP_DATA/boop.log`; the page and
+bridge it serves are `web.go`, shared with the Linux browser fallback). All
+call `App.Call` / `App.Invoke`; none knows a command by name.
 
 ## Before (Boop 1.1.0)
 
@@ -82,6 +85,34 @@ Changing a name means changing the test, `app.js` and Go together.
 * New texts (Russian only) live in `ui/app.js` (`TXT`) and the markup for the window and in `notify.go`
   (`phrase`) for notifications.
 
+## Linux (issue #25)
+
+The tunnel needs root, the window must not have it, so on Linux they are two processes:
+
+```
+ boop (user, WebKitGTK)  ──helper.Client──▶  /run/boop/helper.sock  ──▶  boop-helper (root, systemd)
+   core.App, same as Windows               JSON lines: hello, up,        helper.Server → vpn.LinuxTunnel
+                                           down, status, ping            (amneziawg-go, ip, resolvectl)
+```
+
+| file | owns |
+| --- | --- |
+| `main_linux.go` | the Linux host: flags (`--version`, `--autostart`, `--browser`), one instance per user (abstract socket), the window or the browser fallback, autostart in `~/.config/autostart/boop.desktop`, `App.UpdateLink` / `App.Platform`. Scripts go into the page through `boop_eval` (cgo, the linked WebKitGTK), not webview_go's `Eval`: that one dlopens the unversioned `libwebkit2gtk-4.x.so`, which only the -dev package has, so on a user's machine it does nothing and the window stays empty. `BOOP_DEBUG=1`: the page's console and the bridge's calls in the output |
+| `web.go` | the page and bridge over HTTP (`/rpc`, `/events`): the dev server (open) and the Linux browser fallback (one-time token → cookie, Host checked) |
+| `helper/` | the protocol (`proto.go`), `Server` (the tunnel belongs to the connection that brought it up; it goes down when that connection closes), `Client` (a `vpn.Tunnel` for `core.App`), `MemberOf` (SO_PEERCRED uid in group `boop`, read from the group database at each connection) |
+| `cmd/boop-helper` | the root service: cleans up at start, listens, takes the tunnel down on SIGTERM; `--cleanup` for `ExecStopPost` and `prerm` |
+| `vpn/netplan.go` | the plan as data (tested anywhere): `UpCommands`, `ChangeAddressCommands`, `DNSCommands`, `CleanupCommands`, `CheckConfig` (UAPI keys allowed from the window: peer and obfuscation only, never `fwmark` / `listen_port`) |
+| `vpn/linux.go` | `LinuxTunnel`: TUN `boop0`, fwmark/table `0x426f` (17007), wg-quick's two rules per family, IPv6 `unreachable` when the config has none, DNS through systemd-resolved, idempotent cleanup |
+| `vpn/ping_linux.go`, `vpn/host_linux.go` | ICMP echo (ping socket, else raw; the helper's carries the fwmark), `SocketControlLinux` (SO_BINDTODEVICE to the physical interface while `boop0` exists), `NetworkKindLinux` |
+| `nettest/` | the integration test: an amneziawg-go server in a network namespace, the whole client path, nothing left after `Down` |
+| `linux/` | packaging: `build-deb.sh` (runs in the release's container), `Dockerfile`, the unit, `.desktop`, maintainer scripts, man pages, the webkit2gtk-4.1 pkg-config shim |
+
+`core` changes for Linux are additive and off on Windows: `API.ManifestQuery`
+(`platform=linux&distro=…` on the update manifest), `App.UpdateLink` (the update button opens the
+.deb's link; nothing is downloaded or installed), `App.Platform` → `UIState.platform` (the window
+says "при входе в систему" instead of "с Windows"), `UpdateUI.link`, and `vpn.Config.Address6`
+(only from an address list "v4, v6"; a single address is read as before).
+
 ## Screenshots and UI checks
 
 * `node scripts/screenshots.mjs <out> [desktop-dir]` — headless shots of eight
@@ -102,6 +133,9 @@ Changing a name means changing the test, `app.js` and Go together.
   node statuses (issue #10).
 
 ## Build and signing
+
+`./build-linux.sh [version] [api]` builds `dist/boop_<version>~ubuntu22.04_amd64.deb` and
+`…~ubuntu24.04_amd64.deb` (README.md says why two, and how to install and publish them).
 
 `./build.sh [version] [api]` builds `dist/Boop.exe`. Authenticode signing is an
 optional last step switched on by `BOOP_SIGN` (`osslsigncode` with a PFX, or `azure`

@@ -1,0 +1,30 @@
+.TH BOOP 1 "" "Boop" "User Commands"
+.SH NAME
+boop \- the Boop VPN app
+.SH SYNOPSIS
+.B boop
+[\fB\-\-autostart\fR] [\fB\-\-browser\fR] [\fB\-\-version\fR]
+.SH DESCRIPTION
+.B boop
+opens the Boop window (WebKitGTK). It runs as the user and keeps its data in
+\fI~/.config/boop\fR. The tunnel itself is held by
+.BR boop-helper (8),
+a system service; members of the group \fBboop\fR may use it.
+Closing the window disconnects the VPN and quits.
+.SH OPTIONS
+.TP
+.B \-\-autostart
+start with the window minimised (used by \fI~/.config/autostart/boop.desktop\fR).
+.TP
+.B \-\-browser
+open the window in the web browser instead (127.0.0.1, a random port and a
+one-time link); also used by itself when no WebKitGTK window can be made.
+.TP
+.B \-\-version
+print the version and exit.
+.SH FILES
+.TP
+.I ~/.config/boop/
+settings, the sign-in and \fIboop.log\fR.
+.SH SEE ALSO
+.BR boop-helper (8)

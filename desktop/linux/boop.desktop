@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Boop
+GenericName=VPN
+Comment=VPN Boop
+Exec=boop
+Icon=boop
+Terminal=false
+Categories=Network;
+Keywords=VPN;vpn;Boop;AmneziaWG;
+StartupNotify=true
+StartupWMClass=boop

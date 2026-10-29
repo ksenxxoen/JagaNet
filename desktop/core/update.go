@@ -218,7 +218,7 @@ func (a *App) checkUpdate() {
 	a.mu.Unlock()
 	a.emit()
 	a.alert("update")
-	if m.Mandatory {
+	if m.Mandatory && !a.UpdateLink {
 		a.installUpdate(m, true)
 	}
 }

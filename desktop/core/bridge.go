@@ -175,6 +175,12 @@ func (a *App) cmdUpdate(context.Context) (any, error) {
 	a.mu.Lock()
 	m := a.available
 	a.mu.Unlock()
+	if m != nil && a.UpdateLink {
+		if a.OpenURL != nil {
+			a.OpenURL(m.URL)
+		}
+		return nil, nil
+	}
 	if m != nil {
 		mm := *m
 		Go("update", func() { a.installUpdate(mm, true) })

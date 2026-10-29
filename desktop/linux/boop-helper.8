@@ -1,0 +1,35 @@
+.TH BOOP-HELPER 8 "" "Boop" "System Administration"
+.SH NAME
+boop-helper \- holds the Boop VPN tunnel
+.SH SYNOPSIS
+.B /usr/lib/boop/boop-helper
+[\fB\-\-cleanup\fR] [\fB\-\-socket\fR \fIpath\fR] [\fB\-\-group\fR \fIname\fR] [\fB\-\-version\fR]
+.SH DESCRIPTION
+.B boop-helper
+runs as root under systemd (\fBboop-helper.service\fR). It brings up the
+AmneziaWG interface \fBboop0\fR, routes all traffic into it through its own
+routing table and rules (as wg-quick does), hands the DNS servers to
+systemd-resolved, and takes all of it away again when the app disconnects,
+quits or crashes, and when the service stops.
+.PP
+It listens on \fI/run/boop/helper.sock\fR and answers only root and the
+members of the group \fBboop\fR (checked by the caller's uid). It can only
+bring the tunnel up with a checked config, take it down, report its state and
+ping an IPv4 address.
+.SH OPTIONS
+.TP
+.B \-\-cleanup
+remove whatever a tunnel left (rules, routes, DNS settings, the interface) and exit.
+.TP
+.BI \-\-socket " path"
+the socket to listen on.
+.TP
+.BI \-\-group " name"
+the group whose members may use the helper.
+.TP
+.B \-\-version
+print the version and exit.
+.SH SEE ALSO
+.BR boop (1),
+.BR resolvectl (1),
+.BR ip-rule (8)

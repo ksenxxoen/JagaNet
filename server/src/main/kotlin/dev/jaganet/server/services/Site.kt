@@ -23,6 +23,20 @@ class Site(private val ctx: Ctx) {
      */
     fun desktopManifest(): DesktopAppManifest? = loadDesktopManifest(ctx.cfg.downloadsDir?.let(::File), ctx.cfg.publicUrl)
 
+    /**
+     * GET /v1/app/desktop?platform=…&distro=…. No platform (every Windows client so far) or
+     * "windows" is the Windows build, exactly as before; "linux" is the .deb for that Ubuntu
+     * release (the Linux app only shows the version and opens the link). Anything else: none.
+     */
+    fun desktopManifest(platform: String?, distro: String?): DesktopAppManifest? = when (platform?.trim()?.lowercase()) {
+        null, "", "windows" -> desktopManifest()
+        "linux" -> loadLinuxManifest(ctx.cfg.downloadsDir?.let(::File), ctx.cfg.publicUrl, distro)
+        else -> null
+    }
+
+    /** The .deb for one Ubuntu release, only after it has been placed in DOWNLOADS_DIR. */
+    fun linuxDeb(distro: String): File? = ctx.cfg.downloadsDir?.let { linuxDebFile(File(it), distro) }
+
     /** Third-party apps that import our key links / QR codes. */
     val otherApps = listOf(
         "AmneziaVPN" to "https://amnezia.org/downloads",
@@ -87,4 +101,32 @@ private fun sha256File(f: File): String {
         }
     }
     return md.digest().joinToString("") { "%02x".format(it) }
+}
+
+/** Ubuntu releases a Linux build is made for (build-linux.sh), as the app names them. */
+val LINUX_DISTROS = setOf("ubuntu22.04", "ubuntu24.04")
+
+/** boop-<distro>.deb in DOWNLOADS_DIR, e.g. boop-ubuntu24.04.deb. */
+internal fun linuxDebFile(dir: File, distro: String): File? =
+    distro.takeIf { it in LINUX_DISTROS }?.let { File(dir, "boop-$it.deb") }?.takeIf { it.isFile }
+
+/**
+ * desktop-linux.json (same fields as desktop.json) and the release's .deb must both be in
+ * DOWNLOADS_DIR; until then the Linux app hears 404 and offers nothing. The hash is the .deb's.
+ */
+internal fun loadLinuxManifest(dir: File?, publicUrl: String, distro: String?): DesktopAppManifest? {
+    if (dir == null || !dir.isDirectory || distro == null) return null
+    val deb = linuxDebFile(dir, distro.trim().lowercase()) ?: return null
+    val meta = File(dir, "desktop-linux.json")
+    if (!meta.isFile) return null
+    val parsed = runCatching { releaseJson.decodeFromString<DesktopReleaseFile>(meta.readText()) }.getOrNull() ?: return null
+    val version = parsed.version.trim()
+    if (version.isEmpty()) return null
+    return DesktopAppManifest(
+        version = version,
+        url = publicUrl.trimEnd('/') + "/download/linux/" + distro.trim().lowercase(),
+        sha256 = sha256File(deb),
+        mandatory = parsed.mandatory,
+        notes = parsed.notes?.trim()?.takeIf { it.isNotEmpty() },
+    )
 }

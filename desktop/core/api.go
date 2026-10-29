@@ -23,7 +23,10 @@ var SocketControl func(network, address string, c syscall.RawConn) error
 type API struct {
 	Base  string
 	Token func() string
-	http  *http.Client
+	// ManifestQuery is added to GET /v1/app/desktop, e.g. "platform=linux&distro=ubuntu24.04".
+	// Empty on Windows: the panel answers with the Windows build, as it always has.
+	ManifestQuery string
+	http          *http.Client
 }
 
 type APIError struct {
@@ -310,7 +313,11 @@ func (a *API) RemoveDevice(ctx context.Context, id string) error {
 // DesktopManifest is the public update document. 404 means nothing is published.
 func (a *API) DesktopManifest(ctx context.Context) (Manifest, error) {
 	var m Manifest
-	err := a.do(ctx, "GET", "app/desktop", nil, &m)
+	path := "app/desktop"
+	if a.ManifestQuery != "" {
+		path += "?" + a.ManifestQuery
+	}
+	err := a.do(ctx, "GET", path, nil, &m)
 	if err != nil {
 		return Manifest{}, err
 	}

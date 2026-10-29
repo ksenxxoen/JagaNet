@@ -22,6 +22,9 @@ const TXT = {
   updateAvailable: "Доступно обновление",
   updating: "Скачиваем обновление…", installing: "Устанавливаем и перезапускаем…", updateFailed: "Не удалось обновить. Повторить",
   update: "Обновить", expired: "Закончился",
+  // Linux (S.platform): the system's own words; Boop there has no tray and installs updates from a .deb.
+  download: "Скачать", startLinux: "Запускать при входе в систему", startLinuxSub: "Boop откроется свёрнутым при входе в систему.",
+  reportNoteLinux: "Отправим в поддержку версии Boop и системы, состояние подключения и последние строки журнала. Ключи, токены и ссылки на ключи в отчёт не попадают.",
   // Same words as planPhrase in core/planwarn.go (the tray says the same, plus a reason).
   planSoon: "Тариф заканчивается через", planToday: "Тариф заканчивается сегодня", days: ["день", "дня", "дней"],
   full: "Нет мест",
@@ -207,6 +210,11 @@ function render(next) {
   $("s-auto").checked = !!S.autoConnect;
   $("s-strict").checked = !!S.strictKill;
   $("s-start-row").hidden = S.autostart == null;
+  if (S.platform === "linux") {
+    $("s-start-title").textContent = TXT.startLinux;
+    $("s-start-sub").textContent = TXT.startLinuxSub;
+    $("report-note").textContent = TXT.reportNoteLinux;
+  }
   $("s-start").checked = !!S.autostart;
   $("s-version").textContent = S.version ? "Boop " + S.version : "";
 }
@@ -242,7 +250,7 @@ function renderUpdate() {
   banner.classList.toggle("is-loading", busyNow);
   $("s-update").disabled = busyNow;
   $("s-update").classList.toggle("is-loading", busyNow);
-  $("s-update-title").textContent = busyNow || stage === "failed" ? text : TXT.update + " до " + u.version;
+  $("s-update-title").textContent = busyNow || stage === "failed" ? text : u.link ? TXT.download + " версию " + u.version : TXT.update + " до " + u.version;
   $("s-update-sub").textContent = busyNow || stage === "failed" ? "" : u.notes || "";
 }
 

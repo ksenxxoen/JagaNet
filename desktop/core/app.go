@@ -29,6 +29,12 @@ type App struct {
 	ApplyUpdate func(staged string) error
 	// UpdateDir is where a downloaded exe is staged. Empty skips installing.
 	UpdateDir string
+	// UpdateLink: the app does not install updates itself, "update" opens the
+	// manifest's download link instead (Linux: the person installs the .deb).
+	UpdateLink bool
+	// Platform is told to the window when it is not Windows ("linux"), for the
+	// few texts that name the system.
+	Platform string
 	// Starting with Windows, where the system allows it.
 	Autostart   func(on bool) error
 	AutostartOn func() bool

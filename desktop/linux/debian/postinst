@@ -1,0 +1,47 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "configure" ]; then
+	# Members of this group may use the tunnel's service (boop-helper checks the
+	# caller's uid against it at every connection, so no new login is needed).
+	if ! getent group boop >/dev/null; then
+		groupadd --system boop
+	fi
+	# The person who installed the package: sudo's or pkexec's user, else the
+	# first ordinary account (uid 1000) when there is one.
+	user=""
+	if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
+		user="${SUDO_USER}"
+	elif [ -n "${PKEXEC_UID:-}" ] && [ "${PKEXEC_UID}" != "0" ]; then
+		user="$(getent passwd "${PKEXEC_UID}" | cut -d: -f1)"
+	else
+		user="$(getent passwd 1000 | cut -d: -f1)"
+	fi
+	if [ -n "$user" ] && id "$user" >/dev/null 2>&1; then
+		if usermod -a -G boop "$user"; then
+			echo "Boop: пользователь $user добавлен в группу boop и может подключать VPN."
+		fi
+	else
+		echo "Boop: добавьте пользователей VPN в группу boop: sudo usermod -aG boop <пользователь>"
+	fi
+fi
+
+# As dh_installsystemd does it: enable on a new install, (re)start the service.
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ]; then
+	if deb-systemd-helper --quiet was-enabled 'boop-helper.service'; then
+		deb-systemd-helper enable 'boop-helper.service' >/dev/null || true
+	else
+		deb-systemd-helper update-state 'boop-helper.service' >/dev/null || true
+	fi
+	if [ -d /run/systemd/system ]; then
+		systemctl --system daemon-reload >/dev/null || true
+		if [ -n "$2" ]; then
+			_action=restart
+		else
+			_action=start
+		fi
+		deb-systemd-invoke $_action 'boop-helper.service' >/dev/null || true
+	fi
+fi
+
+exit 0

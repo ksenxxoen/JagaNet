@@ -96,6 +96,14 @@ fun Route.website(s: Services) {
         call.respondFile(exe)
     }
 
+    // Opt-in too: 404 until boop-<distro>.deb is placed in DOWNLOADS_DIR.
+    get("/download/linux/{distro}") {
+        val distro = call.parameters["distro"]!!.trim().lowercase()
+        val deb = s.site.linuxDeb(distro) ?: throw notFound("The Linux app isn't uploaded yet")
+        call.response.header(HttpHeaders.ContentDisposition, ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, "boop_${distro}_amd64.deb").toString())
+        call.respondFile(deb)
+    }
+
     // Key links: the token is the secret. Never cache, never index, never leak it in a Referer.
     suspend fun ApplicationCall.key(): KeyConfig {
         response.header(HttpHeaders.CacheControl, "no-store")
