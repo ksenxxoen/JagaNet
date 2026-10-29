@@ -38,6 +38,81 @@ note "Address $PUBLIC_IP, network interface $WAN_IF"
 # Main server reachable and the token valid? (Before spending minutes on the build.)
 curl -fsS --max-time 15 "$JAGANET_URL/health" >/dev/null || fail "Can't reach $JAGANET_URL from this server."
 
+# Prints the main server's answer (JSON) to: register <protocol>
+register() {
+  python3 - "$JAGANET_URL" "$NODE_TOKEN" "$PUBLIC_IP" "$PORT" "$1" <<'PY'
+import json, sys, urllib.request, urllib.error
+url, token, ip, port, proto = sys.argv[1:6]
+body = json.dumps({"publicIp": ip, "port": int(port), "protocol": proto}).encode()
+req = urllib.request.Request(url + "/v1/node/register", data=body, method="POST",
+                             headers={"Content-Type": "application/json", "Authorization": "Bearer " + token,
+                                      "User-Agent": "BoopNodeAgent/1"})
+try:
+    print(urllib.request.urlopen(req, timeout=30).read().decode())
+except urllib.error.HTTPError as e:
+    sys.stderr.write("The main server refused: %s %s\n" % (e.code, e.read().decode()[:300]))
+    sys.exit(1)
+PY
+}
+
+# A VLESS+Reality node: Xray-core is set up on this machine by hand (docs/SERVER.md, "VLESS
+# nodes"), with its api, stats and policy sections; this only adds the agent, which keeps the
+# users of the VLESS inbounds equal to the main server's list through Xray's API.
+if [ "${PROTOCOL:-}" = vless ]; then
+  step "Checking Xray"
+  XRAY_BIN="${XRAY_BIN:-$(command -v xray || echo /usr/local/bin/xray)}"
+  XRAY_API="${XRAY_API:-127.0.0.1:10085}"
+  XRAY_INBOUNDS="${XRAY_INBOUNDS:-vision,xhttp}"
+  XRAY_SERVICE="${XRAY_SERVICE:-xray.service}"
+  [ -x "$XRAY_BIN" ] || fail "Xray isn't installed here. Set up Xray-core 26 or newer first (docs/SERVER.md, VLESS nodes)."
+  "$XRAY_BIN" api statsquery --server="$XRAY_API" >/dev/null || fail "Xray's API doesn't answer on $XRAY_API. Add the api, stats and policy sections to its config."
+  for tag in $(echo "$XRAY_INBOUNDS" | tr ',' ' '); do
+    "$XRAY_BIN" api inbounduser --server="$XRAY_API" -tag="${tag%%:*}" >/dev/null || fail "Xray has no inbound with the tag ${tag%%:*} (XRAY_INBOUNDS=$XRAY_INBOUNDS)."
+  done
+  note "$("$XRAY_BIN" version | head -1)"
+
+  step "Registering with the main server"
+  note "$JAGANET_URL"
+  register vless > /dev/null || fail "Registration failed. Enter the node's VLESS settings in the admin panel, then copy a fresh command from there."
+
+  step "Starting the node agent"
+  curl -fsSL "$JAGANET_URL/node/agent.py" -o "$APP_DIR/agent.py"
+  chmod 755 "$APP_DIR/agent.py"
+  umask 077
+  cat > "$NODE_DIR/env" <<EOF
+JAGANET_URL=$JAGANET_URL
+NODE_TOKEN=$NODE_TOKEN
+PROTOCOL=vless
+XRAY_BIN=$XRAY_BIN
+XRAY_API=$XRAY_API
+XRAY_INBOUNDS=$XRAY_INBOUNDS
+WAN_IF=$WAN_IF
+EOF
+  umask 022
+  cat > /etc/systemd/system/jaganet-node.service <<EOF
+[Unit]
+Description=Boop node agent (VLESS, Xray API)
+After=network-online.target $XRAY_SERVICE
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 $APP_DIR/agent.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload
+  systemctl enable -q jaganet-node
+  systemctl restart jaganet-node
+  sleep 3
+  systemctl is-active -q jaganet-node || { journalctl -u jaganet-node -n 30 --no-pager -o cat; fail "The agent didn't start (log above)."; }
+  printf '\n\033[1;32mNode ready.\033[0m It shows as online in the admin panel within a minute.\n'
+  note "VLESS on $PUBLIC_IP, inbounds $XRAY_INBOUNDS. Agent log: journalctl -u jaganet-node -f"
+  exit 0
+fi
+
 step "Installing the VPN (AmneziaWG 3.1)"
 PROTOCOL=amneziawg
 # AmneziaWG 3.1 gets through mobile networks that cut older AmneziaWG; it needs current
@@ -99,19 +174,7 @@ sysctl -q -p /etc/sysctl.d/90-jaganet.conf
 
 step "Registering with the main server"
 note "$JAGANET_URL"
-REG="$(python3 - "$JAGANET_URL" "$NODE_TOKEN" "$PUBLIC_IP" "$PORT" "$PROTOCOL" <<'PY'
-import json, sys, urllib.request, urllib.error
-url, token, ip, port, proto = sys.argv[1:6]
-body = json.dumps({"publicIp": ip, "port": int(port), "protocol": proto}).encode()
-req = urllib.request.Request(url + "/v1/node/register", data=body, method="POST",
-                             headers={"Content-Type": "application/json", "Authorization": "Bearer " + token})
-try:
-    print(urllib.request.urlopen(req, timeout=30).read().decode())
-except urllib.error.HTTPError as e:
-    sys.stderr.write("The main server refused: %s %s\n" % (e.code, e.read().decode()[:300]))
-    sys.exit(1)
-PY
-)" || fail "Registration failed. Copy a fresh command from the admin panel (the token works for one node)."
+REG="$(register "$PROTOCOL")" || fail "Registration failed. Copy a fresh command from the admin panel (the token works for one node)."
 umask 077
 echo "$REG" > "$NODE_DIR/node.json"
 umask 022

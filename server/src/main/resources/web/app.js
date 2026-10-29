@@ -1204,8 +1204,43 @@ async function nodesPane(command) {
         ${field("nm", t("Devices at most"), v.maxPeers, 'type="number" min="1" max="65000" step="1" required')}
         ${field("nh", t("Host name"), v.hostname, 'maxlength="200" placeholder="de1.vpn.example.com"')}
         <div><label for="na">${t("Status")}</label><select id="na"><option value="1" ${v.active ? "selected" : ""}>${t("On")}</option><option value="0" ${v.active ? "" : "selected"}>${t("Off")}</option></select></div>
-      </div>`;
-  const nodeBody = () => ({ name: val("nn"), city: val("nc"), countryCode: val("nk").toUpperCase(), maxPeers: Number(val("nm")), active: document.getElementById("na").value === "1", hostname: document.getElementById("nh") ? val("nh") || null : null });
+        ${field("ncn", t("Country name in the apps"), v.countryName || "", 'maxlength="60" placeholder="Финляндия"')}
+        ${local ? "" : `<div><label for="np">${t("Protocol")}</label><select id="np" ${v.id ? "disabled" : ""}>
+          <option value="amneziawg" ${v.vless ? "" : "selected"}>AmneziaWG</option><option value="vless" ${v.vless ? "selected" : ""}>VLESS+Reality (Xray)</option></select></div>`}
+      </div>${local ? "" : vlessFields(v.vless)}`;
+  // A VLESS node: Xray runs there already; the panel keeps only what the apps need (no private key).
+  const vlessFields = (x) => {
+    x = x || {};
+    const tr = x.transports || [], vis = tr.find((t) => t.type === "tcp") || {}, xh = tr.find((t) => t.type === "xhttp") || {};
+    return `<div id="vlessbox" ${x.host ? "" : "hidden"}><h4>VLESS+Reality</h4>
+      <p class="muted">${t("Xray is set up on the machine by hand. Its Reality private key stays there, enter only the public key.")}</p>
+      <div class="fields">
+        ${field("vlh", t("Address for the apps"), x.host, 'maxlength="253" placeholder="ru1.vpn.example.com"')}
+        ${field("vls", t("Reality server name (SNI)"), x.sni, 'maxlength="253" placeholder="ru1.vpn.example.com"')}
+        ${field("vlp", t("Reality public key"), x.publicKey, 'maxlength="43" class="mono" autocomplete="off"')}
+        ${field("vli", t("Short IDs, comma separated"), (x.shortIds || []).join(","), 'class="mono" placeholder="a1b2c3d4"')}
+        ${field("vlf", t("Fingerprint"), x.fingerprint || "firefox", 'maxlength="20"')}
+        ${field("vl1", t("Vision port (TCP), empty for none"), vis.port ?? 443, 'type="number" min="1" max="65535" step="1"')}
+        ${field("vl2", t("XHTTP port, empty for none"), xh.port ?? 8443, 'type="number" min="1" max="65535" step="1"')}
+        ${field("vl3", t("XHTTP path"), xh.path || "", 'class="mono" placeholder="/secret-path"')}
+        <div><label for="vl4">${t("XHTTP mode")}</label><select id="vl4">${["auto", "packet-up", "stream-up", "stream-one"].map((m) => `<option ${(xh.mode || "auto") === m ? "selected" : ""}>${m}</option>`).join("")}</select></div>
+      </div></div>`;
+  };
+  const vlessBody = (x) => {
+    x = x || {};
+    const tr = x.transports || [], vis = tr.find((t) => t.type === "tcp") || {}, xh = tr.find((t) => t.type === "xhttp") || {};
+    const transports = [];
+    if (val("vl1")) transports.push({ type: "tcp", port: Number(val("vl1")), tag: vis.tag || "vision", flow: vis.flow ?? "xtls-rprx-vision" });
+    if (val("vl2")) transports.push({ type: "xhttp", port: Number(val("vl2")), tag: xh.tag || "xhttp", flow: xh.flow ?? "", path: val("vl3"), mode: document.getElementById("vl4").value });
+    return { host: val("vlh"), sni: val("vls"), publicKey: val("vlp"), shortIds: val("vli").split(",").map((s) => s.trim()).filter((s, i, a) => s || a.length === 1), fingerprint: val("vlf") || "firefox", transports };
+  };
+  const isVless = () => document.getElementById("np")?.value === "vless";
+  const wireProtocol = () => {
+    const sel = document.getElementById("np");
+    if (sel) sel.onchange = () => { document.getElementById("vlessbox").hidden = !isVless(); };
+  };
+  const nodeBody = (x) => ({ name: val("nn"), city: val("nc"), countryCode: val("nk").toUpperCase(), maxPeers: Number(val("nm")), active: document.getElementById("na").value === "1", hostname: document.getElementById("nh") ? val("nh") || null : null,
+    countryName: val("ncn") || null, protocol: isVless() ? "vless" : null, vless: isVless() ? vlessBody(x?.vless) : null });
   const install = (id, ssh) => api(`/admin/nodes/${encodeURIComponent(id)}/install`, { method: "POST", body: ssh });
 
   // New node: the node's details and, optionally, the server to install it on.
@@ -1216,6 +1251,7 @@ async function nodesPane(command) {
       <div class="actionsrow"><button class="btn" type="submit">${t("Create and install")}</button><button class="btn secondary" type="button" id="ncancel">${t("Cancel")}</button>
         <button class="btn secondary" type="button" id="nmanual">${t("Create, I'll install by hand")}</button></div>
       <p class="result" id="nres"></p>`;
+    wireProtocol();
     document.getElementById("ncancel").onclick = () => { nf.hidden = true; };
     document.getElementById("nmanual").onclick = (e) => {
       if (!nf.reportValidity()) return;
@@ -1261,6 +1297,7 @@ async function nodesPane(command) {
       <div class="actionsrow"><button class="btn" type="submit">${t("Install")}</button>
         <button class="btn secondary" type="button" id="nmove">${t("Show the command instead")}</button></div>
       <p class="result" id="mres"></p>`;
+    wireProtocol();
     document.getElementById("ncancel").onclick = () => { nf.hidden = true; mf.hidden = true; vf.hidden = true; sf.hidden = true; };
     // What the apps are told: "Fastest" skips blocked and maintenance nodes and picks unstable ones last.
     sf.hidden = false;
@@ -1292,7 +1329,7 @@ async function nodesPane(command) {
     };
     nf.onsubmit = (e) => {
       e.preventDefault();
-      saveWith(nf.querySelector("button[type=submit]"), "nres", () => api("/admin/nodes/" + encodeURIComponent(x.id), { method: "PUT", body: nodeBody() }), () => nodesPane());
+      saveWith(nf.querySelector("button[type=submit]"), "nres", () => api("/admin/nodes/" + encodeURIComponent(x.id), { method: "PUT", body: nodeBody(x) }), () => nodesPane());
     };
     if (!x.remote) mf.innerHTML = "";
     mf.onsubmit = (e) => {

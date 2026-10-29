@@ -50,6 +50,12 @@ interface ProtocolDriver {
      */
     fun currentParams(node: ServerNode): JsonObject? = null
 
+    /**
+     * The same for one peer: protocols whose params carry the peer's own credential (VLESS: the
+     * UUID) answer here. The default is [currentParams] without the peer.
+     */
+    fun currentParams(node: ServerNode, peerKey: String): JsonObject? = currentParams(node)
+
     /** Optional hook: a device reported connect/disconnect (the simulator uses it). */
     fun onConnectionEvent(node: ServerNode, peerKey: String, connected: Boolean) {}
 }

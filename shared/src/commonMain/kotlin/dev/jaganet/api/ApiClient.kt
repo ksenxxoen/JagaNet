@@ -82,7 +82,14 @@ class ApiClient(
     suspend fun deleteAccount(): OkRes = delete("me")
 
     // servers & tunnel
-    suspend fun servers(): ServersRes = get("servers")
+    /**
+     * The nodes. [supportedProtocols]: the protocols this app can run; with it the list also has
+     * nodes of opt-in protocols ([Protocols.OPT_IN], e.g. VLESS) when named. Without it (older
+     * apps), those nodes are left out.
+     */
+    suspend fun servers(supportedProtocols: List<String>? = null): ServersRes = get("servers") {
+        if (supportedProtocols != null) parameter("supportedProtocols", supportedProtocols.joinToString(","))
+    }
     suspend fun provisionTunnel(req: TunnelProvisionReq): TunnelConfig = post("tunnel", req)
     suspend fun connectionEvent(req: ConnectionEventReq): OkRes = post("tunnel/events", req)
     suspend fun sendDiagnostics(req: DiagnosticsReq): DiagnosticsRes = post("diagnostics", req)

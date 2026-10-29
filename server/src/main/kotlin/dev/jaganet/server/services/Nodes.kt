@@ -10,6 +10,7 @@ import dev.jaganet.api.NodeState
 import dev.jaganet.api.NodeStatus
 import dev.jaganet.api.NodeStatusReq
 import dev.jaganet.api.Protocols
+import dev.jaganet.api.Vless
 import dev.jaganet.api.ErrorCode
 import dev.jaganet.server.AppError
 import dev.jaganet.server.Ctx
@@ -66,13 +67,14 @@ class NodeHub {
 
 /* What the node agent sends and gets (scripts/server/node/agent.py). */
 
+/** [port] is the VPN port for AmneziaWG / WireGuard; a VLESS node's ports are in its settings. */
 @Serializable
-data class NodeRegisterReq(val publicIp: String, val port: Int, val protocol: String)
+data class NodeRegisterReq(val publicIp: String, val port: Int = 0, val protocol: String)
 
 @Serializable
 data class NodeRegisterRes(
     val protocol: String,
-    /** The node's identity: the same on every machine this node runs on. */
+    /** The node's identity: the same on every machine this node runs on. Empty for VLESS (its keys stay on the node). */
     val privateKey: String,
     val iface: String,
     /** The node's own tunnel address with prefix, e.g. 10.8.0.1/24. */
@@ -83,14 +85,21 @@ data class NodeRegisterRes(
     val obfuscation: Map<String, String> = emptyMap(),
 )
 
+/** A peer for the agent: [publicKey] is the WireGuard key, or the user's UUID on a VLESS node. */
 @Serializable
 data class NodePeer(val publicKey: String, val address: String)
+
+/** A VLESS node's Xray inbound as the panel knows it: the agent adds users there with this flow. */
+@Serializable
+data class NodeInbound(val tag: String, val flow: String = "")
 
 @Serializable
 data class NodePeersRes(
     val version: String, val protocol: String, val iface: String, val peers: List<NodePeer>,
     /** Free plan speed limit for these addresses; null = no limit on this node. */
     val limit: NodeLimit? = null,
+    /** VLESS only: the inbounds from the node's settings (agents prefer their own XRAY_INBOUNDS list). */
+    val inbounds: List<NodeInbound> = emptyList(),
 )
 
 @Serializable
@@ -143,6 +152,10 @@ suspend fun readCounters(ctx: Ctx, server: Row, protocol: String): List<PeerCoun
 
 private const val IFACE_AWG = "awg0"
 private const val IFACE_WG = "wg0"
+/** A VLESS node has no interface: "xray" stands in for it in the agent's peer list. */
+private const val IFACE_XRAY = "xray"
+/** Addresses for VLESS devices: no tunnel uses them, they only keep the tunnels table uniform. */
+private const val VLESS_SUBNET = "10.9.0.0/16"
 private val HOST = Regex("^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$")
 private val USER = Regex("^[a-z_][a-z0-9_.-]{0,31}$")
 private const val LOG_LIMIT = 64 * 1024
@@ -167,10 +180,14 @@ class Nodes(private val ctx: Ctx) {
     val installs = ConcurrentHashMap<String, Job>()
     private fun hash(token: String) = MessageDigest.getInstance("SHA-256").digest(token.toByteArray()).joinToString("") { "%02x".format(it) }
 
-    fun installCommand(token: String): String {
+    /** For a VLESS node the installer only sets up the agent next to the Xray already running there. */
+    fun installCommand(token: String, protocol: String? = null): String {
         val base = ctx.cfg.publicUrl.trimEnd('/')
-        return "curl -fsSL $base/node/install.sh | JAGANET_URL=$base NODE_TOKEN=$token bash"
+        val extra = if (protocol == Protocols.VLESS) " PROTOCOL=vless" else ""
+        return "curl -fsSL $base/node/install.sh | JAGANET_URL=$base NODE_TOKEN=$token$extra bash"
     }
+
+    private fun protocolOf(r: Row): String? = r.json("protocols").keys.firstOrNull()
 
     suspend fun list(): List<AdminNode> = ctx.db.run { sql ->
         val now = ctx.now()
@@ -206,6 +223,8 @@ class Nodes(private val ctx: Ctx) {
             rxBps = rep?.rxBps, txBps = rep?.txBps, createdAt = r.instant("created_at").toString(),
             install = installOf(r)?.copy(log = ""),
             status = r.str("status"), notice = r.strOrNull("notice"),
+            countryName = r.strOrNull("country_name"),
+            vless = (protocols[Protocols.VLESS] as? JsonObject)?.let { runCatching { Protocols.decode<Vless.NodeSettings>(it) }.getOrNull() },
         )
     }
 
@@ -229,40 +248,76 @@ class Nodes(private val ctx: Ctx) {
         if (req.maxPeers !in 1..65_000) throw badRequest("Some values are out of range")
         val host = req.hostname?.trim()?.lowercase()?.trimEnd('.')?.takeIf { it.isNotEmpty() }
         if (host != null && !HOST.matches(host)) throw badRequest("Enter a host name like de1.vpn.example.com")
-        return req.copy(name = name, city = city, countryCode = cc, hostname = host)
+        val countryName = req.countryName?.trim()?.takeIf { it.isNotEmpty() }
+        if (countryName != null && countryName.length > 60) throw badRequest("Name must be 1 to 60 characters")
+        val protocol = req.protocol?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+        if (protocol != null && protocol !in setOf(Protocols.AMNEZIAWG, Protocols.VLESS)) throw badRequest("Unknown protocol")
+        val vless = req.vless?.let(::cleanVless)
+        return req.copy(name = name, city = city, countryCode = cc, hostname = host, countryName = countryName, protocol = protocol, vless = vless)
     }
 
-    /** A new location. It stays out of use until its agent registers. */
+    /** A VLESS node's settings as stored: trimmed, checked, and never anything secret (the type has no place for it). */
+    private fun cleanVless(v: Vless.NodeSettings): Vless.NodeSettings {
+        val c = v.copy(
+            host = v.host.trim().lowercase().trimEnd('.'), sni = v.sni.trim().lowercase().trimEnd('.'),
+            publicKey = v.publicKey.trim(), shortIds = v.shortIds.map { it.trim().lowercase() }.distinct(),
+            fingerprint = v.fingerprint.trim().lowercase(),
+            transports = v.transports.map { t -> t.copy(tag = t.tag.trim(), path = t.path?.trim(), mode = t.mode?.trim()?.ifEmpty { null }, host = t.host?.trim()?.lowercase()?.ifEmpty { null }) },
+        )
+        c.problem()?.let { throw AppError(400, ErrorCode.BAD_REQUEST, "Check the VLESS setting {field}", mapOf("field" to it)) }
+        return c
+    }
+
+    /** servers.protocols.vless: the settings plus "endpoint" (the first transport) for the lists, and the machine's address if known. */
+    private fun vlessJson(v: Vless.NodeSettings, publicIp: String? = null): JsonObject {
+        val first = v.transports.first()
+        return JsonObject(Protocols.encode(v) + buildJsonObject {
+            put("endpoint", "${first.host ?: v.host}:${first.port}")
+            if (publicIp != null) put("publicIp", publicIp)
+        })
+    }
+
+    /** A new location. It stays out of use until its agent registers (AmneziaWG) or reports (VLESS). */
     suspend fun create(req: NodeReq): NodeInstallRes {
         val r = check(req)
+        val vless = r.protocol == Protocols.VLESS
+        if (vless && r.vless == null) throw AppError(400, ErrorCode.BAD_REQUEST, "Check the VLESS setting {field}", mapOf("field" to "host"))
         val token = Crypto.newToken()
         val id = "node-" + Crypto.newToken().filter { it.isLetterOrDigit() }.lowercase().take(6)
         val (priv, pub) = Keys.newKeyPair()
         // A /24 per node; nodes don't share addresses (each one NATs its own clients), but a
-        // larger node needs a larger subnet: /22 above 250 devices.
-        val subnet = if (r.maxPeers > 250) "10.8.0.0/22" else "10.8.0.0/24"
+        // larger node needs a larger subnet: /22 above 250 devices. VLESS uses no addresses.
+        val subnet = if (vless) VLESS_SUBNET else if (r.maxPeers > 250) "10.8.0.0/22" else "10.8.0.0/24"
+        val protocols = if (vless) JsonObject(mapOf(Protocols.VLESS to vlessJson(r.vless!!))).toString() else "{}"
         ctx.db.run { sql ->
             sql.exec(
-                """INSERT INTO servers (id, name, city, country_code, subnet, protocols, max_peers, active, agent_token_hash, node_key_enc, endpoint_host, created_at)
-                   VALUES (?,?,?,?,?,'{}'::jsonb,?,?,?,?,?,?)""",
-                id, r.name, r.city, r.countryCode, subnet, r.maxPeers, r.active, hash(token), "$pub:" + box.encrypt(priv), r.hostname, ctx.now(),
+                """INSERT INTO servers (id, name, city, country_code, subnet, protocols, max_peers, active, agent_token_hash, node_key_enc, endpoint_host, created_at, country_name)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                id, r.name, r.city, r.countryCode, subnet, Jsonb(protocols), r.maxPeers, r.active, hash(token), "$pub:" + box.encrypt(priv), r.hostname, ctx.now(), r.countryName,
             )
         }
-        return NodeInstallRes(get(id), installCommand(token))
+        return NodeInstallRes(get(id), installCommand(token, if (vless) Protocols.VLESS else null))
     }
 
     suspend fun update(id: String, req: NodeReq): AdminNode {
         val r = check(req)
         val n = ctx.db.run { sql ->
-            val current = sql.one("SELECT subnet FROM servers WHERE id=?", id) ?: throw notFound("Node not found")
+            val current = sql.one("SELECT subnet, protocols FROM servers WHERE id=?", id) ?: throw notFound("Node not found")
             val capacity = 1 shl (32 - current.str("subnet").substringAfter('/').toInt())
             if (r.maxPeers > capacity - 3) throw AppError(400, ErrorCode.BAD_REQUEST, "This node has room for at most {n} devices", mapOf("n" to capacity - 3))
+            r.vless?.let { v ->
+                val old = current.json("protocols")[Protocols.VLESS] as? JsonObject ?: throw badRequest("This node does not run VLESS")
+                val ip = (old["publicIp"] as? JsonPrimitive)?.content
+                sql.exec("UPDATE servers SET protocols=? WHERE id=?", Jsonb(JsonObject(mapOf(Protocols.VLESS to vlessJson(v, ip))).toString()), id)
+            }
             sql.exec(
-                "UPDATE servers SET name=?, city=?, country_code=?, max_peers=?, active=?, endpoint_host=? WHERE id=?",
-                r.name, r.city, r.countryCode, r.maxPeers, r.active, r.hostname, id,
+                "UPDATE servers SET name=?, city=?, country_code=?, max_peers=?, active=?, endpoint_host=?, country_name=? WHERE id=?",
+                r.name, r.city, r.countryCode, r.maxPeers, r.active, r.hostname, r.countryName, id,
             ).also { if (it > 0) refreshEndpoint(sql, id) }
         }
         if (n == 0) throw notFound("Node not found")
+        // New inbound tags or flows reach the agent with its next peer list.
+        if (r.vless != null) ctx.nodeHub.changed(id)
         return get(id)
     }
 
@@ -271,7 +326,9 @@ class Nodes(private val ctx: Ctx) {
         val s = sql.one("SELECT * FROM servers WHERE id=?", id) ?: return
         val protocols = s.json("protocols")
         if (protocols.isEmpty()) return
-        val updated = JsonObject(protocols.mapValues { (_, v) ->
+        val updated = JsonObject(protocols.mapValues { (k, v) ->
+            // A VLESS node's address is its own setting (the cascade's entry), not the host name.
+            if (k == Protocols.VLESS) return@mapValues v
             val o = v as? JsonObject ?: return@mapValues v
             // The main server's row (written by its installer) may only hold "ip:port": take both
             // from there and keep them, so the name can be cleared again later.
@@ -294,7 +351,8 @@ class Nodes(private val ctx: Ctx) {
      */
     suspend fun newToken(id: String): NodeInstallRes {
         val token = swapToken(id)
-        return NodeInstallRes(get(id), installCommand(token))
+        val protocol = ctx.db.run { sql -> sql.one("SELECT protocols FROM servers WHERE id=?", id)?.let(::protocolOf) }
+        return NodeInstallRes(get(id), installCommand(token, protocol))
     }
 
     private suspend fun swapToken(id: String): String {
@@ -372,6 +430,8 @@ class Nodes(private val ctx: Ctx) {
         }
         val script = javaClass.classLoader.getResource("node/install.sh")?.readText() ?: error("node/install.sh is missing")
         val env = linkedMapOf("JAGANET_URL" to ctx.cfg.publicUrl.trimEnd('/'), "NODE_TOKEN" to token)
+        val protocol = ctx.db.run { sql -> sql.one("SELECT protocols FROM servers WHERE id=?", id)?.let(::protocolOf) }
+        if (protocol == Protocols.VLESS) env["PROTOCOL"] = Protocols.VLESS
         val result = try {
             val code = runner.run(target, script, env, ::line)
             val registered = ctx.db.run { it.one("SELECT 1 FROM servers WHERE id=? AND registered_at >= ?::timestamptz", id, started.startedAt) } != null
@@ -395,13 +455,16 @@ class Nodes(private val ctx: Ctx) {
     private fun simulatedRunner() = RemoteRunner { target, _, env, out ->
         if (target.password == "wrong") throw RemoteFailure("The server didn't accept the user name, password or key")
         out("Connected to ${target.host}, host key SHA256:simulated")
-        for (s in listOf("Installing system packages", "Installing the VPN (AmneziaWG)", "Registering with the main server", "Configuring the VPN interface", "Starting the node agent")) {
+        val protocol = env["PROTOCOL"] ?: Protocols.AMNEZIAWG
+        val steps = if (protocol == Protocols.VLESS) listOf("Checking Xray", "Registering with the main server", "Starting the node agent")
+        else listOf("Installing system packages", "Installing the VPN (AmneziaWG)", "Registering with the main server", "Configuring the VPN interface", "Starting the node agent")
+        for (s in steps) {
             out("==> $s"); delay(1_500); out("    done")
         }
         val ip = if (IPV4.matches(target.host)) target.host else "203.0.113.10"
         val token = env.getValue("NODE_TOKEN")
-        register(token, NodeRegisterReq(ip, 51821, Protocols.AMNEZIAWG))
-        report(token, NodeReportReq(Protocols.AMNEZIAWG, emptyList(), NodeSystem(cpu = 0.03, memUsed = 180_000_000, memTotal = 1_000_000_000)))
+        register(token, NodeRegisterReq(ip, 51821, protocol))
+        report(token, NodeReportReq(protocol, emptyList(), NodeSystem(cpu = 0.03, memUsed = 180_000_000, memTotal = 1_000_000_000)))
         out("Boop node is running.")
         0
     }
@@ -413,11 +476,14 @@ class Nodes(private val ctx: Ctx) {
 
     /** First contact from the install script: store the node's key and address, hand out its interface settings. */
     suspend fun register(token: String?, req: NodeRegisterReq): NodeRegisterRes {
-        if (req.protocol !in setOf(Protocols.AMNEZIAWG, Protocols.WIREGUARD)) throw badRequest("Unknown protocol")
+        if (req.protocol !in setOf(Protocols.AMNEZIAWG, Protocols.WIREGUARD, Protocols.VLESS)) throw badRequest("Unknown protocol")
         if (!IPV4.matches(req.publicIp)) throw badRequest("Invalid address")
+        if (req.protocol == Protocols.VLESS) return registerVless(token, req)
         if (req.port !in 1..65535) throw badRequest("Port must be 1 to 65535")
         val (res, id) = ctx.db.tx { sql ->
             val s = bySql(sql, token)
+            // A VLESS node stays one: an AmneziaWG install on its token would drop its settings.
+            if (Protocols.VLESS in s.json("protocols")) throw badRequest("This node is set up for VLESS")
             val (pub, enc) = s.str("node_key_enc").split(':', limit = 2)
             val iface = if (req.protocol == Protocols.AMNEZIAWG) IFACE_AWG else IFACE_WG
             // Keep the obfuscation profile across re-installs (clients already have it), unless it
@@ -454,6 +520,26 @@ class Nodes(private val ctx: Ctx) {
         return res
     }
 
+    /**
+     * A VLESS node's installer: the settings come from the admin panel (Xray and its keys are on
+     * the machine already), so this only records the machine's address. Nothing secret is sent back.
+     */
+    private suspend fun registerVless(token: String?, req: NodeRegisterReq): NodeRegisterRes {
+        val (res, id) = ctx.db.tx { sql ->
+            val s = bySql(sql, token)
+            val old = s.json("protocols")[Protocols.VLESS] as? JsonObject ?: throw badRequest("Enter the node's VLESS settings in the admin panel first")
+            val v = runCatching { Protocols.decode<Vless.NodeSettings>(old) }.getOrNull() ?: throw badRequest("Enter the node's VLESS settings in the admin panel first")
+            sql.exec("DELETE FROM node_peer_counters WHERE server_id=?", s.str("id"))
+            sql.exec(
+                "UPDATE servers SET protocols=?, registered_at=?, last_report_at=? WHERE id=?",
+                Jsonb(JsonObject(mapOf(Protocols.VLESS to vlessJson(v, req.publicIp))).toString()), ctx.now(), ctx.now(), s.str("id"),
+            )
+            NodeRegisterRes(Protocols.VLESS, "", IFACE_XRAY, "", s.str("subnet"), v.transports.first().port) to s.str("id")
+        }
+        ctx.nodeHub.changed(id)
+        return res
+    }
+
     private suspend fun serverIdOf(token: String?): String = ctx.db.run { bySql(it, token).str("id") }
 
     private suspend fun snapshot(serverId: String): NodePeersRes = ctx.db.run { sql ->
@@ -461,11 +547,18 @@ class Nodes(private val ctx: Ctx) {
         val protocol = s.json("protocols").keys.firstOrNull() ?: Protocols.AMNEZIAWG
         val peers = sql.query("SELECT peer_key, address FROM tunnels WHERE server_id=? AND protocol=? ORDER BY peer_key", serverId, protocol)
             .map { NodePeer(it.str("peer_key"), it.str("address")) }
-        val limit = speedLimits.limit(sql, serverId)
+        val vless = protocol == Protocols.VLESS
+        // The free plan's speed limit is applied by traffic.py on AmneziaWG nodes; a VLESS node has none.
+        val limit = if (vless) null else speedLimits.limit(sql, serverId)
+        val inbounds = if (!vless) emptyList()
+        else (s.json("protocols")[protocol] as? JsonObject)?.let { runCatching { Protocols.decode<Vless.NodeSettings>(it) }.getOrNull() }
+            ?.transports?.map { NodeInbound(it.tag, it.flow) }.orEmpty()
         val version = MessageDigest.getInstance("SHA-256")
-            .digest((peers.joinToString("\n") { "${it.publicKey} ${it.address}" } + "|" + limit?.let { "${it.mbps} ${it.addresses}" }).toByteArray())
+            .digest((peers.joinToString("\n") { "${it.publicKey} ${it.address}" } + "|" + limit?.let { "${it.mbps} ${it.addresses}" } +
+                inbounds.joinToString("") { "|${it.tag}:${it.flow}" }).toByteArray())
             .take(12).joinToString("") { "%02x".format(it) }
-        NodePeersRes(version, protocol, if (protocol == Protocols.AMNEZIAWG) IFACE_AWG else IFACE_WG, peers, limit)
+        val iface = when (protocol) { Protocols.AMNEZIAWG -> IFACE_AWG; Protocols.VLESS -> IFACE_XRAY; else -> IFACE_WG }
+        NodePeersRes(version, protocol, iface, peers, limit, inbounds)
     }
 
     /**
