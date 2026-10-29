@@ -205,6 +205,9 @@ button.banner:hover:not(:disabled) { background: color-mix(in srgb, var(--warnin
 .ping[data-q="3"] i { background: var(--success); }
 .ping[data-q="2"] i:nth-child(-n+2) { background: var(--success); }
 .ping[data-q="1"] i:nth-child(1) { background: var(--warning); }
+/* No answer: the word instead of the bars */
+.ping[data-q="down"] i { display: none; }
+.ping[data-q="down"] em { margin-left: 0; min-width: 0; white-space: nowrap; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes wave { 0% { transform: scale(1); opacity: .55; } 100% { transform: scale(2.05); opacity: 0; } }

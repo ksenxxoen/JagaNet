@@ -57,6 +57,12 @@ jobs:
       - name: go test
         run: go test -race -count=1 ./...
 
+      # Xray-core's Vision and XHTTP do not survive -race (checkptr, a race inside
+      # XHTTP's client; see vpn/xray/race_test.go), so the VLESS tests carry
+      # traffic over them in a second run without it.
+      - name: go test (VLESS without -race)
+        run: go test -count=1 ./vpn/xray/
+
       - name: SHA-256
         run: |
           sum="$(sha256sum dist/Boop.exe | cut -d' ' -f1)"

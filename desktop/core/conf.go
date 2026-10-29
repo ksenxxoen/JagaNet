@@ -221,8 +221,12 @@ func pickV4(ips []string) (string, error) {
 	return ips[0], nil
 }
 
-// EndpointHost is where to ping a server's tunnel.
+// EndpointHost is the node's host name or address in a tunnel config.
 func EndpointHost(c *TunnelConfig) string {
+	if c.Protocol == ProtocolVless {
+		h, _ := vlessHost(c)
+		return h
+	}
 	var p awgParams
 	if json.Unmarshal(c.Params, &p) != nil {
 		return ""

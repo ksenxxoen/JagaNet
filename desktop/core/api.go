@@ -159,6 +159,19 @@ type Server struct {
 	Status string `json:"status"`
 	// Notice is the owner's note for the people using this node.
 	Notice string `json:"notice"`
+	// CountryName is the country in Russian (issue #28); empty from an older panel.
+	CountryName string `json:"countryName"`
+	// Ping says how to measure this node's ping (issue #28); nil from an older panel: ICMP to Host.
+	Ping *PingTarget `json:"ping"`
+}
+
+// PingTarget is where and how to measure a node: "tcp" is the time a TCP
+// connect to Host:Port takes (VLESS nodes); "icmp" (or anything else) an ICMP
+// echo to Host (AmneziaWG nodes, whose port is UDP).
+type PingTarget struct {
+	Host   string `json:"host"`
+	Port   int    `json:"port"`
+	Method string `json:"method"`
 }
 
 // ServerList is GET /v1/servers: the nodes and the owner's note for everyone.
@@ -233,9 +246,11 @@ func (a *API) Me(ctx context.Context) (m Me, err error) {
 	return
 }
 
+// Servers is GET /v1/servers. The app names the protocols it runs, so the panel
+// lists VLESS nodes to it (a panel without the parameter only lists the old ones).
 func (a *API) Servers(ctx context.Context) (ServerList, error) {
 	var r ServerList
-	err := a.do(ctx, "GET", "servers", nil, &r)
+	err := a.do(ctx, "GET", "servers?supportedProtocols="+strings.Join(SupportedProtocols, ","), nil, &r)
 	return r, err
 }
 
@@ -266,9 +281,14 @@ func (a *API) KeyTunnel(ctx context.Context, id string) (k KeyTunnel, err error)
 	return
 }
 
-func (a *API) Provision(ctx context.Context, serverID, publicKey string) (c TunnelConfig, err error) {
+// Provision asks for a tunnel on a node. AmneziaWG sends the device's public
+// key; VLESS sends nothing (clientParams {}: the panel makes the UUID).
+func (a *API) Provision(ctx context.Context, serverID, protocol string, clientParams map[string]string) (c TunnelConfig, err error) {
+	if clientParams == nil {
+		clientParams = map[string]string{}
+	}
 	err = a.do(ctx, "POST", "tunnel", map[string]any{
-		"protocol": Protocol, "serverId": serverID, "clientParams": map[string]string{"publicKey": publicKey},
+		"protocol": protocol, "serverId": serverID, "clientParams": clientParams,
 	}, &c)
 	return
 }

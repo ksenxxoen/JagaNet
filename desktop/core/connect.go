@@ -85,7 +85,7 @@ func (a *App) disconnect() {
 	if a.stop != nil {
 		a.stop()
 	}
-	a.conn, a.current, a.curHost, a.curPing = "off", "", "", nil
+	a.conn, a.current, a.curHost, a.curTarget, a.curPing = "off", "", "", PingTarget{}, nil
 	a.problem, a.released, a.asleep = "", false, false
 	a.forgetVerdict()
 	a.skip = nil
@@ -243,8 +243,13 @@ func (a *App) establish(ctx context.Context, moveNow bool) error {
 	// left for another one on the next connect, like a node that went away.
 	usable := func(id string) bool {
 		return slices.ContainsFunc(servers, func(s Server) bool {
-			return s.ID == id && slices.Contains(s.Protocols, Protocol) && statusTier(s.Status, want == "auto") >= 0
+			return s.ID == id && protocolOf(s) != "" && statusTier(s.Status, want == "auto") >= 0
 		})
+	}
+	// The tunnel's protocol must be one the node still runs (and this app too).
+	sameProtocol := func(c *TunnelConfig) bool {
+		s, ok := serverByID(servers, c.ServerID)
+		return ok && supported(c.Protocol) && slices.Contains(s.Protocols, c.Protocol)
 	}
 
 	away := st.Config != nil && a.serverSkipped(st.Config.ServerID)
@@ -254,7 +259,7 @@ func (a *App) establish(ctx context.Context, moveNow bool) error {
 		target = a.pick(want, servers) // this node did not answer; try another
 	case st.Config != nil && st.Rekey && usable(st.Config.ServerID):
 		target = st.Config.ServerID // a new key on the same node
-	case st.Config == nil || st.Config.Protocol != Protocol || !usable(st.Config.ServerID):
+	case st.Config == nil || !usable(st.Config.ServerID) || !sameProtocol(st.Config):
 		target = a.pick(want, servers)
 	case want != "auto" && st.CountryCode != want:
 		target = a.pick(want, servers)
@@ -267,25 +272,33 @@ func (a *App) establish(ctx context.Context, moveNow bool) error {
 		if target == "?" {
 			return errors.New("no servers")
 		}
-		a.mu.Lock()
-		priv := a.Store.PrivateKey
-		a.mu.Unlock()
-		if priv == "" || st.Rekey {
-			if priv, _, err = NewKey(); err != nil {
+		node, _ := serverByID(servers, target)
+		if protocolOf(node) == ProtocolVless {
+			// No key on the device: the panel makes (or keeps) the UUID.
+			if _, err := a.API.Provision(ctx, target, ProtocolVless, nil); err != nil {
 				return err
 			}
+		} else {
+			a.mu.Lock()
+			priv := a.Store.PrivateKey
+			a.mu.Unlock()
+			if priv == "" || st.Rekey {
+				if priv, _, err = NewKey(); err != nil {
+					return err
+				}
+			}
+			pub, err := PublicKey(priv)
+			if err != nil {
+				return err
+			}
+			if _, err := a.API.Provision(ctx, target, Protocol, map[string]string{"publicKey": pub}); err != nil {
+				return err
+			}
+			a.mu.Lock()
+			a.Store.PrivateKey = priv
+			_ = a.Store.Save()
+			a.mu.Unlock()
 		}
-		pub, err := PublicKey(priv)
-		if err != nil {
-			return err
-		}
-		if _, err := a.API.Provision(ctx, target, pub); err != nil {
-			return err
-		}
-		a.mu.Lock()
-		a.Store.PrivateKey = priv
-		_ = a.Store.Save()
-		a.mu.Unlock()
 		if st, err = a.API.Tunnel(ctx); err != nil {
 			return err
 		}
@@ -297,6 +310,10 @@ func (a *App) establish(ctx context.Context, moveNow bool) error {
 }
 
 func peerKeyOf(c *TunnelConfig) string {
+	if c.Protocol == ProtocolVless {
+		p, _ := vlessParams(c)
+		return p.UUID
+	}
 	var p awgParams
 	_ = json.Unmarshal(c.Params, &p)
 	return p.ServerPublicKey

@@ -18,6 +18,7 @@ type tunnelHold struct {
 	ep       netip.AddrPort
 	serverID string
 	keyID    string
+	hosts    map[string]netip.Addr // VLESS: the address each variant's host got
 }
 
 var errPaused = errors.New("paused")
@@ -333,6 +334,9 @@ func (a *App) pushEndpoint(ctx context.Context, force bool) error {
 	if off || asleep || hold == nil || hold.st.Config == nil {
 		return nil
 	}
+	if hold.st.Config.Protocol == ProtocolVless {
+		return a.refreshVless(ctx, hold)
+	}
 	var p awgParams
 	if err := jsonUnmarshal(hold.st.Config, &p); err != nil {
 		return err
@@ -381,6 +385,14 @@ func (a *App) apply(ctx context.Context, st TunnelState, priv ...string) error {
 	if st.Config == nil {
 		return errors.New("no tunnel")
 	}
+	if st.Config.Protocol == ProtocolVless {
+		// No device key: the UUID in the parameters is the credential.
+		if asleep {
+			a.rememberHold(st, "", cur)
+			return errPaused
+		}
+		return a.applyVless(ctx, st)
+	}
 	if key == "" {
 		return errors.New("no key")
 	}
@@ -408,6 +420,14 @@ func (a *App) applyAt(ctx context.Context, st TunnelState, key string, ep netip.
 	}
 	cfg, peer, err := BuildConfigAt(key, st.Config, samePeer, ep)
 	if err != nil {
+		return err
+	}
+	return a.commit(ctx, st, key, ep, cfg, peer, nil)
+}
+
+// commit gives the adapter a built config and remembers what is in it.
+func (a *App) commit(ctx context.Context, st TunnelState, key string, ep netip.AddrPort, cfg *vpn.Config, peer string, hosts map[string]netip.Addr) error {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	a.op.Lock()
@@ -446,12 +466,16 @@ func (a *App) applyAt(ctx context.Context, st TunnelState, key string, ep netip.
 		}
 	}
 	a.curHost = EndpointHost(st.Config)
+	a.curTarget = configTarget(st.Config)
+	if s, ok := serverByID(a.servers, st.Config.ServerID); ok && s.Ping != nil {
+		a.curTarget = pingTarget(s) // where the panel says to measure it
+	}
 	keyID := a.Store.KeyID
 	serverID := ""
 	if st.Config != nil {
 		serverID = st.Config.ServerID
 	}
-	a.hold = &tunnelHold{st: st, priv: key, ep: ep, serverID: serverID, keyID: keyID}
+	a.hold = &tunnelHold{st: st, priv: key, ep: ep, serverID: serverID, keyID: keyID, hosts: hosts}
 	a.mu.Unlock()
 	a.emit()
 	return nil
@@ -470,7 +494,7 @@ func (a *App) rememberHold(st TunnelState, key string, ep netip.AddrPort) {
 func (a *App) remember() {
 	a.mu.Lock()
 	h := a.hold
-	if h == nil || h.st.Config == nil || h.priv == "" {
+	if h == nil || h.st.Config == nil || (h.priv == "" && h.st.Config.Protocol != ProtocolVless) {
 		a.mu.Unlock()
 		return
 	}
@@ -490,7 +514,7 @@ func (a *App) applyCached(ctx context.Context) error {
 	c := a.Store.Cached()
 	want := a.Store.KeyID
 	a.mu.Unlock()
-	if c == nil || c.Config == nil || c.PrivateKey == "" || c.KeyID != want {
+	if c == nil || c.Config == nil || (c.PrivateKey == "" && c.Config.Protocol != ProtocolVless) || c.KeyID != want {
 		return errors.New("no saved config")
 	}
 	return a.apply(ctx, TunnelState{Config: c.Config, Version: c.Version, CountryCode: c.Country}, c.PrivateKey)

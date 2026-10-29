@@ -16,10 +16,13 @@ const (
 )
 
 type App struct {
-	API     *API
-	Store   *Store
-	Tunnel  vpn.Tunnel
+	API    *API
+	Store  *Store
+	Tunnel vpn.Tunnel
+	// Ping is the ICMP echo (AmneziaWG nodes); PingTCP the TCP connect (VLESS
+	// nodes), outside the tunnel. Init fills PingTCP in unless a test did.
 	Ping    func(ctx context.Context, host string) (time.Duration, error)
+	PingTCP func(ctx context.Context, host string, port int) (time.Duration, error)
 	OpenURL func(string)
 	OnState func(UIState)
 	OnToast func(string)
@@ -48,11 +51,13 @@ type App struct {
 	servers    []Server
 	notice     string // the owner's note for everyone (GET /servers)
 	keys       []Key
-	pings      map[string]float64 // by host
+	pings      map[string]float64 // by pingKey: the last good measurement
+	down       map[string]bool    // by pingKey: the last measurement failed («недоступен»)
 	conn       string
 	since      time.Time
 	current    string
 	curHost    string
+	curTarget  PingTarget // where the node in use is pinged
 	curPing    *float64
 	applied    string // TunnelState.version now in the tunnel
 	peerKey    string
@@ -89,6 +94,10 @@ type App struct {
 func (a *App) Init() {
 	a.conn = "off"
 	a.pings = map[string]float64{}
+	a.down = map[string]bool{}
+	if a.PingTCP == nil {
+		a.PingTCP = tcpPing
+	}
 	if a.Prober.Panel == nil && a.Prober.Web == nil {
 		a.Prober = netProber(a.API)
 	}

@@ -3,7 +3,9 @@ package core
 import (
 	"context"
 	"math"
+	"net"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -64,7 +66,7 @@ func (a *App) pick(want string, servers []Server) string {
 func (a *App) choose(want string, servers []Server, honorSkip bool) string {
 	best, tier, score := "?", 0, math.MaxFloat64
 	for _, s := range servers {
-		if !slices.Contains(s.Protocols, Protocol) || s.Load >= 1 || (want != "auto" && s.CountryCode != want) {
+		if protocolOf(s) == "" || s.Load >= 1 || (want != "auto" && s.CountryCode != want) {
 			continue
 		}
 		if honorSkip && slices.Contains(a.skip, s.ID) {
@@ -74,9 +76,13 @@ func (a *App) choose(want string, servers []Server, honorSkip bool) string {
 		if t < 0 {
 			continue
 		}
-		ms, ok := a.pings[s.Host]
+		k := pingTarget(s).key()
+		ms, ok := a.pings[k]
 		if !ok {
 			ms = 400
+		}
+		if a.down[k] {
+			ms = unreachableMs // still a choice, but the last one
 		}
 		if v := ms + s.Load*150; best == "?" || t < tier || (t == tier && v < score) {
 			best, tier, score = s.ID, t, v
@@ -103,49 +109,110 @@ func (a *App) pingAllLoop() {
 	}
 }
 
+// unreachableMs is how choose ranks a node whose last ping failed.
+const unreachableMs = 5000
+
+// pingTarget is where and how to measure a node (issue #28: the panel says;
+// an older panel only gives the host, pinged with ICMP as before).
+func pingTarget(s Server) PingTarget {
+	if s.Ping != nil && s.Ping.Host != "" {
+		t := *s.Ping
+		if t.Method != "tcp" || t.Port <= 0 || t.Port > 65535 {
+			t.Method, t.Port = "icmp", 0
+		}
+		return t
+	}
+	return PingTarget{Host: s.Host, Method: "icmp"}
+}
+
+// key names a measurement: the host for ICMP (as before), "tcp:host:port" for TCP.
+func (t PingTarget) key() string {
+	if t.Method == "tcp" {
+		return "tcp:" + net.JoinHostPort(t.Host, strconv.Itoa(t.Port))
+	}
+	return t.Host
+}
+
+// configTarget is where to ping the node of a tunnel config.
+func configTarget(c *TunnelConfig) PingTarget {
+	if c == nil {
+		return PingTarget{}
+	}
+	if c.Protocol == ProtocolVless {
+		h, port := vlessHost(c)
+		return PingTarget{Host: h, Port: port, Method: "tcp"}
+	}
+	return PingTarget{Host: EndpointHost(c), Method: "icmp"}
+}
+
+func (a *App) measure(ctx context.Context, t PingTarget) (time.Duration, error) {
+	if t.Method == "tcp" {
+		return a.PingTCP(ctx, t.Host, t.Port)
+	}
+	return a.pingHost(ctx, t.Host)
+}
+
+// pingAll measures every node the app can use, each the way the panel says.
+// A node that does not answer is «недоступен» until it answers again. While a
+// VLESS tunnel is up, ICMP goes into it and is not carried, so a failed ICMP
+// ping then keeps the last result instead.
 func (a *App) pingAll() {
 	a.mu.Lock()
-	hosts := map[string]bool{}
+	targets := map[string]PingTarget{}
 	for _, s := range a.servers {
-		if s.Host != "" {
-			hosts[s.Host] = true
+		if t := pingTarget(s); t.Host != "" && protocolOf(s) != "" {
+			targets[t.key()] = t
 		}
 	}
+	icmpBlind := a.conn != "off" && a.hold != nil && a.hold.st.Config != nil && a.hold.st.Config.Protocol == ProtocolVless
 	a.mu.Unlock()
 	var wg sync.WaitGroup
 	res := sync.Map{}
-	for h := range hosts {
+	for k, t := range targets {
 		wg.Add(1)
-		h := h
 		Go("ping", func() {
 			defer wg.Done()
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			if d, err := a.pingHost(ctx, h); err == nil {
-				res.Store(h, float64(d.Microseconds())/1000)
+			if d, err := a.measure(ctx, t); err == nil {
+				res.Store(k, float64(d.Microseconds())/1000)
+			} else {
+				res.Store(k, -1.0)
 			}
 		})
 	}
 	wg.Wait()
 	a.mu.Lock()
-	res.Range(func(k, v any) bool { a.pings[k.(string)] = v.(float64); return true })
+	res.Range(func(k, v any) bool {
+		key, ms := k.(string), v.(float64)
+		switch {
+		case ms >= 0:
+			a.pings[key] = ms
+			delete(a.down, key)
+		case icmpBlind && targets[key].Method != "tcp":
+		default:
+			delete(a.pings, key)
+			a.down[key] = true
+		}
+		return true
+	})
 	a.mu.Unlock()
 	a.emit()
 }
 
-// pingCurrent measures the way through the tunnel to the node.
+// pingCurrent measures the way to the node in use.
 func (a *App) pingCurrent(ctx context.Context) {
 	a.mu.Lock()
-	h := a.curHost
+	h := a.curTarget
 	a.mu.Unlock()
-	if h == "" {
+	if h.Host == "" {
 		return
 	}
 	pctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	d, err := a.pingHost(pctx, h)
+	d, err := a.measure(pctx, h)
 	a.mu.Lock()
-	if a.curHost == h && ctx.Err() == nil {
+	if a.curTarget == h && ctx.Err() == nil {
 		if err == nil {
 			v := float64(d.Microseconds()) / 1000
 			a.curPing = &v
@@ -182,7 +249,7 @@ func (a *App) nodesLeft() int {
 	}
 	n := 0
 	for _, s := range a.servers {
-		if !slices.Contains(s.Protocols, Protocol) || s.Load >= 1 || statusTier(s.Status, want == "auto") < 0 {
+		if protocolOf(s) == "" || s.Load >= 1 || statusTier(s.Status, want == "auto") < 0 {
 			continue
 		}
 		if want != "auto" && s.CountryCode != want {

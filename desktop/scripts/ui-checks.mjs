@@ -281,6 +281,41 @@ try {
     await page.waitForTimeout(300);
   });
 
+  await attempt("server list: flag, country, ping, «недоступен» (issue #29)", async () => {
+    // Go sends the panel's Russian name (name), the ping, and down when no node of the country answered.
+    await show({ ...main, conn: "off", country: "auto", best: "SE", countries: [
+      { code: "SE", name: "Швеция", ping: 31 }, { code: "PL", name: "Польша", down: true }, { code: "NL", ping: 23 },
+      { code: "XK", name: "Косово", ping: 95 }, { code: "AM", ping: null } ] });
+    await click("#open-places");
+    await page.waitForTimeout(300);
+    const rows = await page.evaluate(() => [...document.querySelectorAll("#place-list .list-item")].map((b) => ({
+      name: b.querySelector(".item-title").textContent, ping: (b.querySelector(".ping em") || {}).textContent, q: (b.querySelector(".ping") || { dataset: {} }).dataset.q,
+      flag: !!b.querySelector(".flag svg"), flagText: b.querySelector(".flag").textContent, disabled: b.disabled, label: (b.querySelector(".ping") || { getAttribute: () => "" }).getAttribute("aria-label"),
+    })));
+    const row = (name) => rows.find((r) => r.name === name) || {};
+    check("the panel's country name is shown", row("Швеция").ping === "31 мс" && row("Польша").name === "Польша" && row("Косово").ping === "95 мс");
+    check("a country without a name from the panel is named by the code", row("Нидерланды").ping === "23 мс");
+    check("unreachable: «недоступен» instead of a number, still selectable", row("Польша").ping === "недоступен" && row("Польша").q === "down" && !row("Польша").disabled && row("Польша").label === "недоступен");
+    check("not measured yet: no number and no «недоступен»", row("Армения").ping === "" && row("Армения").q === "0");
+    check("each country has its flag", row("Швеция").flag && row("Польша").flag && row("Нидерланды").flag);
+    check("fastest names the panel's country", (await page.evaluate(() => document.querySelector("#place-list .list-item .item-sub").textContent)) === "Сейчас: Швеция");
+    check("search finds the panel's name", await page.evaluate(() => {
+      const s = document.getElementById("place-search"); s.value = "швец"; s.dispatchEvent(new Event("input", { bubbles: true }));
+      const names = [...document.querySelectorAll("#place-list .item-title")].map((x) => x.textContent);
+      s.value = ""; s.dispatchEvent(new Event("input", { bubbles: true }));
+      return names.length === 1 && names[0] === "Швеция";
+    }));
+    const listText = await page.evaluate(() => document.getElementById("place-list").textContent);
+    check("no protocol words in the list", !/vless|amnezia|awg|wireguard|протокол|reality|xray/i.test(listText));
+    await closePlaces();
+    await page.waitForTimeout(300);
+    // The place card: the chosen country's name and «недоступен» while off.
+    await show({ ...main, conn: "off", country: "PL", current: "", countries: [{ code: "PL", name: "Польша", down: true }, { code: "SE", name: "Швеция", ping: 31 }] });
+    check("place card: name and «недоступен»", (await page.evaluate(() => [document.getElementById("country").textContent, document.querySelector("#ping em").textContent])).join("|") === "Польша|недоступен");
+    await show({ ...main, conn: "on", country: "SE", current: "SE", ping: 28, countries: [{ code: "SE", name: "Швеция", ping: 31 }] });
+    check("place card while connected: the live ping", (await page.evaluate(() => [document.getElementById("country").textContent, document.querySelector("#ping em").textContent])).join("|") === "Швеция|28 мс");
+  });
+
   await attempt("each push replaces the state", async () => {
     // Go leaves empty fields out of the JSON; a field that is gone must not keep its old value.
     await show({ ...main, conn: "connecting", current: "", problem: "offline", strictKill: true, plan: { name: "Pro", pro: true } });
