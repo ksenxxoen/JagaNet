@@ -108,3 +108,18 @@ optional last step switched on by `BOOP_SIGN` (`osslsigncode` with a PFX, or `az
 for Azure Trusted Signing); without it the build is unsigned, as before. The update
 manifest's SHA-256 (and ed25519 signature) must be taken from the signed file.
 Details and the release order: `SIGNING.md`.
+
+## CI
+
+`.github/workflows/desktop.yml` runs on every PR and on pushes to the main branch that
+touch `desktop/**` (or the workflow), and by hand (Actions → desktop → Run workflow).
+Linux runners only, no secrets:
+
+* job `build`: `./build.sh 0.0.0-ci+<short sha>` (unsigned: no `BOOP_SIGN`), then
+  `go vet ./...`, `GOOS=windows GOARCH=amd64 go vet ./...` (after the build, which fetches
+  the embedded `build/wintun.dll`) and `go test -race -count=1 ./...`. The exe's SHA-256 is
+  in the log and the run's summary; the exe itself is the artifact `Boop.exe-<sha>` on the
+  run's page (kept 7 days). It is a test build for a Windows machine, not a release.
+* job `ui`: `node scripts/ui-checks.mjs` and `node scripts/e2e.mjs` against Playwright's
+  Chromium (version pinned in the workflow); on failure the app logs are the artifact
+  `e2e-logs`.
