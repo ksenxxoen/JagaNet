@@ -175,8 +175,11 @@ fun Application.jaganet(s: Services) {
         route("/v1") {
             // Public and opt-in: 404 until DOWNLOADS_DIR has Boop.exe and desktop.json.
             // Older clients never call it. No auth, so an update can be fetched signed out.
+            // Without ?platform= (all Windows clients) the answer is the Windows build, as before;
+            // ?platform=linux&distro=ubuntu24.04 is the Linux .deb (desktop-linux.json + boop-<distro>.deb).
             get("/app/desktop") {
-                val m = s.site.desktopManifest() ?: throw notFound("No desktop build is published")
+                val q = call.request.queryParameters
+                val m = s.site.desktopManifest(q["platform"], q["distro"]) ?: throw notFound("No desktop build is published")
                 call.response.header(HttpHeaders.CacheControl, "no-cache")
                 call.respond(m)
             }

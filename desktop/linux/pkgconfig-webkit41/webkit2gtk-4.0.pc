@@ -1,0 +1,8 @@
+# webview_go asks pkg-config for webkit2gtk-4.0 (Ubuntu 22.04). Ubuntu 24.04
+# only has webkit2gtk-4.1 (the same API on libsoup 3), so the 24.04 build puts
+# this folder first on PKG_CONFIG_PATH and links against 4.1. webview.h itself
+# handles both versions.
+Name: webkit2gtk-4.0 (-> 4.1)
+Description: Boop build shim: webkit2gtk-4.1 under the 4.0 name
+Version: 2.0
+Requires: webkit2gtk-4.1

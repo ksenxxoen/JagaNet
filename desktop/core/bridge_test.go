@@ -82,8 +82,8 @@ func TestUIStateWireNames(t *testing.T) {
 	want := []string{
 		"autoConnect", "autostart", "best", "conn", "countries", "countries.code", "countries.full", "countries.ping", "countries.status",
 		"country", "current", "email", "key", "keys", "keys.country", "keys.id", "keys.inUse", "keys.name",
-		"notice", "ping", "plan", "plan.daysLeft", "plan.expiresAt", "plan.name", "plan.pro", "plan.warn", "problem", "released", "screen",
-		"since", "strictKill", "update", "update.mandatory", "update.notes", "update.stage", "update.version", "version", "webLogin",
+		"notice", "ping", "plan", "plan.daysLeft", "plan.expiresAt", "plan.name", "plan.pro", "plan.warn", "platform", "problem", "released", "screen",
+		"since", "strictKill", "update", "update.link", "update.mandatory", "update.notes", "update.stage", "update.version", "version", "webLogin",
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("UIState wire names changed (app.js reads them):\n got %v\nwant %v", got, want)

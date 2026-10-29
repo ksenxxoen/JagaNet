@@ -1,5 +1,6 @@
-// Package vpn runs the AmneziaWG tunnel. Windows has the real one; other systems
-// get a stand-in so the window can be built and tested anywhere.
+// Package vpn runs the AmneziaWG tunnel. Windows has the real one in the app;
+// on Linux the real one (linux.go) runs in the root helper (cmd/boop-helper);
+// the dev build gets a stand-in so the window can be built and tested anywhere.
 package vpn
 
 import (
@@ -9,8 +10,11 @@ import (
 
 // Config is everything the tunnel needs. UAPI carries the keys, obfuscation and peer.
 type Config struct {
-	UAPI     string
-	Address  netip.Prefix
+	UAPI    string
+	Address netip.Prefix
+	// Address6 is the tunnel's IPv6 address when the config has one besides an
+	// IPv4 one. Only the Linux tunnel uses it; without it IPv6 is blocked there.
+	Address6 netip.Prefix
 	DNS      []netip.Addr
 	MTU      int
 	Endpoint netip.AddrPort

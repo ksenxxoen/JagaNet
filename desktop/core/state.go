@@ -62,6 +62,8 @@ type UIState struct {
 	Update     *UpdateUI `json:"update,omitempty"`
 	// Notice is the owner's note to show in the banner (nodestatus.go).
 	Notice string `json:"notice,omitempty"`
+	// Platform is "linux" on Linux; empty on Windows (App.Platform).
+	Platform string `json:"platform,omitempty"`
 }
 
 // UpdateUI is a newer desktop build the panel is offering.
@@ -71,6 +73,8 @@ type UpdateUI struct {
 	Mandatory bool   `json:"mandatory,omitempty"`
 	// What installing it is doing: "downloading", "installing", "failed"; empty before the click.
 	Stage string `json:"stage,omitempty"`
+	// Link: the button opens the download page instead of installing (App.UpdateLink).
+	Link bool `json:"link,omitempty"`
 }
 
 /* ---------- state ---------- */
@@ -83,10 +87,10 @@ func (a *App) state() UIState {
 		WebLogin: a.webLogin != nil,
 		Keys:     []KeyUI{}, Key: a.Store.KeyID,
 		Problem: a.problem, Released: a.released, StrictKill: a.Store.StrictKill,
-		Notice: a.noticeNow(),
+		Notice: a.noticeNow(), Platform: a.Platform,
 	}
 	if a.available != nil {
-		s.Update = &UpdateUI{Version: a.available.Version, Notes: a.available.Notes, Mandatory: a.available.Mandatory, Stage: a.updStage}
+		s.Update = &UpdateUI{Version: a.available.Version, Notes: a.available.Notes, Mandatory: a.available.Mandatory, Stage: a.updStage, Link: a.UpdateLink}
 	}
 	for _, k := range a.keys {
 		ui := KeyUI{ID: k.ID, Name: k.Name}
