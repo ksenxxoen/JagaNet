@@ -1,0 +1,121 @@
+# CI for the Windows desktop client (desktop/): vet, tests, a cross-compiled
+# unsigned Boop.exe as a download, and the browser checks on fakes.
+# No secrets, no signing, no releases, no deploys.
+name: desktop
+
+on:
+  pull_request:
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop.yml"
+  push:
+    branches: [claude/adoring-brown-s8fqex]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+    working-directory: desktop
+
+jobs:
+  build:
+    name: vet, test, Boop.exe
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # The PR's own commit, not the merge commit GitHub builds.
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      # build.sh first: it fetches build/wintun.dll, which the Windows code embeds,
+      # so the Windows vet cannot run before it. No BOOP_SIGN, so signing is skipped.
+      - name: build.sh
+        run: ./build.sh "0.0.0-ci+${HEAD_SHA::7}"
+
+      - name: go vet (linux)
+        run: go vet ./...
+
+      - name: go vet (windows)
+        run: GOOS=windows GOARCH=amd64 go vet ./...
+
+      - name: go test
+        run: go test -race -count=1 ./...
+
+      - name: SHA-256
+        run: |
+          sum="$(sha256sum dist/Boop.exe | cut -d' ' -f1)"
+          echo "Boop.exe SHA-256: $sum"
+          {
+            echo "### Boop.exe (unsigned, 0.0.0-ci+${HEAD_SHA::7})"
+            echo
+            echo "SHA-256: \`$sum\`"
+            echo
+            echo "Size: $(stat -c %s dist/Boop.exe) bytes. Download: artifact \`Boop.exe-${HEAD_SHA::7}\` below."
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Boop.exe-${{ github.event.pull_request.head.sha || github.sha }}
+          path: desktop/dist/Boop.exe
+          retention-days: 7
+          if-no-files-found: error
+
+  ui:
+    name: ui-checks, e2e (Chromium, fakes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # The scripts require("playwright") from desktop/scripts; there is no
+      # package.json, so it is installed outside the checkout and found via NODE_PATH.
+      PLAYWRIGHT_VERSION: 1.56.1
+      NODE_PATH: ${{ github.workspace }}/../pw/node_modules
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Playwright + Chromium
+        run: |
+          pw="$(dirname "$NODE_PATH")"
+          mkdir -p "$pw"
+          npm install --prefix "$pw" --no-save --no-package-lock --no-audit --no-fund "playwright@$PLAYWRIGHT_VERSION"
+          "$NODE_PATH/.bin/playwright" install --with-deps chromium
+
+      - name: ui-checks
+        run: node scripts/ui-checks.mjs
+
+      - name: e2e
+        run: |
+          mkdir -p "$RUNNER_TEMP/e2e-logs"
+          E2E_LOGS="$RUNNER_TEMP/e2e-logs" node scripts/e2e.mjs
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-logs
+          path: ${{ runner.temp }}/e2e-logs
+          retention-days: 7
+          if-no-files-found: ignore
