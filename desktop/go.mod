@@ -6,6 +6,7 @@ require (
 	github.com/amnezia-vpn/amneziawg-go/v3 v3.1.20260828
 	github.com/amnezia-vpn/amneziawg-windows/v3 v3.1.20260814
 	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
+	github.com/webview/webview_go v0.0.0-20240831120633-6173450d4dd6
 	github.com/xtls/reality v0.0.0-20251014195629-e4eec4520535
 	github.com/xtls/xray-core v1.251208.0
 	golang.org/x/crypto v0.44.0

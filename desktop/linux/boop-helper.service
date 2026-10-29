@@ -1,0 +1,30 @@
+[Unit]
+Description=Boop VPN tunnel helper
+Documentation=man:boop-helper(8)
+After=network.target systemd-resolved.service
+Wants=systemd-resolved.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/boop/boop-helper
+# Whatever the tunnel left (rules, our routing table, DNS settings) goes when
+# the service stops, also after a crash.
+ExecStopPost=/usr/lib/boop/boop-helper --cleanup
+Restart=on-failure
+RestartSec=2
+RuntimeDirectory=boop
+RuntimeDirectoryMode=0755
+# Root is needed for the tunnel (CAP_NET_ADMIN) and resolvectl; the rest of
+# the system is read-only for it.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+DeviceAllow=/dev/net/tun rw
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

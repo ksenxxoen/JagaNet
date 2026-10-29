@@ -92,6 +92,8 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
     val admin = Admin(ctx)
     val analytics = dev.jaganet.server.services.Analytics(ctx)
     val keys = Keys(ctx, tunnels)
+    /** One VLESS key per user, outside the device limit (issue #33). */
+    val vlessKeys = dev.jaganet.server.services.VlessKeys(ctx, ent, tunnels)
     val testAccounts = dev.jaganet.server.services.TestAccounts(ctx, keys, tunnels)
     val settings = Settings(ctx)
     val finance = Finance(ctx)
@@ -120,6 +122,12 @@ private val SIX = Regex("^\\d{6}$")
 private val AUTH_LIMIT = RateLimitName("auth")
 
 suspend fun ApplicationCall.principal(s: Services): Principal = s.auth.authenticate(request.headers[HttpHeaders.Authorization])
+
+/** ?supportedProtocols=…: the protocols the asking app runs; null for apps from before VLESS. */
+fun ApplicationCall.supportedProtocols(): Set<String>? = request.queryParameters["supportedProtocols"]
+    ?.split(',')?.map { it.trim().lowercase() }?.filter { Protocols.ID.matches(it) }?.toSet()
+
+fun ApplicationCall.supportsVless(): Boolean = supportedProtocols()?.contains(Protocols.VLESS) == true
 
 fun Application.jaganet(s: Services) {
     val ctx = s.ctx
@@ -167,8 +175,11 @@ fun Application.jaganet(s: Services) {
         route("/v1") {
             // Public and opt-in: 404 until DOWNLOADS_DIR has Boop.exe and desktop.json.
             // Older clients never call it. No auth, so an update can be fetched signed out.
+            // Without ?platform= (all Windows clients) the answer is the Windows build, as before;
+            // ?platform=linux&distro=ubuntu24.04 is the Linux .deb (desktop-linux.json + boop-<distro>.deb).
             get("/app/desktop") {
-                val m = s.site.desktopManifest() ?: throw notFound("No desktop build is published")
+                val q = call.request.queryParameters
+                val m = s.site.desktopManifest(q["platform"], q["distro"]) ?: throw notFound("No desktop build is published")
                 call.response.header(HttpHeaders.CacheControl, "no-cache")
                 call.respond(m)
             }
@@ -221,8 +232,7 @@ fun Application.jaganet(s: Services) {
                 call.principal(s)
                 // ?supportedProtocols=amneziawg,vless: the protocols this app runs. Without it (apps
                 // from before VLESS) opt-in protocols are left out, see Protocols.OPT_IN.
-                val supported = call.request.queryParameters["supportedProtocols"]
-                    ?.split(',')?.map { it.trim().lowercase() }?.filter { Protocols.ID.matches(it) }?.toSet()
+                val supported = call.supportedProtocols()
                 call.respond(ServersRes(s.tunnels.servers(supported), ctx.live.notice))
             }
             post("/tunnel") {
@@ -241,7 +251,8 @@ fun Application.jaganet(s: Services) {
             get("/devices") {
                 val p = call.principal(s)
                 val lang = call.apiLang()
-                call.respond(DevicesRes(s.tunnels.devices(p).map { it.copy(name = keyName(it.name, lang)) }, s.ent.me(p).entitlement.deviceLimit))
+                // The VLESS key (outside the limit) only for apps that run VLESS; older apps see their devices as before.
+                call.respond(DevicesRes(s.tunnels.devices(p, call.supportsVless()).map { it.copy(name = keyName(it.name, lang)) }, s.ent.me(p).entitlement.deviceLimit))
             }
             patch("/devices/{id}") {
                 val p = call.principal(s)

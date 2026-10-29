@@ -196,17 +196,44 @@ func buildConfig(privHex, peerHex string, p awgParams, c *TunnelConfig, samePeer
 		fmt.Fprintf(&b, "allowed_ip=%s\n", strings.TrimSpace(a))
 	}
 
-	addr, err := netip.ParsePrefix(c.Address)
+	addr, addr6, err := parseAddresses(c.Address)
 	if err != nil {
 		return nil, "", err
 	}
-	cfg := &vpn.Config{UAPI: b.String(), Address: addr, MTU: c.MTU, Endpoint: ep}
+	cfg := &vpn.Config{UAPI: b.String(), Address: addr, Address6: addr6, MTU: c.MTU, Endpoint: ep}
 	for _, d := range c.DNS {
 		if a, err := netip.ParseAddr(strings.TrimSpace(d)); err == nil {
 			cfg.DNS = append(cfg.DNS, a)
 		}
 	}
 	return cfg, p.ServerPublicKey, nil
+}
+
+// parseAddresses reads the config's address. One address is taken as it is,
+// as always. A list ("10.8.0.2/32, fd00::2/128") gives the first IPv4 one and
+// the first IPv6 one (only the Linux tunnel routes IPv6).
+func parseAddresses(s string) (addr, addr6 netip.Prefix, err error) {
+	if !strings.Contains(s, ",") {
+		addr, err = netip.ParsePrefix(s)
+		return
+	}
+	for _, part := range strings.Split(s, ",") {
+		p, perr := netip.ParsePrefix(strings.TrimSpace(part))
+		if perr != nil {
+			return netip.Prefix{}, netip.Prefix{}, perr
+		}
+		switch {
+		case p.Addr().Is4() && !addr.IsValid():
+			addr = p
+		case p.Addr().Is6() && !addr6.IsValid():
+			addr6 = p
+		}
+	}
+	if !addr.IsValid() {
+		// IPv6 only: keep it where it always was.
+		addr, addr6 = addr6, netip.Prefix{}
+	}
+	return
 }
 
 func pickV4(ips []string) (string, error) {

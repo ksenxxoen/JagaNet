@@ -51,3 +51,15 @@ touched), look at Stats, Devices › Add device, Settings › Protocol, Get Pro.
   the project folder; send it over.
 
 On a Mac or Linux: `./run.sh`, `./run.sh android` or `./run.sh server` in a terminal.
+
+## Boop desktop app on Ubuntu 22.04 / 24.04
+
+Build the packages on a machine with Docker and Go 1.25 (`cd desktop && ./build-linux.sh`), then on
+the Ubuntu computer install the one for its release:
+
+```sh
+sudo apt install ./boop_1.2.0~ubuntu24.04_amd64.deb   # Ubuntu 22.04: …~ubuntu22.04…
+```
+
+Open **Boop** from the applications menu. Details, troubleshooting and how to publish an update:
+[desktop/README.md](desktop/README.md).

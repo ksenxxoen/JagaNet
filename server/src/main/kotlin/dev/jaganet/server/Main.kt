@@ -85,6 +85,16 @@ fun serve(ctx: Ctx, collectEveryMs: Long, wait: Boolean = true) {
             }
         }
         launch {
+            // Everyone with access gets their VLESS key (issue #33): at start (backfill), then every 5 minutes
+            // (new users, renewals, ended access, nodes switched off). Idempotent.
+            while (true) {
+                runCatching { services.vlessKeys.sync() }
+                    .onSuccess { if (it.created + it.enabled + it.disabled + it.moved + it.failed > 0) log.info("VLESS keys: {}", it) }
+                    .onFailure { log.error("VLESS key sync failed", it) }
+                delay(300_000L)
+            }
+        }
+        launch {
             while (true) {
                 delay(collectEveryMs)
                 runCatching { services.traffic.collect() }.onFailure { log.error("traffic collection failed", it) }

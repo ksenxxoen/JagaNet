@@ -95,7 +95,9 @@ class ApiClient(
     suspend fun sendDiagnostics(req: DiagnosticsReq): DiagnosticsRes = post("diagnostics", req)
 
     // devices
-    suspend fun devices(): DevicesRes = get("devices")
+    suspend fun devices(supportedProtocols: List<String>? = null): DevicesRes = get("devices") {
+        if (supportedProtocols != null) parameter("supportedProtocols", supportedProtocols.joinToString(","))
+    }
     suspend fun renameDevice(id: String, name: String): OkRes =
         http.patch("devices/$id") { auth(); contentType(ContentType.Application.Json); setBody(RenameDeviceReq(name)) }.read()
     suspend fun removeDevice(id: String): OkRes = delete("devices/$id")
@@ -110,7 +112,9 @@ class ApiClient(
     // referrals & owner
     // Website / Telegram sales and VPN keys for other apps
     suspend fun site(): SiteInfo = get("site")
-    suspend fun keys(): KeysRes = get("keys")
+    suspend fun keys(supportedProtocols: List<String>? = null): KeysRes = get("keys") {
+        if (supportedProtocols != null) parameter("supportedProtocols", supportedProtocols.joinToString(","))
+    }
     suspend fun createKey(): AccessKey = post("keys", OkRes())
     suspend fun deleteKey(id: String): OkRes = delete("keys/$id")
     suspend fun keyTunnel(id: String): KeyTunnel = get("keys/$id/tunnel")

@@ -164,7 +164,7 @@ class Analytics(private val ctx: Ctx) {
             id, since,
         ).map { AnalyticsUserServer(it.str("id"), it.str("name"), it.str("country_code").trim(), split(it)) }
         val devices = sql.query(
-            """SELECT d.id, d.name, d.platform, d.removed_at, v.name AS server_name, v.country_code, t.last_seen_at, x.down, x.up, x.tdown, x.tup
+            """SELECT d.id, d.name, d.platform, d.kind, d.removed_at, v.name AS server_name, v.country_code, t.last_seen_at, x.down, x.up, x.tdown, x.tup
                FROM devices d LEFT JOIN tunnels t ON t.device_id = d.id LEFT JOIN servers v ON v.id = t.server_id
                LEFT JOIN (SELECT s.device_id, $SUMS FROM traffic_samples s WHERE s.bucket >= ? GROUP BY s.device_id) x ON x.device_id = d.id
                WHERE d.user_id = ?::uuid AND ((d.removed_at IS NULL AND t.device_id IS NOT NULL) OR x.device_id IS NOT NULL)
@@ -175,6 +175,7 @@ class Analytics(private val ctx: Ctx) {
                 id = it.str("id"), name = it.str("name"), platform = it.str("platform"), serverName = it.strOrNull("server_name"),
                 countryCode = it.strOrNull("country_code")?.trim(), traffic = split(it), lastSeenAt = it.instantOrNull("last_seen_at")?.toString(),
                 removed = it.instantOrNull("removed_at") != null,
+                outsideLimit = it.str("kind") != "device",
             )
         }
         AnalyticsUserRes(p.key, p.bucket, user, points(sql, p, now, "AND d.user_id = ?::uuid", id), servers, devices)

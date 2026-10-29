@@ -162,19 +162,21 @@ func (a *App) diagnose(ctx context.Context, code string) {
 	a.mu.Unlock()
 	Go("probe", func() {
 		r := p.Run(ctx)
+		// One section: whoever sees the probe finished (reportFailure waits on
+		// probing) sees its verdict as well, never "done, no verdict yet".
 		a.mu.Lock()
 		a.probing = false
 		a.probeAt, a.probeLast = time.Now(), r
-		up := a.conn == "on"
+		cancelled := ctx.Err() != nil
+		v := Classify(a.conn == "on", r)
+		if !cancelled {
+			a.verdict = v
+		}
 		a.mu.Unlock()
-		if ctx.Err() != nil {
+		if cancelled {
 			return
 		}
-		v := Classify(up, r)
 		log.Printf("probe: %s: panel=%s web=%s in %s -> %s", code, yesNo(r.Panel), yesNo(r.Web), r.Took.Round(time.Millisecond), orOK(v))
-		a.mu.Lock()
-		a.verdict = v
-		a.mu.Unlock()
 		a.settle(ctx, code)
 	})
 }

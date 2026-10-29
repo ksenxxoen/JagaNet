@@ -22,6 +22,8 @@ import dev.jaganet.server.notFound
 import dev.jaganet.server.services.Channel
 import dev.jaganet.server.services.KeyConfig
 import dev.jaganet.server.services.Keys
+import dev.jaganet.server.services.VlessKeys
+import dev.jaganet.server.services.VlessLinks
 import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -63,7 +65,13 @@ fun Route.salesApi(s: Services) {
     }
     get("/keys") {
         val lang = call.apiLang()
-        call.respond(KeysRes(s.keys.list(call.principal(s).user.id).map { it.copy(name = keyName(it.name, lang)) }))
+        val p = call.principal(s)
+        // The VLESS key only for callers that run VLESS (the website asks with vless): older apps see the list as before.
+        val vless = if (call.supportsVless()) {
+            runCatching { s.vlessKeys.ensureFor(p.user.id) }
+            s.vlessKeys.key(p.user.id)
+        } else null
+        call.respond(KeysRes(s.keys.list(p.user.id).map { it.copy(name = keyName(it.name, lang)) }, vless))
     }
     post("/keys") { call.respond(s.keys.create(call.principal(s).user.id).let { it.copy(name = keyName(it.name, call.apiLang())) }) }
     get("/keys/{id}/tunnel") { call.respond(s.keys.tunnel(call.principal(s).user.id, call.parameters["id"]!!)) }
@@ -96,6 +104,14 @@ fun Route.website(s: Services) {
         call.respondFile(exe)
     }
 
+    // Opt-in too: 404 until boop-<distro>.deb is placed in DOWNLOADS_DIR.
+    get("/download/linux/{distro}") {
+        val distro = call.parameters["distro"]!!.trim().lowercase()
+        val deb = s.site.linuxDeb(distro) ?: throw notFound("The Linux app isn't uploaded yet")
+        call.response.header(HttpHeaders.ContentDisposition, ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, "boop_${distro}_amd64.deb").toString())
+        call.respondFile(deb)
+    }
+
     // Key links: the token is the secret. Never cache, never index, never leak it in a Referer.
     suspend fun ApplicationCall.key(): KeyConfig {
         response.header(HttpHeaders.CacheControl, "no-store")
@@ -103,9 +119,48 @@ fun Route.website(s: Services) {
         response.header("Referrer-Policy", "no-referrer")
         return s.keys.byToken(parameters["token"]!!) ?: throw notFound("This key doesn't exist or was deleted")
     }
+    fun ApplicationCall.secret() {
+        response.header(HttpHeaders.CacheControl, "no-store")
+        response.header("X-Robots-Tag", "noindex")
+        response.header("Referrer-Policy", "no-referrer")
+    }
+    // The user's VLESS key: by its own token or by any of their AmneziaWG key links.
+    suspend fun ApplicationCall.vless(): VlessLinks {
+        secret()
+        val user = s.vlessKeys.userByToken(parameters["token"]!!) ?: throw notFound("This key doesn't exist or was deleted")
+        return s.vlessKeys.links(user) ?: throw notFound("This key doesn't exist or was deleted")
+    }
     get("/k/{token}") {
+        val token = call.parameters["token"]!!
+        if (s.vlessKeys.isOwnToken(token)) {
+            val v = call.vless()
+            return@get call.respondText(Pages(call.pageLang()).vlessKey(v, s.ctx.cfg.publicUrl), ContentType.Text.Html)
+        }
         val k = call.key()
-        call.respondText(Pages(call.pageLang()).key(k, call.parameters["token"]!!, s), ContentType.Text.Html)
+        val other = s.vlessKeys.userByToken(token)?.let { s.vlessKeys.links(it) }
+        call.respondText(Pages(call.pageLang()).key(k, token, s, other), ContentType.Text.Html)
+    }
+    /**
+     * Subscription for Happ, v2RayTun, Hiddify, v2rayNG: base64 of the vless:// links, one per line.
+     * Works with the VLESS key's token and with the user's AmneziaWG key links.
+     */
+    get("/k/{token}/vless") {
+        val v = call.vless()
+        if (v.links.isEmpty()) throw notFound("This key is off until access is renewed")
+        val expire = v.expiresAt?.let { runCatching { java.time.Instant.parse(it).epochSecond }.getOrNull() } ?: 0
+        call.response.header("profile-title", "base64:" + java.util.Base64.getEncoder().encodeToString("Boop VPN".toByteArray()))
+        call.response.header("profile-update-interval", "12")
+        call.response.header("subscription-userinfo", "upload=0; download=0; total=0; expire=$expire")
+        call.respondText(VlessKeys.subscription(v.links), ContentType.Text.Plain)
+    }
+    // QR codes: 0.png, 1.png… one per link; sub.png for the subscription URL.
+    get("/k/{token}/vless/{file}") {
+        val v = call.vless()
+        val file = call.parameters["file"]!!
+        val text = if (file == "sub.png") "${s.ctx.cfg.publicUrl.trimEnd('/')}/k/${call.parameters["token"]!!}/vless"
+        else file.removeSuffix(".png").takeIf { file.endsWith(".png") }?.toIntOrNull()?.let { v.links.getOrNull(it) }
+            ?: throw notFound("This key is off until access is renewed")
+        call.respondBytes(Keys.qrPng(text), ContentType.Image.PNG)
     }
     // The file's old name (before the rename to Boop VPN): links already sent keep working.
     get("/k/{token}/JagaNet.conf") {
@@ -163,7 +218,43 @@ private class Pages(val lang: Lang) {
 <nav class="nav"><span class="langs">${Lang.entries.joinToString("") { l -> """<a class="${if (l == lang) "on" else ""}" href="?lang=${l.code}" hreflang="${l.code}">${l.code.uppercase()}</a>""" }}</span></nav></div></header>
 <main class="narrow">$body</main></body></html>"""
 
-    fun key(k: KeyConfig, token: String, s: Services): String {
+    /** The VLESS key's page: its links with copy buttons and QR codes, and the subscription. */
+    fun vlessKey(v: VlessLinks, publicUrl: String): String {
+        val base = "/k/" + esc(v.token)
+        val sub = esc("${publicUrl.trimEnd('/')}/k/${v.token}/vless")
+        val body = if (v.links.isEmpty()) {
+            """<div class="card"><p class="notice bad">${t("This key is off until access is renewed")}</p></div>"""
+        } else {
+            val extra = v.links.drop(1).mapIndexed { i, l ->
+                """<div class="card section"><h3>${t("Backup key")}</h3>
+  <div class="formrow two"><input class="mono" id="vk${i + 1}" readonly value="${esc(l)}"><button class="btn" data-copy="vk${i + 1}" type="button">${t("Copy key")}</button></div></div>"""
+            }.joinToString("")
+            """<div class="card keycard">
+  <img class="qr" src="$base/vless/0.png" alt="${t("QR code of your VPN key")}" width="280" height="280">
+  <div class="keyactions"><input class="mono" id="vk0" readonly value="${esc(v.links[0])}"><button class="btn" data-copy="vk0" type="button">${t("Copy key")}</button></div>
+</div>
+$extra
+<div class="card section"><h3>${t("Subscription link")}</h3>
+  <p class="muted">${t("For Happ, v2RayTun, Hiddify and v2rayNG")}</p>
+  <div class="formrow two"><input class="mono" id="vsub" readonly value="$sub"><button class="btn" data-copy="vsub" type="button">${t("Copy link")}</button></div>
+  <img class="qr" src="$base/vless/sub.png" alt="${t("QR code of your VPN key")}" width="200" height="200">
+</div>"""
+        }
+        return page(t("Your VPN key"), """
+<div class="head"><div><h1>${t("Your VPN key")}</h1><p class="muted">${esc(v.name)}</p></div></div>
+$body
+<h2>${t("How to connect")}</h2>
+<ol class="steps">
+  <li><b>${t("Install an app")}</b><ul><li>Happ</li><li>v2RayTun</li><li>Hiddify</li><li>v2rayNG</li></ul></li>
+  <li><b>${t("Add the key")}</b></li>
+  <li><b>${t("Turn on the VPN")}</b></li>
+</ol>
+<p class="notice bad">${t("Don't share this link")}</p>
+<script>for(const b of document.querySelectorAll('[data-copy]'))b.onclick=async e=>{await navigator.clipboard.writeText(document.getElementById(b.dataset.copy).value);e.target.textContent=${jsString(I18n.tr(lang, "Copied"))}};</script>
+""")
+    }
+
+    fun key(k: KeyConfig, token: String, s: Services, vless: VlessLinks? = null): String {
         val base = "/k/" + esc(token)
         val ours = s.site.androidAppUrl()?.let { """<li><a href="${esc(it)}">${t("Boop for Android")}</a></li>""" } ?: ""
         val others = s.site.otherApps.joinToString("") { (n, u) -> """<li><a href="${esc(u)}" rel="noreferrer">${esc(n)}</a></li>""" }
@@ -180,6 +271,8 @@ private class Pages(val lang: Lang) {
   <h3>${t("Key for AmneziaVPN")}</h3>
   <div class="formrow two"><input class="mono" id="vpnkey" readonly value="${esc(Keys.vpnLink(k.text))}"><button class="btn" id="copykey" type="button">${t("Copy key")}</button></div>
 </div>
+${vless?.takeIf { it.links.isNotEmpty() }?.let { v -> """<div class="card section"><div class="card-h"><h3>${t("One more key")}</h3><a class="btn secondary" href="/k/${esc(v.token)}?lang=${lang.code}">${esc(v.name)}</a></div>
+  <p class="muted">${t("For Happ, v2RayTun, Hiddify and v2rayNG")}</p></div>""" } ?: ""}
 <h2>${t("How to connect")}</h2>
 <ol class="steps">
   <li><b>${t("Install an app")}</b><ul>$ours$others</ul></li>

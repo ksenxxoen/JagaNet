@@ -371,6 +371,12 @@ data class Device(
     val online: Boolean,
     val isCurrent: Boolean,
     val createdAt: String,
+    /**
+     * The user's VLESS key, given to everyone with access on top of the plan's devices: not
+     * counted in the device limit and not deletable. Only listed for apps that ask with
+     * `?supportedProtocols=…,vless`.
+     */
+    val outsideLimit: Boolean = false,
 )
 
 @Serializable
@@ -637,8 +643,33 @@ data class AccessKey(
     val countryCode: String? = null,
 )
 
+/**
+ * The user's VLESS key (one per user, outside the device limit, issue #33): standard
+ * `vless://` links (Vision first, then XHTTP) for Happ, v2RayTun, Hiddify, v2rayNG and others,
+ * and a subscription URL those apps refresh (base64 of the links, one per line).
+ */
 @Serializable
-data class KeysRes(val keys: List<AccessKey>)
+data class VlessKey(
+    val id: String,
+    /** What people see: the country with its flag, e.g. "🇫🇮 Финляндия". */
+    val name: String,
+    val countryCode: String? = null,
+    /** False while access has ended: the links are kept but the node does not accept them. */
+    val active: Boolean,
+    val links: List<String> = emptyList(),
+    val subscriptionUrl: String,
+    /** Page with the links, QR codes and copy buttons. */
+    val pageUrl: String,
+    /** QR code (PNG) of the first link. */
+    val qrUrl: String,
+)
+
+@Serializable
+data class KeysRes(
+    val keys: List<AccessKey>,
+    /** Only for callers that ask with `?supportedProtocols=…,vless` (the website does). */
+    val vless: VlessKey? = null,
+)
 
 /** GET /keys/{id}/tunnel: a key's settings for the Boop desktop app, which can use a key instead of its own. */
 @Serializable
@@ -1188,6 +1219,8 @@ data class AnalyticsDevice(
     val traffic: TrafficSplit,
     val lastSeenAt: String? = null,
     val removed: Boolean = false,
+    /** The user's VLESS key: not counted in the plan's device limit. */
+    val outsideLimit: Boolean = false,
 )
 
 @Serializable

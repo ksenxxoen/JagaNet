@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "remove" ]; then
+	if [ -d /run/systemd/system ]; then
+		deb-systemd-invoke stop 'boop-helper.service' >/dev/null || true
+	fi
+	# Whatever a tunnel left (rules, routes, DNS settings), also without systemd.
+	if [ -x /usr/lib/boop/boop-helper ]; then
+		/usr/lib/boop/boop-helper --cleanup >/dev/null 2>&1 || true
+	fi
+fi
+
+exit 0

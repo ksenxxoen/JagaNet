@@ -31,7 +31,8 @@ let seq = 0;
 
 // One app instance with its own data folder; `data` can be reused to simulate a restart.
 async function launch({ env = {}, data } = {}) {
-  const port = 5900 + Math.floor(Math.random() * 90) * 10 + (seq++ % 10);
+  // 20000-28999: clear of the ports Chromium refuses (ERR_UNSAFE_PORT: 6000, 6566, 6665-6669, 6697…)
+  const port = 20000 + Math.floor(Math.random() * 900) * 10 + (seq++ % 10);
   data ||= mkdtempSync(join(work, "data-"));
   const proc = spawn(bin, [], { env: { ...process.env, BOOP_LISTEN: `127.0.0.1:${port}`, BOOP_API: panel.url, BOOP_DATA: data, ...env },
     // E2E_LOGS=<dir>: keep each instance's log there
