@@ -171,5 +171,8 @@ internal val webStrings: List<S> = listOf(
     S("One more key", "Ещё один ключ", "Noch ein Schlüssel"),
     S("Not counted in the device limit", "Не входит в лимит устройств", "Zählt nicht zum Gerätelimit"),
     S("outside the limit", "вне лимита", "außerhalb des Limits"),
+    // Badges on the key cards: the VLESS key and the AmneziaWG keys.
+    S("Stable connection", "Стабильная работа", "Stabile Verbindung"),
+    S("High speed", "Высокая скорость", "Hohe Geschwindigkeit"),
     S("Scan the QR code above in the app, paste the key for AmneziaVPN or import the {file} file.", "Отсканируйте QR-код выше в приложении, вставьте ключ для AmneziaVPN или импортируйте файл {file}.", "Scanne den QR-Code oben in der App, füge den Schlüssel für AmneziaVPN ein oder importiere die Datei {file}."),
 )

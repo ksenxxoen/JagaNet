@@ -108,6 +108,8 @@ main.narrow { max-width: 640px; }
   background: var(--neutral-tint); color: var(--neutral-text); white-space: nowrap; vertical-align: middle; }
 .badge.test { background: var(--warning-tint); color: var(--warning-text); }
 .badge.best { background: var(--primary-tint); color: var(--primary-active); }
+.badge.stable { background: var(--success-tint); color: var(--success-text); }
+.badge.fast { background: var(--primary-tint); color: var(--primary-active); }
 .status.active { background: var(--success-tint); color: var(--success-text); }
 .status.lapsed { background: var(--warning-tint); color: var(--warning-text); }
 .notice { display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border-radius: var(--r-ctl); margin: 0 0 16px; background: var(--primary-tint); color: var(--heading); }
