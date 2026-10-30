@@ -368,7 +368,7 @@ function vlessCard(v) {
   return `<div class="card keycard">
     ${v.active ? `<img class="qr" src="${h(v.qrUrl)}" alt="${t("QR code of your VPN key")}" loading="lazy">` : ""}
     <div>
-      <h3>${h(v.name)}</h3>
+      <h3>${h(v.name)} <span class="badge stable">${t("Stable connection")}</span></h3>
       <p class="muted">${t("Not counted in the device limit")}</p>
       ${v.active ? "" : `<p class="notice bad">${t("This key is off until access is renewed")}</p>`}
       <div class="keyactions">
@@ -384,7 +384,7 @@ function keyCard(k) {
   return `<div class="card keycard">
     <img class="qr" src="${h(k.qrUrl)}" alt="${t("QR code of your VPN key")}" loading="lazy">
     <div>
-      <h3 data-name="${h(k.id)}">${h(k.name)}</h3>
+      <h3 data-name="${h(k.id)}">${h(k.name)} <span class="badge fast">${t("High speed")}</span></h3>
       <form class="rename" data-renf="${h(k.id)}" hidden><input maxlength="60" required value="${h(k.name)}" aria-label="${h(t("Name"))}"><button class="btn" type="submit">${t("Save")}</button></form>
       <p class="muted">${h(k.location)}, ${h(date(k.createdAt))}</p>
       <div class="keyactions">
