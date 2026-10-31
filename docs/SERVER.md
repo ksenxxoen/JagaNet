@@ -74,6 +74,19 @@ raises an alert and the node gets no new devices.
 
 Logs on a node: `journalctl -u jaganet-node`, `awg show`.
 
+### Updating the agent (version 2, issue #39)
+
+Agent version 2 also reports where clients connect from (the AmneziaWG peer endpoint; for VLESS the
+users' online IPs from Xray) and its own version, for the admin panel's user card and dashboard.
+The panel works with old agents too: their nodes show "old" in the Agent column and their devices
+show no IP. To update a node (AmneziaWG or VLESS), as root on it:
+```sh
+curl -fsSL https://<main>/node/agent.py -o /opt/jaganet-node/agent.py && systemctl restart jaganet-node
+```
+Nothing else changes (env file, service, Xray). For VLESS IPs add `"statsUserOnline": true` to the
+policy level in Xray's config and restart Xray once (the agent puts the users back within 25 s).
+An old panel ignores what a new agent adds, so the order of updating does not matter.
+
 ## VLESS nodes (Xray, VLESS+Reality)
 
 A VLESS node runs Xray-core (26.x or newer) set up by you; the main server never sees its
@@ -89,7 +102,7 @@ own business. Parameter format for the apps: docs/ARCHITECTURE.md, "VLESS+Realit
    {
      "api": {"tag": "api", "listen": "127.0.0.1:10085", "services": ["HandlerService", "StatsService"]},
      "stats": {},
-     "policy": {"levels": {"0": {"statsUserUplink": true, "statsUserDownlink": true}}},
+     "policy": {"levels": {"0": {"statsUserUplink": true, "statsUserDownlink": true, "statsUserOnline": true}}},
      "inbounds": [
        {"tag": "vision", "port": 443, "protocol": "vless",
         "settings": {"clients": [], "decryption": "none"},
@@ -154,9 +167,11 @@ own business. Parameter format for the apps: docs/ARCHITECTURE.md, "VLESS+Realit
    registration step gets online with its first report.
 4. **Check**: `journalctl -u jaganet-node -f` shows `xray users: N now, …`;
    `xray api inbounduser --server=127.0.0.1:10085 -tag=vision` lists the UUIDs;
-   `xray api statsquery --server=127.0.0.1:10085 -pattern 'user>>>'` the counters the agent sends.
+   `xray api statsquery --server=127.0.0.1:10085 -pattern 'user>>>'` the counters the agent sends;
+   `xray api statsonlineiplist --server=127.0.0.1:10085 -all` the users' client IPs (needs
+   `"statsUserOnline": true`; without it the admin panel just shows no IPs for VLESS keys).
 
-The agent (same file, same `User-Agent: BoopNodeAgent/1`, same `JAGANET_URL` / `NODE_TOKEN`) runs
+The agent (same file, same `User-Agent: BoopNodeAgent/2`, same `JAGANET_URL` / `NODE_TOKEN`) runs
 AmneziaWG nodes exactly as before when `PROTOCOL` is `amneziawg` or `wireguard`. The main server
 needs `vless` in `PROTOCOLS` (the default list has it). Apps get VLESS nodes only when they ask
 `GET /v1/servers?supportedProtocols=…,vless`; older apps never see them.

@@ -94,6 +94,8 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
     val keys = Keys(ctx, tunnels)
     /** One VLESS key per user, outside the device limit (issue #33). */
     val vlessKeys = dev.jaganet.server.services.VlessKeys(ctx, ent, tunnels)
+    /** Admin control over users, payments and connections (issue #39). */
+    val control by lazy { dev.jaganet.server.services.Control(ctx, ent, tunnels, keys, vlessKeys, nodes) }
     val testAccounts = dev.jaganet.server.services.TestAccounts(ctx, keys, tunnels)
     val settings = Settings(ctx)
     val finance = Finance(ctx)
@@ -277,6 +279,7 @@ fun Application.jaganet(s: Services) {
             adminApi(s)
             nodeApi(s)
             diagnosticsApi(s)
+            controlApi(s)
             get("/referrals") { call.respond(s.referrals.get(call.principal(s).also { s.requireReferrals(it.user.role) })) }
             referralApi(s)
             salesApi(s)

@@ -21,6 +21,69 @@ server itself (127.0.0.1, not through the web proxy).
 
 Website `#/admin` (owners only):
 
+- **Dashboard** (issue #39, the default tab): users in total and new in 24 hours, with access now
+  (paid, gift, invite reward or admin grant; the owner not counted), blocked, ending in 3 days,
+  devices and users online now (seen in the last 3 minutes); revenue today, in 7 and in 30 days per
+  currency, payments and new paying users in 30 days; every server with its state (as on Nodes),
+  devices of its limit, online, traffic in 24 hours, its agent's last report and version ("old"
+  for agents before version 2, which send no client addresses); users over the sharing threshold
+  and users whose access ends in 3 days. **Sharing threshold**: more different client IPs in
+  24 hours than this (default 5, 1 to 100) marks a subscription as possibly shared.
+- **Users** (issue #39): search by e-mail (or part of it), Telegram id, Telegram @username (once a
+  username column exists, see below), user or device id, VLESS key UUID, a key link or its token,
+  client IP (also `[v6]:port` / `ip:port`), or the admin note; empty shows the newest 50. The user
+  card: e-mail, Telegram, sign-up, state (active, free, free period over, expired, blocked), plan,
+  **current period since** (start of the running subscription, followed back through back-to-back
+  ones), **access until** (end of any active time), **paid until** (end of bought time only: gifts,
+  invite rewards and admin grants don't count), devices of the limit, data this month, devices and
+  IPs seen in 24 hours, who invited them (`users.referred_by`, empty until then) and how many they
+  invited, the admin note (`users.note`, the same field test accounts use), every subscription
+  (purchase, admin, gift, test account, invite reward, store; upcoming / active / expired) with its
+  amount, every order, devices and keys (Boop app, key for other apps, VLESS key) with node,
+  protocol, last connection (AmneziaWG handshake, VLESS: when its counters last moved), last client
+  IP and when, all IPs in 24 hours, traffic in 24 hours and in total, the VLESS UUID and the start of
+  the key link's token (never the whole token), and the admin log for this user.
+  **Actions**, each written to the admin log (who, when, what, old and new values):
+  - *Extend by N days* (1 to 3650): a subscription on the user's current terms (Pro defaults if
+    none) after any time left; *Free period* N days on a chosen plan, also after any time left.
+    Both are stored as `source 'test'`, `external_id 'admin:<uuid>'`: not counted as sales.
+  - *Change plan*: the chosen plan's devices and data on the current and later subscriptions (the
+    dates stay; the old plan name is in the log). Refused without a subscription.
+  - *Block* (with a reason) / *Unblock*: a blocked user gets 403 "This account is blocked" on every
+    API call (sessions stay), their peers are left out of every node's peer list (agents remove
+    them at once), this machine's own interface drops them, and the VLESS key turns off. Keys,
+    devices and subscriptions stay, so unblocking brings everything back (same VLESS UUID). The
+    owner can't be blocked. Columns `users.blocked_at`, `users.blocked_reason`.
+  - *Reissue key*: VLESS key: a new UUID and link token, the old UUID leaves its node at once;
+    key for other apps: a new key pair and link on the same node (another one if that is full),
+    the old peer is replaced in the same step; a Boop app makes its own keys, so it is asked for a
+    new pair (`rekey`) and its old peer goes when it provisions the new one.
+  - *Remove* a device or key (as the user would; the VLESS key comes with access and is reissued
+    instead).
+- **Payments** (issue #39): every order with buyer, time (paid, else created), what was bought (the
+  plan as it was when ordered), amount, channel and payment service, status (paid, awaiting
+  payment, cancelled); filters by period (UTC days, by payment time), status and e-mail / order
+  id; totals for the filter (revenue per currency, paid, awaiting, cancelled, new paying users:
+  users whose first paid order is in the filter) and revenue today / 7 / 30 days. **Download CSV**:
+  the same rows (up to 50 000; UTF-8 with BOM, comma separated, amount with a dot; cells starting
+  with `= + - @` are prefixed with `'` so spreadsheets don't run them). The table shows 500.
+- **Admin log** (issue #39): the latest 500 admin actions on users (and threshold changes).
+
+Client addresses: agents since version 2 send the AmneziaWG peer endpoint and, for VLESS, the
+users' online IPs from Xray (`statsonlineiplist -all`, or per user on older Xray builds; needs
+`"statsUserOnline": true`, docs/SERVER.md). The panel stores the latest per tunnel
+(`tunnels.last_ip`, `last_ip_at`) and every address per device with when it was seen in
+`client_ips`, kept 7 days (hourly cleanup); only addresses and times, no destinations. Old agents
+keep working, their devices just show no IP. Telegram usernames: the search and the card use a
+`users.telegram_username` (or `tg_username`) column if one exists (issue #38 adds it); without it,
+Telegram search is by numeric id. API (owner only, 403 for others): `GET /v1/admin/control/dashboard`,
+`GET|PUT /v1/admin/control/settings` `{sharingThreshold}`, `GET /v1/admin/control/audit?user=`,
+`GET /v1/admin/users?q=`, `GET /v1/admin/users/{id}`, `POST /v1/admin/users/{id}/extend|grant`
+`{days, tariffId?, comment?}`, `POST …/plan` `{tariffId}`, `POST …/block` `{reason}`,
+`POST …/unblock`, `PUT …/note` `{note}`, `POST …/devices/{device}/reissue`,
+`DELETE …/devices/{device}`, `GET /v1/admin/payments?from=&to=&status=&q=`,
+`GET /v1/admin/payments.csv` (same filters). Migration V20.
+
 - **Money**: revenue per currency, paid orders, new subscriptions, renewals, active subscribers,
   recurring revenue, unpaid checkouts, by channel and plan, daily charts, recent payments.
 - **Plans**: the tariff builder. Any number of tariffs: name, length in days or months, price in

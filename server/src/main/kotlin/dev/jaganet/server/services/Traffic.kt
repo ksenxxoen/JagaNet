@@ -40,6 +40,8 @@ class Traffic(private val ctx: Ctx, private val ent: Entitlements, private val t
                            WHERE device_id=?::uuid""",
                         c.rxBytes, c.txBytes, c.torrentRx, c.torrentTx, c.lastSeenAt, t.str("device_id"),
                     )
+                    // Where it connects from (issue #39): agents since #39 and this machine's own interface.
+                    ClientIps.record(sql, t.str("device_id"), server.str("id"), c)
                     if (dRx + dTx == 0L) continue
                     // User's point of view: what the node sent is their download.
                     sql.exec(

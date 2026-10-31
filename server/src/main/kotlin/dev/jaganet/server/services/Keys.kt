@@ -83,6 +83,34 @@ class Keys(private val ctx: Ctx, private val tunnels: Tunnels) {
         tunnels.removeFor(userId, id)
     }
 
+    /**
+     * Admin (issue #39): a new key pair and a new link for this key. The new peer replaces the old
+     * one on its node in the same step (Tunnels.provisionFor drops the old peer), so the old config
+     * and the old link stop working at once. If no new key can be made, nothing changes.
+     */
+    suspend fun reissue(userId: String, deviceId: String): AccessKey {
+        val k = ctx.db.run {
+            it.one(
+                "SELECT k.config, t.server_id FROM access_keys k LEFT JOIN tunnels t ON t.device_id = k.device_id WHERE k.device_id=?::uuid AND k.user_id=?::uuid",
+                deviceId, userId,
+            )
+        } ?: throw AppError(404, ErrorCode.NOT_FOUND, "Key not found")
+        val protocol = Protocols.decode<TunnelConfig>(k.json("config")).protocol
+        val (privateKey, publicKey) = newKeyPair()
+        val cp = Protocols.encode(WireGuard.ClientParams(publicKey))
+        // The same node if it still takes devices, else any.
+        val config = runCatching { tunnels.provisionFor(userId, deviceId, TunnelProvisionReq(protocol, k.strOrNull("server_id"), cp)) }
+            .recoverCatching { if (k.strOrNull("server_id") != null) tunnels.provisionFor(userId, deviceId, TunnelProvisionReq(protocol, null, cp)) else throw it }
+            .getOrThrow()
+        return ctx.db.run { sql ->
+            sql.exec(
+                "UPDATE access_keys SET link_token=?, private_key_enc=?, config=? WHERE device_id=?::uuid",
+                Crypto.newToken(), encrypt(privateKey), Protocols.encode(config), deviceId,
+            )
+            sql.one("SELECT k.*, d.name FROM access_keys k JOIN devices d ON d.id = k.device_id WHERE k.device_id=?::uuid", deviceId)!!.toAccessKey()
+        }
+    }
+
     /** Opened by a key link. Null if the token is unknown or the key was deleted. */
     suspend fun byToken(token: String): KeyConfig? = configWhere("k.link_token=?", token)
 

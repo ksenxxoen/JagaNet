@@ -944,7 +944,8 @@ async function analytics(params) {
 
 /* ---------------- admin panel (owners) ---------------- */
 
-const ADMIN_TABS = [["money", "Finance"], ["plans", "Plans"], ["nodes", "Nodes"], ["failures", "Connection failures"], ["reports", "Problem reports"], ["testers", "Test accounts"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"]];
+// dashboard, users, payments, audit: control.js (issue #39).
+const ADMIN_TABS = [["dashboard", "Dashboard"], ["users", "Users"], ["payments", "Payments"], ["money", "Finance"], ["plans", "Plans"], ["nodes", "Nodes"], ["failures", "Connection failures"], ["reports", "Problem reports"], ["testers", "Test accounts"], ["email", "E-mail"], ["alerts", "Alerts"], ["modes", "Test modes"], ["audit", "Admin log"]];
 const payChannel = (k) => ({ web: t("Website"), telegram: "Telegram", app: t("Boop app"), apple: "App Store", google: "Google Play", dev: t("Test payments") })[k] || k;
 const NEW_SUB = C1, RENEWAL = C2;
 
@@ -977,9 +978,11 @@ async function saveWith(btn, outId, request, redraw) {
 async function admin(params) {
   if (!store.get("token")) return go("#/signin");
   if (role !== "owner") return go("#/account");
-  const tab = ADMIN_TABS.some(([k]) => k === params.get("tab")) ? params.get("tab") : "money";
+  const tab = ADMIN_TABS.some(([k]) => k === params.get("tab")) ? params.get("tab") : "dashboard";
   const top = head(t("Admin panel")) + `<nav class="tabs">${ADMIN_TABS.map(([k, l]) => `<a class="${k === tab ? "on" : ""}" href="#/admin?tab=${k}">${t(l)}</a>`).join("")}</nav>`;
   if (tab === "money") return adminMoney(params, top);
+  const control = { dashboard: ctlDashboard, users: ctlUsers, payments: ctlPayments, audit: ctlAudit }[tab];
+  if (control) { view.innerHTML = top + `<div id="pane"></div>`; return control(params); }
   if (tab === "nodes") { view.innerHTML = top + `<div id="pane"></div>`; return nodesPane(); }
   if (tab === "failures") { view.innerHTML = top + `<div id="pane"></div>`; return failuresPane(params); }
   if (tab === "reports") { view.innerHTML = top + `<div id="pane"></div>`; return params.get("id") ? reportPane(params.get("id")) : reportsPane(params); }

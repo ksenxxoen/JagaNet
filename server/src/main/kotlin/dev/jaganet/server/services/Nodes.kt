@@ -114,6 +114,10 @@ data class NodePeerCounter(
     /** The BitTorrent part of rx and tx (traffic.py on the node). */
     val torrentRx: Long = 0,
     val torrentTx: Long = 0,
+    /** Since issue #39, optional (older agents leave it out): the peer's endpoint IP (AmneziaWG / WireGuard). */
+    val endpoint: String? = null,
+    /** Since issue #39, optional: VLESS users' online IPs, ip -> last seen (epoch seconds), from Xray's online-IP stats. */
+    val ips: Map<String, Long> = emptyMap(),
 )
 
 @Serializable
@@ -127,6 +131,8 @@ data class NodeSystem(
     val uptime: Long = 0,
     /** Traffic classes on the node: "ok", "off" (not installed), "stale" or an error. */
     val classes: String? = null,
+    /** The agent's version (issue #39: "2" sends client addresses); older agents leave it out. */
+    val agent: String? = null,
 )
 
 @Serializable
@@ -145,7 +151,10 @@ suspend fun readCounters(ctx: Ctx, server: Row, protocol: String): List<PeerCoun
     }
     return ctx.db.run { sql ->
         sql.query("SELECT * FROM node_peer_counters WHERE server_id=? AND protocol=?", server.str("id"), protocol).map {
-            PeerCounters(it.str("peer_key"), it.long("rx_bytes"), it.long("tx_bytes"), it.instantOrNull("last_handshake"), it.long("torrent_rx"), it.long("torrent_tx"))
+            PeerCounters(
+                it.str("peer_key"), it.long("rx_bytes"), it.long("tx_bytes"), it.instantOrNull("last_handshake"), it.long("torrent_rx"), it.long("torrent_tx"),
+                endpoint = it.strOrNull("endpoint"), ips = ClientIps.parseIps(it.jsonOrNull("ips")),
+            )
         }
     }
 }
@@ -545,7 +554,12 @@ class Nodes(private val ctx: Ctx) {
     private suspend fun snapshot(serverId: String): NodePeersRes = ctx.db.run { sql ->
         val s = sql.one("SELECT * FROM servers WHERE id=?", serverId) ?: throw unauthorized()
         val protocol = s.json("protocols").keys.firstOrNull() ?: Protocols.AMNEZIAWG
-        val peers = sql.query("SELECT peer_key, address FROM tunnels WHERE server_id=? AND protocol=? ORDER BY peer_key", serverId, protocol)
+        // A blocked user's peers are left out (issue #39): the agent takes them off the node, the keys stay.
+        val peers = sql.query(
+            """SELECT t.peer_key, t.address FROM tunnels t JOIN devices d ON d.id = t.device_id JOIN users u ON u.id = d.user_id
+                WHERE t.server_id=? AND t.protocol=? AND u.blocked_at IS NULL ORDER BY t.peer_key""",
+            serverId, protocol,
+        )
             .map { NodePeer(it.str("peer_key"), it.str("address")) }
         val vless = protocol == Protocols.VLESS
         // The free plan's speed limit is applied by traffic.py on AmneziaWG nodes; a VLESS node has none.
@@ -583,11 +597,13 @@ class Nodes(private val ctx: Ctx) {
             val now = ctx.now()
             for (p in req.peers.take(70_000)) {
                 sql.exec(
-                    """INSERT INTO node_peer_counters (server_id, protocol, peer_key, rx_bytes, tx_bytes, last_handshake, torrent_rx, torrent_tx) VALUES (?,?,?,?,?,?,?,?)
+                    """INSERT INTO node_peer_counters (server_id, protocol, peer_key, rx_bytes, tx_bytes, last_handshake, torrent_rx, torrent_tx, endpoint, ips)
+                       VALUES (?,?,?,?,?,?,?,?,?,?)
                        ON CONFLICT (server_id, protocol, peer_key) DO UPDATE SET rx_bytes=EXCLUDED.rx_bytes, tx_bytes=EXCLUDED.tx_bytes,
-                         last_handshake=EXCLUDED.last_handshake, torrent_rx=EXCLUDED.torrent_rx, torrent_tx=EXCLUDED.torrent_tx""",
+                         last_handshake=EXCLUDED.last_handshake, torrent_rx=EXCLUDED.torrent_rx, torrent_tx=EXCLUDED.torrent_tx,
+                         endpoint=EXCLUDED.endpoint, ips=EXCLUDED.ips""",
                     id, req.protocol, p.publicKey, p.rx, p.tx, if (p.lastHandshake > 0) Instant.ofEpochSecond(p.lastHandshake) else null,
-                    p.torrentRx, p.torrentTx,
+                    p.torrentRx, p.torrentTx, ClientIps.hostOf(p.endpoint), ClientIps.ipsJson(p.ips),
                 )
             }
             // Peers the node no longer has (removed devices) don't need counters anymore.

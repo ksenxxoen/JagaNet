@@ -40,6 +40,8 @@ class VlessKeys(private val ctx: Ctx, private val ent: Entitlements, private val
 
     /** The same rule as for AmneziaWG keys (Tunnels.provisionFor): free period not over, data not used up. */
     private fun hasAccess(sql: Sql, userId: String): Boolean {
+        // Blocked by the admin (issue #39): the key is off until unblocked, its UUID stays.
+        if (sql.one("SELECT 1 AS one FROM users WHERE id=?::uuid AND blocked_at IS NOT NULL", userId) != null) return false
         val e = ent.entitlement(sql, userId)
         if (e.freeEnded) return false
         val limit = e.monthlyDataLimitBytes
@@ -108,6 +110,23 @@ class VlessKeys(private val ctx: Ctx, private val ent: Entitlements, private val
             }
             VlessSync.NONE
         }
+    }
+
+    /**
+     * Admin (issue #39): a new UUID and a new link token for the user's key. The old UUID is taken
+     * off its node at once (its tunnel goes, the agent removes the user), the old link stops
+     * working, and the key comes back with the new UUID if the user has access. Returns the new UUID.
+     */
+    suspend fun reissue(userId: String): String {
+        val uuid = UUID.randomUUID().toString()
+        ctx.db.tx { sql ->
+            sql.one("SELECT id FROM users WHERE id=?::uuid FOR UPDATE", userId)
+            val k = sql.one("SELECT * FROM vless_keys WHERE user_id=?::uuid", userId) ?: throw dev.jaganet.server.notFound("Key not found")
+            tunnels.revoke(sql, k.str("device_id"))
+            sql.exec("UPDATE vless_keys SET uuid=?, link_token=? WHERE user_id=?::uuid", uuid, Crypto.newToken(), userId)
+        }
+        ensureFor(userId)
+        return uuid
     }
 
     /**

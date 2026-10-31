@@ -59,7 +59,10 @@ abstract class WgFamilyDriver(private val tool: String, private val run: suspend
             .filter { it.size >= 8 }
             .map { f ->
                 val hs = f[4].toLong()
-                PeerCounters(f[0], rxBytes = f[5].toLong(), txBytes = f[6].toLong(), lastSeenAt = if (hs > 0) Instant.ofEpochSecond(hs) else null)
+                PeerCounters(
+                    f[0], rxBytes = f[5].toLong(), txBytes = f[6].toLong(), lastSeenAt = if (hs > 0) Instant.ofEpochSecond(hs) else null,
+                    endpoint = dev.jaganet.server.services.ClientIps.hostOf(f[2]),
+                )
             }
 
         suspend fun exec(cmd: List<String>): String = withContext(Dispatchers.IO) {

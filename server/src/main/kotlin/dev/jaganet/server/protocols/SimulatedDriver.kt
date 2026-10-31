@@ -60,7 +60,8 @@ class SimulatedDriver(
 
     override suspend fun readCounters(node: ServerNode): List<PeerCounters> {
         tick()
-        return peers.map { (k, p) -> PeerCounters(k, p.rx, p.tx, p.lastSeenAt) }
+        // A made-up client address (documentation range) for peers that connected, so the admin panel has something to show.
+        return peers.map { (k, p) -> PeerCounters(k, p.rx, p.tx, p.lastSeenAt, endpoint = p.lastSeenAt?.let { "198.51.100.${1 + Math.floorMod(k.hashCode(), 254)}" }) }
     }
 
     override fun onConnectionEvent(node: ServerNode, peerKey: String, connected: Boolean) {
