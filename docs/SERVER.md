@@ -161,6 +161,58 @@ AmneziaWG nodes exactly as before when `PROTOCOL` is `amneziawg` or `wireguard`.
 needs `vless` in `PROTOCOLS` (the default list has it). Apps get VLESS nodes only when they ask
 `GET /v1/servers?supportedProtocols=…,vless`; older apps never see them.
 
+### Several VLESS nodes
+
+Every user's VLESS key works on every active VLESS node with *In subscriptions* on (issue #41):
+the panel hands each node's agent all users, so nothing is needed on the node beyond the setup
+above. A new node gets everyone within seconds of its agent starting; a node switched off or
+hidden in the panel drops them at once. The subscription (`/k/<token>/vless`) lists the nodes in
+the panel's order with their names; Happ, v2RayTun, v2rayNG and Hiddify get links, sing-box and
+Clash Meta clients a profile with an "Авто (лучший)" group. Optional: `SUPPORT_URL` in
+`/etc/jaganet/env` for the subscription's `support-url` (default: the Telegram bot, else the site).
+
+### Cascade (server-side balancer)
+
+Optional, off unless `VLESS_BALANCER=1` is in `/etc/jaganet/env`. An **entry** node takes the
+users and sends their traffic on to the fastest **exit** (Xray `balancers` with `leastPing` and the
+`observatory`). Both are ordinary VLESS nodes in the panel (each with its agent, set up as above).
+
+1. In the panel mark the entry *Cascade: Entry* and each exit *Cascade: Exit*. Set an exit's
+   *In subscriptions* to No if users should not connect to it directly. The panel gives the entry
+   its own Xray user (a UUID, `servers.cascade_uuid`); the exits' agents add it to their inbounds
+   within seconds, like any user. Nothing secret moves: the panel has only the exits' public
+   parameters (address, port, Reality public key, short id, SNI).
+2. Entry's form › **Balancer** › *Show the Xray settings* (or
+   `GET /v1/admin/nodes/<entry id>/balancer` as the owner) gives a JSON fragment:
+   ```json
+   {
+     "outbounds": [{"tag": "boop-exit-<exit id>", "protocol": "vless",
+       "settings": {"vnext": [{"address": "fi1.example.com", "port": 443,
+         "users": [{"id": "<entry's UUID>", "encryption": "none", "flow": "xtls-rprx-vision"}]}]},
+       "streamSettings": {"network": "tcp", "security": "reality",
+         "realitySettings": {"serverName": "fi1.example.com", "fingerprint": "firefox",
+           "publicKey": "<exit's Reality public key>", "shortId": "a1b2c3d4"}}}],
+     "routing": {"balancers": [{"tag": "boop-exits", "selector": ["boop-exit-"], "strategy": {"type": "leastPing"}}],
+       "rules": [{"type": "field", "inboundTag": ["vision", "xhttp"], "balancerTag": "boop-exits"}]},
+     "observatory": {"subjectSelector": ["boop-exit-"], "probeUrl": "https://www.gstatic.com/generate_204",
+       "probeInterval": "1m", "enableConcurrency": true}
+   }
+   ```
+3. On the entry, merge it into `/usr/local/etc/xray/config.json` by hand: append the `outbounds`
+   after your own (keep your first outbound, it stays the default for everything else), add
+   `routing.balancers`, put the rule **first** in `routing.rules` (before any rule that would catch
+   the users' traffic; keep the `api` rule above it if you have one), and add `observatory`. Then
+   `xray run -test -c /usr/local/etc/xray/config.json` and `systemctl restart xray`; the agent puts
+   the users back within 25 seconds.
+4. Check: `journalctl -u xray` shows the observatory's probes; on an exit
+   `xray api inbounduser --server=127.0.0.1:10085 -tag=vision` lists the entry's UUID.
+
+Get the fragment again and repeat step 3 after adding, removing or switching off an exit, or after
+changing an exit's address or keys. To undo: remove the outbounds `boop-exit-*`, the balancer
+`boop-exits`, its rule and `observatory`, restart Xray, and set the nodes' *Cascade* back to None.
+With `VLESS_BALANCER=1` the entry also leads every subscription as "⚡ Авто" (its *Location name*
+if set) and the apps' list names it "Авто".
+
 ## AmneziaWG 3.1
 
 Servers run AmneziaWG 3.1, the profile the AmneziaVPN app installs on its own servers: the first

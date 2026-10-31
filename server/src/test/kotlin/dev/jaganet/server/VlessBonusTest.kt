@@ -172,7 +172,7 @@ class VlessBonusTest {
         assertEquals(
             listOf(
                 "vless://$uuid@ru1.vpn.example.com:443?encryption=none&security=reality&pbk=$pbk&sid=a1b2c3d4&sni=ru1.vpn.example.com&fp=firefox&type=tcp&flow=xtls-rprx-vision#$name",
-                "vless://$uuid@ru1.vpn.example.com:8443?encryption=none&security=reality&pbk=$pbk&sid=a1b2c3d4&sni=ru1.vpn.example.com&fp=firefox&type=xhttp&path=%2Fs3cr3t&mode=auto#${name}%202",
+                "vless://$uuid@ru1.vpn.example.com:8443?encryption=none&security=reality&pbk=$pbk&sid=a1b2c3d4&sni=ru1.vpn.example.com&fp=firefox&type=xhttp&path=%2Fs3cr3t&mode=auto#${Vless.encode("🇫🇮 Финляндия (запасной)")}",
             ),
             lines,
         )

@@ -57,6 +57,10 @@ data class Config(
     val signupProDays: Int = 0,
     /** true = every user sees the referral program; false = only admins (owners). */
     val referralsPublic: Boolean = false,
+    /** VLESS_BALANCER=1: cascade entries balance over exit nodes (issue #41) and lead the subscription as "Auto". */
+    val vlessBalancer: Boolean = false,
+    /** SUPPORT_URL: the `support-url` header of VLESS subscriptions; default the Telegram bot, else the website. */
+    val supportUrl: String? = null,
 ) {
     companion object {
         fun load(env: Map<String, String> = System.getenv()): Config {
@@ -94,6 +98,8 @@ data class Config(
                 ),
                 signupProDays = num("SIGNUP_PRO_DAYS", 0).toInt().coerceAtLeast(0),
                 referralsPublic = env["REFERRALS_PUBLIC"] == "1",
+                vlessBalancer = env["VLESS_BALANCER"] == "1",
+                supportUrl = env["SUPPORT_URL"]?.takeIf { it.isNotBlank() },
                 paymentProvider = env["PAYMENT_PROVIDER"]?.takeIf { it.isNotBlank() } ?: "test".takeIf { mode != Mode.PRODUCTION },
                 telegramBotToken = env["TELEGRAM_BOT_TOKEN"]?.takeIf { it.isNotBlank() },
                 androidAppUrl = env["ANDROID_APP_URL"]?.takeIf { it.isNotBlank() },

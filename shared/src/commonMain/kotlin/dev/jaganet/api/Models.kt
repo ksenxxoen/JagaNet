@@ -1013,10 +1013,22 @@ data class AdminNode(
     val countryName: String? = null,
     /** A VLESS node's settings (no secrets), for the edit form; null for other protocols. */
     val vless: Vless.NodeSettings? = null,
+    /** The location's name in subscriptions and the apps (the flag is added); null = the country (issue #41). */
+    val displayName: String? = null,
+    /** Locations are listed by this number, then by name. */
+    val sortOrder: Int = 0,
+    /** A VLESS node: in users' subscriptions and the apps' list, with every user on it. */
+    val inSubscription: Boolean = true,
+    /** "entry" or "exit" in a cascade (the server-side balancer), null = neither. */
+    val cascadeRole: String? = null,
 )
 
 @Serializable
-data class AdminNodesRes(val nodes: List<AdminNode>)
+data class AdminNodesRes(
+    val nodes: List<AdminNode>,
+    /** VLESS_BALANCER=1 on the server: cascade entries balance over the exits (issue #41). */
+    val vlessBalancer: Boolean = false,
+)
 
 /** PUT /admin/nodes/{id}/status: the node's [NodeStatus] and its note for the apps (empty or null = none). */
 @Serializable
@@ -1048,6 +1060,15 @@ data class NodeReq(
     val vless: Vless.NodeSettings? = null,
     /** The country's name in Russian for the apps; null or empty = the standard name. */
     val countryName: String? = null,
+    /*
+     * Issue #41. null = unchanged (and the default on a new node), so older callers keep the values.
+     */
+    /** The location's name in subscriptions and the apps; "" = the country's name. */
+    val displayName: String? = null,
+    val sortOrder: Int? = null,
+    val inSubscription: Boolean? = null,
+    /** "entry", "exit", or "" for neither. */
+    val cascadeRole: String? = null,
 )
 
 /** A new node or a new token: [command] is run once as root on the node. Shown only now. */

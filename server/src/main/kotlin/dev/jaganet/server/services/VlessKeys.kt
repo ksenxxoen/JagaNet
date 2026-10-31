@@ -3,13 +3,13 @@ package dev.jaganet.server.services
 import dev.jaganet.api.Protocols
 import dev.jaganet.api.Vless
 import dev.jaganet.api.VlessKey
+import dev.jaganet.api.i18n.Lang
 import dev.jaganet.server.Ctx
 import dev.jaganet.server.db.Row
 import dev.jaganet.server.db.Sql
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.slf4j.LoggerFactory
-import java.util.Base64
 import java.util.UUID
 
 /** devices.kind of the user's VLESS key (V18). Ordinary devices and key links are 'device'. */
@@ -20,8 +20,15 @@ enum class VlessSync { NONE, CREATED, ENABLED, DISABLED, MOVED }
 
 data class VlessSyncResult(val created: Int = 0, val enabled: Int = 0, val disabled: Int = 0, val moved: Int = 0, val failed: Int = 0)
 
-/** A VLESS key's links for one user, for the key page, the subscription and the website. */
-data class VlessLinks(val userId: String, val deviceId: String, val token: String, val name: String, val countryCode: String?, val links: List<String>, val expiresAt: String?)
+/**
+ * A VLESS key's links for one user, for the key page, the subscription and the website.
+ * [locations]: every node the key works on, in the subscription's order (issue #41); [links] are
+ * theirs one after another, and [name] is the first location's.
+ */
+data class VlessLinks(
+    val userId: String, val deviceId: String, val token: String, val name: String, val countryCode: String?, val links: List<String>, val expiresAt: String?,
+    val locations: List<VlessLocation> = emptyList(),
+)
 
 /**
  * One VLESS key per user, on top of the plan's devices (issue #33).
@@ -34,6 +41,9 @@ data class VlessLinks(val userId: String, val deviceId: String, val token: Strin
  *
  * [sync] is idempotent and runs at startup and every few minutes (Main.kt); [ensureFor] runs for
  * one user when they open their keys, so a purchase shows the key at once.
+ *
+ * The tunnel's node is the key's home; the same UUID is also on every other listed VLESS node
+ * (VlessLocations, issue #41), and the subscription lists them all.
  */
 class VlessKeys(private val ctx: Ctx, private val ent: Entitlements, private val tunnels: Tunnels) {
     private val log = LoggerFactory.getLogger("vless-keys")
@@ -51,6 +61,8 @@ class VlessKeys(private val ctx: Ctx, private val ent: Entitlements, private val
         if (ctx.drivers[Protocols.VLESS] == null) return VlessSyncResult()
         val users = ctx.db.run { sql -> sql.query("SELECT id FROM users ORDER BY created_at, id").map { it.str("id") } }
         var r = VlessSyncResult()
+        // Every VLESS tunnel's UUID on every listed node: nodes switched on, off or hidden since the last run.
+        runCatching { ctx.db.tx { sql -> VlessLocations.syncReplicas(ctx, sql) } }.onFailure { log.warn("VLESS replicas: {}", it.message) }
         for (u in users) {
             r = runCatching { ensureFor(u) }.fold(
                 { when (it) {
@@ -84,6 +96,7 @@ class VlessKeys(private val ctx: Ctx, private val ent: Entitlements, private val
                 val uuid = UUID.randomUUID().toString()
                 sql.exec("INSERT INTO vless_keys (user_id, device_id, uuid, link_token) VALUES (?::uuid, ?::uuid, ?, ?)", userId, deviceId, uuid, Crypto.newToken())
                 addTunnel(sql, deviceId, uuid, server)
+                VlessLocations.syncReplicas(ctx, sql, deviceId)
                 return@tx VlessSync.CREATED
             }
             val deviceId = k.str("device_id")
@@ -96,16 +109,19 @@ class VlessKeys(private val ctx: Ctx, private val ent: Entitlements, private val
             if (t == null) {
                 val server = pick(sql, null) ?: return@tx VlessSync.NONE
                 addTunnel(sql, deviceId, k.str("uuid"), server)
+                VlessLocations.syncReplicas(ctx, sql, deviceId)
                 return@tx VlessSync.ENABLED
             }
-            // Its node was switched off (or no longer runs VLESS): to another one, same UUID.
+            // Its node was switched off, hidden from subscriptions (or no longer runs VLESS): to another one, same UUID.
             val cur = sql.one("SELECT * FROM servers WHERE id=?", t.str("server_id"))
-            if (cur == null || !cur.bool("active") || Protocols.VLESS !in cur.json("protocols")) {
+            if (cur == null || !cur.bool("active") || !cur.bool("in_subscription") || Protocols.VLESS !in cur.json("protocols")) {
                 val to = pick(sql, t.str("server_id")) ?: return@tx VlessSync.NONE
                 tunnels.revoke(sql, deviceId)
                 addTunnel(sql, deviceId, k.str("uuid"), to)
+                VlessLocations.syncReplicas(ctx, sql, deviceId)
                 return@tx VlessSync.MOVED
             }
+            VlessLocations.syncReplicas(ctx, sql, deviceId)
             VlessSync.NONE
         }
     }
@@ -115,7 +131,7 @@ class VlessKeys(private val ctx: Ctx, private val ent: Entitlements, private val
      * The node's max_peers is not a cap here: everyone gets the key, VLESS needs no addresses.
      */
     private fun pick(sql: Sql, except: String?): Row? = sql.one(
-        """SELECT s.* FROM servers s WHERE $USABLE AND (s.protocols -> ?) IS NOT NULL AND s.id <> coalesce(?, '')
+        """SELECT s.* FROM servers s WHERE $USABLE AND s.in_subscription AND (s.protocols -> ?) IS NOT NULL AND s.id <> coalesce(?, '')
             ORDER BY $STATUS_RANK, (SELECT count(*) FROM tunnels t WHERE t.server_id=s.id)::float / greatest(s.max_peers, 1), s.id LIMIT 1""",
         ctx.now().minus(NODE_OFFLINE), Protocols.VLESS, except,
     )
@@ -144,22 +160,35 @@ class VlessKeys(private val ctx: Ctx, private val ent: Entitlements, private val
     /** True when [token] is a VLESS key's own link token. */
     suspend fun isOwnToken(token: String): Boolean = ctx.db.run { it.one("SELECT 1 AS one FROM vless_keys WHERE link_token=?", token) != null }
 
-    /** The user's key with its links now; links are empty while the key is off. Null if they have none. */
-    suspend fun links(userId: String): VlessLinks? = ctx.db.run { sql ->
+    /**
+     * The user's key with its links now: every location it works on (issue #41). Links are empty
+     * while the key is off. Null if they have none. [lang]: the backup links' names.
+     */
+    suspend fun links(userId: String, lang: Lang = Lang.DEFAULT): VlessLinks? = ctx.db.run { sql ->
         val k = sql.one(
             "SELECT k.* FROM vless_keys k JOIN devices d ON d.id = k.device_id WHERE k.user_id=?::uuid AND d.removed_at IS NULL", userId,
         ) ?: return@run null
-        val t = sql.one("SELECT server_id, peer_key FROM tunnels WHERE device_id=?::uuid", k.str("device_id"))
-        val server = t?.let { sql.one("SELECT * FROM servers WHERE id=?", it.str("server_id")) } ?: pick(sql, null)
-        val cc = server?.str("country_code")?.trim()
-        val name = server?.let { displayName(it) } ?: "Boop"
-        val params = if (t != null && server != null) {
-            ctx.drivers[Protocols.VLESS]?.currentParams(server.node(Protocols.VLESS), t.str("peer_key"))
-                ?.let { runCatching { Protocols.decode<Vless.ServerParams>(it) }.getOrNull() }
-        } else null
+        val locations = VlessLocations.of(ctx, sql, k.str("device_id"), lang)
+        // While the key is off it is named after the node it would get.
+        val home = if (locations.isEmpty()) pick(sql, null) else null
+        val name = locations.firstOrNull()?.name ?: home?.let { VlessLocations.displayName(it) } ?: "Boop"
+        val cc = if (locations.isEmpty()) home?.str("country_code")?.trim() else locations.first().countryCode
         val e = ent.entitlement(sql, userId)
-        VlessLinks(userId, k.str("device_id"), k.str("link_token"), name, cc, params?.let { linksOf(it, name) }.orEmpty(), e.expiresAt)
+        VlessLinks(userId, k.str("device_id"), k.str("link_token"), name, cc, locations.flatMap { it.links(lang) }, e.expiresAt, locations)
     }
+
+    /** This month's bytes of the user (all devices: the data limit counts them all): upload and download, as the user sees them. */
+    suspend fun usage(userId: String): Pair<Long, Long> = ctx.db.run { sql ->
+        val r = sql.one(
+            """SELECT coalesce(sum(t.tx_bytes), 0)::bigint AS up, coalesce(sum(t.rx_bytes), 0)::bigint AS down
+                 FROM traffic_samples t JOIN devices d ON d.id = t.device_id WHERE d.user_id=?::uuid AND t.bucket >= ?""",
+            userId, monthStart(ctx.now()),
+        )!!
+        r.long("up") to r.long("down")
+    }
+
+    /** The user's monthly data limit in bytes, null = none. */
+    suspend fun dataLimit(userId: String): Long? = ctx.db.run { sql -> ent.entitlement(sql, userId).monthlyDataLimitBytes }
 
     /** For the website and the apps (GET /v1/keys with vless in supportedProtocols). */
     suspend fun key(userId: String): VlessKey? {
@@ -169,12 +198,8 @@ class VlessKeys(private val ctx: Ctx, private val ent: Entitlements, private val
     }
 
     companion object {
-        /** "🇫🇮 Финляндия": the flag and the country (the owner's name for it, else the Russian one). No protocol names. */
-        fun displayName(server: Row): String {
-            val cc = server.str("country_code").trim()
-            val country = server.strOrNull("country_name") ?: Countries.ru(cc)
-            return listOfNotNull(flag(cc), country).joinToString(" ")
-        }
+        /** "🇫🇮 Финляндия": the flag and the owner's display name, else the country. No protocol names. */
+        fun displayName(server: Row): String = VlessLocations.displayName(server)
 
         /** The flag emoji of an ISO code, null if it is not two letters. */
         fun flag(cc: String): String? {
@@ -184,14 +209,14 @@ class VlessKeys(private val ctx: Ctx, private val ent: Entitlements, private val
         }
 
         /**
-         * vless:// links, Vision (TCP) first, then XHTTP, then anything else in the node's order.
-         * The first is named after the country, the next ones get a number ("🇫🇮 Финляндия 2").
+         * vless:// links of one location, Vision (TCP) first, then XHTTP, then anything else in the
+         * node's order. The first is named after the location, the next ones are its backups
+         * ("🇫🇮 Финляндия (запасной)").
          */
-        fun linksOf(p: Vless.ServerParams, name: String): List<String> =
-            p.variants.sortedBy { if (it.transport == Vless.TCP && it.flow == Vless.FLOW_VISION) 0 else if (it.transport == Vless.XHTTP) 1 else 2 }
-                .mapIndexed { i, v -> Vless.link(p.uuid, v, if (i == 0) name else "$name ${i + 1}") }
+        fun linksOf(p: Vless.ServerParams, name: String, lang: Lang = Lang.DEFAULT): List<String> =
+            VlessLocation("", name, null, p).links(lang)
 
         /** A subscription as Happ, v2RayTun, Hiddify and v2rayNG read it: base64 of the links, one per line. */
-        fun subscription(links: List<String>): String = Base64.getEncoder().encodeToString(links.joinToString("\n").toByteArray())
+        fun subscription(links: List<String>): String = VlessSubscription.base64(links)
     }
 }

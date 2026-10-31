@@ -140,6 +140,42 @@ process behind the Wintun adapter (desktop/ARCHITECTURE.md, "VLESS+Reality").
   key-link tokens, `/k/<token>/vless/<n>.png` and `sub.png` QR codes; `KeysRes.vless` and
   `Device.outsideLimit` only for callers sending vless in `supportedProtocols`; admin user page
   marks it "outside the limit".
+- **Several locations in one key** (issue #41, `services/VlessLocations.kt`, V22). The user's UUID
+  is on every VLESS node that is active and `in_subscription`: the tunnel keeps it on its own node
+  (the key's home, as above), `vless_replicas` puts the same UUID on every other one
+  (`VlessLocations.syncReplicas`: when a VLESS tunnel is made or moved, when the owner creates or
+  edits a node, and in the 5-minute `VlessKeys.sync`). A node's agent gets tunnels and replicas in
+  one peer list, so a new node gets everyone, and a node switched off or hidden loses them at once.
+  Replicas go with their tunnel (`ON DELETE CASCADE`): ended access or a removed device drops the
+  UUID everywhere. This holds for the apps' VLESS devices too (a new provision gives a new UUID on
+  every node). Traffic on a replica counts for the device (`vless_replicas.last_*` keep its
+  counters; `traffic_samples.server_id` is the node it went through).
+- **Subscription** `/k/<token>/vless`: every location the UUID is on, active, `in_subscription`, and
+  reporting within a day, ordered by `servers.sort_order`, then name. Names: flag + `display_name`,
+  else `country_name`, else the country in Russian ("🇫🇮 Финляндия"); the backup transport is
+  "🇫🇮 Финляндия (запасной)" (a third one "(запасной 2)"; `?lang=de|en` translates the suffix);
+  equal names get " 2". Never a protocol name. With one VLESS node the links are those of issue #33
+  but for the backup's name. Formats (`VlessSubscription`): `?format=singbox|clash|base64` wins,
+  else the `User-Agent`: sing-box apps (`SFA/`, `SFI/`, `SFM/`, `SFT/`, `sing-box`) get a sing-box
+  1.12+ profile, Clash Meta clients (`clash`, `mihomo`: Clash Meta for Android, Clash Verge, FlClash)
+  a mihomo profile; both have a selector "Boop VPN" with "Авто (лучший)" (`urltest` over every
+  location, gstatic generate_204, 3 minutes, tolerance 50 ms) and each location, Vision links only
+  (sing-box has no XHTTP, older mihomo refuses it). Everyone else (Happ, v2RayTun, v2rayNG,
+  Hiddify, which makes its own auto group from links and reads XHTTP) gets the base64 list.
+  Headers: `profile-title` (base64 "Boop VPN"), `profile-update-interval: 12`,
+  `subscription-userinfo: upload=…; download=…; total=…; expire=…` (this month's bytes of all the
+  user's devices, the monthly limit or 0, the end of access or 0), `support-url` (`SUPPORT_URL`,
+  else the Telegram bot, else the website), `profile-web-page-url` (the key page).
+- **Apps' list** (`GET /v1/servers?supportedProtocols=…,vless`): VLESS on a node hidden from
+  subscriptions is left out; the list is in the owner's order; `countryName` is the display name
+  if set. The apps show country and ping only.
+- **Server-side balancer** (cascade, behind `VLESS_BALANCER=1`): a node marked *entry*
+  (`cascade_role`) gets its own Xray user `cascade_uuid`, which the agents of every active *exit*
+  add like any user. `GET /v1/admin/nodes/{id}/balancer` gives the entry's Xray fragment
+  (`XrayBalancer`): one VLESS+Reality outbound per exit (public parameters only), a `leastPing`
+  balancer over them, the rule from the entry's inbounds and the `observatory`; the owner adds it
+  to the entry's config (docs/SERVER.md, "Cascade"). In subscriptions the entry comes first as
+  "⚡ Авто" (its display name if set). Off (the default), the marks change nothing for users.
 
 ## Server (`server/`)
 
