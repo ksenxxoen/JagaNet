@@ -33,6 +33,9 @@ type Store struct {
 	// Notes from the owner the person closed (nodestatus.go): the same text
 	// is not shown again. The latest closedNoticesKept.
 	ClosedNotices []string `json:"closedNotices,omitempty"`
+	// The panel address that last worked when it was a spare one (issue #37,
+	// apibase.go): tried first at the next start. Empty for the main address.
+	APIBase string `json:"apiBase,omitempty"`
 
 	cache *CachedTunnel
 

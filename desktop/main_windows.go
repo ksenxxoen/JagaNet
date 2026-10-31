@@ -89,9 +89,12 @@ func main() {
 	if exe, err := os.Executable(); err == nil {
 		exeDir = filepath.Dir(exe)
 	}
+	// The panel's addresses come only from the build (no environment override on
+	// Windows, as before): the main one, then the spares (issue #37).
+	bases, site := apiBases("")
 	app := &core.App{
-		API: core.NewAPI(apiBase, nil), Store: core.LoadStore(dir), Tunnel: tun, Ping: vpn.Ping,
-		Version: version, Site: apiBase, OpenURL: openURL, UpdateDir: exeDir,
+		API: core.NewAPI(bases, nil), Store: core.LoadStore(dir), Tunnel: tun, Ping: vpn.Ping,
+		Version: version, Site: site, OpenURL: openURL, UpdateDir: exeDir,
 		Autostart: setAutostart, AutostartOn: autostartOn, LogPath: logPath,
 	}
 	app.ApplyUpdate = func(staged string) error { return applyUpdate(app, staged) }

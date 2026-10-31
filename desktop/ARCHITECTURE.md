@@ -53,7 +53,8 @@ hosts use; no behaviour moved between layers.
 | `settings.go` | settings commands, the first-hide tray hint |
 | `update.go` | manifest checks, staging and verifying the exe, the update loop |
 | `vless.go` | (issue #29) VLESS nodes: `SupportedProtocols` (sent as `GET /v1/servers?supportedProtocols=amneziawg,vless`), `protocolOf` (the first of a node's protocols the app runs, in the panel's order), `applyVless` (resolve each variant's host outside the tunnel like AmneziaWG's endpoint, then `vpn.Config{Vless: …}`), `refreshVless` (re-resolve; apply only a moved node), `tcpPing` |
-| `store.go`, `conf.go`, `resolve.go`, `api.go`, `log.go` | unchanged: persisted state, AmneziaWG config, DNS, panel client, `Go` / `Catch` |
+| `apibase.go` | (issue #37) the panel's spare address: `API.Bases` (main first; `main.apiBase` in `ui.go` is the one list, comma-separated; `BOOP_API` replaces it in the dev and Linux builds), the order of tries (the base in use, then the rest; the main one first again `PrimaryRetry` = 30 min after a switch), `offPanel` (HTML, 52x, 404/502/503/504 without JSON: not the panel → next base; the panel's JSON errors never switch), `attempt` (one try; `APIConnectBudget` = 3 s to get a connection while another base is left, measured with `httptrace.GotConn`; POST/PATCH/DELETE go to the next base only when no connection was ever made for them), `worked` (switch, log line, `Store.APIBase`), `apiLine` (the report's «API: основной/запасной»). Panel calls (`do`), the update manifest, the update file when its URL is relative or on one of the bases (`Download`), and `/v1/health` (all bases at once) go through it; browser links (`Site` = the first base) do not. Nginx for `api.boopvpn.app` and the manual check: `docs/api-fallback.md` |
+| `store.go`, `conf.go`, `resolve.go`, `api.go`, `log.go` | persisted state (+ `apiBase`, issue #37), AmneziaWG config, DNS, panel client (requests go through `apibase.go`), `Go` / `Catch` |
 
 ### The bridge
 

@@ -119,9 +119,38 @@ func netProber(api *API) Prober {
 }
 
 // Health asks the panel's /v1/health without a token. Any HTTP answer counts:
-// it only has to show that the panel is reachable.
+// it only has to show that the panel is reachable. With spare addresses
+// (issue #37) all bases are asked at once and the first answer counts, so the
+// probe stays within its few seconds when the main address is blocked.
 func (a *API) Health(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.Base+"/v1/health", nil)
+	bases := a.Bases
+	if len(bases) == 0 {
+		bases = []string{a.Base}
+	}
+	if len(bases) == 1 {
+		return a.health(ctx, bases[0])
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	errs := make(chan error, len(bases))
+	for _, b := range bases {
+		go func() { errs <- a.health(ctx, b) }()
+	}
+	var first error
+	for range bases {
+		err := <-errs
+		if err == nil {
+			return nil
+		}
+		if first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
+func (a *API) health(ctx context.Context, base string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/health", nil)
 	if err != nil {
 		return err
 	}

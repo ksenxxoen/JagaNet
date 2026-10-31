@@ -116,10 +116,8 @@ func main() {
 	core.OSVersion = osVersion
 
 	// For trying a build against a test panel (scripts/fakepanel.mjs), as the dev build allows.
-	base := apiBase
-	if v := os.Getenv("BOOP_API"); v != "" {
-		base = v
-	}
+	// BOOP_API replaces the whole list of panel addresses (one, or several separated by commas).
+	base, site := apiBases(os.Getenv("BOOP_API"))
 	tun := helper.NewClient(os.Getenv("BOOP_HELPER_SOCKET"))
 	api := core.NewAPI(base, nil)
 	api.ManifestQuery = "platform=linux"
@@ -134,7 +132,7 @@ func main() {
 			}
 			return vpn.PingICMP(ctx, ip, 0) // no helper: the plain way, through the tunnel if it is up
 		},
-		Version: version, Site: base, OpenURL: openURL, LogPath: logPath,
+		Version: version, Site: site, OpenURL: openURL, LogPath: logPath,
 		Autostart: setAutostart, AutostartOn: autostartOn,
 		UpdateLink: true, Platform: "linux",
 	}
