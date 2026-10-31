@@ -154,3 +154,35 @@ people (emails masked). Archived links stop counting clicks; their history stays
 The owner sees the whole program and the top partners (`/v1/admin/referrals`).
 
 Where: website `#/referrals`, the app's Invite friends screen and owner dashboard, the bot's /invite.
+
+### Invite a friend, get +14 days (issue #40)
+
+Every user (not only admins) gets "Invite a friend" while rewards are on: website `#/invite`
+(menu «Пригласить друга»), the bot's /invite and «🎁 Пригласить друзей» button, the apps through
+`GET /v1/referrals` (`rewardDays`, `daysEarned`, `shareUrl`, `telegramUrl`) and
+`GET /v1/referrals/invite` (links, rules, invited / paid / days received, the list of rewards).
+The detailed analytics with campaign links (`#/referrals`) stay admin-only unless `REFERRALS_PUBLIC=1`.
+
+- Links: `https://<site>/r/<CODE>` (counts the visit, then opens `https://<site>/?ref=<CODE>`; a
+  plain `?ref=<CODE>` works too) and `https://t.me/<bot>?start=ref_<CODE>`. The website keeps the code
+  in the browser until sign-up (e-mail or Telegram Login Widget); the bot uses the `/start` payload.
+- The inviter (`users.referred_by`) is set once, when the account is made: an existing account
+  never gets or changes one (a database trigger refuses changes), nobody is their own inviter
+  (check `users_not_self_referred`).
+- Reward: when the invited person pays for the first time, the inviter gets `REFERRAL_REWARD_DAYS`
+  (14) of Pro, added after the end of their current subscription, or from now if it has ended.
+  Stored as a `subscriptions` row with source `referral` (`external_id` `reward:<id>`) and a row in
+  `referral_rewards`, unique per invited person: a repeated webhook or a second purchase gives
+  nothing. `REFERRAL_REWARD_CONDITION=signup` rewards at sign-up instead (easier to abuse).
+  `REFERRAL_INVITEE_DAYS` > 0 also gives the invited person a bonus (off by default).
+- Anti-fraud: at most `REFERRAL_MONTHLY_CAP` (10) rewards per inviter per calendar month (UTC), 0 = no
+  limit; over it the reward is recorded as "capped" without days. A reward is flagged "same network"
+  / "same browser" when the invited person signed in (or opened the site signed in) from the
+  inviter's IP / IP + browser in the last 90 days. Only HMACs are kept (`user_fingerprints`), no IP
+  addresses. Flagged rewards are still given; the owner decides.
+- The recipient is told in the bot (Telegram linked, notifications on), else by e-mail (if set up).
+- The owner: Referral program → «Награды за приглашения» (`#/invite?view=admin`): the rules (saved in
+  the settings table, they win over the variables), totals, top inviters, every reward with its
+  flag and how the person was told, a "suspicious only" filter and «Отменить начисление» (the days
+  are taken back and later subscription time moves back by what was left of the reward).
+- `REFERRAL_REWARD_DAYS=0` turns the rewards off and hides "Invite a friend" from users again.

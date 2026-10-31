@@ -27,6 +27,10 @@ Website `#/admin` (owners only):
   rubles and euros, devices, data per month (empty = unlimited), badge, order, status. Changes
   apply to new purchases only; bought subscriptions keep their terms. Tariffs are archived, not
   deleted. Below: free plan limits and invite rewards.
+- **Invite rewards** (issue #40): in Referral program → «Награды за приглашения» (`#/invite?view=admin`):
+  days for the inviter, when to reward (first payment or sign-up), days for the friend, monthly
+  limit; totals, top inviters, every reward with its anti-fraud flag, cancelling a reward. See
+  [WEB-AND-TELEGRAM.md](WEB-AND-TELEGRAM.md#invite-a-friend-get-14-days-issue-40).
 - **Connection failures**: failed connections the Boop apps report (`handshake_failed`: the node
   never answered; `no_rx`: a working tunnel went quiet), the latest 200 with user, device, node,
   the node's address, the app's reason (`blocked`, `offline`, `no_handshake`, `no_rx`,

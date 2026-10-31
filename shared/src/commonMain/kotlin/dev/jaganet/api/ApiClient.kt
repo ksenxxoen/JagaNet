@@ -169,5 +169,11 @@ class ApiClient(
         http.patch("referrals/links/$id") { auth(); contentType(ContentType.Application.Json); setBody(RenameReferralLinkReq(name)) }.read()
     suspend fun archiveReferralLink(id: String): OkRes = delete("referrals/links/$id")
     suspend fun adminReferrals(period: ReferralPeriod): AdminReferralsRes = get("admin/referrals") { parameter("period", Protocols.json.encodeToString(ReferralPeriod.serializer(), period).trim('"')) }
+    // "Invite a friend" rewards (issue #40)
+    suspend fun invite(): InviteRes = get("referrals/invite")
+    suspend fun adminReferralRewards(suspiciousOnly: Boolean = false): AdminReferralRewardsRes =
+        get("admin/referral-rewards") { if (suspiciousOnly) parameter("suspicious", "1") }
+    suspend fun saveReferralRewardSettings(p: ReferralRewardSettings): AdminReferralRewardsRes = put("admin/referral-rewards/settings", p)
+    suspend fun cancelReferralReward(id: String): AdminReward = post("admin/referral-rewards/$id/cancel", OkRes())
     suspend fun adminOverview(): AdminOverviewRes = get("admin/overview")
 }

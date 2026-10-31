@@ -153,7 +153,8 @@ class TrafficTest {
 }
 
 class BillingTest {
-    @Test fun `upgrades to Pro, an invite gives no free days`() = harness {
+    // Invite rewards (issue #40) off here: ReferralRewardsTest covers them.
+    @Test fun `upgrades to Pro, an invite gives no free days`() = harness(mapOf("REFERRAL_REWARD_DAYS" to "0")) {
         val alex = signIn("alex@example.com")
         val ref = alex.api.referrals()
         val sam = signIn("sam@example.com", referral = ref.code)

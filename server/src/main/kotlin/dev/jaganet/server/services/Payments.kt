@@ -54,7 +54,11 @@ fun interface PaidListener {
  * Sales on the website, in the Telegram bot and in the app, all through our payment service.
  * After payment the buyer gets Pro on the tariff's terms plus a VPN key, so they can use any AmneziaWG app.
  */
-class Payments(private val ctx: Ctx, private val billing: Billing, private val keys: Keys, private val tariffs: Tariffs) {
+class Payments(
+    private val ctx: Ctx, private val billing: Billing, private val keys: Keys, private val tariffs: Tariffs,
+    /** "Invite a friend" rewards (issue #40), given in the payment's transaction. */
+    private val rewards: ReferralRewards? = null,
+) {
     private val log = LoggerFactory.getLogger("payments")
     val listeners = CopyOnWriteArrayList<PaidListener>()
 
@@ -110,11 +114,14 @@ class Payments(private val ctx: Ctx, private val billing: Billing, private val k
             val start = maxOf(now, last ?: now)
             val until = o.terms.end(start)
             billing.recordPaidSubscription(sql, o.userId, o.terms, o.channel.id, "order:${o.id}", start, until)
+            // The inviter's +14 days on this person's first payment; at most once (unique per invited person).
+            rewards?.onPaid(sql, o.userId, o.id)
             o to until
         } ?: return null
         // A key problem (server full…) must not lose the payment: the buyer can make one later.
         val key = runCatching { keys.ensure(order.userId) }.onFailure { log.error("no key for order ${order.id}", it) }.getOrNull()
         for (l in listeners) runCatching { l.onPaid(order, key, proUntil) }.onFailure { log.error("paid listener failed", it) }
+        rewards?.deliverSoon()
         return order
     }
 

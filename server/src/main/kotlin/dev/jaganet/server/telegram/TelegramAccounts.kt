@@ -10,6 +10,7 @@ import dev.jaganet.server.db.Sql
 import dev.jaganet.server.services.AuthService
 import dev.jaganet.server.services.Billing
 import dev.jaganet.server.services.Crypto
+import dev.jaganet.server.services.ReferralRewards
 import dev.jaganet.server.services.Referrals
 import dev.jaganet.server.services.Tunnels
 import java.security.MessageDigest
@@ -74,7 +75,10 @@ class TelegramAccounts(private val ctx: Ctx, private val auth: AuthService, priv
             email, Crypto.referralCode("tg@x"), referrer?.userId, referrer?.linkId, tg.id, tg.username, code?.uppercase(), ctx.now(),
         )!!
         val created = r.bool("inserted")
-        if (created) Billing.grantSignupPro(sql, r.str("id"), ctx.cfg.signupProDays, ctx.now())
+        if (created) {
+            Billing.grantSignupPro(sql, r.str("id"), ctx.cfg.signupProDays, ctx.now())
+            ReferralRewards.onSignup(sql, ctx, r.str("id"))
+        }
         TgAccount(r.str("id"), r.str("email"), Lang.of(r.strOrNull("lang")), created)
     }
 

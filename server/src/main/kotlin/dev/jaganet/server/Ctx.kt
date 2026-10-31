@@ -35,4 +35,6 @@ class Live(cfg: Config) {
     @Volatile var paymentProvider: String? = cfg.paymentProvider
     /** The owner's note for everyone, shown by the apps (GET /servers); null = none. */
     @Volatile var notice: String? = null
+    /** "Invite a friend" rewards (REFERRAL_* or the admin panel). */
+    @Volatile var referralRewards: RewardRules = cfg.referralRewards
 }
