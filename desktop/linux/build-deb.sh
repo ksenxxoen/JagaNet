@@ -2,12 +2,20 @@
 # Builds one .deb for the Ubuntu release it runs on. build-linux.sh runs it in
 # an ubuntu:22.04 / ubuntu:24.04 container; on an Ubuntu machine with the build
 # dependencies (see linux/Dockerfile) it can also be run directly:
-#   linux/build-deb.sh <version> <api>
+#   linux/build-deb.sh <version> [api]
+# api: the panel's addresses separated by commas, as in build.sh; empty or left
+# out: the list in ui.go (the main address, then the spares, issue #37).
 # Output: dist/boop_<version>~ubuntu<release>_amd64.deb
 set -euo pipefail
 cd "$(dirname "$0")/.."
 BOOP_VERSION="${1:?version}"
-API="${2:?api}"
+API="${2:-}"
+APIX=""
+if [ -n "$API" ]; then
+  APIX="-X main.apiBase=$API"
+  case "$API" in *,*) ;; *) echo "build-deb: one panel address ($API): this build has no spare address" >&2 ;; esac
+fi
+SITE="${API%%,*}"; SITE="${SITE:-https://boopvpn.app}"
 
 # The release this runs on (os-release is read in a subshell: it has its own VERSION).
 read -r OS_ID REL CODENAME < <(. /etc/os-release && echo "${ID:-?} ${VERSION_ID:-?} ${VERSION_CODENAME:-stable}")
@@ -35,7 +43,7 @@ export CGO_ENABLED=1
 export CGO_CFLAGS="${CGO_CFLAGS:--O2 -g -fstack-protector-strong -D_FORTIFY_SOURCE=2}"
 LDF="-s -w -linkmode=external -extldflags=-Wl,-z,relro,-z,now"
 go build -trimpath -buildmode=pie -tags boopapp \
-  -ldflags "$LDF -X main.version=$BOOP_VERSION -X main.apiBase=$API -X main.flavor=$FLAVOR" \
+  -ldflags "$LDF -X main.version=$BOOP_VERSION $APIX -X main.flavor=$FLAVOR" \
   -o "$out/bin/boop" .
 go build -trimpath -buildmode=pie \
   -ldflags "$LDF -X main.version=$BOOP_VERSION" \
@@ -89,7 +97,7 @@ Depends: $libs, $tools
 Recommends: xdg-utils
 Section: net
 Priority: optional
-Homepage: $API
+Homepage: $SITE
 Description: desktop client for the Boop VPN service
  Boop connects the computer to the Boop VPN over AmneziaWG. The window runs
  as the user; the tunnel is held by the boop-helper system service, which

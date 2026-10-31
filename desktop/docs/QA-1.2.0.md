@@ -5,7 +5,7 @@
 ```sh
 cd desktop
 go vet ./... && GOOS=windows GOARCH=amd64 go vet ./... && go test -race ./...
-./build.sh 1.2.0-dev https://boopvpn.app      # собирает dist/Boop.exe
+./build.sh 1.2.0-dev                           # собирает dist/Boop.exe (адреса панели — из ui.go)
 node scripts/ui-checks.mjs                     # поведение окна на выдуманных состояниях
 node scripts/e2e.mjs                           # весь клиент на фейках, ~3 мин
 SHOT_VP=360x520,1280x800 SHOT_SCALES=1,1.5 node scripts/screenshots.mjs docs/screenshots/<N>

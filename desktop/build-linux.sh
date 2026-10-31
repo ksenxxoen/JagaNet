@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds Boop for Linux: one .deb per Ubuntu release, each in a container of
 # that release (so it links that release's glibc, GTK and WebKitGTK):
-#   ./build-linux.sh [version] [api]
+#   ./build-linux.sh [version] [api]      (api: as in build.sh; left out: the list in ui.go)
 #     dist/boop_<version>~ubuntu22.04_amd64.deb   (libwebkit2gtk-4.0-37)
 #     dist/boop_<version>~ubuntu24.04_amd64.deb   (libwebkit2gtk-4.1-0)
 # Settings (environment):
@@ -14,7 +14,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 VERSION="${1:-1.2.0}"
-API="${2:-https://boopvpn.app}"
+API="${2:-}"   # empty: the list in ui.go (main address, then the spares); see build.sh
 RELEASES="${BOOP_LINUX_RELEASES:-22.04 24.04}"
 GO_VERSION=1.25.0
 GO_SHA256=2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613

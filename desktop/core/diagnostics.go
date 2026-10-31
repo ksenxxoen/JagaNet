@@ -185,6 +185,7 @@ func (a *App) buildReport(ctx context.Context, comment string, now time.Time) Di
 	line("Время", now.Format("2006-01-02 15:04:05 -07:00"))
 	line("Приложение", fmt.Sprintf("Boop %s (%s/%s)", a.Version, runtime.GOOS, runtime.GOARCH))
 	line("Система", d.OSVersion)
+	line("API", a.apiLine())
 	line("Подключение", f.conn+withPrefix(f.problem, ", проблема: "))
 	line("Интернет возвращён", yesNoRu(f.released))
 	line("Строгий режим", yesNoRu(f.strict))

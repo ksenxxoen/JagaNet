@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 # Builds dist/Boop.exe for Windows (amd64) from any system with Go.
 #   ./build.sh [version] [api]
+# api: the panel's addresses in order, separated by commas (main one first, then
+# the spares, issue #37). Left out: the list in ui.go (apiBase), which is what a
+# release should use. A single address builds a client without a spare.
 # Signing is optional and off by default: set BOOP_SIGN (see SIGNING.md).
 set -euo pipefail
 cd "$(dirname "$0")"
 VERSION="${1:-1.1.0}"
-API="${2:-https://boopvpn.app}"
+API="${2:-}"
+APIX=""
+if [ -n "$API" ]; then
+  APIX="-X main.apiBase=$API"
+  case "$API" in *,*) ;; *) echo "build: one panel address ($API): this build has no spare address" >&2 ;; esac
+fi
+SITE="${API%%,*}"; SITE="${SITE:-https://boopvpn.app}"
 export GOTOOLCHAIN="${GOTOOLCHAIN:-go1.25.0}"
 
 # Wintun, checked against its published hash.
@@ -29,7 +38,7 @@ go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --out rsr
 # since, so start clean; the .sha256 is only written by a signed build.
 rm -f dist/Boop.exe dist/Boop.exe.sha256
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
-  -ldflags "-s -w -H windowsgui -X main.version=$VERSION -X main.apiBase=$API" \
+  -ldflags "-s -w -H windowsgui -X main.version=$VERSION $APIX" \
   -o dist/Boop.exe .
 
 # Optional Authenticode signature with an RFC 3161 timestamp. Nothing happens
@@ -51,7 +60,7 @@ if [ -n "${BOOP_SIGN:-}" ]; then
       (umask 077; printf '%s' "${BOOP_SIGN_PASSWORD:-}" >"$signtmp/pass")
       ts=(); [ "${TSA:=https://timestamp.acs.microsoft.com}" = none ] || ts=(-ts "$TSA")
       osslsigncode sign -pkcs12 "$pfx" -readpass "$signtmp/pass" -h sha256 \
-        -n "${BOOP_SIGN_NAME:-Boop}" -i "${BOOP_SIGN_URL:-$API}" ${ts[@]+"${ts[@]}"} \
+        -n "${BOOP_SIGN_NAME:-Boop}" -i "${BOOP_SIGN_URL:-$SITE}" ${ts[@]+"${ts[@]}"} \
         -in dist/Boop.exe -out "$signtmp/Boop.exe"
       ;;
     azure)
@@ -70,7 +79,7 @@ if [ -n "${BOOP_SIGN:-}" ]; then
       cp dist/Boop.exe "$signtmp/Boop.exe"
       "$JSIGN" --storetype TRUSTEDSIGNING --keystore "$BOOP_AZURE_ENDPOINT" \
         --storepass env:BOOP_AZURE_TOKEN --alias "$BOOP_AZURE_ACCOUNT/$BOOP_AZURE_PROFILE" \
-        --alg SHA-256 --name "${BOOP_SIGN_NAME:-Boop}" --url "${BOOP_SIGN_URL:-$API}" \
+        --alg SHA-256 --name "${BOOP_SIGN_NAME:-Boop}" --url "${BOOP_SIGN_URL:-$SITE}" \
         ${ts[@]+"${ts[@]}"} "$signtmp/Boop.exe"
       ;;
     *) echo "sign: unknown BOOP_SIGN=$BOOP_SIGN (osslsigncode or azure)" >&2; exit 1 ;;

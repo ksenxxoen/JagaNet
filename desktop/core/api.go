@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -21,12 +20,22 @@ import (
 var SocketControl func(network, address string, c syscall.RawConn) error
 
 type API struct {
-	Base  string
-	Token func() string
+	// Base is the main panel address, the first of Bases. Requests go through
+	// Bases (apibase.go); Base is what the update manifest is checked against.
+	Base string
+	// Bases are the panel's addresses in order: the main one, then the spares.
+	Bases []string
+	// OnBase is told the base in use after each switch and whether it is a
+	// spare, to remember it for the next start. Called outside the API's locks.
+	OnBase func(base string, spare bool)
+	Token  func() string
 	// ManifestQuery is added to GET /v1/app/desktop, e.g. "platform=linux&distro=ubuntu24.04".
 	// Empty on Windows: the panel answers with the Windows build, as it always has.
 	ManifestQuery string
 	http          *http.Client
+	bs            baseState
+	// From APIConnectBudget and PrimaryRetry when made; tests shorten them.
+	connectBudget, primaryRetry time.Duration
 }
 
 type APIError struct {
@@ -37,6 +46,8 @@ type APIError struct {
 
 func (e *APIError) Error() string { return e.Message }
 
+// NewAPI makes the panel client. base is one address or an ordered list
+// separated by commas ("https://boopvpn.app,https://api.boopvpn.app", see ParseAPIBases).
 func NewAPI(base string, token func() string) *API {
 	if token == nil {
 		token = func() string { return "" }
@@ -54,8 +65,18 @@ func NewAPI(base string, token func() string) *API {
 		IdleConnTimeout:     30 * time.Second,
 		ForceAttemptHTTP2:   true,
 	}
-	return &API{Base: strings.TrimRight(base, "/"), Token: token, http: &http.Client{Transport: tr, Timeout: 15 * time.Second}}
+	bases := ParseAPIBases(base)
+	if len(bases) == 0 {
+		bases = []string{strings.TrimRight(strings.TrimSpace(base), "/")}
+	}
+	return &API{Base: bases[0], Bases: bases, Token: token, http: &http.Client{Transport: tr, Timeout: 15 * time.Second},
+		connectBudget: APIConnectBudget, primaryRetry: PrimaryRetry}
 }
+
+// valueless is a context with its parent's deadline and cancellation and no values.
+type valueless struct{ context.Context }
+
+func (valueless) Value(any) any { return nil }
 
 func cachedDial(d *net.Dialer) func(ctx context.Context, network, addr string) (net.Conn, error) {
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -63,7 +84,10 @@ func cachedDial(d *net.Dialer) func(ctx context.Context, network, addr string) (
 		if err != nil {
 			return nil, err
 		}
-		ips, err := Resolve(ctx, host)
+		// The lookup keeps the dial's deadline and cancellation but not its
+		// values: the request's httptrace would otherwise see the DoH request's
+		// connection as its own (apibase.go counts that as "sent").
+		ips, err := Resolve(valueless{ctx}, host)
 		if err != nil {
 			return nil, err
 		}
@@ -81,41 +105,88 @@ func cachedDial(d *net.Dialer) func(ctx context.Context, network, addr string) (
 
 var ErrOffline = errors.New("offline")
 
+// do sends one panel request through the bases (apibase.go). With a single
+// base it behaves exactly as it always has.
 func (a *API) do(ctx context.Context, method, path string, body, out any) error {
-	var rd io.Reader
+	var payload []byte
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
 			return err
 		}
-		rd = bytes.NewReader(b)
+		payload = b
 	}
-	req, err := http.NewRequestWithContext(ctx, method, a.Base+"/v1/"+path, rd)
-	if err != nil {
-		return err
-	}
+	hdr := http.Header{}
 	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		hdr.Set("Content-Type", "application/json")
 	}
 	if t := a.Token(); t != "" {
-		req.Header.Set("Authorization", "Bearer "+t)
+		hdr.Set("Authorization", "Bearer "+t)
 	}
-	req.Header.Set("Accept-Language", "ru")
-	res, err := a.http.Do(req)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrOffline, err)
+	hdr.Set("Accept-Language", "ru")
+
+	multi := len(a.Bases) > 1
+	order := a.order(time.Now())
+	errs := make([]error, len(a.Bases))
+	for n, i := range order {
+		budget := time.Duration(0)
+		if n < len(order)-1 {
+			budget = a.connectBudget
+		}
+		res, sent, done, err := a.attempt(ctx, a.http, method, a.Bases[i]+"/v1/"+path, payload, hdr, budget)
+		if err != nil {
+			err = fmt.Errorf("%w: %v", ErrOffline, err)
+			if ctx.Err() != nil || !multi {
+				return err
+			}
+			errs[i] = err
+			a.failed(i, err)
+			if sent && !idempotent(method) {
+				break // it may have reached the server: never twice
+			}
+			continue
+		}
+		data, rerr := io.ReadAll(io.LimitReader(res.Body, 4<<20))
+		res.Body.Close()
+		done()
+		if multi && rerr != nil {
+			// Cut off in the middle of the answer: a network error, after sending.
+			err = fmt.Errorf("%w: %v", ErrOffline, rerr)
+			if ctx.Err() != nil {
+				return err
+			}
+			errs[i] = err
+			a.failed(i, err)
+			if !idempotent(method) {
+				break
+			}
+			continue
+		}
+		if multi && offPanel(res.StatusCode, res.Header.Get("Content-Type"), data) {
+			errs[i] = &APIError{Status: res.StatusCode, Message: fmt.Sprintf("HTTP %d", res.StatusCode)}
+			a.failed(i, fmt.Errorf("HTTP %d, not the panel", res.StatusCode))
+			if !idempotent(method) {
+				break // an answer came: never sent again
+			}
+			continue
+		}
+		a.worked(i)
+		return decodeAnswer(res.StatusCode, data, out)
 	}
-	defer res.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(res.Body, 4<<20))
-	if res.StatusCode/100 != 2 {
+	return firstError(errs)
+}
+
+// decodeAnswer turns the panel's answer into out, or an APIError.
+func decodeAnswer(status int, data []byte, out any) error {
+	if status/100 != 2 {
 		var e struct {
 			Error struct{ Code, Message string } `json:"error"`
 		}
 		_ = json.Unmarshal(data, &e)
 		if e.Error.Message == "" {
-			e.Error.Message = fmt.Sprintf("HTTP %d", res.StatusCode)
+			e.Error.Message = fmt.Sprintf("HTTP %d", status)
 		}
-		return &APIError{res.StatusCode, e.Error.Code, e.Error.Message}
+		return &APIError{status, e.Error.Code, e.Error.Message}
 	}
 	if out != nil {
 		return json.Unmarshal(data, out)
@@ -343,17 +414,52 @@ func (a *API) DesktopManifest(ctx context.Context) (Manifest, error) {
 	}
 	m.Version = strings.TrimSpace(m.Version)
 	m.URL = strings.TrimSpace(m.URL)
+	if strings.HasPrefix(m.URL, "/") && !strings.HasPrefix(m.URL, "//") {
+		// A path on the panel ("/download/Boop.exe"): on the main address, which
+		// Download maps to the base in use.
+		m.URL = a.Base + m.URL
+	}
 	m.SHA256 = strings.ToLower(strings.TrimSpace(m.SHA256))
 	m.Signature = strings.TrimSpace(m.Signature)
 	return m, nil
 }
 
-// Download fetches a URL (the update exe) through the same physical-interface transport.
+// Download fetches a URL (the update exe) through the same physical-interface
+// transport. A URL on one of the panel's bases (the main address or a spare) goes
+// through the bases like any panel request (issue #37); a URL on another host is
+// fetched as it is. The caller checks what comes back (SHA-256, signature)
+// exactly the same way whichever base gave it.
 func (a *API) Download(ctx context.Context, rawURL string, limit int64) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return nil, err
+	path, onPanel := a.rebase(rawURL)
+	if !onPanel || len(a.Bases) < 2 {
+		data, _, err := a.download(ctx, rawURL, limit, 0, false)
+		return data, err
 	}
+	order := a.order(time.Now())
+	errs := make([]error, len(a.Bases))
+	for n, i := range order {
+		budget := time.Duration(0)
+		if n < len(order)-1 {
+			budget = a.connectBudget
+		}
+		data, next, err := a.download(ctx, a.Bases[i]+path, limit, budget, true)
+		if err == nil {
+			a.worked(i)
+			return data, nil
+		}
+		if ctx.Err() != nil || !next {
+			return nil, err // the panel's own answer, or too large: as it is
+		}
+		errs[i] = err
+		a.failed(i, err)
+	}
+	return nil, firstError(errs)
+}
+
+// download is one try of Download. budget > 0 limits the time to a connection.
+// With failover, next reports a failure another base may not have (the network,
+// an answer that is not the panel's).
+func (a *API) download(ctx context.Context, rawURL string, limit int64, budget time.Duration, failover bool) (data []byte, next bool, err error) {
 	c := *a.http
 	c.Timeout = 2 * time.Minute
 	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
@@ -365,20 +471,31 @@ func (a *API) Download(ctx context.Context, rawURL string, limit int64) ([]byte,
 		}
 		return nil
 	}
-	res, err := c.Do(req)
+	res, _, done, err := a.attempt(ctx, &c, http.MethodGet, rawURL, nil, nil, budget)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrOffline, err)
+		return nil, true, fmt.Errorf("%w: %v", ErrOffline, err)
 	}
+	defer done()
 	defer res.Body.Close()
+	ctype := res.Header.Get("Content-Type")
 	if res.StatusCode/100 != 2 {
-		return nil, &APIError{Status: res.StatusCode, Message: fmt.Sprintf("HTTP %d", res.StatusCode)}
+		head, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
+		return nil, failover && offPanel(res.StatusCode, ctype, head),
+			&APIError{Status: res.StatusCode, Message: fmt.Sprintf("HTTP %d", res.StatusCode)}
 	}
-	data, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
+	if failover && looksHTML(ctype, nil) {
+		// A page where the file should be (a block page, a proxy's): not the panel.
+		return nil, true, &APIError{Status: res.StatusCode, Message: fmt.Sprintf("HTTP %d, a page instead of the file", res.StatusCode)}
+	}
+	data, err = io.ReadAll(io.LimitReader(res.Body, limit+1))
 	if err != nil {
-		return nil, err
+		if failover {
+			return nil, true, fmt.Errorf("%w: %v", ErrOffline, err)
+		}
+		return nil, false, err
 	}
 	if int64(len(data)) > limit {
-		return nil, errors.New("download too large")
+		return nil, false, errors.New("download too large")
 	}
-	return data, nil
+	return data, false, nil
 }
