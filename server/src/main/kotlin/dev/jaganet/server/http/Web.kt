@@ -56,6 +56,7 @@ fun Route.salesApi(s: Services) {
                 emailSignIn = s.auth.emailSignInAvailable(),
                 testCodes = s.ctx.live.showSignInCodes,
                 referralsPublic = s.ctx.cfg.referralsPublic,
+                inviteRewardDays = s.ctx.live.referralRewards.days,
             ),
         )
     }

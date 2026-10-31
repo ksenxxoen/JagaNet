@@ -78,7 +78,7 @@ function go(hash) { if (location.hash === hash) render(); else location.hash = h
 function renderNav() {
   const here = (location.hash.slice(1) || "/").split("?")[0];
   const items = store.get("token")
-    ? [...(role === "owner" ? [["/analytics", t("Analytics")], ["/admin", t("Admin panel")], ["/status", t("Server status")]] : []), ...(role === "owner" || site?.referralsPublic ? [["/referrals", t("Referral program")]] : []), ["/account", t("My account")]]
+    ? [...(role === "owner" ? [["/analytics", t("Analytics")], ["/admin", t("Admin panel")], ["/status", t("Server status")]] : []), ...(role === "owner" || site?.referralsPublic ? [["/referrals", t("Referral program")]] : site?.inviteRewardDays > 0 ? [["/invite", t("Invite a friend")]] : []), ["/account", t("My account")]]
     : [];
   const link = ([p, l]) => `<a class="item ${p === here ? "on" : ""}" href="#${p}">${l}</a>`;
   const langs = `<span class="langs">${LANGS.map(([c, name]) => `<button type="button" class="${c === lang ? "on" : ""}" data-lang="${c}" title="${name}" lang="${c}">${c.toUpperCase()}</button>`).join("")}</span>`;
@@ -502,7 +502,8 @@ async function referrals(params) {
   const owner = me.user.role === "owner" && params.get("view") === "all";
   const q = (extra) => `#/referrals?period=${period}${extra}`;
   const tabs = `<div class="chips">${PERIODS.map(([k, l]) => `<a class="chip ${k === period ? "on" : ""}" href="#/referrals?period=${k}${owner ? "&view=all" : ""}">${t(l)}</a>`).join("")}</div>`;
-  const ownerTabs = me.user.role === "owner" ? `<nav class="tabs"><a class="${owner ? "" : "on"}" href="${q("")}">${t("My links")}</a><a class="${owner ? "on" : ""}" href="${q("&view=all")}">${t("Whole program")}</a></nav>` : "";
+  // Third tab: invite rewards (invite.js, issue #40).
+  const ownerTabs = me.user.role === "owner" ? `<nav class="tabs"><a class="${owner ? "" : "on"}" href="${q("")}">${t("My links")}</a><a class="${owner ? "on" : ""}" href="${q("&view=all")}">${t("Whole program")}</a><a href="#/invite?view=admin">${t("Invite rewards")}</a></nav>` : "";
 
   if (owner) {
     const a = await api(`/admin/referrals?period=${period}`);
@@ -1760,6 +1761,7 @@ async function render() {
     if (path === "/admin") return await admin(params);
     if (path === "/account") return await account(params);
     if (path === "/referrals") return await referrals(params);
+    if (path === "/invite" && typeof invitePage === "function") return await invitePage(params);
     if (path === "/status") return await status(params);
     if (path === "/analytics") return await analytics(params);
     await home();

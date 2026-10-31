@@ -9,7 +9,8 @@ import kotlin.test.assertTrue
 
 /** With REFERRALS_PUBLIC unset (production default) the referral program is for admins (owners) only. */
 class ReferralAdminOnlyTest {
-    private val adminOnly = mapOf("REFERRALS_PUBLIC" to "0")
+    // Invite rewards off too: with them on, every user gets the simple "Invite a friend" page (issue #40).
+    private val adminOnly = mapOf("REFERRALS_PUBLIC" to "0", "REFERRAL_REWARD_DAYS" to "0")
 
     @Test fun `users do not see the referral program, the owner does`() = harness(adminOnly) {
         assertFalse(client().site().referralsPublic)

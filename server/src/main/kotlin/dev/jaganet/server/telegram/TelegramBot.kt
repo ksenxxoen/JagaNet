@@ -219,8 +219,8 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         add(listOf(Btn("🔔 " + u.t("Notifications"), "notify"), Btn("💬 " + u.t("Support"), "support")))
         add(listOf(Btn("🌐 " + u.t("Sign in on the website"), "login"), Btn("❓ " + u.t("Help"), "help")))
         val lang = Btn(u.t("Language") + " " + u.lang.nativeName, "language")
-        // The referral program is for admins only (unless REFERRALS_PUBLIC=1).
-        add(if (referralsFor(u.userId)) listOf(Btn(u.t("Invite friends"), "invite"), lang) else listOf(lang))
+        // "Invite a friend" for everyone while rewards are on; else the referral program is for admins only (unless REFERRALS_PUBLIC=1).
+        add(if (invitesFor(u.userId)) listOf(Btn("🎁 " + u.t("Invite friends"), "invite"), lang) else listOf(lang))
     }
 
     private fun backButtons(u: Who) = listOf(listOf(Btn("⬅️ " + u.t("Menu"), "menu")))
@@ -611,24 +611,44 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         )
     }
 
-    /** The user's main referral link and a 30-day summary; details are on the website. */
+    /**
+     * "Invite a friend" (issue #40): the user's links to the website and to this bot, what an invite earns,
+     * and how many came, paid and how many days it brought. Admins also get the 30-day referral funnel.
+     */
     private suspend fun inviteAction(u: Who) {
-        if (!referralsFor(u.userId)) return menu(u)
-        val st = s.referrals.stats(u.userId, ReferralPeriod.D30)
-        val main = st.links.first { it.main }
-        val f = st.totals
+        if (!invitesFor(u.userId)) return menu(u)
+        val inv = s.referralRewards.invite(u.userId)
+        val admin = referralsFor(u.userId)
         val text = buildString {
-            appendLine(u.t("Your link"))
-            appendLine(main.webUrl)
-            main.telegramUrl?.let { appendLine(u.t("Link to this bot")); appendLine(it) }
+            if (inv.enabled) {
+                val days = u.tp(inv.rewardDays, "{n} day|{n} days")
+                appendLine("🎁 " + u.t("Invite a friend and get {days} of Pro", "days" to days))
+                appendLine(
+                    if (inv.condition == "signup") u.t("Send your link to a friend. When they sign up, you get {days} of Pro.", "days" to days)
+                    else u.t("Send your link to a friend. When they pay for a subscription for the first time, you get {days} of Pro.", "days" to days),
+                )
+                if (inv.inviteeDays > 0) appendLine(u.t("Your friend gets {days} of Pro too.", "days" to u.tp(inv.inviteeDays, "{n} day|{n} days")))
+                appendLine()
+            }
+            appendLine(u.t("Link to the website"))
+            appendLine(inv.webUrl)
+            inv.telegramUrl?.let { appendLine(u.t("Link to this bot")); appendLine(it) }
             appendLine()
-            appendLine(u.t("Last 30 days"))
-            appendLine(u.t("Clicks {n}", "n" to f.clicks))
-            appendLine(u.t("Sign-ups {n}", "n" to f.signups))
-            appendLine(u.t("Paid {n}", "n" to f.paidUsers))
-            append(u.t("Detailed statistics and extra links for each campaign are in your account on the website."))
+            appendLine(u.t("Invited {n}", "n" to inv.invited))
+            appendLine(u.t("Paid {n}", "n" to inv.paid))
+            append(u.t("Days received {n}", "n" to inv.daysEarned))
+            if (admin) {
+                val f = s.referrals.stats(u.userId, ReferralPeriod.D30).totals
+                appendLine(); appendLine()
+                appendLine(u.t("Last 30 days"))
+                appendLine(u.t("Clicks {n}", "n" to f.clicks))
+                appendLine(u.t("Sign-ups {n}", "n" to f.signups))
+                appendLine(u.t("Paid {n}", "n" to f.paidUsers))
+                append(u.t("Detailed statistics and extra links for each campaign are in your account on the website."))
+            }
         }
-        send(u, text, listOf(listOf(Btn(u.t("Open statistics"), url = "${ctx.cfg.publicUrl.trimEnd('/')}/?lang=${u.lang.code}#/referrals"))) + backButtons(u))
+        val page = if (admin) "#/referrals" else "#/invite"
+        send(u, text, listOf(listOf(Btn(u.t("Open statistics"), url = "${ctx.cfg.publicUrl.trimEnd('/')}/?lang=${u.lang.code}$page"))) + backButtons(u))
     }
 
     private suspend fun statusAction(u: Who) {
@@ -649,6 +669,9 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
     private suspend fun buyButtons(u: Who, tariffs: List<Tariff>? = null): List<List<Btn>> = (tariffs ?: s.tariffs.onSale(u.lang)).map { t ->
         listOf(Btn(u.t("{product} for {price}", "product" to t.name, "price" to Format.money(t.priceMinor, t.currency, u.lang)), data = "buy:${t.id}"))
     }
+
+    /** Whether this user sees "Invite a friend": everyone while invite rewards are on, else as [referralsFor]. */
+    private suspend fun invitesFor(userId: String): Boolean = ctx.live.referralRewards.enabled || referralsFor(userId)
 
     /** Whether this user sees the referral program (admins only, unless REFERRALS_PUBLIC=1). */
     private suspend fun referralsFor(userId: String): Boolean = ctx.db.run { sql ->

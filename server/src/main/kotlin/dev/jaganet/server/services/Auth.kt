@@ -118,7 +118,10 @@ class AuthService(private val ctx: Ctx) {
                 sql.one(
                     "INSERT INTO users (email, role, referral_code, referred_by, referral_link_id, created_at) VALUES (?,?,?,?::uuid,?::uuid,?) RETURNING *",
                     email, role, Crypto.referralCode(email), referrer?.userId, referrer?.linkId, ctx.now(),
-                )!!.also { if (role != "owner") Billing.grantSignupPro(sql, it.str("id"), ctx.cfg.signupProDays, ctx.now()) }
+                )!!.also {
+                    if (role != "owner") Billing.grantSignupPro(sql, it.str("id"), ctx.cfg.signupProDays, ctx.now())
+                    ReferralRewards.onSignup(sql, ctx, it.str("id"))
+                }
             }
             createSession(sql, user, device)
         }

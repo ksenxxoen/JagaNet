@@ -49,7 +49,9 @@ fun Route.telegramWebApi(s: Services) {
         // Every field the widget sent goes into the signature check, as strings.
         val fields = auth.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.contentOrNull?.let { k to it } }.toMap()
         val ref = (body["referralCode"] as? JsonPrimitive)?.contentOrNull?.trim()?.take(32)
-        call.respond(s.telegramAccounts.signInWithWidget(fields, DeviceInfo(I18n.tr(call.apiLang(), "Website"), Platform.OTHER), ref))
+        val session = s.telegramAccounts.signInWithWidget(fields, DeviceInfo(I18n.tr(call.apiLang(), "Website"), Platform.OTHER), ref)
+        call.rememberClient(s, session.user.id)
+        call.respond(session)
     }
     get("/telegram") {
         val p = call.principal(s)
