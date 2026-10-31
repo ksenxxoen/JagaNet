@@ -189,7 +189,8 @@ window.buy = async function (tariffId) {
 function signin() {
   if (store.get("token")) return go("#/account");
   const bot = site?.telegramBotUrl;
-  const viaTelegram = bot ? `<div class="alt"><a class="btn secondary" href="${h(bot)}" target="_blank" rel="noreferrer">${t("Sign in with Telegram")}</a></div>` : "";
+  // The bot sends a one-time sign-in link (start=login); the Login Widget is added by telegram.js when it is on.
+  const viaTelegram = bot ? `<div class="alt"><a class="btn secondary" href="${h(bot)}?start=login" target="_blank" rel="noreferrer">${t("Sign in with Telegram")}</a></div><div class="alt" id="tg-widget"></div>` : "";
   if (site?.emailSignIn === false) {
     view.innerHTML = `
     <div class="card signbox">
@@ -197,6 +198,7 @@ function signin() {
       <div class="notice bad">${t("Sign-in by e-mail is temporarily unavailable")}</div>
       ${viaTelegram}
     </div>`;
+    if (typeof tgWidget === "function") tgWidget();
     return;
   }
   view.innerHTML = `
@@ -241,6 +243,7 @@ function signin() {
     } catch (e) { err.textContent = e.message; }
   };
   document.getElementById("back").onclick = () => { f2.hidden = true; f1.hidden = false; };
+  if (typeof tgWidget === "function") tgWidget();
 }
 
 /** #/login?token=... : a one-time sign-in link from the Telegram bot or from the server. */
@@ -332,11 +335,13 @@ async function account(params) {
   <div class="h2row"><h2>${t("Apps")}</h2></div>
   ${downloads()}
   <div class="card section"><div class="card-h"><h3>${t("Sign in to the Boop app")}</h3><div id="pair"><button class="btn secondary" id="paircode">${t("Show a code")}</button></div></div></div>
+  <div id="tg-card"></div>
 
   ${pays.payments.length ? `<div class="h2row"><h2>${t("Payments")}</h2></div><div class="card tablewrap"><table class="data"><thead><tr><th>${t("Plan")}</th><th>${t("Period")}</th><th>${t("Channel")}</th></tr></thead><tbody>
     ${pays.payments.map((x) => `<tr><td>${x.productId === "referral" ? t("Invite reward") : h(x.tariffName || "Pro")}</td><td>${t("{from} to {to}", { from: date(x.startedAt), to: date(x.expiresAt) })}</td><td>${h(sourceName[x.source] || x.source)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
 
   document.getElementById("logout").onclick = async () => { try { await api("/auth/logout", { method: "POST" }); } catch {} store.set("token", null); renderNav(); go("#/"); };
+  if (typeof tgAccountCard === "function") tgAccountCard();
   const nk = document.getElementById("newkey");
   if (nk) nk.onclick = async () => { nk.disabled = true; try { await api("/keys", { method: "POST" }); render(); } catch (e) { alert(e.message); nk.disabled = false; } };
   document.getElementById("paircode").onclick = async () => {

@@ -22,6 +22,7 @@
 #   CHANNEL_MBPS HOST_TRAFFIC_LIMIT_GB     the internet channel's capacity and the hosting plan's monthly traffic
 #   TELEGRAM_BOT_TOKEN=123:abc    turn on the Telegram bot (token from @BotFather), e.g.
 #     curl -fsSL …/install.sh | TELEGRAM_BOT_TOKEN=123:abc bash
+#   TELEGRAM_SUPPORT_CHAT_ID TELEGRAM_LOGIN_WIDGET TELEGRAM_MODE …   the bot's options (docs/WEB-AND-TELEGRAM.md)
 set -euo pipefail
 
 REPO="${JAGANET_REPO:-https://github.com/ksenxxoen/JagaNet.git}"
@@ -322,6 +323,10 @@ env_default PRICE_EUR_MONTHLY 499
 env_default PRICE_EUR_YEARLY 3999
 env_default DOWNLOADS_DIR "$APP_DIR/downloads"
 if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then env_set TELEGRAM_BOT_TOKEN "$TELEGRAM_BOT_TOKEN"; fi
+# The bot's options (docs/WEB-AND-TELEGRAM.md): kept in the env file when given to the installer.
+for k in TELEGRAM_MODE TELEGRAM_WEBHOOK_URL TELEGRAM_WEBHOOK_SECRET TELEGRAM_SUPPORT_CHAT_ID TELEGRAM_LOGIN_WIDGET TELEGRAM_API_URL TELEGRAM_PROXY; do
+  if [ -n "${!k:-}" ]; then env_set "$k" "${!k}"; fi
+done
 mkdir -p "$APP_DIR/downloads" && chmod 755 "$APP_DIR/downloads"
 
 # ------------------------------------------------------------------ service

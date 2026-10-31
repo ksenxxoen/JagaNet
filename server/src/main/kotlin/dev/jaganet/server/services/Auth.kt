@@ -66,12 +66,12 @@ class AuthService(private val ctx: Ctx) {
 
     private val LINK_TTL = Duration.ofMinutes(15)
 
-    /** A link that signs [userId] in once, within 15 minutes. */
-    suspend fun createLoginLink(userId: String): String {
+    /** A link that signs [userId] in once, within [ttl] (15 minutes; the Telegram bot's are shorter). */
+    suspend fun createLoginLink(userId: String, ttl: Duration = LINK_TTL): String {
         val token = Crypto.newToken()
         ctx.db.run { sql ->
             sql.exec("DELETE FROM login_links WHERE expires_at < ?", ctx.now())
-            sql.exec("INSERT INTO login_links (token_hash, user_id, expires_at) VALUES (?,?::uuid,?)", hash("link:$token"), userId, ctx.now().plus(LINK_TTL))
+            sql.exec("INSERT INTO login_links (token_hash, user_id, expires_at) VALUES (?,?::uuid,?)", hash("link:$token"), userId, ctx.now().plus(ttl))
         }
         return "${ctx.cfg.publicUrl.trimEnd('/')}/#/login?token=$token"
     }

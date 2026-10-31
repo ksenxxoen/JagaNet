@@ -338,7 +338,7 @@ class ControlTest {
 
         val u = signIn("share@example.com")
         val uid = u.session.user.id
-        ctx.db.run { it.exec("UPDATE users SET telegram_id=777000111 WHERE id=?::uuid", uid) }
+        ctx.db.run { it.exec("UPDATE users SET telegram_id=777000111, tg_username='share_tg' WHERE id=?::uuid", uid) }
         u.api.provisionTunnel(TunnelProvisionReq(Protocols.AMNEZIAWG, awgId, Protocols.encode(WireGuard.ClientParams(key(11)))))
         services.vlessKeys.ensureFor(uid)
         val uuid = ctx.db.run { it.one("SELECT uuid FROM vless_keys WHERE user_id=?::uuid", uid)!!.str("uuid") }
@@ -374,7 +374,9 @@ class ControlTest {
             assertEquals(kind, found.single().matched, "search $q")
         }
         assertTrue(services.control.search("nobody-like-this").users.isEmpty())
-        assertFalse(services.control.search(null).telegramUsernames)
+        // With #38's users.tg_username, @username search is on.
+        assertTrue(services.control.search(null).telegramUsernames)
+        assertEquals(listOf(uid), services.control.search("@share_tg").users.map { it.id }, "search @username")
 
         // A lower threshold flags the subscription as shared.
         services.control.saveSettings(admin, CtlSettings(2))

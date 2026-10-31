@@ -41,6 +41,8 @@ data class Config(
     val paymentProvider: String? = null,
     /** From @BotFather. Unset = no Telegram bot. */
     val telegramBotToken: String? = null,
+    /** The bot's mode, support chat, login widget… (TELEGRAM_* variables, issue #38). */
+    val telegram: dev.jaganet.server.telegram.TelegramConfig = dev.jaganet.server.telegram.TelegramConfig(),
     /** Where the website's "Download for Android" points. Default: $publicUrl/download/android. */
     val androidAppUrl: String? = null,
     val iosAppUrl: String? = null,
@@ -102,6 +104,7 @@ data class Config(
                 supportUrl = env["SUPPORT_URL"]?.takeIf { it.isNotBlank() },
                 paymentProvider = env["PAYMENT_PROVIDER"]?.takeIf { it.isNotBlank() } ?: "test".takeIf { mode != Mode.PRODUCTION },
                 telegramBotToken = env["TELEGRAM_BOT_TOKEN"]?.takeIf { it.isNotBlank() },
+                telegram = dev.jaganet.server.telegram.TelegramConfig.load(env),
                 androidAppUrl = env["ANDROID_APP_URL"]?.takeIf { it.isNotBlank() },
                 iosAppUrl = env["IOS_APP_URL"]?.takeIf { it.isNotBlank() },
                 downloadsDir = env["DOWNLOADS_DIR"]?.takeIf { it.isNotBlank() },

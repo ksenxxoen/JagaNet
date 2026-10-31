@@ -42,7 +42,7 @@ class Referrals(private val ctx: Ctx, private val botUsername: () -> String? = {
     /* ---------------- links ---------------- */
 
     private fun webUrl(code: String) = "${ctx.cfg.publicUrl.trimEnd('/')}/r/${URLEncoder.encode(code, "UTF-8")}"
-    private fun telegramUrl(code: String) = botUsername()?.let { "https://t.me/$it?start=${URLEncoder.encode(code, "UTF-8")}" }
+    private fun telegramUrl(code: String) = botUsername()?.let { "https://t.me/$it?start=ref_${URLEncoder.encode(code, "UTF-8")}" }
 
     private fun Row.toLink(f: Funnel) = ReferralLink(
         id = str("id"), name = str("name"), code = str("code"), main = bool("main"),

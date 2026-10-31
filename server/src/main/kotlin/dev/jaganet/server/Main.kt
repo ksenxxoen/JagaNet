@@ -9,8 +9,7 @@ import dev.jaganet.server.protocols.AmneziaWgDriver
 import dev.jaganet.server.protocols.VlessDriver
 import dev.jaganet.server.protocols.WireGuardDriver
 import dev.jaganet.server.services.LiveMailer
-import dev.jaganet.server.telegram.HttpTelegramApi
-import dev.jaganet.server.telegram.TelegramBot
+import dev.jaganet.server.telegram.startTelegramBot
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.delay
@@ -53,11 +52,8 @@ fun serve(ctx: Ctx, collectEveryMs: Long, wait: Boolean = true) {
     val log = LoggerFactory.getLogger("jaganet")
     embeddedServer(Netty, port = ctx.cfg.port, host = "0.0.0.0") {
         jaganet(services)
-        ctx.cfg.telegramBotToken?.let { token ->
-            val bot = TelegramBot(services, HttpTelegramApi(token))
-            services.bot = bot
-            launch { bot.run() }
-        }
+        // Telegram bot (TELEGRAM_BOT_TOKEN): polling or webhook, in its own scope (telegram/TelegramRuntime.kt).
+        startTelegramBot(services)
         if (ctx.cfg.monitor.enabled) launch {
             delay(5_000)
             while (true) {
