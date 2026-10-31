@@ -14,6 +14,11 @@
 Разработка без Windows и без туннеля: `go run .` — окно в браузере на `127.0.0.1:5199` с поддельным
 туннелем (`main_other.go`); проверки UI — `node scripts/ui-checks.mjs`, `node scripts/e2e.mjs`.
 
+Адреса панели: `https://boopvpn.app` (основной), затем `https://api.boopvpn.app` (запасной) — список
+в одном месте, `apiBase` в `ui.go`. Аргумент `[api]` сборки и `BOOP_API` (dev-сборка, Linux) заменяют
+весь список (адреса через запятую). Как работает переключение, фрагмент nginx для `api.boopvpn.app`
+и ручная проверка — [docs/api-fallback.md](docs/api-fallback.md).
+
 ## Linux: сборка
 
 Нужен Docker (сборка идёт в контейнерах `ubuntu:22.04` и `ubuntu:24.04`, поэтому glibc, GTK и
@@ -22,7 +27,7 @@ WebKitGTK в пакете — ровно те, что в этом выпуске
 
 ```sh
 cd desktop
-./build-linux.sh 1.2.0 https://boopvpn.app
+./build-linux.sh 1.2.0          # адреса панели — список из ui.go (основной + запасной)
 # dist/boop_1.2.0~ubuntu22.04_amd64.deb
 # dist/boop_1.2.0~ubuntu24.04_amd64.deb   (+ .sha256 рядом)
 ```

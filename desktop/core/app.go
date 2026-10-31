@@ -108,6 +108,7 @@ func (a *App) Init() {
 		a.Prober = netProber(a.API)
 	}
 	a.API.Token = func() string { a.mu.Lock(); defer a.mu.Unlock(); return a.Store.Token }
+	a.rememberBase()
 	a.reports = NewReporter(a.API.Event)
 	SetTunnelActive(func() bool { return a.Tunnel != nil && a.Tunnel.Up() })
 	Go("pings", a.pingAllLoop)

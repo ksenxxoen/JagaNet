@@ -20,10 +20,8 @@ import (
 var autostart bool
 
 func main() {
-	base := apiBase
-	if v := os.Getenv("BOOP_API"); v != "" {
-		base = v
-	}
+	// BOOP_API replaces the whole list of panel addresses (one, or several separated by commas).
+	base, site := apiBases(os.Getenv("BOOP_API"))
 	dir := os.Getenv("BOOP_DATA")
 	if dir == "" {
 		dir = filepath.Join(os.TempDir(), "boop-desktop")
@@ -52,7 +50,7 @@ func main() {
 	w := &webHost{}
 	app := &core.App{
 		API: core.NewAPI(base, nil), Store: core.LoadStore(dir), Tunnel: tun, Ping: vpn.Ping,
-		Version: version, Site: base, LogPath: logPath,
+		Version: version, Site: site, LogPath: logPath,
 		OpenURL:     func(u string) { log.Printf("open %s", u) },
 		OnState:     func(s core.UIState) { w.send(s) },
 		OnToast:     func(t string) { w.send(map[string]string{"toast": t}) },
