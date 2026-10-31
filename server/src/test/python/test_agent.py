@@ -38,6 +38,8 @@ class FakeXray:
         self.stats = {}  # counter name -> value
         self.calls = []
         self.up = True
+        self.online = {}  # email -> {ip: last seen}, as with "statsUserOnline": true
+        self.has_all = True  # statsonlineiplist -all (newer builds)
 
     def restart(self):
         """Xray restarted: users added through the API are gone, counters start from zero."""
@@ -94,6 +96,22 @@ class FakeXray:
             else:
                 n += 1
         return "\n".join(lines + ["Removed %d user(s) in total." % n]) + "\n"
+
+    def do_statsonlineiplist(self, args):
+        if args == ["-all"]:
+            if not self.has_all:
+                return 2, "flag provided but not defined: -all\nusage: xray api statsonlineiplist [--server=127.0.0.1:8080] [-email '']\n"
+            users = [{"email": e, "ips": [{"ip": ip, "lastSeen": ts} for ip, ts in ips.items()]} for e, ips in self.online.items() if ips]
+            return (json.dumps({"users": users}, indent=4) if users else "{}") + "\n"
+        assert args[0] == "-email", args
+        ips = self.online.get(args[1])
+        if ips is None:
+            return 1, "failed to get stats: rpc error: code = NotFound desc = user>>>%s>>>online not found.\n" % args[1]
+        return json.dumps({"name": "user>>>%s>>>online" % args[1], "ips": ips}, indent=4) + "\n"
+
+    def do_statsgetallonlineusers(self, args):
+        names = ["user>>>%s>>>online" % e for e, ips in self.online.items() if ips]
+        return (json.dumps({"users": names}, indent=4) if names else "{}") + "\n"
 
     def do_statsquery(self, args):
         assert args == ["-pattern", "user>>>"], args
@@ -188,6 +206,45 @@ class VlessAgentTest(unittest.TestCase):
         self.assertEqual("vless", body["protocol"])
         self.assertEqual("off", body["system"]["classes"])
 
+    def test_reports_online_ips_from_statsonlineiplist_all(self):
+        self.xray.stats = {"user>>>%s>>>traffic>>>uplink" % U1: 10, "user>>>%s>>>traffic>>>uplink" % U2: 20}
+        self.xray.online = {U1: {"203.0.113.7": 1761900000, "198.51.100.2": 1761900050}, "someone@x": {"192.0.2.1": 1}}
+        peers = {p["publicKey"]: p for p in self.agent.vless_peers(now=1000)}
+        self.assertEqual({"203.0.113.7": 1761900000, "198.51.100.2": 1761900050}, peers[U1]["ips"])
+        self.assertNotIn("ips", peers[U2])
+        self.assertIn(("statsonlineiplist", ["-all"]), self.xray.calls)
+
+    def test_online_ips_per_user_on_xray_without_all(self):
+        self.xray.has_all = False
+        self.xray.stats = {"user>>>%s>>>traffic>>>uplink" % U1: 10}
+        self.xray.online = {U1: {"203.0.113.7": 1761900000}}
+        self.assertEqual({"203.0.113.7": 1761900000}, self.agent.vless_peers(now=1000)[0]["ips"])
+        self.assertIn(("statsonlineiplist", ["-email", U1]), self.xray.calls)
+        # It remembers: the next report goes straight to the per-user way.
+        n = len([c for c in self.xray.calls if c == ("statsonlineiplist", ["-all"])])
+        self.agent.vless_peers(now=2000)
+        self.assertEqual(n, len([c for c in self.xray.calls if c == ("statsonlineiplist", ["-all"])]))
+
+    def test_report_goes_without_ips_when_xray_has_no_online_stats(self):
+        self.xray.has_all = False
+        self.xray.stats = {"user>>>%s>>>traffic>>>uplink" % U1: 10}
+        real = self.xray.run
+
+        def run(cmd, **kw):
+            if cmd[2] == "statsgetallonlineusers":
+                return subprocess.CompletedProcess(cmd, 1, "", "unknown command\n")
+            return real(cmd, **kw)
+
+        with mock.patch.object(self.agent.subprocess, "run", run), mock.patch.object(self.agent, "log") as log:
+            self.assertEqual([{"publicKey": U1, "rx": 10, "tx": 0, "lastHandshake": 0, "torrentRx": 0, "torrentTx": 0}], self.agent.vless_peers(now=1))
+            self.agent.vless_peers(now=2)
+        self.assertEqual(1, log.call_count)
+
+    def test_report_says_the_agent_version(self):
+        with mock.patch.object(self.agent, "system", return_value=({"cpu": 0.1}, (1, 1))), mock.patch.object(self.agent, "api") as api:
+            self.agent.report_once(None)
+        self.assertEqual("2", api.call_args[0][2]["system"]["agent"])
+
     def test_requests_carry_the_agent_user_agent_and_token(self):
         seen = {}
 
@@ -204,7 +261,7 @@ class VlessAgentTest(unittest.TestCase):
             self.assertEqual({"ok": True}, self.agent.api("GET", "/v1/node/peers"))
         req = seen["req"]
         self.assertEqual("https://panel.example.com/v1/node/peers", req.full_url)
-        self.assertEqual("BoopNodeAgent/1", req.get_header("User-agent"))
+        self.assertEqual("BoopNodeAgent/2", req.get_header("User-agent"))
         self.assertEqual("Bearer " + "t" * 30, req.get_header("Authorization"))
 
 
@@ -242,7 +299,15 @@ class AwgAgentTest(unittest.TestCase):
             self.agent.report_once(None)
         body = api.call_args[0][2]
         self.assertEqual("amneziawg", body["protocol"])
-        self.assertEqual([{"publicKey": "KEY1=", "rx": 10, "tx": 20, "lastHandshake": 1700000000, "torrentRx": 0, "torrentTx": 0}], body["peers"])
+        self.assertEqual([{"publicKey": "KEY1=", "rx": 10, "tx": 20, "lastHandshake": 1700000000, "torrentRx": 0, "torrentTx": 0,
+                           "endpoint": "1.2.3.4"}], body["peers"])
+        self.assertEqual("2", body["system"]["agent"])
+
+    def test_endpoint_ip(self):
+        self.assertEqual("1.2.3.4", self.agent.endpoint_ip("1.2.3.4:51820"))
+        self.assertEqual("2001:db8::1", self.agent.endpoint_ip("[2001:db8::1]:51820"))
+        self.assertIsNone(self.agent.endpoint_ip("(none)"))
+        self.assertIsNone(self.agent.endpoint_ip(""))
 
 
 if __name__ == "__main__":

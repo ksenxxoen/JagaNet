@@ -21,6 +21,10 @@ data class PeerCounters(
     val lastSeenAt: Instant?,
     val torrentRx: Long = 0,
     val torrentTx: Long = 0,
+    /** Where the client connects from (AmneziaWG / WireGuard peer endpoint, port cut off); null when unknown. */
+    val endpoint: String? = null,
+    /** VLESS: the user's online IPs and when each was last seen (Xray's online-IP stats); empty when unknown. */
+    val ips: Map<String, Instant> = emptyMap(),
 )
 
 data class AddedPeer(val peerKey: String, val params: JsonObject)

@@ -123,7 +123,8 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         val rows = ctx.db.run { sql ->
             sql.query(
                 """SELECT t.*, s.id AS sid FROM tunnels t JOIN servers s ON s.id = t.server_id
-                    WHERE s.agent_token_hash IS NULL""",
+                    JOIN devices d ON d.id = t.device_id JOIN users u ON u.id = d.user_id
+                    WHERE s.agent_token_hash IS NULL AND u.blocked_at IS NULL""",
             ).map { t -> t to sql.one("SELECT * FROM servers WHERE id=?", t.str("sid"))!! }
         }
         var n = 0
@@ -169,7 +170,9 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         val driver = driver(proto)
         val address = Ipam.allocate(to.str("subnet"), used) ?: throw AppError(503, ErrorCode.SERVER_FULL, "Server is full")
         used += address
-        driver.addPeer(to.node(proto), t.str("device_id"), address, t.json("client_params"))
+        // A blocked user's peer (issue #39) moves in the database only: it stays off the interface.
+        val blocked = sql.one("SELECT 1 AS one FROM devices d JOIN users u ON u.id = d.user_id WHERE d.id=?::uuid AND u.blocked_at IS NOT NULL", t.str("device_id")) != null
+        if (!blocked) driver.addPeer(to.node(proto), t.str("device_id"), address, t.json("client_params"))
         runCatching { driver.removePeer(from.node(proto), t.str("peer_key")) }
         sql.exec(
             "UPDATE tunnels SET server_id=?, address=?, last_rx=0, last_tx=0, last_torrent_rx=0, last_torrent_tx=0 WHERE device_id=?::uuid",
@@ -247,6 +250,9 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         }
 
         return ctx.db.tx { sql ->
+            if (sql.one("SELECT 1 AS one FROM users WHERE id=?::uuid AND blocked_at IS NOT NULL", userId) != null) {
+                throw AppError(403, ErrorCode.FORBIDDEN, "This account is blocked")
+            }
             val e = ent.entitlement(sql, userId)
             if (e.freeEnded) throw AppError(402, ErrorCode.FREE_ENDED, "Your free period has ended, choose a plan")
             val limit = e.monthlyDataLimitBytes

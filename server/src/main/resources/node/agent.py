@@ -13,6 +13,12 @@ Two modes, by PROTOCOL in the env file:
    Users added through the API are gone after Xray restarts, so the agent compares Xray's users
    with the list after every poll (at least every 25 seconds) and puts back what is missing.
    It never restarts Xray and never edits its config.
+
+Version 2 (issue #39) also reports where clients connect from, for the admin panel: the peer's
+endpoint IP (AmneziaWG / WireGuard) and, for VLESS, the users' online IPs from Xray's online stats
+(`xray api statsonlineiplist -all`, or per user on Xray builds without -all). Xray keeps those only
+with "statsUserOnline": true in its policy levels; without it the list is simply empty. A panel from
+before version 2 ignores the extra fields, and the panel accepts reports without them.
 """
 import json
 import os
@@ -25,7 +31,8 @@ import time
 import urllib.error
 import urllib.request
 
-USER_AGENT = "BoopNodeAgent/1"
+AGENT_VERSION = "2"
+USER_AGENT = "BoopNodeAgent/" + AGENT_VERSION
 
 
 def load_env(path):
@@ -67,14 +74,26 @@ def api(method, path, body=None, timeout=15):
 # ---------- AmneziaWG / WireGuard ----------
 
 def dump():
-    """Peers on the interface: key -> (allowed ips, rx, tx, last handshake)."""
+    """Peers on the interface: key -> (allowed ips, rx, tx, last handshake, endpoint ip or None)."""
     out = subprocess.run([TOOL, "show", IFACE, "dump"], capture_output=True, text=True, check=True).stdout
     peers = {}
     for line in out.strip().splitlines()[1:]:
         f = line.split("\t")
         if len(f) >= 8:
-            peers[f[0]] = (f[3], int(f[5]), int(f[6]), int(f[4]))
+            peers[f[0]] = (f[3], int(f[5]), int(f[6]), int(f[4]), endpoint_ip(f[2]))
     return peers
+
+
+def endpoint_ip(endpoint):
+    """`1.2.3.4:51820` or `[2001:db8::1]:51820` -> the address; None for `(none)`."""
+    e = (endpoint or "").strip()
+    if not e or e == "(none)":
+        return None
+    if e.startswith("["):
+        return e[1:].split("]", 1)[0] or None
+    if e.count(":") == 1:
+        return e.split(":", 1)[0] or None
+    return e
 
 
 def apply(wanted):
@@ -206,6 +225,71 @@ def xray_traffic():
     return users
 
 
+class OnlineIps:
+    """Users' online IPs from Xray: email -> {ip: last seen, epoch seconds}.
+
+    `statsonlineiplist -all` (one call, newer Xray); on builds without -all, the online users
+    (`statsgetallonlineusers`) and then `statsonlineiplist -email` for each of them. Never fails the
+    report: when neither works (old Xray, API without the stats service) it says so once and returns {}.
+    """
+
+    def __init__(self):
+        self.mode = "all"
+        self.warned = False
+
+    def fetch(self):
+        try:
+            if self.mode == "all":
+                try:
+                    return self._all()
+                except XrayError:
+                    self.mode = "each"
+            return self._each()
+        except (XrayError, ValueError) as e:
+            if not self.warned:
+                log("online IPs are not available from Xray (%s); reports go without them" % e)
+                self.warned = True
+            return {}
+
+    def _all(self):
+        out = xray("statsonlineiplist", "-all").strip()
+        doc = json.loads(out) if out else {}
+        users = {}
+        for u in doc.get("users", []) or []:
+            email = u.get("email", "")
+            ips = {}
+            for entry in u.get("ips", []) or []:
+                ip = entry.get("ip")
+                seen = int(entry.get("lastSeen", entry.get("last_seen", 0)) or 0)
+                if ip and seen > 0:
+                    ips[ip] = seen
+            if email and ips:
+                users[email] = ips
+        return users
+
+    def _each(self):
+        out = xray("statsgetallonlineusers").strip()
+        doc = json.loads(out) if out else {}
+        users = {}
+        for name in doc.get("users", []) or []:
+            # "user>>>EMAIL>>>online"
+            parts = name.split(">>>")
+            email = parts[1] if len(parts) == 3 and parts[0] == "user" else name
+            if not UUID.match(email):
+                continue
+            try:
+                one = xray("statsonlineiplist", "-email", email).strip()
+            except XrayError:
+                continue
+            ips = {ip: int(seen) for ip, seen in ((json.loads(one) if one else {}).get("ips", {}) or {}).items() if int(seen) > 0}
+            if ips:
+                users[email] = ips
+        return users
+
+
+ONLINE_IPS = OnlineIps()
+
+
 class Activity:
     """When each user last moved bytes: Xray has no handshakes, so a growing counter stands in for one."""
 
@@ -229,8 +313,16 @@ def vless_peers(now=None):
     """The report's peers: rx = uplink (sent by the user), tx = downlink, as for AmneziaWG."""
     traffic = xray_traffic()
     seen = ACTIVITY.update(traffic, now or time.time())
-    return [{"publicKey": e, "rx": v[0], "tx": v[1], "lastHandshake": seen.get(e, 0), "torrentRx": 0, "torrentTx": 0}
-            for e, v in sorted(traffic.items()) if UUID.match(e)]
+    online = ONLINE_IPS.fetch()
+    peers = []
+    for e, v in sorted(traffic.items()):
+        if not UUID.match(e):
+            continue
+        p = {"publicKey": e, "rx": v[0], "tx": v[1], "lastHandshake": seen.get(e, 0), "torrentRx": 0, "torrentTx": 0}
+        if online.get(e):
+            p["ips"] = online[e]
+        peers.append(p)
+    return peers
 
 
 # ---------- both ----------
@@ -313,9 +405,14 @@ def report_once(prev):
         peers = vless_peers()
     else:
         torrent, info["classes"] = classes()
-        peers = [{"publicKey": k, "rx": v[1], "tx": v[2], "lastHandshake": v[3],
-                  "torrentRx": torrent.get(k, {}).get("torrentRx", 0), "torrentTx": torrent.get(k, {}).get("torrentTx", 0)}
-                 for k, v in dump().items()]
+        peers = []
+        for k, v in dump().items():
+            p = {"publicKey": k, "rx": v[1], "tx": v[2], "lastHandshake": v[3],
+                 "torrentRx": torrent.get(k, {}).get("torrentRx", 0), "torrentTx": torrent.get(k, {}).get("torrentTx", 0)}
+            if v[4]:
+                p["endpoint"] = v[4]
+            peers.append(p)
+    info["agent"] = AGENT_VERSION
     api("POST", "/v1/node/report", {"protocol": PROTOCOL, "peers": peers, "system": info}, timeout=30)
     return prev
 

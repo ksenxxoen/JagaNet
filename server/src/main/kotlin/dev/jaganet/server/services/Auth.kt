@@ -145,6 +145,8 @@ class AuthService(private val ctx: Ctx) {
                     WHERE s.token_hash=? AND s.revoked_at IS NULL AND d.removed_at IS NULL""",
                 th,
             ) ?: throw unauthorized()
+            // Blocked by the admin (issue #39): the session stays, every request is refused until unblocked.
+            if (row["blocked_at"] != null) throw AppError(403, ErrorCode.FORBIDDEN, "This account is blocked")
             sql.exec("UPDATE sessions SET last_used_at=? WHERE token_hash=?", ctx.now(), th)
             sql.exec("UPDATE devices SET last_seen_at=? WHERE id=?::uuid", ctx.now(), row.str("device_id"))
             Principal(row.toUser(), row.str("device_id"), th)
