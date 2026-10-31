@@ -99,6 +99,8 @@ class KeysAndSalesTest {
         services.bot = bot
 
         bot.handle(message(chat = 42, text = "/start"))
+        assertTrue("\"pay\"" in tg.sent("sendMessage").last()["reply_markup"].toString())
+        bot.handle(callback(chat = 42, data = "pay"))
         val menu = tg.sent("sendMessage").last()
         assertEquals(42L, menu["chat_id"]!!.jsonPrimitive.content.toLong())
         val year = tariff(YEAR)
@@ -131,10 +133,11 @@ class KeysAndSalesTest {
     @Test fun `the bot speaks Russian by default and switches language`() = harness {
         val tg = FakeTelegram()
         val bot = TelegramBot(services, tg)
-        bot.handle(message(chat = 9, text = "/start"))
+        bot.handle(message(chat = 9, text = "/pay"))
         val ruMenu = tg.sent("sendMessage").last()["reply_markup"].toString()
         assertTrue("Pro на год за 2\u00A0500 ₽" in ruMenu, ruMenu)
         bot.handle(callback(chat = 9, data = "lang:de"))
+        bot.handle(callback(chat = 9, data = "pay"))
         val deMenu = tg.sent("sendMessage").last()["reply_markup"].toString()
         assertTrue("Pro на год für 48,00 €" in deMenu, deMenu)
         bot.handle(message(chat = 9, text = "/status"))

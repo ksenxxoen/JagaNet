@@ -280,6 +280,7 @@ fun Application.jaganet(s: Services) {
             get("/referrals") { call.respond(s.referrals.get(call.principal(s).also { s.requireReferrals(it.user.role) })) }
             referralApi(s)
             salesApi(s)
+            telegramWebApi(s)
             get("/admin/overview") {
                 call.owner()
                 call.respond(s.admin.overview(call.apiLang()))
