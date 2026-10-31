@@ -1173,7 +1173,8 @@ function installCard(n, i) {
 async function nodesPane(command) {
   clearTimeout(installTimer);
   const pane = document.getElementById("pane");
-  const [list, settings] = await Promise.all([api("/admin/nodes").then((r) => r.nodes), api("/admin/settings")]);
+  const [nodesRes, settings] = await Promise.all([api("/admin/nodes"), api("/admin/settings")]);
+  const list = nodesRes.nodes, balancerOn = !!nodesRes.vlessBalancer;
   if (!location.hash.startsWith("#/admin")) return;
   const seenKey = (n) => `install:${n.id}`;
   const shown = list.filter((n) => n.install && (n.install.state === "running" || store.get(seenKey(n)) !== n.install.startedAt));
@@ -1226,9 +1227,21 @@ async function nodesPane(command) {
         ${field("nh", t("Host name"), v.hostname, 'maxlength="200" placeholder="de1.vpn.example.com"')}
         <div><label for="na">${t("Status")}</label><select id="na"><option value="1" ${v.active ? "selected" : ""}>${t("On")}</option><option value="0" ${v.active ? "" : "selected"}>${t("Off")}</option></select></div>
         ${field("ncn", t("Country name in the apps"), v.countryName || "", 'maxlength="60" placeholder="Финляндия"')}
+        ${locationFields(v)}
         ${local ? "" : `<div><label for="np">${t("Protocol")}</label><select id="np" ${v.id ? "disabled" : ""}>
           <option value="amneziawg" ${v.vless ? "" : "selected"}>AmneziaWG</option><option value="vless" ${v.vless ? "selected" : ""}>VLESS+Reality (Xray)</option></select></div>`}
       </div>${local ? "" : vlessFields(v.vless)}`;
+  // Issue #41: how the location shows up in subscriptions and the apps, and its part in a cascade.
+  const locationFields = (v) => `
+        ${field("nld", t("Location name"), v.displayName || "", 'maxlength="60" placeholder="Финляндия, Хельсинки"')}
+        ${field("nlo", t("Order in the list"), v.sortOrder ?? 0, 'type="number" min="-100000" max="100000" step="1"')}
+        <div><label for="nls">${t("In subscriptions")}</label><select id="nls"><option value="1" ${v.inSubscription === false ? "" : "selected"}>${t("Yes")}</option><option value="0" ${v.inSubscription === false ? "selected" : ""}>${t("No")}</option></select></div>
+        <div><label for="nlc">${t("Cascade")}</label><select id="nlc">${[["", t("None")], ["entry", t("Entry")], ["exit", t("Exit")]].map(([k, l]) => `<option value="${k}" ${(v.cascadeRole || "") === k ? "selected" : ""}>${h(l)}</option>`).join("")}</select></div>`;
+  // A cascade entry's Xray balancer: the fragment to put on the entry node by hand (docs/SERVER.md, "Cascade").
+  const balancerBox = (x) => (balancerOn && x.cascadeRole === "entry" ? `<div class="section"><h4>${t("Balancer")}</h4>
+      <p class="muted">${t("Xray settings for this entry: the exits, a leastPing balancer and the observatory. Add them to the entry's Xray config by hand.")}</p>
+      <div class="actionsrow"><button class="btn secondary" type="button" id="nbal">${t("Show the Xray settings")}</button></div>
+      <pre class="log mono" id="nbalout" hidden></pre></div>` : "");
   // A VLESS node: Xray runs there already; the panel keeps only what the apps need (no private key).
   const vlessFields = (x) => {
     x = x || {};
@@ -1261,7 +1274,8 @@ async function nodesPane(command) {
     if (sel) sel.onchange = () => { document.getElementById("vlessbox").hidden = !isVless(); };
   };
   const nodeBody = (x) => ({ name: val("nn"), city: val("nc"), countryCode: val("nk").toUpperCase(), maxPeers: Number(val("nm")), active: document.getElementById("na").value === "1", hostname: document.getElementById("nh") ? val("nh") || null : null,
-    countryName: val("ncn") || null, protocol: isVless() ? "vless" : null, vless: isVless() ? vlessBody(x?.vless) : null });
+    countryName: val("ncn") || null, protocol: isVless() ? "vless" : null, vless: isVless() ? vlessBody(x?.vless) : null,
+    displayName: val("nld"), sortOrder: Number(val("nlo") || 0), inSubscription: document.getElementById("nls").value === "1", cascadeRole: document.getElementById("nlc").value });
   const install = (id, ssh) => api(`/admin/nodes/${encodeURIComponent(id)}/install`, { method: "POST", body: ssh });
 
   // New node: the node's details and, optionally, the server to install it on.
@@ -1311,7 +1325,13 @@ async function nodesPane(command) {
     nf.hidden = false; mf.hidden = !x.remote;
     nf.innerHTML = `<h3>${t("Edit node")}</h3>${nodeFields(x, !x.remote)}
       <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button><button class="btn secondary" type="button" id="ncancel">${t("Cancel")}</button></div>
-      <p class="result" id="nres"></p>`;
+      <p class="result" id="nres"></p>${balancerBox(x)}`;
+    const bal = document.getElementById("nbal");
+    if (bal) bal.onclick = async () => {
+      const out = document.getElementById("nbalout");
+      try { out.textContent = JSON.stringify(await api(`/admin/nodes/${encodeURIComponent(x.id)}/balancer`), null, 2); } catch (e) { out.textContent = e.message; }
+      out.hidden = false;
+    };
     const used = x.state !== "waiting";
     if (x.remote) mf.innerHTML = `<h3>${used ? t("Move to another server") : t("Install on a server")}</h3>
       ${sshFields(host || "")}

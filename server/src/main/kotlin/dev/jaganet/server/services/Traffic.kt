@@ -23,9 +23,16 @@ class Traffic(private val ctx: Ctx, private val ent: Entitlements, private val t
             val counters = readCounters(ctx, server, protocol)
             ctx.db.run { sql ->
                 for (c in counters) {
-                    val t = sql.one(
+                    val own = sql.one(
                         """SELECT t.device_id, d.user_id, t.last_rx, t.last_tx, t.last_torrent_rx, t.last_torrent_tx FROM tunnels t JOIN devices d ON d.id=t.device_id
                             WHERE t.protocol=? AND t.peer_key=? AND t.server_id=?""",
+                        protocol, c.peerKey, server.str("id"),
+                    )
+                    // The same VLESS UUID on another node (issue #41): its counters are kept with the replica.
+                    val t = own ?: sql.one(
+                        """SELECT r.device_id, d.user_id, r.last_rx, r.last_tx, r.last_torrent_rx, r.last_torrent_tx FROM vless_replicas r
+                             JOIN tunnels t ON t.device_id = r.device_id JOIN devices d ON d.id = r.device_id
+                            WHERE t.protocol=? AND r.peer_key=? AND r.server_id=?""",
                         protocol, c.peerKey, server.str("id"),
                     ) ?: continue
                     // Counters reset when the node restarts: then the whole value is new traffic.
@@ -35,11 +42,19 @@ class Traffic(private val ctx: Ctx, private val ent: Entitlements, private val t
                     // The BitTorrent part is counted inside the tunnel (no encryption overhead): never more than the whole.
                     val tRx = delta(c.torrentRx, t.long("last_torrent_rx")).coerceAtMost(dRx)
                     val tTx = delta(c.torrentTx, t.long("last_torrent_tx")).coerceAtMost(dTx)
-                    sql.exec(
+                    if (own != null) sql.exec(
                         """UPDATE tunnels SET last_rx=?, last_tx=?, last_torrent_rx=?, last_torrent_tx=?, last_seen_at=GREATEST(last_seen_at, ?)
                            WHERE device_id=?::uuid""",
                         c.rxBytes, c.txBytes, c.torrentRx, c.torrentTx, c.lastSeenAt, t.str("device_id"),
-                    )
+                    ) else {
+                        sql.exec(
+                            """UPDATE vless_replicas SET last_rx=?, last_tx=?, last_torrent_rx=?, last_torrent_tx=?, last_seen_at=GREATEST(last_seen_at, ?)
+                               WHERE device_id=?::uuid AND server_id=?""",
+                            c.rxBytes, c.txBytes, c.torrentRx, c.torrentTx, c.lastSeenAt, t.str("device_id"), server.str("id"),
+                        )
+                        // The device is online wherever it connects.
+                        sql.exec("UPDATE tunnels SET last_seen_at=GREATEST(last_seen_at, ?) WHERE device_id=?::uuid", c.lastSeenAt, t.str("device_id"))
+                    }
                     // Where it connects from (issue #39): agents since #39 and this machine's own interface.
                     ClientIps.record(sql, t.str("device_id"), server.str("id"), c)
                     if (dRx + dTx == 0L) continue

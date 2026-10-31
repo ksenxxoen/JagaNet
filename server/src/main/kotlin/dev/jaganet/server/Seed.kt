@@ -101,6 +101,18 @@ class Seed(private val ctx: Ctx) {
             ago(Duration.ofDays(2)), ago(Duration.ofSeconds(30)),
             Jsonb("""{"at":${now.toEpochMilli()},"system":{"cpu":0.07,"memUsed":400000000,"memTotal":2000000000,"classes":"off"},"rxBps":12000000,"txBps":13000000}"""),
         )
+        // A second VLESS location (issue #41): every user's VLESS key works on both, the subscription lists them in this order.
+        sql.exec(
+            """INSERT INTO servers (id, name, city, country_code, subnet, protocols, max_peers, agent_token_hash, registered_at, last_report_at, report, sort_order)
+               VALUES ('sim-4','Нидерланды VLESS','Amsterdam','NL','10.9.0.0/16',?,1000,'sim-agent-vless-2',?,?,?,1)""",
+            Jsonb(
+                """{"vless":{"host":"nl2.sim.jaganet.dev","publicKey":"c2ltdWxhdGVkLXJlYWxpdHktcHVibGljLWtleS0wMg0","shortIds":["b1c2d3e4"],
+                   "sni":"nl2.sim.jaganet.dev","fingerprint":"chrome","transports":[{"type":"tcp","port":443,"tag":"vision","flow":"xtls-rprx-vision"},
+                   {"type":"xhttp","port":8443,"tag":"xhttp","flow":"","path":"/sim-xhttp-2","mode":"auto"}],"endpoint":"nl2.sim.jaganet.dev:443","publicIp":"203.0.113.51"}}""",
+            ),
+            ago(Duration.ofDays(1)), ago(Duration.ofSeconds(30)),
+            Jsonb("""{"at":${now.toEpochMilli()},"system":{"cpu":0.05,"memUsed":300000000,"memTotal":2000000000,"classes":"off"},"rxBps":9000000,"txBps":9500000}"""),
+        )
         sql.exec("INSERT INTO users (email, role, referral_code, created_at) VALUES ('owner@jaganet.dev','owner','OWNER-0000',?)", ago(Duration.ofDays(120)))
 
         val alex = user(sql, "alex@example.com")

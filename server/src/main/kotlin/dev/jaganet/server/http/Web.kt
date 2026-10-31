@@ -24,6 +24,8 @@ import dev.jaganet.server.services.KeyConfig
 import dev.jaganet.server.services.Keys
 import dev.jaganet.server.services.VlessKeys
 import dev.jaganet.server.services.VlessLinks
+import dev.jaganet.server.services.VlessSubscription
+import io.ktor.http.withCharset
 import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -125,15 +127,15 @@ fun Route.website(s: Services) {
         response.header("Referrer-Policy", "no-referrer")
     }
     // The user's VLESS key: by its own token or by any of their AmneziaWG key links.
-    suspend fun ApplicationCall.vless(): VlessLinks {
+    suspend fun ApplicationCall.vless(lang: Lang = Lang.DEFAULT): VlessLinks {
         secret()
         val user = s.vlessKeys.userByToken(parameters["token"]!!) ?: throw notFound("This key doesn't exist or was deleted")
-        return s.vlessKeys.links(user) ?: throw notFound("This key doesn't exist or was deleted")
+        return s.vlessKeys.links(user, lang) ?: throw notFound("This key doesn't exist or was deleted")
     }
     get("/k/{token}") {
         val token = call.parameters["token"]!!
         if (s.vlessKeys.isOwnToken(token)) {
-            val v = call.vless()
+            val v = call.vless(call.pageLang())
             return@get call.respondText(Pages(call.pageLang()).vlessKey(v, s.ctx.cfg.publicUrl), ContentType.Text.Html)
         }
         val k = call.key()
@@ -141,17 +143,30 @@ fun Route.website(s: Services) {
         call.respondText(Pages(call.pageLang()).key(k, token, s, other), ContentType.Text.Html)
     }
     /**
-     * Subscription for Happ, v2RayTun, Hiddify, v2rayNG: base64 of the vless:// links, one per line.
-     * Works with the VLESS key's token and with the user's AmneziaWG key links.
+     * The VLESS subscription with every location (issue #41). Base64 of the vless:// links for Happ,
+     * v2RayTun, Hiddify, v2rayNG; a sing-box or Clash Meta profile with an "Auto (best)" group for
+     * those clients (User-Agent or ?format=singbox|clash), see VlessSubscription. Works with the
+     * VLESS key's token and with the user's AmneziaWG key links. ?lang= names the backup links.
      */
     get("/k/{token}/vless") {
-        val v = call.vless()
+        val lang = Lang.of(call.request.queryParameters["lang"]) ?: Lang.DEFAULT
+        val v = call.vless(lang)
         if (v.links.isEmpty()) throw notFound("This key is off until access is renewed")
         val expire = v.expiresAt?.let { runCatching { java.time.Instant.parse(it).epochSecond }.getOrNull() } ?: 0
+        val (up, down) = s.vlessKeys.usage(v.userId)
+        val base = s.ctx.cfg.publicUrl.trimEnd('/')
         call.response.header("profile-title", "base64:" + java.util.Base64.getEncoder().encodeToString("Boop VPN".toByteArray()))
         call.response.header("profile-update-interval", "12")
-        call.response.header("subscription-userinfo", "upload=0; download=0; total=0; expire=$expire")
-        call.respondText(VlessKeys.subscription(v.links), ContentType.Text.Plain)
+        call.response.header("subscription-userinfo", VlessSubscription.userInfo(up, down, s.vlessKeys.dataLimit(v.userId) ?: 0, expire))
+        call.response.header("support-url", s.ctx.cfg.supportUrl ?: s.bot?.username?.let { "https://t.me/$it" } ?: base)
+        call.response.header("profile-web-page-url", "$base/k/${call.parameters["token"]!!}")
+        var format = VlessSubscription.format(call.request.queryParameters["format"], call.request.headers[HttpHeaders.UserAgent])
+        if (format != VlessSubscription.Format.BASE64 && !VlessSubscription.hasGroups(v.locations)) format = VlessSubscription.Format.BASE64
+        when (format) {
+            VlessSubscription.Format.BASE64 -> call.respondText(VlessKeys.subscription(v.links), ContentType.Text.Plain)
+            VlessSubscription.Format.SINGBOX -> call.respondText(VlessSubscription.singBox(v.locations, lang), ContentType.Application.Json)
+            VlessSubscription.Format.CLASH -> call.respondText(VlessSubscription.clash(v.locations, lang), ContentType("text", "yaml").withCharset(Charsets.UTF_8))
+        }
     }
     // QR codes: 0.png, 1.png… one per link; sub.png for the subscription URL.
     get("/k/{token}/vless/{file}") {
@@ -225,8 +240,10 @@ private class Pages(val lang: Lang) {
         val body = if (v.links.isEmpty()) {
             """<div class="card"><p class="notice bad">${t("This key is off until access is renewed")}</p></div>"""
         } else {
+            // Every location and its backups (issue #41), each under its own name.
+            val names = v.locations.flatMap { l -> l.named(lang).map { it.second } }
             val extra = v.links.drop(1).mapIndexed { i, l ->
-                """<div class="card section"><h3>${t("Backup key")}</h3>
+                """<div class="card section"><h3>${names.getOrNull(i + 1)?.let(::esc) ?: t("Backup key")}</h3>
   <div class="formrow two"><input class="mono" id="vk${i + 1}" readonly value="${esc(l)}"><button class="btn" data-copy="vk${i + 1}" type="button">${t("Copy key")}</button></div></div>"""
             }.joinToString("")
             """<div class="card keycard">

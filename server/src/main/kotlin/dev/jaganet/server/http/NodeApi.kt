@@ -37,7 +37,9 @@ fun Route.nodeApi(s: Services) {
     }
 
     suspend fun ApplicationCall.owner() = principal(s).also { if (it.user.role != Role.OWNER) throw forbidden() }
-    get("/admin/nodes") { call.owner(); call.respond(AdminNodesRes(s.nodes.list())) }
+    get("/admin/nodes") { call.owner(); call.respond(AdminNodesRes(s.nodes.list(), s.ctx.cfg.vlessBalancer)) }
+    // A cascade entry's Xray balancer (issue #41): the config fragment to put on the entry node.
+    get("/admin/nodes/{id}/balancer") { call.owner(); call.respond(s.nodes.balancer(call.parameters["id"]!!)) }
     // Traffic analytics: all servers, one server with its users, users, one user across servers.
     get("/admin/analytics") { call.owner(); call.respond(s.analytics.overview(call.request.queryParameters["period"])) }
     get("/admin/analytics/servers/{id}") { call.owner(); call.respond(s.analytics.server(call.parameters["id"]!!, call.request.queryParameters["period"])) }
