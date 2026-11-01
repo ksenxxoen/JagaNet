@@ -112,6 +112,10 @@ func (a *App) state() UIState {
 	}
 	if a.Store.Token != "" {
 		s.Screen = "main"
+		// Blocked by the owner: said on the main screen before anyone presses connect.
+		if s.Problem == "" && a.accountBlocked {
+			s.Problem = ProbAccountBlocked
+		}
 	}
 	if a.conn == "on" {
 		s.Since = a.since.UnixMilli()
@@ -126,7 +130,7 @@ func (a *App) state() UIState {
 	// The country "fastest" would go to: the lowest ping among the nodes it may pick, by statusTier.
 	best, bestTier, bestMs := "", 0, math.MaxFloat64
 	for _, sv := range a.servers {
-		if protocolOf(sv) == "" {
+		if a.protocolOf(sv) == "" {
 			continue
 		}
 		c := byCode[sv.CountryCode]
@@ -164,6 +168,13 @@ func (a *App) state() UIState {
 	}
 	slices.SortFunc(s.Countries, func(x, y Country) int { return strings.Compare(x.Code, y.Code) })
 	s.Best = best
+	// A saved country with no node this app can use (a VLESS-only country chosen
+	// before Linux stopped listing VLESS, or one the panel removed): connecting
+	// goes to the fastest one (pick), so the window shows "fastest" too. The
+	// choice itself stays saved and comes back with the country.
+	if s.Country != "auto" && len(byCode) > 0 && byCode[s.Country] == nil {
+		s.Country = "auto"
+	}
 	return s
 }
 

@@ -107,8 +107,12 @@ func (a *App) warnPlan(now time.Time) {
 func (a *App) loadPlan(ctx context.Context) error {
 	me, err := a.API.Me(ctx)
 	if err != nil {
+		if accountBlocked(err) {
+			a.setBlocked(true)
+		}
 		return err
 	}
+	a.setBlocked(false)
 	p := &Plan{Pro: me.Entitlement.Plan == "pro"}
 	if me.Entitlement.TariffName != nil {
 		p.Name = *me.Entitlement.TariffName

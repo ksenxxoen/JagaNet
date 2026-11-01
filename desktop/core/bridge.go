@@ -101,10 +101,16 @@ var commands = map[string]handler{
 	// the site and updates
 	"extend": none(func(a *App, _ context.Context) (any, error) {
 		if a.OpenURL != nil {
-			a.OpenURL(a.Site + "/#/")
+			// The plans on the website's main page (#51 made "/#/" a long landing page).
+			a.OpenURL(a.Site + "/#pricing")
 		}
 		return nil, nil
 	}),
+	// the website's support form (the account is blocked, issue #39)
+	"support": none((*App).cmdSupport),
+	// «Пригласить друга» (issue #40): the links and what they earned; copying one
+	"invite":   none((*App).cmdInvite),
+	"copyText": text((*App).cmdCopyText),
 	"update": none((*App).cmdUpdate),
 	// "Сообщить о проблеме": build, send and copy the report; copy the last one again
 	"reportProblem": object((*App).cmdReportProblem),

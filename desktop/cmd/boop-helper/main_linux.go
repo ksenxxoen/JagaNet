@@ -21,7 +21,7 @@ import (
 	"github.com/ksenxxoen/JagaNet/desktop/vpn"
 )
 
-// Set at build time: -ldflags "-X main.version=1.2.0".
+// Set at build time: -ldflags "-X main.version=1.3.0".
 var version = "dev"
 
 func main() {

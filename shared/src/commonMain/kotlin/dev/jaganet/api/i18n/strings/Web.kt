@@ -46,7 +46,7 @@ internal val webStrings: List<S> = listOf(
     S("New key", "Новый ключ", "Neuer Schlüssel"),
     S("Apps", "Приложения", "Apps"),
     S("Sign in to the Boop app", "Вход в приложение Boop", "In der Boop-App anmelden"),
-    S("In the app tap Sign in with a device code and enter the code.", "В приложении нажмите «Войти по коду устройства» и введите код.", "Tippe in der App auf „Mit Gerätecode anmelden“ und gib den Code ein."),
+    S("In the app tap Sign in with a device code and enter the code.", "В приложении нажмите «Войти по коду с устройства» и введите код.", "Tippe in der App auf „Mit Gerätecode anmelden“ und gib den Code ein."),
     S("Show a code", "Показать код", "Code anzeigen"),
     S("Allow", "Разрешить", "Erlauben"),
     S("Up to {n} Mbit/s", "До {n} Мбит/с", "Bis {n} Mbit/s"),

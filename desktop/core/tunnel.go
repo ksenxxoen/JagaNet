@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/ksenxxoen/JagaNet/desktop/vpn"
 	"log"
 	"net/netip"
@@ -53,8 +54,7 @@ func (a *App) connectWithRetry(ctx context.Context) bool {
 		if a.unauthorized(err) {
 			return false
 		}
-		if _, ok := fatalStatus(err); ok {
-			a.stopProblem(ProbPlan)
+		if a.refused(err) {
 			return false
 		}
 		code := ProbNoHandshake
@@ -231,6 +231,7 @@ func (a *App) markOn() {
 		return
 	}
 	first := a.conn != "on"
+	a.accountBlocked = false // a tunnel came up: the panel let this account in
 	a.conn = "on"
 	a.problem = ""
 	a.forgetVerdict()
@@ -385,6 +386,9 @@ func (a *App) apply(ctx context.Context, st TunnelState, priv ...string) error {
 	if st.Config == nil {
 		return errors.New("no tunnel")
 	}
+	if !a.runs(st.Config.Protocol) {
+		return fmt.Errorf("protocol %q is not carried on this computer", st.Config.Protocol)
+	}
 	if st.Config.Protocol == ProtocolVless {
 		// No device key: the UUID in the parameters is the credential.
 		if asleep {
@@ -514,7 +518,7 @@ func (a *App) applyCached(ctx context.Context) error {
 	c := a.Store.Cached()
 	want := a.Store.KeyID
 	a.mu.Unlock()
-	if c == nil || c.Config == nil || (c.PrivateKey == "" && c.Config.Protocol != ProtocolVless) || c.KeyID != want {
+	if c == nil || c.Config == nil || (c.PrivateKey == "" && c.Config.Protocol != ProtocolVless) || c.KeyID != want || !a.runs(c.Config.Protocol) {
 		return errors.New("no saved config")
 	}
 	return a.apply(ctx, TunnelState{Config: c.Config, Version: c.Version, CountryCode: c.Country}, c.PrivateKey)
@@ -524,14 +528,6 @@ func (a *App) connOff() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.conn == "off"
-}
-
-func fatalStatus(err error) (int, bool) {
-	var e *APIError
-	if errors.As(err, &e) && (e.Status == 401 || e.Status == 402 || e.Status == 403) {
-		return e.Status, true
-	}
-	return 0, false
 }
 
 func isOffline(err error) bool {

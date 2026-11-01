@@ -47,6 +47,10 @@ type fakePanel struct {
 	serversRaw string   // the query string of the last GET /servers
 	protocols  []string // the protocol of each POST tunnel, in order
 	vlessUUID  string   // the UUID the panel made for this device
+
+	codes   map[string]string // path -> the error code sent with a forced status (default "x")
+	blocked bool              // the owner blocked the account: every signed-in request is 403 FORBIDDEN
+	invite  map[string]any    // GET referrals/invite; nil: 404 (the program is not open)
 }
 
 func newFakePanel(t *testing.T) *fakePanel {
@@ -55,7 +59,7 @@ func newFakePanel(t *testing.T) *fakePanel {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := &fakePanel{t: t, status: map[string]int{}, serverPub: pub, deleteSeen: make(chan struct{})}
+	p := &fakePanel{t: t, status: map[string]int{}, codes: map[string]string{}, serverPub: pub, deleteSeen: make(chan struct{})}
 	p.srv = httptest.NewServer(http.HandlerFunc(p.handle))
 	t.Cleanup(p.srv.Close)
 	return p
@@ -68,14 +72,37 @@ func (p *fakePanel) handle(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	down, forced, delay, hold, expires := p.down, p.status[path], p.provDelay, p.deleteHold, p.expiresAt
 	statuses, notices, notice := p.statuses, p.notices, p.notice
+	code, blocked, invite := p.codes[path], p.blocked, p.invite
 	p.mu.Unlock()
 	if down {
 		panic(http.ErrAbortHandler)
 	}
 	reply := func(v any) { w.Header().Set("Content-Type", "application/json"); _ = json.NewEncoder(w).Encode(v) }
+	// Blocked by the owner (issue #39): the panel refuses every signed-in request,
+	// exactly as services/Auth.kt does (the message comes translated).
+	if blocked && r.Header.Get("Authorization") != "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(403)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "FORBIDDEN", "message": "Этот аккаунт заблокирован"}})
+		return
+	}
 	if forced != 0 {
+		if code == "" {
+			code = "x"
+		}
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(forced)
-		reply(map[string]any{"error": map[string]string{"code": "x", "message": "forced " + path}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": code, "message": "forced " + path}})
+		return
+	}
+	if path == "referrals/invite" {
+		if invite == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(404)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "NOT_FOUND", "message": "The referral program is not available"}})
+			return
+		}
+		reply(invite)
 		return
 	}
 	switch {

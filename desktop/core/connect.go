@@ -119,7 +119,7 @@ func (a *App) sync(ctx context.Context) {
 	}
 	st, err := a.API.Tunnel(ctx)
 	if err != nil {
-		if a.unauthorized(err) {
+		if a.unauthorized(err) || a.blockedStop(err) {
 			return
 		}
 		log.Printf("sync: %v", err)
@@ -128,37 +128,93 @@ func (a *App) sync(ctx context.Context) {
 	a.mu.Lock()
 	applied := a.applied
 	a.mu.Unlock()
-	if st.Config == nil || st.Rekey {
+	if st.Config == nil || st.Rekey || !a.runs(st.Config.Protocol) {
+		// No tunnel, a new key, or one on a node this computer cannot carry (a VLESS
+		// node given to this device while Linux still advertised VLESS): pick again.
 		err = a.establish(ctx, false)
 	} else if st.Version != applied {
 		log.Printf("sync: new settings %s", st.Version)
 		err = a.apply(ctx, st)
 	}
 	if err != nil && ctx.Err() == nil && !errors.Is(err, errPaused) {
-		if a.unauthorized(err) {
-			return
-		}
-		var e *APIError
-		if errors.As(err, &e) && (e.Status == 402 || e.Status == 403) {
-			a.stopProblem(ProbPlan)
+		if a.unauthorized(err) || a.refused(err) {
 			return
 		}
 		log.Printf("sync: %v", err)
 	}
 }
 
+// accountBlocked: the owner blocked the account (issue #39). The panel then
+// answers every request 403 with the code FORBIDDEN ("This account is blocked",
+// translated). Plan problems are other codes: 402 FREE_ENDED, 403 DATA_LIMIT,
+// 403 DEVICE_LIMIT; the client calls no owner-only path, the other FORBIDDEN.
+func accountBlocked(err error) bool {
+	var e *APIError
+	return errors.As(err, &e) && e.Status == 403 && e.Code == "FORBIDDEN"
+}
+
+// planRefused: the panel will not give a tunnel to this plan (ended, data or
+// device limit). Never the blocked account.
+func planRefused(err error) bool {
+	var e *APIError
+	return errors.As(err, &e) && (e.Status == 402 || e.Status == 403) && !accountBlocked(err)
+}
+
+// refused stops the connection when the panel refuses the account itself:
+// blocked by the owner, or the plan. True when it did.
+func (a *App) refused(err error) bool {
+	if a.blockedStop(err) {
+		return true
+	}
+	if planRefused(err) {
+		a.stopProblem(ProbPlan)
+		return true
+	}
+	return false
+}
+
+// blockedStop stops the connection with the "account blocked" problem when err
+// says so. True when it did.
+func (a *App) blockedStop(err error) bool {
+	if !accountBlocked(err) {
+		return false
+	}
+	a.setBlocked(true)
+	a.stopProblem(ProbAccountBlocked)
+	return true
+}
+
+// setBlocked remembers whether the panel last said the account is blocked, so
+// the main screen says so before anyone presses connect (state.go). The tray
+// says it once.
+func (a *App) setBlocked(on bool) {
+	a.mu.Lock()
+	changed := a.accountBlocked != on
+	a.accountBlocked = on
+	a.mu.Unlock()
+	if !changed {
+		return
+	}
+	if on {
+		log.Printf("account: blocked by the panel")
+		a.alert(ProbAccountBlocked)
+	} else {
+		log.Printf("account: no longer blocked")
+		a.mu.Lock()
+		delete(a.told, ProbAccountBlocked)
+		a.mu.Unlock()
+	}
+	a.emit()
+}
+
 // syncKey follows a chosen key the same way: a move of the key is applied in place.
 func (a *App) syncKey(ctx context.Context, id string) {
 	kt, err := a.API.KeyTunnel(ctx, id)
 	if err != nil {
-		if a.unauthorized(err) {
+		if a.unauthorized(err) || a.refused(err) {
 			return
 		}
 		var e *APIError
-		if errors.As(err, &e) && (e.Status == 402 || e.Status == 403) {
-			a.stopProblem(ProbPlan)
-			return
-		}
 		if errors.As(err, &e) && e.Status == 404 {
 			a.alert(ProbKeyRemoved)
 			a.mu.Lock()
@@ -239,17 +295,24 @@ func (a *App) establish(ctx context.Context, moveNow bool) error {
 	if want == "" {
 		want = "auto"
 	}
+	// A saved country without a node this app runs (see state.go) is "fastest"
+	// here too; otherwise every connect would move the tunnel again.
+	if want != "auto" && len(servers) > 0 && !slices.ContainsFunc(servers, func(s Server) bool {
+		return s.CountryCode == want && a.protocolOf(s) != ""
+	}) {
+		want = "auto"
+	}
 	// A node the owner put under maintenance (or marked blocked, for "fastest") is
 	// left for another one on the next connect, like a node that went away.
 	usable := func(id string) bool {
 		return slices.ContainsFunc(servers, func(s Server) bool {
-			return s.ID == id && protocolOf(s) != "" && statusTier(s.Status, want == "auto") >= 0
+			return s.ID == id && a.protocolOf(s) != "" && statusTier(s.Status, want == "auto") >= 0
 		})
 	}
 	// The tunnel's protocol must be one the node still runs (and this app too).
 	sameProtocol := func(c *TunnelConfig) bool {
 		s, ok := serverByID(servers, c.ServerID)
-		return ok && supported(c.Protocol) && slices.Contains(s.Protocols, c.Protocol)
+		return ok && a.runs(c.Protocol) && slices.Contains(s.Protocols, c.Protocol)
 	}
 
 	away := st.Config != nil && a.serverSkipped(st.Config.ServerID)
@@ -273,7 +336,7 @@ func (a *App) establish(ctx context.Context, moveNow bool) error {
 			return errors.New("no servers")
 		}
 		node, _ := serverByID(servers, target)
-		if protocolOf(node) == ProtocolVless {
+		if a.protocolOf(node) == ProtocolVless {
 			// No key on the device: the panel makes (or keeps) the UUID.
 			if _, err := a.API.Provision(ctx, target, ProtocolVless, nil); err != nil {
 				return err

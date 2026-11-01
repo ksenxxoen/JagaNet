@@ -13,6 +13,8 @@ const (
 	// Same words as TXT.blocked / TXT.strictClosed in ui/app.js.
 	blockedText  = "Похоже, ваша сеть блокирует VPN. Попробуйте Wi\u2011Fi или другую страну."
 	strictClosed = "Интернет закрыт, пока VPN не подключится."
+	// Same words as TXT.accountBlocked in ui/app.js.
+	accountBlockedText = "Аккаунт заблокирован. Напишите в поддержку."
 )
 
 func (a *App) humanize(err error) error {
@@ -77,6 +79,8 @@ func phrase(code string, released, strict bool) string {
 		return "VPN снова подключён"
 	case ProbPlan:
 		return "Тариф закончился. Продлите его, чтобы включить VPN."
+	case ProbAccountBlocked:
+		return accountBlockedText
 	case ProbKeyRemoved:
 		return "Ключ удалён"
 	case ProbBlocked:

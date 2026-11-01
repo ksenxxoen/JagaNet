@@ -33,7 +33,7 @@ const base = {
     { code: "US", ping: 131 }, { code: "JP", ping: 210, full: true }, { code: "AM", ping: 88 }, { code: "KZ", ping: 97 },
   ],
   email: "demo@example.com", plan: { name: "Pro", pro: true, expiresAt: "2027-03-15T00:00:00Z" },
-  autoConnect: true, autostart: true, version: "1.2.0-dev", webLogin: false,
+  autoConnect: true, autostart: true, version: "1.3.0-dev", webLogin: false,
   keys: [{ id: "k1", name: "Demo phone", country: "DE" }, { id: "k2", name: "Demo laptop", inUse: true }], key: "", update: null, problem: "", released: false,
 };
 // The Netherlands under maintenance, Finland unstable, Sweden blocked by some networks (issue #10).

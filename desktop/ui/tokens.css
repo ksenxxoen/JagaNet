@@ -63,6 +63,7 @@
 
   /* sizes shared by components */
   --control-h: 3rem;
+  --control-h-sm: 2.25rem;
   --row-h: 3.125rem;
   --item-h: 3.75rem;
   --icon-btn: 2.5rem;

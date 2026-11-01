@@ -141,3 +141,23 @@
 /* ---------- settings ---------- */
 .version { text-align: center; color: var(--text-2); font-size: var(--fs-xs); margin-top: auto; padding: var(--s-4); }
 .sheet-scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; padding-bottom: var(--s-2); }
+
+/* «Пригласить друга» (issue #40): the reward, the links with «Скопировать», the counts. */
+.invite-head { padding: var(--s-3) var(--s-4) var(--s-2); display: flex; flex-direction: column; gap: var(--s-1); }
+.invite-title { font-size: var(--fs-md); font-weight: var(--fw-semibold); line-height: var(--lh-tight); }
+.invite-reward { font-size: var(--fs-sm); color: var(--success); font-weight: var(--fw-medium); line-height: var(--lh-base); }
+.invite-extra { font-size: var(--fs-xs); color: var(--text-2); line-height: var(--lh-base); }
+.invite-link {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s-3);
+  padding: var(--s-2) var(--s-4); border-top: var(--border) solid var(--line);
+}
+.invite-link-text { min-width: 0; flex: 1; gap: 0; }
+.invite-link-text .ellipsis { max-width: 100%; font-size: var(--fs-sm); user-select: text; }
+.invite-copy { flex: none; min-height: var(--control-h-sm); padding: 0 var(--s-3); font-size: var(--fs-sm); }
+.invite-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-2);
+  padding: var(--s-3) var(--s-4); border-top: var(--border) solid var(--line);
+}
+.invite-stats div { display: flex; flex-direction: column-reverse; gap: var(--s-1); min-width: 0; }
+.invite-stats dt { font-size: var(--fs-xs); color: var(--text-2); }
+.invite-stats dd { font-size: var(--fs-md); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }

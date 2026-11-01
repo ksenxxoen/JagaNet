@@ -228,10 +228,10 @@ func TestPingTargets(t *testing.T) {
 			t.Errorf("%+v: %+v %q", c.s, got, got.key())
 		}
 	}
-	if protocolOf(Server{Protocols: []string{"wireguard", ProtocolVless, Protocol}}) != ProtocolVless {
+	if protocolFor(Server{Protocols: []string{"wireguard", ProtocolVless, Protocol}}, SupportedProtocols) != ProtocolVless {
 		t.Error("protocolOf does not keep the panel's order")
 	}
-	if protocolOf(Server{Protocols: []string{"wireguard"}}) != "" {
+	if protocolFor(Server{Protocols: []string{"wireguard"}}, SupportedProtocols) != "" {
 		t.Error("protocolOf took a protocol this app does not run")
 	}
 }

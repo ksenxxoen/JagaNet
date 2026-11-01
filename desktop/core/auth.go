@@ -123,6 +123,7 @@ func (a *App) unauthorized(err error) bool {
 	a.Store.Token = ""
 	a.Store.DeviceID = ""
 	a.Store.SetCached(nil)
+	a.accountBlocked = false
 	_ = a.Store.Save()
 	reports := a.reports
 	a.mu.Unlock()
@@ -194,6 +195,7 @@ func (a *App) cmdSignOut(ctx context.Context) (any, error) {
 	a.Store.Token, a.Store.PrivateKey, a.Store.DeviceID = "", "", ""
 	a.Store.SetCached(nil)
 	a.plan, a.applied, a.peerKey = nil, "", ""
+	a.accountBlocked = false
 	a.hold = nil
 	_ = a.Store.Save()
 	reports := a.reports

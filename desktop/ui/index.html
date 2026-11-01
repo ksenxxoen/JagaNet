@@ -35,9 +35,9 @@
       <button class="btn btn-text" type="button" id="back">Другая почта</button>
     </form>
     <form class="form" id="f-pair" hidden novalidate>
-      <p class="form-note">Код показан в личном кабинете на сайте, в разделе устройств.</p>
+      <p class="form-note" id="pair-note">Код можно получить в Telegram-боте Boop (команда /app) или в личном кабинете на сайте: «Приложения» → «Показать код».</p>
       <div class="field">
-        <label for="pair">Код устройства</label>
+        <label for="pair">Код с устройства</label>
         <input class="input input-code" id="pair" inputmode="numeric" maxlength="6" required placeholder="000000" aria-describedby="err-pair">
       </div>
       <p class="form-error" id="err-pair" role="alert" hidden></p>
@@ -54,7 +54,7 @@
     <div class="alts" id="alts">
       <p class="form-error" id="err-alts" role="alert" hidden></p>
       <button class="btn btn-text" type="button" id="to-web">Войти через сайт</button>
-      <button class="btn btn-text" type="button" id="to-pair">У меня есть код устройства</button>
+      <button class="btn btn-text" type="button" id="to-pair">Войти по коду с устройства</button>
     </div>
   </section>
 
@@ -112,6 +112,26 @@
         <button class="setting-row is-link" id="s-key" hidden><span class="muted">Ключ</span><span class="row-value"><span id="s-key-name" class="ellipsis"></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></span></button>
         <button class="setting-row is-link" id="s-extend"><span>Продлить тариф</span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
       </div>
+      <section class="group invite" id="s-invite" aria-labelledby="s-invite-title" hidden>
+        <div class="invite-head">
+          <h3 class="invite-title" id="s-invite-title">Пригласить друга</h3>
+          <p class="invite-reward" id="s-invite-reward"></p>
+          <p class="invite-extra" id="s-invite-extra" hidden></p>
+        </div>
+        <div class="invite-link" id="s-invite-web">
+          <span class="setting-text invite-link-text"><small>Ссылка на сайт</small><span class="ellipsis" id="s-invite-web-url"></span></span>
+          <button class="btn btn-secondary invite-copy" type="button" id="s-invite-web-copy" aria-describedby="s-invite-web-url">Скопировать</button>
+        </div>
+        <div class="invite-link" id="s-invite-tg" hidden>
+          <span class="setting-text invite-link-text"><small>Ссылка на Telegram-бота</small><span class="ellipsis" id="s-invite-tg-url"></span></span>
+          <button class="btn btn-secondary invite-copy" type="button" id="s-invite-tg-copy" aria-describedby="s-invite-tg-url">Скопировать</button>
+        </div>
+        <dl class="invite-stats" id="s-invite-stats">
+          <div><dt>Пригласили</dt><dd id="s-invite-invited">0</dd></div>
+          <div><dt>Оплатили</dt><dd id="s-invite-paid">0</dd></div>
+          <div><dt>Получено дней</dt><dd id="s-invite-days">0</dd></div>
+        </dl>
+      </section>
       <div class="group">
         <label class="setting-row switch-row" id="s-start-row" hidden><span class="setting-text"><span id="s-start-title">Запускать с Windows</span><small id="s-start-sub">Boop стартует в трее при входе в систему.</small></span><input type="checkbox" class="switch" id="s-start"><i></i></label>
         <label class="setting-row switch-row"><span class="setting-text"><span>Подключаться при запуске</span><small>VPN включается сам, как только запускается Boop.</small></span><input type="checkbox" class="switch" id="s-auto"><i></i></label>

@@ -15,9 +15,9 @@ import (
 
 // ui/app.js is written against these names; changing one means changing both.
 var wantCommands = []string{
-	"cancelWebLogin", "closeNotice", "copyReport", "extend", "openWebLogin", "ready", "redeemPairing", "refreshKeys", "refreshPings",
+	"cancelWebLogin", "closeNotice", "copyReport", "copyText", "extend", "invite", "openWebLogin", "ready", "redeemPairing", "refreshKeys", "refreshPings",
 	"renameKey", "reportProblem", "setAutoConnect", "setAutostart", "setCountry", "setKey", "setStrictKill",
-	"signOut", "startEmail", "startWebLogin", "toggle", "update", "verifyEmail",
+	"signOut", "startEmail", "startWebLogin", "support", "toggle", "update", "verifyEmail",
 }
 
 func TestBridgeCommands(t *testing.T) {

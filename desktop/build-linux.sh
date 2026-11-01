@@ -13,7 +13,7 @@
 # The Windows build is ./build.sh, unchanged.
 set -euo pipefail
 cd "$(dirname "$0")"
-VERSION="${1:-1.2.0}"
+VERSION="${1:-1.3.0}"
 API="${2:-}"   # empty: the list in ui.go (main address, then the spares); see build.sh
 RELEASES="${BOOP_LINUX_RELEASES:-22.04 24.04}"
 GO_VERSION=1.25.0
