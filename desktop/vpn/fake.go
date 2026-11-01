@@ -51,6 +51,13 @@ func (f *Fake) Apply(c *Config) error {
 	return nil
 }
 
+// SetNoHandshake changes NoHandshake while the tunnel runs (tests).
+func (f *Fake) SetNoHandshake(v bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.NoHandshake = v
+}
+
 func (f *Fake) Down() {
 	f.mu.Lock()
 	defer f.mu.Unlock()

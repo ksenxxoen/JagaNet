@@ -307,6 +307,14 @@ func (a *App) cmdSetCountry(_ context.Context, code string) (any, error) {
 
 // followChoice moves a running tunnel to a new choice, or connects if it was off.
 func (a *App) followChoice(changed, on bool) {
+	a.mu.Lock()
+	failed := a.failed && a.conn != "off"
+	a.mu.Unlock()
+	if failed {
+		// The app gave up on the last choice (issue #53): another one is a new try.
+		a.Retry()
+		return
+	}
 	if changed && on {
 		Go("switch", a.switchCountry)
 	} else if !on {

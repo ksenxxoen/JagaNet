@@ -106,6 +106,35 @@ try {
     check("no action while off", await hidden("detail-btn"));
   });
 
+  // ---- issue #53: the app gave up on the connection ----
+  await attempt("gave up", async () => {
+    const txt = (id) => page.evaluate((id) => document.getElementById(id).textContent, id);
+    const action = () => page.evaluate(() => document.getElementById("detail-btn").dataset.action);
+    let retries = 0;
+    await page.route("**/rpc/retry", (r) => { retries++; r.fulfill({ status: 200, body: "null", contentType: "application/json" }); });
+    await show({ ...main, conn: "problem", problem: "no_handshake", failed: true, released: true });
+    check("gave up: no «Подключение…», says it could not connect", (await txt("status")) === "Не удалось подключиться");
+    check("gave up: why and that the internet works", (await txt("detail")) === "Сервер не отвечает. Интернет работает без VPN.");
+    check("gave up: the action is «Повторить»", (await action()) === "retry" && (await txt("detail-btn")) === "Повторить" && !(await hidden("detail-btn")));
+    check("gave up: «Сообщить о проблеме» is there", !(await hidden("report-btn")));
+    check("gave up: the ring does not spin", (await page.evaluate(() => getComputedStyle(document.querySelector("#boop .ring")).animationName)) === "none");
+    await click("#detail-btn");
+    await page.waitForTimeout(150);
+    check("«Повторить» calls retry", retries === 1);
+    await show({ ...main, conn: "problem", problem: "blocked", failed: true, released: true });
+    check("gave up, network blocks VPN", (await txt("detail")) === "Похоже, ваша сеть блокирует VPN. Попробуйте Wi‑Fi или другую страну. Интернет работает без VPN.");
+    await show({ ...main, conn: "problem", problem: "blocked", failed: true, strictKill: true });
+    check("gave up in strict mode: the internet stays closed", (await txt("detail")).endsWith("Интернет закрыт, пока VPN не подключится.") && (await action()) === "retry");
+    await show({ ...main, conn: "problem", problem: "offline", failed: true, released: true });
+    check("gave up without a network", (await txt("detail")) === "Нет сети. Интернет работает без VPN." && (await action()) === "retry");
+    // Still trying: the old words and actions.
+    await show({ ...main, conn: "connecting", problem: "no_handshake" });
+    check("still trying: «Подключение…» and a country change", (await txt("status")) === "Подключение…" && (await action()) === "places");
+    await show({ ...main, conn: "off" });
+    check("off: nothing of it left", (await txt("status")) === "Выключено" && (await hidden("detail-btn")) && (await txt("detail")) === "");
+    await page.unroute("**/rpc/retry");
+  });
+
   await attempt("russian only", async () => {
     await show({ ...main, conn: "off" });
     check("document language is ru", (await page.evaluate(() => document.documentElement.lang)) === "ru");

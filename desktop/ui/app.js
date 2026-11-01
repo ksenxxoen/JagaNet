@@ -13,6 +13,9 @@ const TXT = {
   released: "Не удалось подключиться. Интернет снова доступен, пробуем ещё.",
   strict: "Сервер не отвечает. Интернет заблокирован, пока VPN не подключится.",
   dead: "Связь с VPN пропала, переподключаемся…",
+  // The app gave up on the connection (S.failed, issue #53); same words as failed* in core/notify.go.
+  failedTitle: "Не удалось подключиться", failedNoAnswer: "Сервер не отвечает.", failedOffline: "Нет сети.",
+  failedOpen: "Интернет работает без VPN.", retryConnect: "Повторить",
   // Same words as blockedText / strictClosed in core/notify.go (the tray says the same).
   blocked: "Похоже, ваша сеть блокирует VPN. Попробуйте Wi\u2011Fi или другую страну.",
   strictClosed: "Интернет закрыт, пока VPN не подключится.",
@@ -160,6 +163,7 @@ const STATUS = { off: TXT.off, connecting: TXT.connecting, reconnecting: TXT.rec
 
 // One action under the status, chosen by the code of the problem.
 function problemAction() {
+  if (S.failed) return { action: "retry", label: TXT.retryConnect };
   switch (S.problem) {
     case "plan": return { action: "extend", label: TXT.extend };
     case "auth": return { action: "signOut", label: TXT.signIn };
@@ -197,7 +201,7 @@ function render(next) {
   boop.dataset.state = S.conn;
   boop.setAttribute("aria-label", S.conn === "off" ? TXT.connect : S.conn === "on" ? TXT.disconnect : TXT.disconnect);
   if (prev.conn !== S.conn && S.conn === "on") { boop.classList.remove("bump"); void boop.offsetWidth; boop.classList.add("bump"); }
-  $("status").textContent = STATUS[S.conn] || TXT.off;
+  $("status").textContent = S.failed && S.conn !== "off" ? TXT.failedTitle : STATUS[S.conn] || TXT.off;
   $("hint").textContent = S.conn === "off" && S.problem !== "account_blocked" ? TXT.hintOff : "";
   $("detail").textContent = detailText();
   const act = $("detail-btn");
@@ -246,6 +250,7 @@ function render(next) {
 function detailText() {
   if (S.problem === "account_blocked") return TXT.accountBlocked;
   if (!S.problem || S.conn === "off") return "";
+  if (S.failed) return failedText();
   if (S.problem === "offline") return TXT.offline;
   if (S.problem === "plan") return TXT.plan;
   if (S.problem === "key_removed") return TXT.keyRemoved;
@@ -257,6 +262,20 @@ function detailText() {
   if (S.problem === "no_handshake") return TXT.noHandshake;
   if (S.problem === "dead") return TXT.dead;
   return "";
+}
+
+// The app stopped trying (issue #53): why, then whether the internet works meanwhile.
+// Nothing about trying again: «Повторить» under it does that.
+function failedText() {
+  const why = S.problem === "blocked" ? TXT.blocked : S.problem === "offline" ? TXT.failedOffline
+    : S.problem === "no_handshake" || S.problem === "dead" ? TXT.failedNoAnswer : "";
+  if (!why) return detailTextFor(S.problem);
+  return why + " " + (S.released ? TXT.failedOpen : TXT.strictClosed);
+}
+
+// Problems the app does not retry anyway (plan, key, sign-in) keep their own words.
+function detailTextFor(p) {
+  return p === "plan" ? TXT.plan : p === "key_removed" ? TXT.keyRemoved : p === "auth" ? TXT.signedOut : p === "account_blocked" ? TXT.accountBlocked : "";
 }
 
 // The banner, the settings row and their busy state while an update installs.
@@ -814,6 +833,7 @@ $("detail-btn").onclick = (e) => {
   else if (a === "extend") call("extend").catch(() => {});
   else if (a === "signOut") call("signOut").catch(() => {});
   else if (a === "support") call("support").catch(() => {});
+  else if (a === "retry") call("retry").catch(() => {});
 };
 $("s-report").onclick = (e) => openReport(e.currentTarget);
 $("report-btn").onclick = (e) => openReport(e.currentTarget);

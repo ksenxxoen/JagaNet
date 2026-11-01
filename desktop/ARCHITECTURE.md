@@ -40,9 +40,9 @@ hosts use; no behaviour moved between layers.
 | `bridge.go` | the command registry (`commands`), typed argument decoders, `Call`, `Invoke`, `Commands()` |
 | `auth.go` | e-mail / pairing / website sign-in, sign-out, `refresh` (plan via `loadPlan`), 401 handling (`unauthorized`) |
 | `catalog.go` | servers, keys, pings, choosing a node (`pick`), picking a country or key |
-| `connect.go` | `Connect` / `Disconnect` / `Toggle`, `sync`, `establish` (what the panel says to run) |
-| `tunnel.go` | applying a config to the adapter, the connect-retry loop, the supervisor loop (`watch`), kill-switch release, the cached config |
-| `supervise.go` | the pure state machine that decides nudge / switch / release / wake (unchanged) |
+| `connect.go` | `Connect` / `Disconnect` / `Toggle`, `Retry` («Повторить» after giving up, issue #53), `sync`, `establish` (what the panel says to run) |
+| `tunnel.go` | applying a config to the adapter, the connect-retry loop, the supervisor loop (`watch`), kill-switch release, giving up (`giveUp`, `Step.GaveUp` → `failed`), the cached config |
+| `supervise.go` | the pure state machine that decides nudge / switch / release / wake / give up. A first connection that never came up is given up after `ConnectBudget` (45 s, issue #53): `Step.GaveUp`, `Supervisor.Failed`; without the strict kill switch the tunnel is released, with it the tunnel and firewall stay; nothing is nudged, switched or woken after that (before 1.3.1 it woke every `RetryAfterRelease` for ever). The window shows «Не удалось подключиться» with «Повторить» (`retry` → `App.Retry`, a fresh attempt with a fresh budget; another country or key is a retry as well). A connection that came up and died keeps the old path (reconnect budget, release, wake). `connectWithRetry` gives up the same way when the panel or the tunnel keeps failing for `ConnectBudget` (not when the network is offline) |
 | `probe.go` | (issue #2) the check outside the tunnel when it stays silent: `/v1/health` and TCP `1.1.1.1:443` in parallel through `SocketControl`, ≤3 s, at most once per 30 s; `Classify` → `offline` / `blocked` / nothing |
 | `failures.go` | (issue #3) failure reports to the panel: the supervisor marks one `handshake_failed` (gave up, no handshake) or `no_rx` (dead) per problem (`Step.Report`); `reportFailure` adds node, endpoint, reason (the probe's verdict when there is one), network kind, version; `Reporter` sends them in the background through the physical interface, a minute apart, and keeps up to 20 in memory while the panel is unreachable |
 | `planwarn.go` | (issue #4) the warning before the plan ends: pure `planWarning(now, expiresAt)` → `soon` (1–3 calendar days left on the computer's clock) / `today` / nothing (no date, or already ended: that is the `plan` problem); `Plan.warn` / `Plan.daysLeft` in `UIState`; the tray note at most once a day per level (`Store.PlanWarned` in `state.json`); `planLoop` asks `/me` again every hour so a renewal or midnight changes the banner |
@@ -120,13 +120,24 @@ format is in `docs/ARCHITECTURE.md` ("VLESS+Reality (Xray)", issue #28).
   is bound; WFP lets this program out (`permitWireGuardService`). Xray never resolves a name: the
   app resolves each variant's host outside the tunnel (live DNS, then the address in use, then the
   panel's `endpointIps`) and gives Xray IP addresses.
-* **The TUN side: a netstack, not Xray's TUN inbound.** The Xray-core release usable with this
-  project's Go (`v1.251208.0`, the last with `go 1.25`; newer ones need Go 1.25.5+ / 1.26) has no
-  TUN inbound, and its later TUN inbound is new. So `vpn/xray.Stack` is the tun2socks idea without
+* **Which Xray-core (issue #53).** The embedded Xray-core must not be older than the nodes': Boop
+  1.3.0 embedded 25.12.8, and nodes on 26.10.29 turned its Reality handshake away (node: `REALITY:
+  processed invalid connection`; app: no reply bytes, «Подключение…» for ever) on Vision and XHTTP
+  alike. Since 1.3.1 it is 26.10.29 (`v1.260327.1-0.20261029083850-0afec66085a8`, commit `0afec66`;
+  Xray's `v26.x` tags are not Go module versions, so a pseudo-version), which needs Go 1.27.
+  The nodes' version is one constant pair in `vpn/xray/version.go` (`NodeCoreVersion`,
+  `NodeCoreModule`); CI fails while go.mod embeds an older xray-core
+  (`TestEmbeddedCoreNotOlderThanNodes`), builds a node of `NodeCoreModule` from source and runs
+  the engine against it (`TestExternalNode`). When the nodes move on: bump the constants, then
+  `go get github.com/xtls/xray-core@<commit>` and `go mod tidy`.
+* **The TUN side: a netstack, not Xray's TUN inbound.** Xray's TUN inbound is newer than this
+  design and not used. So `vpn/xray.Stack` is the tun2socks idea without
   SOCKS: gVisor's netstack (Apache-2.0, the same one amneziawg-go and Xray use) on the adapter's
   packets, promiscuous; each TCP connection and UDP flow is opened again with `Engine.Dial`, which
   hands it to Xray's dispatcher in-process. TCP half-close is passed on; UDP flows end after 60 s
-  of quiet. ICMP is not carried.
+  of quiet. ICMP is not carried. gVisor is the version Xray-core requires (`20260122…`), where
+  `udp.ForwarderHandler` returns `bool`: `acceptUDP` always says "handled", so a flow that cannot
+  be opened is dropped quietly (no ICMP port unreachable), as before.
 * **The config** (`vpn/xray/config.go`): no inbounds; one VLESS outbound to the node's IP, `flow`
   from the variant, Reality (`fingerprint` from the variant, `firefox` by default, `serverName`,
   `publicKey`, `shortId`), raw TCP or XHTTP (`path`, `mode`, Xray's own defaults for the rest); Mux
@@ -148,10 +159,12 @@ format is in `docs/ARCHITECTURE.md` ("VLESS+Reality (Xray)", issue #28).
 * **Licences.** Xray-core and REALITY are MPL-2.0 (source of the exact versions is public, unmodified);
   gVisor, gRPC, go-proxyproto Apache-2.0; quic-go, brotli, blake3 MIT; uTLS, circl, miekg/dns,
   protobuf, gorilla/websocket BSD; juju/ratelimit (used by REALITY) LGPL-3.0 with a static-linking
-  exception. Xray-core also imports two packages of sagernet/sing (GPL-3.0): `go.mod` replaces that
-  module with `third_party/sing-nogpl`, Boop's own stand-in for the two names it needs (see its
-  README), so no GPL code is linked. `go mod tidy` must be run as `go mod tidy -e` (tests of
-  Xray-core's own packages import more of sing; they are not built here).
+  exception. Since 26.x Xray-core also links gopher-lua (MIT), gopher-luar (MPL-2.0), apernet/quic-go
+  (MIT), go4.org/netipx and golang.org/x/exp, x/crypto/x509roots/fallback (BSD). Xray-core up to
+  25.x imported two packages of sagernet/sing (GPL-3.0), which 1.3.0 replaced with its own stand-in;
+  26.x no longer imports sing, so the stand-in and the `replace` are gone and plain `go mod tidy`
+  works. CI's "no GPL modules linked" step fails if any `github.com/sagernet/` module is linked
+  into the Windows or Linux binaries again.
 * **Tests** (`vpn/xray/*_test.go`, Linux, no TUN): the config from the panel's parameters
   (`config_test.go`), the switch logic (`switch_test.go`), and a real Xray node in the test process
   (VLESS + Reality with a local TLS 1.3 target, Vision and XHTTP inbounds, freedom to a local echo
@@ -161,6 +174,14 @@ format is in `docs/ARCHITECTURE.md` ("VLESS+Reality (Xray)", issue #28).
   `Stack` and `Engine` to the node (2 MB each way), IPv6 goes nowhere. Under `-race`, Xray's
   Vision (checkptr) and XHTTP client (a data race inside it) cannot run, so those tests use raw TCP
   with Reality there; CI runs `go test ./vpn/xray/` once more without `-race`.
+  The in-process node's freedom outbound has a final rule allowing private addresses (Xray 26
+  blackholes them for flows that came in over VLESS; the echo server is on 127.0.0.1).
+  `TestExternalNode` (`BOOP_XRAY_BIN`=path of an xray binary, skipped otherwise; CI builds one from
+  `NodeCoreModule`) runs a real Xray process as the node with keys made in the test (what
+  `xray x25519` prints) and both inbounds, and pumps 2 MB both ways plus UDP on Vision and on XHTTP;
+  with the 1.3.0 engine (25.12.8) against a 26.10.29 node it fails with the node logging `REALITY:
+  processed invalid connection … authentication failed`. `TestLiveNode` (`BOOP_LIVE_VLESS`=
+  `vless://` links, by hand only) checks a real node: the engine's probe must be answered through it.
   Not tested here: the real Wintun adapter, routes and WFP with VLESS (Windows only).
 ## Linux (issue #25)
 
@@ -204,7 +225,7 @@ says "при входе в систему" instead of "с Windows"), `UpdateUI.l
   `supportedProtocols`, a TCP ping that answers and one that does not, «недоступен») and a silent node with the
   real 20 s / 45 s timeouts (`BOOP_FAKE_NOHANDSHAKE=1` keeps the stand-in tunnel from
   handshaking). About three minutes; `E2E_LOGS=<dir>` keeps each app's log.
-  Manual checks for real Windows and Ubuntu machines: `docs/QA-1.3.0.md`; publishing: `docs/RELEASE-1.3.0.md`.
+  Manual checks for real Windows and Ubuntu machines: `docs/QA-1.3.0.md`; publishing: `docs/RELEASE-1.3.1.md` (1.3.0: `docs/RELEASE-1.3.0.md`).
 * `FAKE_EXPIRES_DAYS=2 node scripts/fakepanel.mjs`, then `BOOP_API=<its URL> go run .` — the dev
   build against the made-up panel by hand (e.g. the plan-ends-soon banner, issue #4).
   `FAKE_NOTICE=<text>` and `FAKE_STATUS=s-nl:maintenance,s-fi:degraded` add the owner's note and
