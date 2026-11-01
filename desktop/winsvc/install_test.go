@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -217,7 +218,7 @@ func (a *fakeAuto) DeleteTask() error {
 func TestMigrateAutostart(t *testing.T) {
 	exe := `C:\Program Files\Boop\Boop.exe`
 	a := &fakeAuto{task: true}
-	if err := MigrateAutostart(a, exe); err != nil {
+	if err := MigrateAutostart(a, exe, true); err != nil {
 		t.Fatal(err)
 	}
 	if !a.key || a.task || a.cmd != `"`+exe+`" --tray` {
@@ -225,23 +226,71 @@ func TestMigrateAutostart(t *testing.T) {
 	}
 	// The task could not be deleted: autostart is on through the key anyway.
 	b := &fakeAuto{task: true, failDel: true}
-	if err := MigrateAutostart(b, exe); err != nil || !b.key {
+	if err := MigrateAutostart(b, exe, true); err != nil || !b.key {
 		t.Fatalf("%+v %v", b, err)
 	}
 	// The key could not be written: the task stays, nothing is lost.
 	c := &fakeAuto{task: true, failSet: true}
-	if err := MigrateAutostart(c, exe); err == nil || !c.task {
+	if err := MigrateAutostart(c, exe, true); err == nil || !c.task {
 		t.Fatalf("%+v %v", c, err)
 	}
 	// Autostart was off: stays off.
 	d := &fakeAuto{}
-	if err := MigrateAutostart(d, exe); err != nil || d.key {
+	if err := MigrateAutostart(d, exe, true); err != nil || d.key {
 		t.Fatalf("%+v %v", d, err)
 	}
 	// Key on, pointing elsewhere: re-pointed.
 	e := &fakeAuto{key: true, cmd: "old"}
-	_ = MigrateAutostart(e, exe)
+	_ = MigrateAutostart(e, exe, true)
 	if e.cmd != RunCommand(exe) {
 		t.Fatalf("%+v", e)
+	}
+}
+
+// The service is not working yet (broken install, declined prompt): the old
+// autostart task stays, it is the one that still starts the program.
+func TestMigrateAutostartKeepsTaskWithoutService(t *testing.T) {
+	exe := `C:\Program Files\Boop\Boop.exe`
+	a := &fakeAuto{task: true}
+	if err := MigrateAutostart(a, exe, false); err != nil || !a.task || a.key {
+		t.Fatalf("%+v %v", a, err)
+	}
+}
+
+// Every step that can fail names itself, with the Windows code when there is one.
+func TestInstallStepErrors(t *testing.T) {
+	for _, step := range []string{"secure", "copy", "write", "create", "start"} {
+		f := newFake()
+		f.failOn = step
+		err := Install(f, Extras{"wintun.dll": []byte("x")})
+		var se *StepError
+		if !errors.As(err, &se) || se.Step == "" {
+			t.Fatalf("%s: %v", step, err)
+		}
+	}
+	err := stepErr("secure-program-dir", syscall.Errno(1307))
+	step, code, _ := Describe(err)
+	if step != "secure-program-dir" || code != 1307 {
+		t.Fatalf("%q %d", step, code)
+	}
+	if m := Message(err); !strings.Contains(m, "1307") || !strings.Contains(m, "secure-program-dir") {
+		t.Fatal(m)
+	}
+	if _, code, _ := Describe(errors.New("plain")); code != 0 {
+		t.Fatal(code)
+	}
+}
+
+// 1.4.0 left a half install: files with wrong rights, no service. Running the
+// installer again finishes it.
+func TestInstallRepairsBrokenInstall(t *testing.T) {
+	f := newFake()
+	f.state = NotInstalled
+	f.exe = filepath.Join(f.dir, "Boop.exe")
+	if err := Install(f, nil); err != nil {
+		t.Fatal(err)
+	}
+	if f.state != Running {
+		t.Fatalf("state %v", f.state)
 	}
 }

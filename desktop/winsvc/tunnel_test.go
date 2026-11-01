@@ -142,3 +142,25 @@ func TestTunnelCarriesVless(t *testing.T) {
 		t.Fatal("VLESS refused")
 	}
 }
+
+// The service cannot be installed: the fallback is asked once per attempt, and
+// when it cannot help either, the install error is what the person reads.
+func TestTunnelFallsBackWhenInstallFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "none.sock")
+	tn := NewTunnel(dialer(path), "1.4.1", func() error { return errors.New("шаг «secure-program-dir»") })
+	defer tn.Close()
+	var got error
+	calls := 0
+	tn.Fallback = func(e error) error { calls++; got = e; return nil }
+	err := tn.Apply(cfg())
+	if err == nil || calls != 1 || got == nil {
+		t.Fatalf("err %v calls %d", err, calls)
+	}
+	// Fallback could not take over: the install error is the answer.
+	tn2 := NewTunnel(dialer(path), "1.4.1", func() error { return errors.New("install broke") })
+	defer tn2.Close()
+	tn2.Fallback = func(error) error { return errors.New("declined") }
+	if err := tn2.Apply(cfg()); err == nil || err.Error() != "install broke" {
+		t.Fatalf("%v", err)
+	}
+}

@@ -158,3 +158,69 @@ jobs:
           path: ${{ runner.temp }}/e2e-logs
           retention-days: 7
           if-no-files-found: ignore
+
+  # Issue #65: the service was never tried on a real Windows (1.4.0 failed to
+  # install everywhere). The runner is an administrator, so the elevated half
+  # (--install-service) runs here as it does after the UAC prompt.
+  windows-service:
+    name: service install on Windows (e2e)
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: .
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Boop.exe-${{ github.event.pull_request.head.sha || github.sha }}
+          path: dist
+
+      - name: install, upgrade, uninstall
+        run: |
+          $exe = Join-Path $PWD 'dist\Boop.exe'
+          $dir = Join-Path $env:ProgramFiles 'Boop'
+          $data = Join-Path $env:ProgramData 'Boop'
+          function Run($flag) {
+            $p = Start-Process -FilePath $exe -ArgumentList $flag -Wait -PassThru
+            return $p.ExitCode
+          }
+          function Dump {
+            foreach ($f in @("$data\install.log", "$data\service.log", "$env:TEMP\install.log")) {
+              if (Test-Path $f) { Write-Host "--- $f"; Get-Content $f -Tail 60 }
+            }
+          }
+          function Check($ok, $what) {
+            if (-not $ok) { Dump; throw "FAILED: $what" }
+            Write-Host "ok: $what"
+          }
+
+          Check ((Run '--install-service') -eq 0) 'install exits 0'
+          $svc = Get-Service BoopVPN
+          Check ($svc.Status -eq 'Running') 'service BoopVPN is Running'
+          Check (Test-Path "$dir\Boop.exe") 'Boop.exe in Program Files'
+          Check (Test-Path "$dir\wintun.dll") 'wintun.dll in Program Files'
+          Check ([System.IO.Directory]::GetFiles('\\.\pipe\') -contains '\\.\pipe\BoopVPN') 'pipe BoopVPN exists'
+
+          # Ordinary users may read and run, not write.
+          $acl = (Get-Acl $dir).Access | Where-Object { $_.IdentityReference -match 'Users$' }
+          Check (($acl | Where-Object { $_.FileSystemRights -match 'Write|Modify|FullControl' }).Count -eq 0) 'Users cannot write Program Files\Boop'
+
+          # Upgrade over a running service.
+          Check ((Run '--install-service') -eq 0) 'second install (upgrade) exits 0'
+          Check ((Get-Service BoopVPN).Status -eq 'Running') 'service Running after upgrade'
+
+          Check ((Run '--uninstall-service') -eq 0) 'uninstall exits 0'
+          Start-Sleep -Seconds 2
+          Check ($null -eq (Get-Service BoopVPN -ErrorAction SilentlyContinue)) 'service removed'
+          Check (-not (Test-Path "$dir\Boop.exe")) 'Boop.exe removed'
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: service-logs
+          path: |
+            C:\ProgramData\Boop\*.log
+          retention-days: 7
+          if-no-files-found: ignore

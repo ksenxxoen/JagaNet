@@ -100,7 +100,7 @@ func (h *handler) Execute(_ []string, req <-chan svc.ChangeRequest, status chan<
 	srv.Update = func() (string, error) {
 		updMu.Lock()
 		defer updMu.Unlock()
-		v, err := selfUpdate(h.o)
+		v, err := SelfUpdate(h.o)
 		if err == nil && v != "" {
 			// Answer first, then leave; the SCM starts the new program.
 			go func() { time.Sleep(time.Second); exit <- restartExit }()
@@ -143,11 +143,11 @@ loop:
 	return false, code
 }
 
-// selfUpdate does what the UI's updater does, but in the service, which holds the
+// SelfUpdate does what the UI's updater does, but in the service, which holds the
 // only copy it may replace: the manifest comes from the panel, never from the
 // caller; the program is checked by SHA-256 (and the signature when a key is
 // configured) before it replaces the installed one.
-func selfUpdate(o ServiceOptions) (string, error) {
+func SelfUpdate(o ServiceOptions) (string, error) {
 	if o.Version == "" || o.Version == "dev" {
 		return "", errors.New("a dev build does not update")
 	}

@@ -25,6 +25,11 @@ type Tunnel struct {
 	// Install installs or upgrades the service (elevated) and returns when it
 	// answers. Its error is shown to the person as it is.
 	Install func() error
+	// Fallback is called when the service cannot be installed (any error, or the
+	// prompt declined): it moves the tunnel into a process with rights, the way
+	// 1.3.x ran it, so the person is not left without VPN. It returns nil when it
+	// took over (the process is about to be replaced), an error when it could not.
+	Fallback func(installErr error) error
 	// Version is this program's.
 	Version string
 
@@ -37,6 +42,14 @@ func NewTunnel(dial func(time.Duration) (net.Conn, error), version string, insta
 	c := helper.NewDialClient(dial)
 	c.VLESS = true
 	return &Tunnel{Client: c, Install: install, Version: version}
+}
+
+// Ready reports whether the service answers and is not older than this window,
+// without installing anything.
+func (t *Tunnel) Ready() bool {
+	h, err := t.Client.Hello()
+	need, _ := Need(h.Version, err == nil, t.Version)
+	return !need
 }
 
 // Ensure checks the service at start: missing or older than this window means
@@ -81,6 +94,9 @@ func (t *Tunnel) Apply(c *vpn.Config) error {
 		return err
 	}
 	if err := t.install(); err != nil {
+		if t.Fallback != nil && t.Fallback(err) == nil {
+			return errors.New("перезапуск Boop VPN в резервном режиме (с правами администратора)")
+		}
 		return err
 	}
 	return t.Client.Apply(c)
