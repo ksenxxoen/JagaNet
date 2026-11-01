@@ -41,6 +41,8 @@ data class Config(
     val paymentProvider: String? = null,
     /** From @BotFather. Unset = no Telegram bot. */
     val telegramBotToken: String? = null,
+    /** The bot's mode, support chat, login widget… (TELEGRAM_* variables, issue #38). */
+    val telegram: dev.jaganet.server.telegram.TelegramConfig = dev.jaganet.server.telegram.TelegramConfig(),
     /** Where the website's "Download for Android" points. Default: $publicUrl/download/android. */
     val androidAppUrl: String? = null,
     val iosAppUrl: String? = null,
@@ -57,6 +59,12 @@ data class Config(
     val signupProDays: Int = 0,
     /** true = every user sees the referral program; false = only admins (owners). */
     val referralsPublic: Boolean = false,
+    /** VLESS_BALANCER=1: cascade entries balance over exit nodes (issue #41) and lead the subscription as "Auto". */
+    val vlessBalancer: Boolean = false,
+    /** SUPPORT_URL: the `support-url` header of VLESS subscriptions; default the Telegram bot, else the website. */
+    val supportUrl: String? = null,
+    /** "Invite a friend" rewards (issue #40): REFERRAL_* variables, then the admin panel. */
+    val referralRewards: RewardRules = RewardRules(),
 ) {
     companion object {
         fun load(env: Map<String, String> = System.getenv()): Config {
@@ -94,8 +102,17 @@ data class Config(
                 ),
                 signupProDays = num("SIGNUP_PRO_DAYS", 0).toInt().coerceAtLeast(0),
                 referralsPublic = env["REFERRALS_PUBLIC"] == "1",
+                vlessBalancer = env["VLESS_BALANCER"] == "1",
+                supportUrl = env["SUPPORT_URL"]?.takeIf { it.isNotBlank() },
+                referralRewards = RewardRules(
+                    days = num("REFERRAL_REWARD_DAYS", 14).toInt().coerceIn(0, 3650),
+                    condition = RewardRules.condition(env["REFERRAL_REWARD_CONDITION"]),
+                    inviteeDays = num("REFERRAL_INVITEE_DAYS", 0).toInt().coerceIn(0, 3650),
+                    monthlyCap = num("REFERRAL_MONTHLY_CAP", 10).toInt().coerceIn(0, 10_000),
+                ),
                 paymentProvider = env["PAYMENT_PROVIDER"]?.takeIf { it.isNotBlank() } ?: "test".takeIf { mode != Mode.PRODUCTION },
                 telegramBotToken = env["TELEGRAM_BOT_TOKEN"]?.takeIf { it.isNotBlank() },
+                telegram = dev.jaganet.server.telegram.TelegramConfig.load(env),
                 androidAppUrl = env["ANDROID_APP_URL"]?.takeIf { it.isNotBlank() },
                 iosAppUrl = env["IOS_APP_URL"]?.takeIf { it.isNotBlank() },
                 downloadsDir = env["DOWNLOADS_DIR"]?.takeIf { it.isNotBlank() },
@@ -126,6 +143,28 @@ data class Config(
                 speedLimitsFile = env["SPEED_LIMITS_FILE"]?.takeIf { it.isNotBlank() },
             )
         }
+    }
+}
+
+/**
+ * "Invite a friend, get +14 days" (issue #40). The inviter gets [days] of Pro when the invited person
+ * pays for the first time ([condition] "first_payment") or right at sign-up ("signup"). [inviteeDays] > 0
+ * also gives the invited person a bonus. At most [monthlyCap] rewards per inviter per calendar month
+ * (UTC), 0 = no cap. [days] = 0 turns the rewards off.
+ */
+data class RewardRules(
+    val days: Int = 14,
+    val condition: String = FIRST_PAYMENT,
+    val inviteeDays: Int = 0,
+    val monthlyCap: Int = 10,
+) {
+    val enabled get() = days > 0
+
+    companion object {
+        const val FIRST_PAYMENT = "first_payment"
+        const val SIGNUP = "signup"
+        val CONDITIONS = listOf(FIRST_PAYMENT, SIGNUP)
+        fun condition(v: String?): String = v?.trim()?.lowercase()?.takeIf { it in CONDITIONS } ?: FIRST_PAYMENT
     }
 }
 

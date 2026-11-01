@@ -41,8 +41,8 @@ class Referrals(private val ctx: Ctx, private val botUsername: () -> String? = {
 
     /* ---------------- links ---------------- */
 
-    private fun webUrl(code: String) = "${ctx.cfg.publicUrl.trimEnd('/')}/r/${URLEncoder.encode(code, "UTF-8")}"
-    private fun telegramUrl(code: String) = botUsername()?.let { "https://t.me/$it?start=${URLEncoder.encode(code, "UTF-8")}" }
+    fun webUrl(code: String) = "${ctx.cfg.publicUrl.trimEnd('/')}/r/${URLEncoder.encode(code, "UTF-8")}"
+    fun telegramUrl(code: String) = botUsername()?.let { "https://t.me/$it?start=ref_${URLEncoder.encode(code, "UTF-8")}" }
 
     private fun Row.toLink(f: Funnel) = ReferralLink(
         id = str("id"), name = str("name"), code = str("code"), main = bool("main"),
@@ -103,13 +103,15 @@ class Referrals(private val ctx: Ctx, private val botUsername: () -> String? = {
                  FROM users u WHERE u.referred_by=?::uuid""",
             p.user.id,
         )!!
-        ReferralRes(code, r.int("invited"), r.int("subscribed"), 0, daysEarned(sql, p.user.id), webUrl(code))
+        val main = sql.one("SELECT code FROM referral_links WHERE user_id=?::uuid AND main", p.user.id)?.str("code") ?: code.uppercase()
+        val rules = ctx.live.referralRewards
+        ReferralRes(
+            code, r.int("invited"), r.int("subscribed"), rules.days, daysEarned(sql, p.user.id), webUrl(code),
+            telegramUrl = telegramUrl(main), rewardCondition = rules.condition,
+        )
     }
 
-    private fun daysEarned(sql: Sql, userId: String) = sql.one(
-        "SELECT coalesce(sum(extract(epoch FROM expires_at - started_at) / 86400), 0)::int AS d FROM subscriptions WHERE user_id=?::uuid AND source='referral'",
-        userId,
-    )!!.int("d")
+    private fun daysEarned(sql: Sql, userId: String) = ReferralRewards.daysEarned(sql, userId)
 
     private fun since(period: ReferralPeriod): Instant = when (period) {
         ReferralPeriod.D7 -> ctx.now().minus(Duration.ofDays(7))
@@ -131,7 +133,7 @@ class Referrals(private val ctx: Ctx, private val botUsername: () -> String? = {
             sources = sources(sql, scope, from),
             channels = channels(sql, scope, from),
             recent = recent(sql, scope, from),
-            rewardDays = 0,
+            rewardDays = ctx.live.referralRewards.days,
             daysEarned = daysEarned(sql, userId),
         )
     }

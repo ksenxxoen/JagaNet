@@ -9,8 +9,7 @@ import dev.jaganet.server.protocols.AmneziaWgDriver
 import dev.jaganet.server.protocols.VlessDriver
 import dev.jaganet.server.protocols.WireGuardDriver
 import dev.jaganet.server.services.LiveMailer
-import dev.jaganet.server.telegram.HttpTelegramApi
-import dev.jaganet.server.telegram.TelegramBot
+import dev.jaganet.server.telegram.startTelegramBot
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import kotlinx.coroutines.delay
@@ -49,15 +48,12 @@ fun main() {
 fun serve(ctx: Ctx, collectEveryMs: Long, wait: Boolean = true) {
     val services = Services(ctx)
     // Settings changed in the admin panel override the environment file.
-    kotlinx.coroutines.runBlocking { services.settings.load() }
+    kotlinx.coroutines.runBlocking { services.settings.load(); services.referralRewards.load() }
     val log = LoggerFactory.getLogger("jaganet")
     embeddedServer(Netty, port = ctx.cfg.port, host = "0.0.0.0") {
         jaganet(services)
-        ctx.cfg.telegramBotToken?.let { token ->
-            val bot = TelegramBot(services, HttpTelegramApi(token))
-            services.bot = bot
-            launch { bot.run() }
-        }
+        // Telegram bot (TELEGRAM_BOT_TOKEN): polling or webhook, in its own scope (telegram/TelegramRuntime.kt).
+        startTelegramBot(services)
         if (ctx.cfg.monitor.enabled) launch {
             delay(5_000)
             while (true) {
@@ -70,6 +66,13 @@ fun serve(ctx: Ctx, collectEveryMs: Long, wait: Boolean = true) {
             while (true) {
                 val ok = runCatching { services.blocklists.refresh() }.getOrDefault(false)
                 delay(if (ok) 12 * 3_600_000L else 600_000L)
+            }
+        }
+        launch {
+            // Invite rewards (issue #40): tell recipients not told yet (sign-up rewards, retries after a Telegram outage).
+            while (true) {
+                delay(60_000)
+                runCatching { services.referralRewards.deliver() }.onFailure { log.error("invite reward notices failed", it) }
             }
         }
         launch {

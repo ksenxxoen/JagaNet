@@ -73,19 +73,23 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
     /**
      * The nodes for the apps. [supported]: the protocols the asking app runs (its
      * `supportedProtocols`); null (apps from before VLESS) = everything but [Protocols.OPT_IN].
-     * A node left with no protocol for the app is not listed at all.
+     * A node left with no protocol for the app is not listed at all. VLESS is left out on nodes the
+     * owner hid from subscriptions (an exit only for the cascade, issue #41). In the owner's order.
      */
     suspend fun servers(supported: Set<String>? = null): List<ServerLocation> = ctx.db.run { sql ->
-        sql.query("SELECT s.*, (SELECT count(*)::int FROM tunnels t WHERE t.server_id=s.id) AS peers FROM servers s WHERE $USABLE ORDER BY s.name", ctx.now().minus(NODE_OFFLINE))
+        sql.query("SELECT s.*, (SELECT count(*)::int FROM tunnels t WHERE t.server_id=s.id) AS peers FROM servers s WHERE $USABLE ORDER BY s.sort_order, s.name", ctx.now().minus(NODE_OFFLINE))
             .map { s ->
                 val offered = usable(s).filter { if (supported == null) it !in Protocols.OPT_IN else it in supported }
+                    .filter { it != Protocols.VLESS || s.bool("in_subscription") }
                 val ping = offered.firstOrNull()?.let { pingTarget(s, it) }
                 val host = ping?.host ?: s.json("protocols").values.firstNotNullOfOrNull { ((it as? JsonObject)?.get("endpoint") as? JsonPrimitive)?.content }?.substringBeforeLast(':')
                 val cc = s.str("country_code").trim()
                 ServerLocation(
                     s.str("id"), s.str("name"), s.str("city"), cc, minOf(1.0, s.int("peers").toDouble() / s.int("max_peers")), offered, host,
                     status = s.str("status"), notice = s.strOrNull("notice"),
-                    countryName = s.strOrNull("country_name") ?: Countries.ru(cc), ping = ping,
+                    countryName = if (Protocols.VLESS in offered && VlessLocations.isBalancingEntry(ctx, s)) VlessLocations.entryLabel(s)
+                    else s.strOrNull("display_name") ?: s.strOrNull("country_name") ?: Countries.ru(cc),
+                    ping = ping,
                 )
             }
             .filter { it.protocols.isNotEmpty() }
@@ -178,6 +182,8 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
             "UPDATE tunnels SET server_id=?, address=?, last_rx=0, last_tx=0, last_torrent_rx=0, last_torrent_tx=0 WHERE device_id=?::uuid",
             to.str("id"), address, t.str("device_id"),
         )
+        // The UUID was on [to] as a replica already, and now goes on [from] as one.
+        if (proto == Protocols.VLESS) VlessLocations.syncReplicas(ctx, sql, t.str("device_id"))
     }
 
     /**
@@ -272,6 +278,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
                 val oldServer = sql.one("SELECT * FROM servers WHERE id=?", existing.str("server_id"))
                 val oldProto = existing.str("protocol")
                 if (oldServer != null) ctx.drivers[oldProto]?.removePeer(oldServer.node(oldProto), existing.str("peer_key"))
+                VlessLocations.replicaServers(sql, deviceId).forEach { ctx.nodeHub.changed(it) }
                 sql.exec("DELETE FROM tunnels WHERE device_id=?::uuid", deviceId)
                 ctx.nodeHub.changed(existing.str("server_id"))
             }
@@ -282,6 +289,8 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
                 deviceId, server.str("id"), req.protocol, address, added.peerKey, clientParams,
             )
             ctx.nodeHub.changed(server.str("id"))
+            // The same UUID on every other listed VLESS node (issue #41).
+            if (req.protocol == Protocols.VLESS) VlessLocations.syncReplicas(ctx, sql, deviceId)
             TunnelConfig(
                 protocol = req.protocol,
                 serverId = server.str("id"),
@@ -303,9 +312,10 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         }
         return sql.one(
             """SELECT s.* FROM servers s WHERE $USABLE AND (s.protocols -> ?) IS NOT NULL
+                  AND (s.in_subscription OR ? <> 'vless')
                   AND (SELECT count(*) FROM tunnels t WHERE t.server_id=s.id) < s.max_peers
                 ORDER BY $STATUS_RANK, (SELECT count(*) FROM tunnels t WHERE t.server_id=s.id)::float / s.max_peers LIMIT 1""",
-            ctx.now().minus(NODE_OFFLINE), protocol,
+            ctx.now().minus(NODE_OFFLINE), protocol, protocol,
         ) ?: throw AppError(503, ErrorCode.SERVER_FULL, "No server offers {protocol}", mapOf("protocol" to protocol))
     }
 
@@ -457,6 +467,8 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
     }
 
     suspend fun revoke(sql: Sql, deviceId: String) {
+        // Its VLESS replicas go with the tunnel (ON DELETE CASCADE): their nodes drop the UUID too.
+        VlessLocations.replicaServers(sql, deviceId).forEach { ctx.nodeHub.changed(it) }
         val t = sql.one("DELETE FROM tunnels WHERE device_id=?::uuid RETURNING *", deviceId) ?: return
         ctx.nodeHub.changed(t.str("server_id"))
         val server = sql.one("SELECT * FROM servers WHERE id=?", t.str("server_id")) ?: return

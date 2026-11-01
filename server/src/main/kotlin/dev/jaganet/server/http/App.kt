@@ -99,7 +99,11 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
     val testAccounts = dev.jaganet.server.services.TestAccounts(ctx, keys, tunnels)
     val settings = Settings(ctx)
     val finance = Finance(ctx)
-    val payments = Payments(ctx, billing, keys, tariffs)
+    /** "Invite a friend, get +14 days" (issue #40): rewards on the invited person's first payment. */
+    val referralRewards = dev.jaganet.server.services.ReferralRewards(ctx, referrals) {
+        bot?.let { b -> { chat: Long, text: String -> b.sendText(chat, text) } }
+    }
+    val payments = Payments(ctx, billing, keys, tariffs, referralRewards)
     val site = Site(ctx)
     /** Set when TELEGRAM_BOT_TOKEN is configured and the bot started. */
     @Volatile var bot: dev.jaganet.server.telegram.TelegramBot? = null
@@ -193,11 +197,15 @@ fun Application.jaganet(s: Services) {
                 }
                 post("/auth/email/verify") {
                     val b = call.receive<EmailVerifyReq>()
-                    call.respond(s.auth.verifyEmailLogin(email(b.email), code(b.code), b.device))
+                    val session = s.auth.verifyEmailLogin(email(b.email), code(b.code), b.device)
+                    call.rememberClient(s, session.user.id)
+                    call.respond(session)
                 }
                 post("/auth/pair/redeem") {
                     val b = call.receive<PairRedeemReq>()
-                    call.respond(s.auth.redeemPairingCode(code(b.code), b.device))
+                    val session = s.auth.redeemPairingCode(code(b.code), b.device)
+                    call.rememberClient(s, session.user.id)
+                    call.respond(session)
                 }
                 post("/auth/app/start") { call.respond(s.auth.startAppLogin(call.receive<AppLoginStartReq>().device)) }
             }
@@ -219,7 +227,11 @@ fun Application.jaganet(s: Services) {
                 call.respond(OkRes())
             }
 
-            get("/me") { call.respond(s.ent.me(call.principal(s))) }
+            get("/me") {
+                val p = call.principal(s)
+                call.rememberClient(s, p.user.id)
+                call.respond(s.ent.me(p))
+            }
             get("/me/payments") { call.respond(PaymentsRes(s.ent.payments(call.principal(s)))) }
             delete("/me") {
                 val p = call.principal(s)
@@ -280,9 +292,16 @@ fun Application.jaganet(s: Services) {
             nodeApi(s)
             diagnosticsApi(s)
             controlApi(s)
-            get("/referrals") { call.respond(s.referrals.get(call.principal(s).also { s.requireReferrals(it.user.role) })) }
+            // The app's invite summary: for everyone while invite rewards are on (issue #40).
+            get("/referrals") {
+                val p = call.principal(s)
+                if (!s.invitesFor(p.user.role)) throw notFound("The referral program is not available")
+                call.respond(s.referrals.get(p))
+            }
             referralApi(s)
+            referralRewardsApi(s)
             salesApi(s)
+            telegramWebApi(s)
             get("/admin/overview") {
                 call.owner()
                 call.respond(s.admin.overview(call.apiLang()))

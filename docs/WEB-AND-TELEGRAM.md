@@ -26,6 +26,11 @@ API (all under `/v1`, bearer token from the normal email sign-in):
 
 ## Telegram bot
 
+A user can do everything in the bot without the website (issue #38): sign up, buy and renew,
+get the subscription link and QR code, manage devices, get reminders, talk to support, and sign
+in on the website. Code: `server/.../telegram/` (bot, accounts, transport), `http/TelegramWeb.kt`
+(website endpoints), `web/telegram.js` (Login Widget, linking card).
+
 Turn it on: create a bot with [@BotFather](https://t.me/BotFather), then on the server
 
 ```
@@ -33,11 +38,65 @@ curl -fsSL https://raw.githubusercontent.com/ksenxxoen/JagaNet/claude/adoring-br
 ```
 
 (or put `TELEGRAM_BOT_TOKEN=…` in `/etc/jaganet/env` and `systemctl restart jaganet`).
-It uses long polling, so no webhook or extra port is needed.
 
-Commands: `/start` (plans), `/key`, `/app` (download links + a device code that signs the
-JagaNet app into the same account), `/status`. `/start <invite code>` applies a referral.
-Telegram users get an account with the placeholder email `tg<id>@telegram.invalid`.
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `TELEGRAM_BOT_TOKEN` | unset = no bot | Token from @BotFather. Never logged. |
+| `TELEGRAM_MODE` | `polling` | `polling` (no open port needed, works when only outbound HTTPS reaches Telegram) or `webhook`. |
+| `TELEGRAM_WEBHOOK_URL` | `$PUBLIC_URL/telegram/webhook` | Webhook mode: the HTTPS URL Telegram posts to. |
+| `TELEGRAM_WEBHOOK_SECRET` | derived from `AUTH_SECRET` | Webhook mode: checked in `X-Telegram-Bot-Api-Secret-Token`. |
+| `TELEGRAM_SUPPORT_CHAT_ID` | first of `ALERT_TELEGRAM_CHAT_IDS` | Chat (a person or a group) that gets support messages. The bot's `/myid` shows a chat's id. |
+| `TELEGRAM_LOGIN_WIDGET` | off | `1` shows the Telegram Login Widget on the sign-in page (after `/setdomain`, below). |
+| `TELEGRAM_API_URL` | `https://api.telegram.org` | Another Bot API server (a local `telegram-bot-api`, or a reverse proxy abroad). |
+| `TELEGRAM_PROXY` | none | HTTP proxy for the Bot API, `host:port`. |
+
+If Telegram can't be reached the bot retries with growing pauses (5 s up to 2 min); every call has
+a short timeout, payments and the website never wait for Telegram, and the status page shows
+"The bot can't reach Telegram".
+
+Commands: `/start` (menu), `/keys`, `/pay`, `/devices`, `/support`, `/help`, `/login`, plus the older
+`/key`, `/app`, `/status`, `/language`, `/invite`, `/myid`. Everything is also on inline buttons.
+
+- **Accounts.** The first message makes an account bound to the Telegram id (placeholder e-mail
+  `tg<id>@telegram.invalid`). `users.telegram_id` is unique, so there is one account per Telegram.
+- **Linking an e-mail account.** Account page on the website, "Link Telegram": a one-time link
+  `t.me/<bot>?start=link_<code>` (15 minutes). If the person had an empty bot account it is
+  removed; one with purchases is left alone and the bot asks them to write to support.
+- **Website sign-in.** "Sign in with Telegram" opens `t.me/<bot>?start=login`; the bot sends a
+  one-time link valid 10 minutes. With `TELEGRAM_LOGIN_WIDGET=1` the Login Widget is shown too; its
+  data is checked with HMAC-SHA256 against the bot token and `auth_date` must be under 1 hour old.
+- **Buying.** Tariffs and the same checkout as the website (`Payments`, channel `telegram`). After
+  payment the bot sends the date and the keys.
+- **Keys.** The subscription link `/k/<token>/vless` with its QR code, the key page `/k/<token>`,
+  and short steps (Happ, v2RayTun, then Hiddify). No server or protocol names. Without VLESS nodes
+  the AmneziaWG key is sent as before (QR code and `BoopVPN.conf`).
+- **Devices.** Devices with a tunnel, "N of limit", delete with confirmation. The subscription key
+  (issue #33) is outside the limit and can't be deleted.
+- **Reminders.** 3 days and 1 day before the end, at the end (each once per end date), and on
+  payment. "Notifications" turns them off; users who blocked the bot are skipped.
+- **Support.** "Support", then the next messages (30 minutes) are forwarded to the support chat
+  with who wrote. The admin *replies* to the forwarded message and the answer goes to the user.
+  In a group, the bot sees replies to its own messages even with privacy mode on.
+- **Referrals.** `t.me/<bot>?start=ref_<code>` (older links without `ref_` work too) counts a click
+  and a new account remembers the inviter (`referred_by`, `referral_link_id`) and the raw code
+  (`users.tg_start_ref`).
+
+### Login Widget domain (@BotFather)
+
+1. In @BotFather: `/setdomain`, choose the bot, send the site's domain (as in `PUBLIC_URL`, without
+   `https://`, e.g. `vpn.example.com`).
+2. Put `TELEGRAM_LOGIN_WIDGET=1` in `/etc/jaganet/env`, `systemctl restart jaganet`.
+
+Without step 1 the widget says "Bot domain invalid", so it stays off until both are done. The
+"Sign in with Telegram" button (through the bot) needs no domain setup.
+
+### Webhook instead of polling
+
+Polling is the default and needs nothing else. For a webhook the site must be reachable by
+Telegram over HTTPS on 443, 80, 88 or 8443: set `TELEGRAM_MODE=webhook` (and
+`TELEGRAM_WEBHOOK_URL` if the public URL differs), restart. The bot registers the webhook itself
+and checks it every minute. Back to polling: remove `TELEGRAM_MODE`, restart (the webhook is
+deleted on start).
 
 ## Payments
 
@@ -95,3 +154,35 @@ people (emails masked). Archived links stop counting clicks; their history stays
 The owner sees the whole program and the top partners (`/v1/admin/referrals`).
 
 Where: website `#/referrals`, the app's Invite friends screen and owner dashboard, the bot's /invite.
+
+### Invite a friend, get +14 days (issue #40)
+
+Every user (not only admins) gets "Invite a friend" while rewards are on: website `#/invite`
+(menu «Пригласить друга»), the bot's /invite and «🎁 Пригласить друзей» button, the apps through
+`GET /v1/referrals` (`rewardDays`, `daysEarned`, `shareUrl`, `telegramUrl`) and
+`GET /v1/referrals/invite` (links, rules, invited / paid / days received, the list of rewards).
+The detailed analytics with campaign links (`#/referrals`) stay admin-only unless `REFERRALS_PUBLIC=1`.
+
+- Links: `https://<site>/r/<CODE>` (counts the visit, then opens `https://<site>/?ref=<CODE>`; a
+  plain `?ref=<CODE>` works too) and `https://t.me/<bot>?start=ref_<CODE>`. The website keeps the code
+  in the browser until sign-up (e-mail or Telegram Login Widget); the bot uses the `/start` payload.
+- The inviter (`users.referred_by`) is set once, when the account is made: an existing account
+  never gets or changes one (a database trigger refuses changes), nobody is their own inviter
+  (check `users_not_self_referred`).
+- Reward: when the invited person pays for the first time, the inviter gets `REFERRAL_REWARD_DAYS`
+  (14) of Pro, added after the end of their current subscription, or from now if it has ended.
+  Stored as a `subscriptions` row with source `referral` (`external_id` `reward:<id>`) and a row in
+  `referral_rewards`, unique per invited person: a repeated webhook or a second purchase gives
+  nothing. `REFERRAL_REWARD_CONDITION=signup` rewards at sign-up instead (easier to abuse).
+  `REFERRAL_INVITEE_DAYS` > 0 also gives the invited person a bonus (off by default).
+- Anti-fraud: at most `REFERRAL_MONTHLY_CAP` (10) rewards per inviter per calendar month (UTC), 0 = no
+  limit; over it the reward is recorded as "capped" without days. A reward is flagged "same network"
+  / "same browser" when the invited person signed in (or opened the site signed in) from the
+  inviter's IP / IP + browser in the last 90 days. Only HMACs are kept (`user_fingerprints`), no IP
+  addresses. Flagged rewards are still given; the owner decides.
+- The recipient is told in the bot (Telegram linked, notifications on), else by e-mail (if set up).
+- The owner: Referral program → «Награды за приглашения» (`#/invite?view=admin`): the rules (saved in
+  the settings table, they win over the variables), totals, top inviters, every reward with its
+  flag and how the person was told, a "suspicious only" filter and «Отменить начисление» (the days
+  are taken back and later subscription time moves back by what was left of the reward).
+- `REFERRAL_REWARD_DAYS=0` turns the rewards off and hides "Invite a friend" from users again.

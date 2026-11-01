@@ -90,6 +90,10 @@ Telegram search is by numeric id. API (owner only, 403 for others): `GET /v1/adm
   rubles and euros, devices, data per month (empty = unlimited), badge, order, status. Changes
   apply to new purchases only; bought subscriptions keep their terms. Tariffs are archived, not
   deleted. Below: free plan limits and invite rewards.
+- **Invite rewards** (issue #40): in Referral program → «Награды за приглашения» (`#/invite?view=admin`):
+  days for the inviter, when to reward (first payment or sign-up), days for the friend, monthly
+  limit; totals, top inviters, every reward with its anti-fraud flag, cancelling a reward. See
+  [WEB-AND-TELEGRAM.md](WEB-AND-TELEGRAM.md#invite-a-friend-get-14-days-issue-40).
 - **Connection failures**: failed connections the Boop apps report (`handshake_failed`: the node
   never answered; `no_rx`: a working tunnel went quiet), the latest 200 with user, device, node,
   the node's address, the app's reason (`blocked`, `offline`, `no_handshake`, `no_rx`,
@@ -129,6 +133,17 @@ Telegram search is by numeric id. API (owner only, 403 for others): `GET /v1/adm
   nodes". API: `POST /v1/admin/nodes` `{…, protocol: "vless", vless: {host, publicKey, shortIds,
   sni, fingerprint, transports: [{type, port, tag, flow, path, mode}]}, countryName}`;
   `PUT /v1/admin/nodes/{id}` takes `vless` and `countryName` too; `GET /v1/admin/nodes` returns them.
+- **Locations in the VLESS key** (issue #41, migration V22), in the node form: **Location name**
+  (the name in subscriptions and the apps after the flag; empty = the country), **Order in the
+  list** (smaller first, then by name), **In subscriptions** (No: the node gets no users' UUIDs,
+  is not in subscriptions and not in the apps' VLESS list; for an exit used only by a cascade),
+  **Cascade** (None, Entry, Exit). Every user's VLESS key works on every listed active VLESS node;
+  switching a node off or hiding it takes everyone off it at once. With `VLESS_BALANCER=1` an
+  entry's form has **Balancer** › *Show the Xray settings*: the fragment for the entry's Xray
+  config (docs/SERVER.md, "Cascade"); the entry leads subscriptions as "⚡ Авто". API: `NodeReq`
+  takes `displayName` ("" clears), `sortOrder`, `inSubscription`, `cascadeRole` ("entry", "exit",
+  "" for none), each optional (null = unchanged); `GET /v1/admin/nodes` returns them and
+  `vlessBalancer`; `GET /v1/admin/nodes/{id}/balancer` the fragment.
 - **E-mail**: SMTP of any provider (Brevo, Mailgun, Postmark, Amazon SES, Gmail, Zoho…), test e-mail.
   The password is stored encrypted.
 - **Alerts**: e-mail recipients and Telegram chat ids (the bot's `/myid` shows a chat's id).

@@ -78,7 +78,7 @@ function go(hash) { if (location.hash === hash) render(); else location.hash = h
 function renderNav() {
   const here = (location.hash.slice(1) || "/").split("?")[0];
   const items = store.get("token")
-    ? [...(role === "owner" ? [["/analytics", t("Analytics")], ["/admin", t("Admin panel")], ["/status", t("Server status")]] : []), ...(role === "owner" || site?.referralsPublic ? [["/referrals", t("Referral program")]] : []), ["/account", t("My account")]]
+    ? [...(role === "owner" ? [["/analytics", t("Analytics")], ["/admin", t("Admin panel")], ["/status", t("Server status")]] : []), ...(role === "owner" || site?.referralsPublic ? [["/referrals", t("Referral program")]] : site?.inviteRewardDays > 0 ? [["/invite", t("Invite a friend")]] : []), ["/account", t("My account")]]
     : [];
   const link = ([p, l]) => `<a class="item ${p === here ? "on" : ""}" href="#${p}">${l}</a>`;
   const langs = `<span class="langs">${LANGS.map(([c, name]) => `<button type="button" class="${c === lang ? "on" : ""}" data-lang="${c}" title="${name}" lang="${c}">${c.toUpperCase()}</button>`).join("")}</span>`;
@@ -189,7 +189,8 @@ window.buy = async function (tariffId) {
 function signin() {
   if (store.get("token")) return go("#/account");
   const bot = site?.telegramBotUrl;
-  const viaTelegram = bot ? `<div class="alt"><a class="btn secondary" href="${h(bot)}" target="_blank" rel="noreferrer">${t("Sign in with Telegram")}</a></div>` : "";
+  // The bot sends a one-time sign-in link (start=login); the Login Widget is added by telegram.js when it is on.
+  const viaTelegram = bot ? `<div class="alt"><a class="btn secondary" href="${h(bot)}?start=login" target="_blank" rel="noreferrer">${t("Sign in with Telegram")}</a></div><div class="alt" id="tg-widget"></div>` : "";
   if (site?.emailSignIn === false) {
     view.innerHTML = `
     <div class="card signbox">
@@ -197,6 +198,7 @@ function signin() {
       <div class="notice bad">${t("Sign-in by e-mail is temporarily unavailable")}</div>
       ${viaTelegram}
     </div>`;
+    if (typeof tgWidget === "function") tgWidget();
     return;
   }
   view.innerHTML = `
@@ -241,6 +243,7 @@ function signin() {
     } catch (e) { err.textContent = e.message; }
   };
   document.getElementById("back").onclick = () => { f2.hidden = true; f1.hidden = false; };
+  if (typeof tgWidget === "function") tgWidget();
 }
 
 /** #/login?token=... : a one-time sign-in link from the Telegram bot or from the server. */
@@ -332,11 +335,13 @@ async function account(params) {
   <div class="h2row"><h2>${t("Apps")}</h2></div>
   ${downloads()}
   <div class="card section"><div class="card-h"><h3>${t("Sign in to the Boop app")}</h3><div id="pair"><button class="btn secondary" id="paircode">${t("Show a code")}</button></div></div></div>
+  <div id="tg-card"></div>
 
   ${pays.payments.length ? `<div class="h2row"><h2>${t("Payments")}</h2></div><div class="card tablewrap"><table class="data"><thead><tr><th>${t("Plan")}</th><th>${t("Period")}</th><th>${t("Channel")}</th></tr></thead><tbody>
     ${pays.payments.map((x) => `<tr><td>${x.productId === "referral" ? t("Invite reward") : h(x.tariffName || "Pro")}</td><td>${t("{from} to {to}", { from: date(x.startedAt), to: date(x.expiresAt) })}</td><td>${h(sourceName[x.source] || x.source)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
 
   document.getElementById("logout").onclick = async () => { try { await api("/auth/logout", { method: "POST" }); } catch {} store.set("token", null); renderNav(); go("#/"); };
+  if (typeof tgAccountCard === "function") tgAccountCard();
   const nk = document.getElementById("newkey");
   if (nk) nk.onclick = async () => { nk.disabled = true; try { await api("/keys", { method: "POST" }); render(); } catch (e) { alert(e.message); nk.disabled = false; } };
   document.getElementById("paircode").onclick = async () => {
@@ -497,7 +502,8 @@ async function referrals(params) {
   const owner = me.user.role === "owner" && params.get("view") === "all";
   const q = (extra) => `#/referrals?period=${period}${extra}`;
   const tabs = `<div class="chips">${PERIODS.map(([k, l]) => `<a class="chip ${k === period ? "on" : ""}" href="#/referrals?period=${k}${owner ? "&view=all" : ""}">${t(l)}</a>`).join("")}</div>`;
-  const ownerTabs = me.user.role === "owner" ? `<nav class="tabs"><a class="${owner ? "" : "on"}" href="${q("")}">${t("My links")}</a><a class="${owner ? "on" : ""}" href="${q("&view=all")}">${t("Whole program")}</a></nav>` : "";
+  // Third tab: invite rewards (invite.js, issue #40).
+  const ownerTabs = me.user.role === "owner" ? `<nav class="tabs"><a class="${owner ? "" : "on"}" href="${q("")}">${t("My links")}</a><a class="${owner ? "on" : ""}" href="${q("&view=all")}">${t("Whole program")}</a><a href="#/invite?view=admin">${t("Invite rewards")}</a></nav>` : "";
 
   if (owner) {
     const a = await api(`/admin/referrals?period=${period}`);
@@ -1173,7 +1179,8 @@ function installCard(n, i) {
 async function nodesPane(command) {
   clearTimeout(installTimer);
   const pane = document.getElementById("pane");
-  const [list, settings] = await Promise.all([api("/admin/nodes").then((r) => r.nodes), api("/admin/settings")]);
+  const [nodesRes, settings] = await Promise.all([api("/admin/nodes"), api("/admin/settings")]);
+  const list = nodesRes.nodes, balancerOn = !!nodesRes.vlessBalancer;
   if (!location.hash.startsWith("#/admin")) return;
   const seenKey = (n) => `install:${n.id}`;
   const shown = list.filter((n) => n.install && (n.install.state === "running" || store.get(seenKey(n)) !== n.install.startedAt));
@@ -1226,9 +1233,21 @@ async function nodesPane(command) {
         ${field("nh", t("Host name"), v.hostname, 'maxlength="200" placeholder="de1.vpn.example.com"')}
         <div><label for="na">${t("Status")}</label><select id="na"><option value="1" ${v.active ? "selected" : ""}>${t("On")}</option><option value="0" ${v.active ? "" : "selected"}>${t("Off")}</option></select></div>
         ${field("ncn", t("Country name in the apps"), v.countryName || "", 'maxlength="60" placeholder="Финляндия"')}
+        ${locationFields(v)}
         ${local ? "" : `<div><label for="np">${t("Protocol")}</label><select id="np" ${v.id ? "disabled" : ""}>
           <option value="amneziawg" ${v.vless ? "" : "selected"}>AmneziaWG</option><option value="vless" ${v.vless ? "selected" : ""}>VLESS+Reality (Xray)</option></select></div>`}
       </div>${local ? "" : vlessFields(v.vless)}`;
+  // Issue #41: how the location shows up in subscriptions and the apps, and its part in a cascade.
+  const locationFields = (v) => `
+        ${field("nld", t("Location name"), v.displayName || "", 'maxlength="60" placeholder="Финляндия, Хельсинки"')}
+        ${field("nlo", t("Order in the list"), v.sortOrder ?? 0, 'type="number" min="-100000" max="100000" step="1"')}
+        <div><label for="nls">${t("In subscriptions")}</label><select id="nls"><option value="1" ${v.inSubscription === false ? "" : "selected"}>${t("Yes")}</option><option value="0" ${v.inSubscription === false ? "selected" : ""}>${t("No")}</option></select></div>
+        <div><label for="nlc">${t("Cascade")}</label><select id="nlc">${[["", t("None")], ["entry", t("Entry")], ["exit", t("Exit")]].map(([k, l]) => `<option value="${k}" ${(v.cascadeRole || "") === k ? "selected" : ""}>${h(l)}</option>`).join("")}</select></div>`;
+  // A cascade entry's Xray balancer: the fragment to put on the entry node by hand (docs/SERVER.md, "Cascade").
+  const balancerBox = (x) => (balancerOn && x.cascadeRole === "entry" ? `<div class="section"><h4>${t("Balancer")}</h4>
+      <p class="muted">${t("Xray settings for this entry: the exits, a leastPing balancer and the observatory. Add them to the entry's Xray config by hand.")}</p>
+      <div class="actionsrow"><button class="btn secondary" type="button" id="nbal">${t("Show the Xray settings")}</button></div>
+      <pre class="log mono" id="nbalout" hidden></pre></div>` : "");
   // A VLESS node: Xray runs there already; the panel keeps only what the apps need (no private key).
   const vlessFields = (x) => {
     x = x || {};
@@ -1261,7 +1280,8 @@ async function nodesPane(command) {
     if (sel) sel.onchange = () => { document.getElementById("vlessbox").hidden = !isVless(); };
   };
   const nodeBody = (x) => ({ name: val("nn"), city: val("nc"), countryCode: val("nk").toUpperCase(), maxPeers: Number(val("nm")), active: document.getElementById("na").value === "1", hostname: document.getElementById("nh") ? val("nh") || null : null,
-    countryName: val("ncn") || null, protocol: isVless() ? "vless" : null, vless: isVless() ? vlessBody(x?.vless) : null });
+    countryName: val("ncn") || null, protocol: isVless() ? "vless" : null, vless: isVless() ? vlessBody(x?.vless) : null,
+    displayName: val("nld"), sortOrder: Number(val("nlo") || 0), inSubscription: document.getElementById("nls").value === "1", cascadeRole: document.getElementById("nlc").value });
   const install = (id, ssh) => api(`/admin/nodes/${encodeURIComponent(id)}/install`, { method: "POST", body: ssh });
 
   // New node: the node's details and, optionally, the server to install it on.
@@ -1311,7 +1331,13 @@ async function nodesPane(command) {
     nf.hidden = false; mf.hidden = !x.remote;
     nf.innerHTML = `<h3>${t("Edit node")}</h3>${nodeFields(x, !x.remote)}
       <div class="actionsrow"><button class="btn" type="submit">${t("Save")}</button><button class="btn secondary" type="button" id="ncancel">${t("Cancel")}</button></div>
-      <p class="result" id="nres"></p>`;
+      <p class="result" id="nres"></p>${balancerBox(x)}`;
+    const bal = document.getElementById("nbal");
+    if (bal) bal.onclick = async () => {
+      const out = document.getElementById("nbalout");
+      try { out.textContent = JSON.stringify(await api(`/admin/nodes/${encodeURIComponent(x.id)}/balancer`), null, 2); } catch (e) { out.textContent = e.message; }
+      out.hidden = false;
+    };
     const used = x.state !== "waiting";
     if (x.remote) mf.innerHTML = `<h3>${used ? t("Move to another server") : t("Install on a server")}</h3>
       ${sshFields(host || "")}
@@ -1735,6 +1761,7 @@ async function render() {
     if (path === "/admin") return await admin(params);
     if (path === "/account") return await account(params);
     if (path === "/referrals") return await referrals(params);
+    if (path === "/invite" && typeof invitePage === "function") return await invitePage(params);
     if (path === "/status") return await status(params);
     if (path === "/analytics") return await analytics(params);
     await home();

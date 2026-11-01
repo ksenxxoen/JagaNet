@@ -165,6 +165,8 @@ private const val IFACE_WG = "wg0"
 private const val IFACE_XRAY = "xray"
 /** Addresses for VLESS devices: no tunnel uses them, they only keep the tunnels table uniform. */
 private const val VLESS_SUBNET = "10.9.0.0/16"
+/** The "address" of a cascade entry's own user on an exit: the agent of a VLESS node ignores addresses. */
+private const val CASCADE_ADDRESS = "0.0.0.0"
 private val HOST = Regex("^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$")
 private val USER = Regex("^[a-z_][a-z0-9_.-]{0,31}$")
 private const val LOG_LIMIT = 64 * 1024
@@ -234,6 +236,8 @@ class Nodes(private val ctx: Ctx) {
             status = r.str("status"), notice = r.strOrNull("notice"),
             countryName = r.strOrNull("country_name"),
             vless = (protocols[Protocols.VLESS] as? JsonObject)?.let { runCatching { Protocols.decode<Vless.NodeSettings>(it) }.getOrNull() },
+            displayName = r.strOrNull("display_name"), sortOrder = r.int("sort_order"), inSubscription = r.bool("in_subscription"),
+            cascadeRole = r.strOrNull("cascade_role"),
         )
     }
 
@@ -262,7 +266,14 @@ class Nodes(private val ctx: Ctx) {
         val protocol = req.protocol?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
         if (protocol != null && protocol !in setOf(Protocols.AMNEZIAWG, Protocols.VLESS)) throw badRequest("Unknown protocol")
         val vless = req.vless?.let(::cleanVless)
-        return req.copy(name = name, city = city, countryCode = cc, hostname = host, countryName = countryName, protocol = protocol, vless = vless)
+        // Issue #41: null = unchanged; "" clears the display name and the cascade role.
+        val displayName = req.displayName?.trim()
+        if (displayName != null && displayName.length > 60) throw badRequest("Name must be 1 to 60 characters")
+        if (req.sortOrder != null && req.sortOrder !in -100_000..100_000) throw badRequest("Some values are out of range")
+        val role = req.cascadeRole?.trim()?.lowercase()
+        if (role != null && role !in setOf("", CASCADE_ENTRY, CASCADE_EXIT)) throw badRequest("Some values are out of range")
+        return req.copy(name = name, city = city, countryCode = cc, hostname = host, countryName = countryName, protocol = protocol, vless = vless,
+            displayName = displayName, cascadeRole = role)
     }
 
     /** A VLESS node's settings as stored: trimmed, checked, and never anything secret (the type has no place for it). */
@@ -304,7 +315,10 @@ class Nodes(private val ctx: Ctx) {
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 id, r.name, r.city, r.countryCode, subnet, Jsonb(protocols), r.maxPeers, r.active, hash(token), "$pub:" + box.encrypt(priv), r.hostname, ctx.now(), r.countryName,
             )
+            setLocation(sql, id, r)
         }
+        // Every VLESS user is on a new VLESS node from the start: its agent applies them once it runs.
+        if (vless) ctx.db.tx { sql -> VlessLocations.syncReplicas(ctx, sql) }
         return NodeInstallRes(get(id), installCommand(token, if (vless) Protocols.VLESS else null))
     }
 
@@ -322,12 +336,54 @@ class Nodes(private val ctx: Ctx) {
             sql.exec(
                 "UPDATE servers SET name=?, city=?, country_code=?, max_peers=?, active=?, endpoint_host=?, country_name=? WHERE id=?",
                 r.name, r.city, r.countryCode, r.maxPeers, r.active, r.hostname, r.countryName, id,
-            ).also { if (it > 0) refreshEndpoint(sql, id) }
+            ).also { if (it > 0) { refreshEndpoint(sql, id); setLocation(sql, id, r) } }
         }
         if (n == 0) throw notFound("Node not found")
         // New inbound tags or flows reach the agent with its next peer list.
         if (r.vless != null) ctx.nodeHub.changed(id)
+        // Switched on, off, shown or hidden: every VLESS user goes on or off this node now (issue #41).
+        ctx.db.tx { sql ->
+            VlessLocations.syncReplicas(ctx, sql)
+            // An entry's own user on the exits follows the cascade marks.
+            sql.query("SELECT id FROM servers WHERE cascade_role = ?", CASCADE_EXIT).forEach { ctx.nodeHub.changed(it.str("id")) }
+        }
         return get(id)
+    }
+
+    /**
+     * Issue #41: the location's display name, order, subscription flag and cascade role, each only
+     * when given. An entry gets its own Xray user for the exits (servers.cascade_uuid), once.
+     */
+    private fun setLocation(sql: Sql, id: String, r: NodeReq) {
+        r.displayName?.let { sql.exec("UPDATE servers SET display_name=? WHERE id=?", it.ifEmpty { null }, id) }
+        r.sortOrder?.let { sql.exec("UPDATE servers SET sort_order=? WHERE id=?", it, id) }
+        r.inSubscription?.let { sql.exec("UPDATE servers SET in_subscription=? WHERE id=?", it, id) }
+        r.cascadeRole?.let { role ->
+            if (role == CASCADE_ENTRY) {
+                sql.exec("UPDATE servers SET cascade_role=?, cascade_uuid=coalesce(cascade_uuid, ?) WHERE id=?", role, java.util.UUID.randomUUID().toString(), id)
+            } else {
+                sql.exec("UPDATE servers SET cascade_role=?, cascade_uuid=NULL WHERE id=?", role.ifEmpty { null }, id)
+            }
+        }
+    }
+
+    /**
+     * The Xray config fragment for a cascade entry (issue #41): outbounds to the active exits,
+     * a leastPing balancer over them, the rule from the entry's inbounds and the observatory.
+     * Only public parameters; how to apply it: docs/SERVER.md, "Cascade".
+     */
+    suspend fun balancer(id: String): JsonObject = ctx.db.run { sql ->
+        if (!ctx.cfg.vlessBalancer) throw notFound("The balancer is off on this server (VLESS_BALANCER)")
+        val s = sql.one("SELECT * FROM servers WHERE id=?", id) ?: throw notFound("Node not found")
+        if (s.strOrNull("cascade_role") != CASCADE_ENTRY) throw badRequest("Mark this node as a cascade entry first")
+        val entry = (s.json("protocols")[Protocols.VLESS] as? JsonObject)?.let { runCatching { Protocols.decode<Vless.NodeSettings>(it) }.getOrNull() }
+            ?: throw badRequest("This node does not run VLESS")
+        val exits = sql.query("SELECT * FROM servers WHERE cascade_role = ? AND active AND id <> ? ORDER BY sort_order, name, id", CASCADE_EXIT, id).mapNotNull { e ->
+            (e.json("protocols")[Protocols.VLESS] as? JsonObject)?.let { runCatching { Protocols.decode<Vless.NodeSettings>(it) }.getOrNull() }
+                ?.let { XrayBalancer.Exit(e.str("id"), it) }
+        }
+        if (exits.isEmpty()) throw badRequest("No active exit nodes: mark at least one VLESS node as an exit")
+        XrayBalancer.fragment(entry.transports.map { it.tag }, s.str("cascade_uuid"), exits)
     }
 
     /** The VPN address devices get: the host name when set, else the machine's address. */
@@ -554,14 +610,34 @@ class Nodes(private val ctx: Ctx) {
     private suspend fun snapshot(serverId: String): NodePeersRes = ctx.db.run { sql ->
         val s = sql.one("SELECT * FROM servers WHERE id=?", serverId) ?: throw unauthorized()
         val protocol = s.json("protocols").keys.firstOrNull() ?: Protocols.AMNEZIAWG
-        // A blocked user's peers are left out (issue #39): the agent takes them off the node, the keys stay.
-        val peers = sql.query(
-            """SELECT t.peer_key, t.address FROM tunnels t JOIN devices d ON d.id = t.device_id JOIN users u ON u.id = d.user_id
-                WHERE t.server_id=? AND t.protocol=? AND u.blocked_at IS NULL ORDER BY t.peer_key""",
-            serverId, protocol,
-        )
-            .map { NodePeer(it.str("peer_key"), it.str("address")) }
         val vless = protocol == Protocols.VLESS
+        // A VLESS node also carries the UUIDs of tunnels on other nodes (issue #41) and, as a cascade
+        // exit, the entries' own users. Addresses mean nothing on a VLESS node.
+        val peers = if (!vless) {
+            // A blocked user's peers are left out (issue #39): the agent takes them off the node, the keys stay.
+            sql.query(
+                """SELECT t.peer_key, t.address FROM tunnels t JOIN devices d ON d.id = t.device_id JOIN users u ON u.id = d.user_id
+                    WHERE t.server_id=? AND t.protocol=? AND u.blocked_at IS NULL ORDER BY t.peer_key""",
+                serverId, protocol,
+            ).map { NodePeer(it.str("peer_key"), it.str("address")) }
+        } else {
+            val users = sql.query(
+                """SELECT DISTINCT ON (peer_key) peer_key, address FROM (
+                     SELECT t.peer_key, t.address FROM tunnels t JOIN devices d ON d.id = t.device_id JOIN users u ON u.id = d.user_id
+                       WHERE t.server_id=? AND t.protocol=? AND u.blocked_at IS NULL
+                     UNION ALL
+                     SELECT r.peer_key, t.address FROM vless_replicas r JOIN tunnels t ON t.device_id = r.device_id
+                       JOIN devices d ON d.id = r.device_id JOIN users u ON u.id = d.user_id
+                       WHERE r.server_id=? AND t.protocol=? AND u.blocked_at IS NULL
+                   ) p ORDER BY peer_key, address""",
+                serverId, protocol, serverId, protocol,
+            ).map { NodePeer(it.str("peer_key"), it.str("address")) }
+            val cascade = if (ctx.cfg.vlessBalancer && s.strOrNull("cascade_role") == CASCADE_EXIT) {
+                sql.query("SELECT cascade_uuid FROM servers WHERE cascade_role = ? AND active AND cascade_uuid IS NOT NULL AND id <> ? ORDER BY cascade_uuid", CASCADE_ENTRY, serverId)
+                    .map { NodePeer(it.str("cascade_uuid"), CASCADE_ADDRESS) }
+            } else emptyList()
+            (users + cascade).distinctBy { it.publicKey }.sortedBy { it.publicKey }
+        }
         // The free plan's speed limit is applied by traffic.py on AmneziaWG nodes; a VLESS node has none.
         val limit = if (vless) null else speedLimits.limit(sql, serverId)
         val inbounds = if (!vless) emptyList()
@@ -608,8 +684,9 @@ class Nodes(private val ctx: Ctx) {
             }
             // Peers the node no longer has (removed devices) don't need counters anymore.
             sql.exec(
-                "DELETE FROM node_peer_counters WHERE server_id=? AND peer_key NOT IN (SELECT peer_key FROM tunnels WHERE server_id=?)",
-                id, id,
+                """DELETE FROM node_peer_counters WHERE server_id=? AND peer_key NOT IN (SELECT peer_key FROM tunnels WHERE server_id=?)
+                     AND peer_key NOT IN (SELECT peer_key FROM vless_replicas WHERE server_id=?)""",
+                id, id, id,
             )
             val prev = s.jsonOrNull("report")?.let { runCatching { Protocols.decode<StoredReport>(it) }.getOrNull() }
             val secs = prev?.let { (now.toEpochMilli() - it.at) / 1000.0 }?.takeIf { it > 0 }

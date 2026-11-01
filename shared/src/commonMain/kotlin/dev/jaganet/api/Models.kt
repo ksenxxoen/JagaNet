@@ -452,8 +452,113 @@ data class PlansRes(
 
 /* ---------- referrals ---------- */
 
+/**
+ * The app's invite summary. [rewardDays]: what the inviter gets per friend (0 = rewards off);
+ * [daysEarned]: reward days received so far; [shareUrl] the website link, [telegramUrl] the bot link.
+ */
 @Serializable
-data class ReferralRes(val code: String, val invited: Int, val subscribed: Int, val rewardDays: Int, val daysEarned: Int, val shareUrl: String)
+data class ReferralRes(
+    val code: String,
+    val invited: Int,
+    val subscribed: Int,
+    val rewardDays: Int,
+    val daysEarned: Int,
+    val shareUrl: String,
+    val telegramUrl: String? = null,
+    /** "first_payment" or "signup": when the reward is given. */
+    val rewardCondition: String = "first_payment",
+)
+
+/* ---------- "Invite a friend, get +14 days" (issue #40) ---------- */
+
+/** A user's own invite links, what an invite earns and what it earned. */
+@Serializable
+data class InviteRes(
+    /** Rewards are on (rewardDays > 0). */
+    val enabled: Boolean,
+    val code: String,
+    /** Website link: counts the visit and opens the site with ?ref=<code>. */
+    val webUrl: String,
+    /** t.me/<bot>?start=ref_<code>, when the bot is on. */
+    val telegramUrl: String? = null,
+    val rewardDays: Int,
+    /** "first_payment" or "signup". */
+    val condition: String,
+    /** Bonus days for the invited person too (0 = none). */
+    val inviteeDays: Int = 0,
+    /** People who signed up with the user's links. */
+    val invited: Int,
+    /** Of them, people who paid at least once. */
+    val paid: Int,
+    /** Reward days received (cancelled ones not counted). */
+    val daysEarned: Int,
+    val rewards: List<InviteReward> = emptyList(),
+)
+
+@Serializable
+data class InviteReward(
+    val at: String,
+    /** The invited person, masked ("al***@gmail.com" or "Telegram"). */
+    val who: String,
+    val days: Int,
+    /** "granted", "capped" (over the monthly limit) or "cancelled". */
+    val status: String,
+    /** "referrer" (for inviting) or "invitee" (the welcome bonus). */
+    val kind: String = "referrer",
+)
+
+/** The rules of the invite rewards, editable in the admin panel. */
+@Serializable
+data class ReferralRewardSettings(
+    /** Days for the inviter; 0 turns the rewards off. */
+    val days: Int,
+    /** "first_payment" or "signup". */
+    val condition: String,
+    /** Days for the invited person; 0 = none. */
+    val inviteeDays: Int,
+    /** Rewards per inviter per calendar month; 0 = no limit. */
+    val monthlyCap: Int,
+)
+
+@Serializable
+data class AdminReward(
+    val id: String,
+    val createdAt: String,
+    /** Who got the days. */
+    val userId: String,
+    val userEmail: String,
+    val referrerEmail: String,
+    val inviteeId: String,
+    val inviteeEmail: String,
+    /** "referrer" or "invitee". */
+    val kind: String,
+    /** "first_payment" or "signup". */
+    val reason: String,
+    val days: Int,
+    /** "granted", "capped" or "cancelled". */
+    val status: String,
+    /** "same_ip" or "same_device": the invited person signed in from the inviter's network or browser. */
+    val suspicion: String? = null,
+    /** "telegram", "email", "none"; null = not yet. */
+    val notifiedVia: String? = null,
+    val cancelledAt: String? = null,
+)
+
+@Serializable
+data class RewardTopReferrer(val userId: String, val email: String, val invited: Int, val paid: Int, val rewards: Int, val days: Int, val suspicious: Int)
+
+/** Owner view of the invite rewards. */
+@Serializable
+data class AdminReferralRewardsRes(
+    val settings: ReferralRewardSettings,
+    val granted: Int,
+    val daysGranted: Int,
+    val capped: Int,
+    val cancelled: Int,
+    val suspicious: Int,
+    val top: List<RewardTopReferrer>,
+    val rewards: List<AdminReward>,
+)
 
 /* ---------- referral program: links and statistics ---------- */
 
@@ -715,6 +820,8 @@ data class SiteInfo(
     val testCodes: Boolean = false,
     /** Everyone sees the referral program; false = only admins (owners). */
     val referralsPublic: Boolean = false,
+    /** "Invite a friend": days an inviter gets per friend; 0 = the invite program is off (issue #40). */
+    val inviteRewardDays: Int = 0,
 )
 
 /* ---------- server monitoring (owner only) ---------- */
@@ -1013,10 +1120,22 @@ data class AdminNode(
     val countryName: String? = null,
     /** A VLESS node's settings (no secrets), for the edit form; null for other protocols. */
     val vless: Vless.NodeSettings? = null,
+    /** The location's name in subscriptions and the apps (the flag is added); null = the country (issue #41). */
+    val displayName: String? = null,
+    /** Locations are listed by this number, then by name. */
+    val sortOrder: Int = 0,
+    /** A VLESS node: in users' subscriptions and the apps' list, with every user on it. */
+    val inSubscription: Boolean = true,
+    /** "entry" or "exit" in a cascade (the server-side balancer), null = neither. */
+    val cascadeRole: String? = null,
 )
 
 @Serializable
-data class AdminNodesRes(val nodes: List<AdminNode>)
+data class AdminNodesRes(
+    val nodes: List<AdminNode>,
+    /** VLESS_BALANCER=1 on the server: cascade entries balance over the exits (issue #41). */
+    val vlessBalancer: Boolean = false,
+)
 
 /** PUT /admin/nodes/{id}/status: the node's [NodeStatus] and its note for the apps (empty or null = none). */
 @Serializable
@@ -1048,6 +1167,15 @@ data class NodeReq(
     val vless: Vless.NodeSettings? = null,
     /** The country's name in Russian for the apps; null or empty = the standard name. */
     val countryName: String? = null,
+    /*
+     * Issue #41. null = unchanged (and the default on a new node), so older callers keep the values.
+     */
+    /** The location's name in subscriptions and the apps; "" = the country's name. */
+    val displayName: String? = null,
+    val sortOrder: Int? = null,
+    val inSubscription: Boolean? = null,
+    /** "entry", "exit", or "" for neither. */
+    val cascadeRole: String? = null,
 )
 
 /** A new node or a new token: [command] is run once as root on the node. Shown only now. */
