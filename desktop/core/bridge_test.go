@@ -16,7 +16,7 @@ import (
 // ui/app.js is written against these names; changing one means changing both.
 var wantCommands = []string{
 	"cancelWebLogin", "closeNotice", "copyReport", "copyText", "extend", "invite", "openWebLogin", "ready", "redeemPairing", "refreshKeys", "refreshPings",
-	"renameKey", "reportProblem", "setAutoConnect", "setAutostart", "setCountry", "setKey", "setStrictKill",
+	"renameKey", "reportProblem", "retry", "setAutoConnect", "setAutostart", "setCountry", "setKey", "setStrictKill",
 	"signOut", "startEmail", "startWebLogin", "support", "toggle", "update", "verifyEmail",
 }
 
@@ -32,7 +32,7 @@ func TestBridgeCommands(t *testing.T) {
 		t.Fatalf("invoke unknown: %+v", r)
 	}
 	// Arguments that are missing or the wrong shape reach the handler as zero values.
-	for _, c := range []string{"setStrictKill", "setAutoConnect", "refreshKeys", "extend", "openWebLogin", "cancelWebLogin"} {
+	for _, c := range []string{"setStrictKill", "setAutoConnect", "refreshKeys", "extend", "openWebLogin", "cancelWebLogin", "retry"} {
 		for _, arg := range []string{"", "null", "{}", "[1]"} {
 			if r := a.Invoke(c, json.RawMessage(arg)); !r.OK {
 				t.Errorf("%s(%q): %+v", c, arg, r)
@@ -81,7 +81,7 @@ func TestUIStateWireNames(t *testing.T) {
 	slices.Sort(got)
 	want := []string{
 		"autoConnect", "autostart", "best", "conn", "countries", "countries.code", "countries.down", "countries.full", "countries.name", "countries.ping", "countries.status",
-		"country", "current", "email", "key", "keys", "keys.country", "keys.id", "keys.inUse", "keys.name",
+		"country", "current", "email", "failed", "key", "keys", "keys.country", "keys.id", "keys.inUse", "keys.name",
 		"notice", "ping", "plan", "plan.daysLeft", "plan.expiresAt", "plan.name", "plan.pro", "plan.warn", "platform", "problem", "released", "screen",
 		"since", "strictKill", "update", "update.link", "update.mandatory", "update.notes", "update.stage", "update.version", "version", "webLogin",
 	}

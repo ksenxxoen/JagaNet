@@ -75,8 +75,17 @@ func exchange(conn net.Conn, rd *bufio.Reader, req Request, timeout time.Duratio
 	if err != nil {
 		return Response{}, err
 	}
-	if _, err := conn.Write(append(b, '\n')); err != nil {
-		return Response{}, err
+	if _, werr := conn.Write(append(b, '\n')); werr != nil {
+		// A helper that refuses this user answers and hangs up without reading
+		// (Server.handle): the write can fail on the closed socket while the
+		// refusal is already waiting to be read, and it is the answer to give.
+		if line, err := rd.ReadBytes('\n'); err == nil {
+			var res Response
+			if json.Unmarshal(line, &res) == nil && res.Error != "" {
+				return res, nil
+			}
+		}
+		return Response{}, werr
 	}
 	line, err := rd.ReadBytes('\n')
 	if err != nil {

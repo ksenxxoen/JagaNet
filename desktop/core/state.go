@@ -60,8 +60,10 @@ type UIState struct {
 	Keys        []KeyUI   `json:"keys"`
 	Key         string    `json:"key"`
 	// Problem stays on screen until the tunnel is up or the user disconnects.
-	Problem    string    `json:"problem,omitempty"`
-	Released   bool      `json:"released,omitempty"`
+	Problem  string `json:"problem,omitempty"`
+	Released bool   `json:"released,omitempty"`
+	// Failed: the app gave up on this connection and waits for «Повторить» (retry).
+	Failed     bool      `json:"failed,omitempty"`
 	StrictKill bool      `json:"strictKill,omitempty"`
 	Update     *UpdateUI `json:"update,omitempty"`
 	// Notice is the owner's note to show in the banner (nodestatus.go).
@@ -90,7 +92,7 @@ func (a *App) state() UIState {
 		Current: a.current, Ping: a.curPing, Countries: []Country{},
 		WebLogin: a.webLogin != nil,
 		Keys:     []KeyUI{}, Key: a.Store.KeyID,
-		Problem: a.problem, Released: a.released, StrictKill: a.Store.StrictKill,
+		Problem: a.problem, Released: a.released, Failed: a.failed && a.conn != "off", StrictKill: a.Store.StrictKill,
 		Notice: a.noticeNow(), Platform: a.Platform,
 	}
 	if a.available != nil {

@@ -52,24 +52,27 @@ type App struct {
 	// fills in the real one unless a test already did.
 	Prober Prober
 
-	mu         sync.Mutex
-	plan       *Plan
-	servers    []Server
-	notice     string // the owner's note for everyone (GET /servers)
-	keys       []Key
-	pings      map[string]float64 // by pingKey: the last good measurement
-	down       map[string]bool    // by pingKey: the last measurement failed («недоступен»)
-	conn       string
-	since      time.Time
-	current    string
-	curHost    string
-	curTarget  PingTarget // where the node in use is pinged
-	curPing    *float64
-	applied    string // TunnelState.version now in the tunnel
-	peerKey    string
-	problem    string
-	released   bool
-	asleep     bool // tunnel is down on purpose; sync must not bring it back
+	mu        sync.Mutex
+	plan      *Plan
+	servers   []Server
+	notice    string // the owner's note for everyone (GET /servers)
+	keys      []Key
+	pings     map[string]float64 // by pingKey: the last good measurement
+	down      map[string]bool    // by pingKey: the last measurement failed («недоступен»)
+	conn      string
+	since     time.Time
+	current   string
+	curHost   string
+	curTarget PingTarget // where the node in use is pinged
+	curPing   *float64
+	applied   string // TunnelState.version now in the tunnel
+	peerKey   string
+	problem   string
+	released  bool
+	asleep    bool // tunnel is down on purpose; sync must not bring it back
+	// failed: the first connection ran out of ConnectBudget and the app stopped
+	// trying (issue #53); the window shows the error and «Повторить» (Retry).
+	failed     bool
 	skip       []string
 	hold       *tunnelHold
 	available  *Manifest

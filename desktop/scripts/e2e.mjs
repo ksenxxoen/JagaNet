@@ -284,35 +284,46 @@ try {
   await b.stop();
 
   /* ---------- 5. the server is silent (blocked node) ---------- */
-  // Real timeouts: problem text after 20 s, the connection is given back (kill switch released) after 45 s.
-  // Then the probe outside the tunnel finds the panel answering (its /v1/health here is a 404, which
-  // still counts), so the silence is put down to the network: "blocked" with "Другая страна".
+  // Real timeouts: problem text after 20 s; after the connect budget (45 s) the app gives up
+  // (issue #53): the internet is given back, «Подключение…» gives way to «Не удалось подключиться»
+  // with «Повторить», and nothing is tried again on its own. The probe outside the tunnel finds
+  // the panel answering (its /v1/health here is a 404, which still counts), so the silence is put
+  // down to the network: "blocked".
   panel.reset();
   const c = await launch({ env: { BOOP_FAKE_NOHANDSHAKE: "1" } });
   await signInByMail(c);
   await c.click("#boop");
   await c.until("connecting, no handshake yet", async () => (await c.conn()) === "connecting");
-  await c.until("internet is given back after the connect budget", async () => (await c.state()).released === true, 60000);
+  check("connecting: «Подключение…»", (await c.text("status")) === (await TXT(c)).connecting);
+  await c.until("gives up after the connect budget", async () => (await c.state()).failed === true, 60000);
+  check("gave up: the internet is given back", (await c.state()).released === true);
   await c.until("the probe calls it blocked", async () => (await c.state()).problem === "blocked", 10000);
-  check("blocked text is shown", (await detail(c)) === (await TXT(c)).blocked);
-  check("blocked: the action is 'Другая страна'", !(await c.hidden("detail-btn")) && (await c.text("detail-btn")) === (await TXT(c)).otherCountry);
-  check("released: the button can still cancel", (await c.conn()) !== "off");
-  // 30 s later it tries again on its own, the internet is held again; the explanation stays
-  await c.until("retry holds the internet again", async () => (await c.state()).released !== true, 40000);
-  check("blocked text stays on the retry", (await detail(c)) === (await TXT(c)).blocked);
+  const t5 = await TXT(c);
+  check("gave up: «Не удалось подключиться», not «Подключение…»", (await c.text("status")) === t5.failedTitle);
+  check("gave up: blocked text, internet works", (await detail(c)) === t5.blocked + " " + t5.failedOpen);
+  check("gave up: the action is «Повторить»", !(await c.hidden("detail-btn")) && (await c.text("detail-btn")) === t5.retryConnect);
+  check("gave up: the button can still cancel", (await c.conn()) !== "off");
+  // It used to try again 30 s later on its own, for ever; now it waits for the person.
+  await sleep(35000);
+  check("no retry on its own", (await c.state()).failed === true && (await c.state()).released === true && (await c.conn()) === "problem");
+  await c.click("#detail-btn");
+  await c.until("«Повторить» connects again", async () => (await c.conn()) === "connecting" && !(await c.state()).failed);
+  check("retry: «Подключение…» again", (await c.text("status")) === t5.connecting);
+  check("retry: the old explanation is gone", (await detail(c)) === "");
   await c.click("#boop");
   await c.until("off", async () => (await c.conn()) === "off");
 
-  // strict mode: the same silence must NOT give the internet back
+  // strict mode: the same silence must NOT give the internet back, also when giving up
   await c.click("#open-settings");
   await c.page.evaluate(() => { const e = document.getElementById("s-strict"); e.checked = true; e.dispatchEvent(new Event("change", { bubbles: true })); });
   await sleep(500);
   await c.page.keyboard.press("Escape");
   await c.click("#boop");
-  await c.until("strict: 'internet is blocked' text", async () => { const t = await TXT(c); const d = await detail(c); return d === t.strict || d === t.blocked + " " + t.strictClosed; }, 60000);
-  await c.until("strict: blocked, internet closed", async () => (await detail(c)) === (await TXT(c)).blocked + " " + (await TXT(c)).strictClosed, 10000);
-  await sleep(10000);
-  check("strict: still not released after the budget", (await c.state()).released !== true);
+  await c.until("strict: connecting", async () => (await c.conn()) === "connecting");
+  await c.until("strict: gives up, internet closed", async () => (await c.state()).failed === true &&
+    (await detail(c)) === (await TXT(c)).blocked + " " + (await TXT(c)).strictClosed, 60000);
+  check("strict: not released when giving up", (await c.state()).released !== true);
+  check("strict: «Повторить»", (await c.text("detail-btn")) === (await TXT(c)).retryConnect);
   await c.click("#boop");
   await c.until("off", async () => (await c.conn()) === "off");
   await c.stop();

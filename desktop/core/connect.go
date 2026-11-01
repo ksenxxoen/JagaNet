@@ -53,18 +53,52 @@ func (a *App) connect() {
 		a.mu.Unlock()
 		return
 	}
+	ctx := a.beginLocked()
+	a.mu.Unlock()
+	a.emit()
+	Go("run", func() { a.run(ctx) })
+}
+
+// beginLocked starts a fresh connection attempt: state, context, resync
+// channel. The caller holds mu and then runs a.run(ctx).
+func (a *App) beginLocked() context.Context {
 	a.conn = "connecting"
 	a.curPing = nil
 	a.problem = ""
 	a.released = false
 	a.asleep = false
+	a.failed = false
 	a.skip = nil
 	a.told = nil
 	a.forgetVerdict()
 	ctx, cancel := context.WithCancel(context.Background())
 	a.stop = cancel
 	a.resyncCh = make(chan struct{}, 1)
+	return ctx
+}
+
+// Retry is «Повторить»: after the app gave up on a connection (UIState.Failed,
+// issue #53) it starts over as a new connection would, from the same country or
+// key, with a fresh ConnectBudget. The tunnel is not taken down first, so a strict
+// kill switch stays closed in between. Does nothing unless the app gave up.
+func (a *App) Retry() {
+	a.cmd.Lock()
+	defer a.cmd.Unlock()
+	a.retry()
+}
+
+func (a *App) retry() {
+	a.mu.Lock()
+	if a.conn == "off" || !a.failed || a.Store.Token == "" || a.signingOut {
+		a.mu.Unlock()
+		return
+	}
+	if a.stop != nil {
+		a.stop()
+	}
+	ctx := a.beginLocked()
 	a.mu.Unlock()
+	log.Printf("vpn: retry")
 	a.emit()
 	Go("run", func() { a.run(ctx) })
 }
@@ -86,7 +120,7 @@ func (a *App) disconnect() {
 		a.stop()
 	}
 	a.conn, a.current, a.curHost, a.curTarget, a.curPing = "off", "", "", PingTarget{}, nil
-	a.problem, a.released, a.asleep = "", false, false
+	a.problem, a.released, a.asleep, a.failed = "", false, false, false
 	a.forgetVerdict()
 	a.skip = nil
 	a.hold = nil

@@ -37,6 +37,7 @@ func (a *App) run(ctx context.Context) {
 // or the account itself cannot connect (plan ended, signed out).
 func (a *App) connectWithRetry(ctx context.Context) bool {
 	var n int
+	start := time.Now()
 	for {
 		if ctx.Err() != nil || a.connOff() {
 			return false
@@ -64,6 +65,13 @@ func (a *App) connectWithRetry(ctx context.Context) bool {
 				log.Printf("connect: panel unreachable, using saved config")
 				return true
 			}
+		}
+		if code == ProbNoHandshake && time.Since(start) >= ConnectBudget {
+			// Not the network: the panel or the tunnel keeps failing. Stop and let
+			// the person try again (issue #53); without the network keep waiting.
+			log.Printf("connect: %v; giving up", err)
+			a.giveUp(code)
+			return false
 		}
 		wait := connectBackoff[n]
 		if n < len(connectBackoff)-1 {
@@ -146,6 +154,15 @@ func (a *App) applyStep(ctx context.Context, step Step) {
 		a.told = nil
 		a.forgetVerdict()
 		a.mu.Unlock()
+	}
+	if step.GaveUp {
+		// Before the problem is explained: the tray's words depend on it (failedPhrase).
+		a.mu.Lock()
+		if a.conn != "off" {
+			a.failed = true
+		}
+		a.mu.Unlock()
+		log.Printf("vpn: no connection in %s, giving up until retry", ConnectBudget)
 	}
 	if step.Problem != "" {
 		a.mu.Lock()
@@ -234,6 +251,7 @@ func (a *App) markOn() {
 	a.accountBlocked = false // a tunnel came up: the panel let this account in
 	a.conn = "on"
 	a.problem = ""
+	a.failed = false
 	a.forgetVerdict()
 	a.released = false
 	a.asleep = false
@@ -262,6 +280,35 @@ func (a *App) releaseTunnel() {
 	a.op.Unlock()
 	log.Printf("vpn: kill switch released")
 	a.emit()
+}
+
+// giveUp stops a connection that never came up (connectWithRetry, issue #53):
+// the window shows the problem with «Повторить». Without the strict kill switch
+// the tunnel goes down so the internet works; with it whatever is up stays.
+func (a *App) giveUp(code string) {
+	a.mu.Lock()
+	if a.conn == "off" {
+		a.mu.Unlock()
+		return
+	}
+	strict := a.Store.StrictKill
+	a.conn = "problem"
+	a.problem = a.explain(code)
+	a.failed = true
+	a.asleep = true
+	if !strict {
+		a.released = true
+	}
+	a.mu.Unlock()
+	if !strict {
+		a.op.Lock()
+		if a.Tunnel != nil {
+			a.Tunnel.Down()
+		}
+		a.op.Unlock()
+	}
+	a.emit()
+	a.alert(code)
 }
 
 func (a *App) stopProblem(code string) {

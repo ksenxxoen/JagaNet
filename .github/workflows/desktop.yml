@@ -54,14 +54,45 @@ jobs:
       - name: go vet (windows)
         run: GOOS=windows GOARCH=amd64 go vet ./...
 
+      # Issue #53: the embedded Xray-core must not be older than the nodes' (the one
+      # constant to change is NodeCoreVersion in vpn/xray/version.go).
+      - name: xray-core not older than the nodes
+        run: go test -count=1 -run '^TestEmbeddedCoreNotOlderThanNodes$' -v ./vpn/xray/
+
+      # No GPL code in the binaries. Xray-core up to 25.x imported sagernet/sing
+      # (GPL-3.0); 26.x does not. If a new version brings it back, stop here.
+      - name: no GPL modules linked
+        run: |
+          mods="$( { GOOS=windows go list -deps -f '{{with .Module}}{{.Path}}{{end}}' . ;
+                     GOOS=linux go list -deps -tags boopapp -f '{{with .Module}}{{.Path}}{{end}}' . ./cmd/... ; } | sort -u)"
+          echo "$mods"
+          if grep -E '^github\.com/sagernet/' <<<"$mods"; then
+            echo "::error::a GPL module is linked (see desktop/ARCHITECTURE.md, Licences)"
+            exit 1
+          fi
+
       - name: go test
         run: go test -race -count=1 ./...
+
+      # A real Xray node of the version the nodes run, built from source (NodeCoreModule),
+      # for TestExternalNode below: the embedded engine against it on Vision and XHTTP.
+      - name: Xray node binary
+        run: |
+          mod="$(sed -n 's/^[[:space:]]*NodeCoreModule = "\(.*\)"$/\1/p' vpn/xray/version.go)"
+          test -n "$mod"
+          GOBIN="$RUNNER_TEMP/xray-node" go install -trimpath github.com/xtls/xray-core/main@"$mod"
+          "$RUNNER_TEMP/xray-node/main" version
 
       # Xray-core's Vision and XHTTP do not survive -race (checkptr, a race inside
       # XHTTP's client; see vpn/xray/race_test.go), so the VLESS tests carry
       # traffic over them in a second run without it.
-      - name: go test (VLESS without -race)
-        run: go test -count=1 ./vpn/xray/
+      - name: go test (VLESS without -race, real Xray node)
+        env:
+          BOOP_XRAY_BIN: ${{ runner.temp }}/xray-node/main
+          BOOP_XRAY_REQUIRED: "1"
+        run: |
+          go test -count=1 ./vpn/xray/
+          go test -count=1 -run '^TestExternalNode$' -v ./vpn/xray/ | grep -E '^\s*(---|externalnode_test|ok|PASS|FAIL)'
 
       - name: SHA-256
         run: |
