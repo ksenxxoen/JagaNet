@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"syscall"
 
 	"github.com/ksenxxoen/JagaNet/desktop/core"
 )
@@ -76,6 +77,45 @@ type Extras map[string][]byte
 // InstalledExe is where the service's copy of the program lives.
 func InstalledExe(sys System) string { return filepath.Join(sys.InstallDir(), BinaryName) }
 
+// StepError is a failure of one named step of the install, so the person and the
+// log see which step it was and the Windows error behind it, not a bare number.
+type StepError struct {
+	Step string
+	Err  error
+}
+
+func (e *StepError) Error() string { return e.Step + ": " + e.Err.Error() }
+func (e *StepError) Unwrap() error { return e.Err }
+
+func stepErr(step string, err error) error { return &StepError{Step: step, Err: err} }
+
+// Describe splits an install error into the step, the Win32 code (0 when the
+// error carries none) and the text, for the log and for the window.
+func Describe(err error) (step string, code uint32, text string) {
+	var se *StepError
+	if errors.As(err, &se) {
+		step = se.Step
+		err = se.Err
+	}
+	var en syscall.Errno
+	if errors.As(err, &en) {
+		code = uint32(en)
+	}
+	return step, code, err.Error()
+}
+
+// Message is the person's sentence for a failed install.
+func Message(err error) string {
+	step, code, text := Describe(err)
+	if step == "" {
+		step = "install"
+	}
+	if code != 0 {
+		return fmt.Sprintf("шаг «%s», ошибка Windows %d: %s", step, code, text)
+	}
+	return fmt.Sprintf("шаг «%s»: %s", step, text)
+}
+
 // Install puts the program in the install directory and registers and starts
 // the service. It is safe to run again: it is also the upgrade, and it is what
 // the "retry" button does. It needs administrator rights (the caller is the
@@ -86,36 +126,36 @@ func Install(sys System, extras Extras) error {
 
 	st, err := sys.ServiceState()
 	if err != nil {
-		return fmt.Errorf("service state: %w", err)
+		return stepErr("service-state", err)
 	}
 	if st == Running {
 		// The old program is replaced under it: stop first (the tunnel goes down;
 		// the remembered config brings it back at the start below).
 		if err := sys.StopService(); err != nil {
-			return fmt.Errorf("stop service: %w", err)
+			return stepErr("stop-service", err)
 		}
 	}
 	if err := sys.SecureDir(dir); err != nil {
-		return fmt.Errorf("secure %s: %w", dir, err)
+		return stepErr("secure-program-dir", err)
 	}
 	if sys.Exe() != dst {
 		if err := sys.CopyFile(sys.Exe(), dst); err != nil {
-			return fmt.Errorf("copy program: %w", err)
+			return stepErr("copy-program", err)
 		}
 	}
 	for name, data := range extras {
 		if err := sys.WriteFile(filepath.Join(dir, name), data); err != nil {
-			return fmt.Errorf("write %s: %w", name, err)
+			return stepErr("write-"+name, err)
 		}
 	}
 	if err := sys.SecureDir(sys.DataDir()); err != nil {
-		return fmt.Errorf("secure %s: %w", sys.DataDir(), err)
+		return stepErr("secure-data-dir", err)
 	}
 	if err := sys.CreateService(dst); err != nil {
-		return fmt.Errorf("create service: %w", err)
+		return stepErr("create-service", err)
 	}
 	if err := sys.StartService(); err != nil {
-		return fmt.Errorf("start service: %w", err)
+		return stepErr("start-service", err)
 	}
 	// Not fatal: the new UI starts without rights through the Run key anyway.
 	if sys.AutostartTaskExists() {
@@ -197,12 +237,19 @@ func RunCommand(exe string) string { return `"` + exe + `" --tray` }
 // MigrateAutostart replaces the old scheduled task by the Run key: a user who
 // had start-with-Windows on keeps it. exe is the program that should start (the
 // installed one when there is one). It runs as the ordinary user.
-func MigrateAutostart(a Autostart, exe string) error {
+//
+// serviceOK says the service is installed and answering. Until it is, the old
+// task is left alone: it is the autostart that still works (the elevated
+// window runs the tunnel itself), and it must not be lost to a broken install.
+func MigrateAutostart(a Autostart, exe string, serviceOK bool) error {
 	if !a.TaskExists() {
 		// Nothing old; refresh the key if it is on so it points at exe.
 		if a.RunKeyOn() {
 			return a.SetRunKey(RunCommand(exe))
 		}
+		return nil
+	}
+	if !serviceOK {
 		return nil
 	}
 	if err := a.SetRunKey(RunCommand(exe)); err != nil {

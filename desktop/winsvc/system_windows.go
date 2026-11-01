@@ -211,6 +211,28 @@ func (Real) DeleteService() error {
 	return s.Delete()
 }
 
+// enablePrivilege switches on a privilege the token already has. An
+// administrator's token holds SeRestorePrivilege and SeTakeOwnershipPrivilege
+// but has them off; setting an owner other than oneself needs them on.
+func enablePrivilege(name string) {
+	var tok windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_ADJUST_PRIVILEGES|windows.TOKEN_QUERY, &tok); err != nil {
+		return
+	}
+	defer tok.Close()
+	n, err := windows.UTF16PtrFromString(name)
+	if err != nil {
+		return
+	}
+	var luid windows.LUID
+	if windows.LookupPrivilegeValue(nil, n, &luid) != nil {
+		return
+	}
+	tp := windows.Tokenprivileges{PrivilegeCount: 1}
+	tp.Privileges[0] = windows.LUIDAndAttributes{Luid: luid, Attributes: windows.SE_PRIVILEGE_ENABLED}
+	_ = windows.AdjustTokenPrivileges(tok, false, &tp, 0, nil, nil)
+}
+
 func (Real) SecureDir(dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -227,14 +249,28 @@ func (Real) SecureDir(dir string) error {
 	if err != nil {
 		return err
 	}
-	// Owner too: an existing directory made by an ordinary user would stay theirs.
-	system, err := windows.StringToSid("S-1-5-18")
-	if err != nil {
-		return err
+	// 1.4.0 set the owner to SYSTEM without these privileges on and failed with
+	// ERROR_INVALID_OWNER on every machine.
+	enablePrivilege("SeRestorePrivilege")
+	enablePrivilege("SeTakeOwnershipPrivilege")
+	const flags = windows.DACL_SECURITY_INFORMATION | windows.PROTECTED_DACL_SECURITY_INFORMATION
+	// The owner too, so a directory an ordinary user made beforehand does not
+	// stay theirs: SYSTEM, else Administrators (an elevated administrator may
+	// always set that one). The owner is a hardening, not a requirement: the
+	// access list below is what keeps ordinary users out, so when no owner can
+	// be set the list is still applied.
+	for _, sidStr := range []string{"S-1-5-18", "S-1-5-32-544"} {
+		sid, err := windows.StringToSid(sidStr)
+		if err != nil {
+			continue
+		}
+		err = windows.SetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT, flags|windows.OWNER_SECURITY_INFORMATION, sid, nil, dacl, nil)
+		if err == nil {
+			return nil
+		}
+		log.Printf("secure %s: owner %s: %v", dir, sidStr, err)
 	}
-	return windows.SetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT,
-		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION|windows.OWNER_SECURITY_INFORMATION,
-		system, nil, dacl, nil)
+	return windows.SetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT, flags, nil, nil, dacl, nil)
 }
 
 func (Real) CopyFile(src, dst string) error {
@@ -391,6 +427,33 @@ var ErrCancelled = errors.New("the administrator prompt was declined")
 // it and returns its exit code. This is the only place the program asks for
 // rights; the UI itself never has them.
 func RunElevated(exe string, args string) (uint32, error) {
+	p, err := shellRunas(exe, args, windows.SW_HIDE)
+	if err != nil {
+		return 0, err
+	}
+	defer windows.CloseHandle(p)
+	if ev, err := windows.WaitForSingleObject(p, 3*60*1000); err != nil || ev != windows.WAIT_OBJECT_0 {
+		return 0, errors.New("the installer did not finish")
+	}
+	var code uint32
+	if err := windows.GetExitCodeProcess(p, &code); err != nil {
+		return 0, err
+	}
+	return code, nil
+}
+
+// StartElevated starts exe with args through the UAC prompt and does not wait:
+// the elevated copy of the window (the fallback without the service).
+func StartElevated(exe string, args string) error {
+	p, err := shellRunas(exe, args, windows.SW_SHOWNORMAL)
+	if err != nil {
+		return err
+	}
+	windows.CloseHandle(p)
+	return nil
+}
+
+func shellRunas(exe, args string, show int32) (windows.Handle, error) {
 	verb, _ := windows.UTF16PtrFromString("runas")
 	file, err := windows.UTF16PtrFromString(exe)
 	if err != nil {
@@ -400,7 +463,7 @@ func RunElevated(exe string, args string) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
-	info := shellExecuteInfo{Mask: 0x40 /* SEE_MASK_NOCLOSEPROCESS */, Verb: verb, File: file, Parameters: params, Show: windows.SW_HIDE}
+	info := shellExecuteInfo{Mask: 0x40 /* SEE_MASK_NOCLOSEPROCESS */, Verb: verb, File: file, Parameters: params, Show: show}
 	info.Size = uint32(unsafe.Sizeof(info))
 	shell32 := windows.NewLazySystemDLL("shell32.dll")
 	r, _, e := shell32.NewProc("ShellExecuteExW").Call(uintptr(unsafe.Pointer(&info)))
@@ -410,15 +473,7 @@ func RunElevated(exe string, args string) (uint32, error) {
 		}
 		return 0, e
 	}
-	defer windows.CloseHandle(info.Process)
-	if ev, err := windows.WaitForSingleObject(info.Process, 3*60*1000); err != nil || ev != windows.WAIT_OBJECT_0 {
-		return 0, errors.New("the installer did not finish")
-	}
-	var code uint32
-	if err := windows.GetExitCodeProcess(info.Process, &code); err != nil {
-		return 0, err
-	}
-	return code, nil
+	return info.Process, nil
 }
 
 // IsAdmin reports whether this process has an administrator token.
