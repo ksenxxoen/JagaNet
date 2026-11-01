@@ -228,7 +228,7 @@ private class Pages(val lang: Lang) {
 <html lang="${lang.code}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><title>$title | Boop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"></head>
 <body><header class="top"><div class="top-in"><a class="logo" href="/"><img src="/favicon.svg" alt="">Boop</a>
 <nav class="nav"><span class="langs">${Lang.entries.joinToString("") { l -> """<a class="${if (l == lang) "on" else ""}" href="?lang=${l.code}" hreflang="${l.code}">${l.code.uppercase()}</a>""" }}</span></nav></div></header>
@@ -245,7 +245,7 @@ private class Pages(val lang: Lang) {
             val names = v.locations.flatMap { l -> l.named(lang).map { it.second } }
             val extra = v.links.drop(1).mapIndexed { i, l ->
                 """<div class="card section"><h3>${names.getOrNull(i + 1)?.let(::esc) ?: t("Backup key")}</h3>
-  <div class="formrow two"><input class="mono" id="vk${i + 1}" readonly value="${esc(l)}"><button class="btn" data-copy="vk${i + 1}" type="button">${t("Copy key")}</button></div></div>"""
+  <div class="formrow two"><input class="mono" id="vk${i + 1}" readonly value="${esc(l)}"><button class="btn secondary" data-copy="vk${i + 1}" type="button">${t("Copy key")}</button></div></div>"""
             }.joinToString("")
             """<div class="card keycard">
   <img class="qr" src="$base/vless/0.png" alt="${t("QR code of your VPN key")}" width="280" height="280">

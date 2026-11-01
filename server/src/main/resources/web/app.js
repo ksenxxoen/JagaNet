@@ -74,24 +74,76 @@ async function api(path, opts = {}) {
 
 function go(hash) { if (location.hash === hash) render(); else location.hash = hash; }
 
+/* ---------------- icons ---------------- */
+
+/** 24-grid stroke icons, drawn in currentColor (style: svg.ic in style.css). */
+const ICONS = {
+  bolt: '<path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12L13 2z"/>',
+  ping: '<path d="M2 12h4l2.5-6 4 12 3-8 1.5 2H22"/>',
+  shield: '<path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.3 7.5 9.5 4.4-1.2 7.5-4.9 7.5-9.5V6L12 3z"/><path d="m8.8 12 2.3 2.3 4.4-4.6"/>',
+  mask: '<path d="M3 3l18 18"/><path d="M10.6 5.1c.5-.1.9-.1 1.4-.1 6 0 10 7 10 7a17 17 0 0 1-3.2 3.9M6.6 6.6A17 17 0 0 0 2 12s4 7 10 7c2 0 3.8-.6 5.3-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  lock: '<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/>',
+  apps: '<rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/>',
+  key: '<circle cx="8" cy="15" r="4.5"/><path d="m11.2 11.8 8.8-8.8M16.5 6.5l2.5 2.5M14 9l2 2"/>',
+  plane: '<path d="M21.5 3.5 2.5 11l6.5 2.5L11.5 20l3-4.5 5 3.5 2-15.5z"/><path d="m9 13.5 12.5-10"/>',
+  gift: '<rect x="3.5" y="8" width="17" height="4.5" rx="1"/><path d="M5.5 12.5V20h13v-7.5M12 8v12M12 8c-1-3-2.6-4.5-4.2-4-1.6.6-1 3 .7 3.6 1 .3 2.2.4 3.5.4zM12 8c1-3 2.6-4.5 4.2-4 1.6.6 1 3-.7 3.6-1 .3-2.2.4-3.5.4z"/>',
+  chat: '<path d="M20.5 12a8.5 8.5 0 0 1-12.3 7.6L3.5 21l1.4-4.4A8.5 8.5 0 1 1 20.5 12z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/>',
+  check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+  android: '<path d="M5 10.5a7 7 0 0 1 14 0V18a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 18v-7.5zM5 11h14M7.5 4.5l1.5 2.5M16.5 4.5 15 7"/><path d="M9.5 8.5h.01M14.5 8.5h.01"/>',
+  phone: '<rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18.5h3"/>',
+  download: '<path d="M12 3.5v12M7 11l5 5 5-5M4.5 20.5h15"/>',
+  arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  card: '<rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19M6.5 15h3"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5c1.2-3.6 4-5.5 7.5-5.5s6.3 1.9 7.5 5.5"/>',
+};
+const icon = (k, cls = "ic") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>`;
+
+/** Anchors of the landing page: in the top bar for visitors and in the footer. */
+const ANCHORS = () => [["features", t("Features")], ["how", t("How it works")], ["pricing", t("Pricing")], ["faq", t("Questions")]];
+
 /** Top bar: page links, the language switch and, on phones, a menu button that opens the same links as a list. */
 function renderNav() {
+  const signedIn = !!store.get("token");
   const here = (location.hash.slice(1) || "/").split("?")[0];
-  const items = store.get("token")
+  const items = signedIn
     ? [...(role === "owner" ? [["/analytics", t("Analytics")], ["/admin", t("Admin panel")], ["/status", t("Server status")]] : []), ...(role === "owner" || site?.referralsPublic ? [["/referrals", t("Referral program")]] : site?.inviteRewardDays > 0 ? [["/invite", t("Invite a friend")]] : []), ["/account", t("My account")], ["/support", t("Support")]]
-    : [];
-  const link = ([p, l]) => `<a class="item ${p === here ? "on" : ""}" href="#${p}">${l}</a>`;
-  const langs = `<span class="langs">${LANGS.map(([c, name]) => `<button type="button" class="${c === lang ? "on" : ""}" data-lang="${c}" title="${name}" lang="${c}">${c.toUpperCase()}</button>`).join("")}</span>`;
-  const signIn = store.get("token") ? "" : `<a class="btn secondary" href="#/signin">${t("Sign in")}</a>`;
-  const burger = items.length ? `<button class="btn secondary menu-btn" type="button" id="menubtn" aria-label="${t("Menu")}" aria-expanded="false">
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.5"/></svg></button>` : "";
-  nav.innerHTML = items.map(link).join("") + (items.length ? `<span class="sep"></span>` : "") + langs + signIn + burger;
+    : ANCHORS().map(([id, l]) => ["#" + id, l]);
+  const link = ([p, l]) => p.startsWith("#")
+    ? `<a class="item" href="${p}">${l}</a>`
+    : `<a class="item ${p === here ? "on" : ""}" href="#${p}"${p === here ? ' aria-current="page"' : ""}>${l}</a>`;
+  const langs = `<span class="langs" role="group" aria-label="${t("Language")}">${LANGS.map(([c, name]) => `<button type="button" class="${c === lang ? "on" : ""}" data-lang="${c}" title="${name}" lang="${c}" aria-pressed="${c === lang}">${c.toUpperCase()}</button>`).join("")}</span>`;
+  const signIn = signedIn ? "" : `<a class="btn ghost signin-link" href="#/signin">${t("Sign in")}</a>`;
+  const cta = signedIn ? "" : `<a class="btn top-cta" href="#pricing">${t("Choose your plan")}</a>`;
+  const burger = `<button class="btn secondary menu-btn" type="button" id="menubtn" aria-label="${t("Menu")}" aria-expanded="false" aria-controls="menu">
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>`;
+  nav.innerHTML = `<span class="nav-links">${items.map(link).join("")}</span>` + langs + signIn + cta + burger;
   menu.className = "menu";
-  menu.innerHTML = items.map(link).join("");
-  for (const b of nav.querySelectorAll("[data-lang]")) b.onclick = () => setLang(b.dataset.lang);
+  menu.setAttribute("aria-label", t("Menu"));
+  menu.innerHTML = items.map(link).join("") + (signedIn ? "" : `<a class="item" href="#/signin">${t("Sign in")}</a>`) + `<div class="menu-langs">${langs}</div>`;
+  for (const b of document.querySelectorAll("#nav [data-lang], #menu [data-lang]")) b.onclick = () => setLang(b.dataset.lang);
   const mb = document.getElementById("menubtn");
-  if (mb) mb.onclick = () => { const open = menu.classList.toggle("open"); mb.setAttribute("aria-expanded", String(open)); };
-  foot.innerHTML = `<span>© Boop</span><nav>${site?.telegramBotUrl ? `<a href="${h(site.telegramBotUrl)}">Telegram</a>` : ""}<a href="#/">${t("Pricing")}</a>${store.get("token") ? `<a href="#/account">${t("My account")}</a>` : `<a href="#/signin">${t("Sign in")}</a>`}<a href="#/support">${t("Contact support")}</a><a href="/privacy" target="_blank" rel="noopener">${t("Privacy policy")}</a><a href="/terms" target="_blank" rel="noopener">${t("Terms of use")}</a></nav>`;
+  const close = () => { menu.classList.remove("open"); mb.setAttribute("aria-expanded", "false"); };
+  mb.onclick = () => { const open = menu.classList.toggle("open"); mb.setAttribute("aria-expanded", String(open)); };
+  for (const a of menu.querySelectorAll("a")) a.addEventListener("click", close);
+  renderFooter();
+}
+
+/** Footer: the brand, the product links, the account and help with the legal pages. */
+function renderFooter() {
+  const signedIn = !!store.get("token");
+  const col = (title, links) => `<div class="foot-col"><h4>${title}</h4><ul>${links.filter(Boolean).map((l) => `<li>${l}</li>`).join("")}</ul></div>`;
+  const tg = site?.telegramBotUrl;
+  foot.innerHTML = `<div class="foot-in">
+    <div class="foot-brand"><a class="logo" href="#/"><img src="/favicon.svg" alt="" width="28" height="28">Boop VPN</a>
+      <p>${t("A fast VPN with low ping that keeps your data safe.")}</p></div>
+    ${col(t("Product"), [...ANCHORS().map(([id, l]) => `<a href="#${id}">${l}</a>`), `<a href="#download">${t("Apps")}</a>`])}
+    ${col(t("Account"), [signedIn ? `<a href="#/account">${t("My account")}</a>` : `<a href="#/signin">${t("Sign in")}</a>`,
+      signedIn && site?.inviteRewardDays > 0 ? `<a href="#/invite">${t("Invite a friend")}</a>` : "",
+      tg ? `<a href="${h(tg)}" rel="noreferrer">${t("Telegram bot")}</a>` : ""])}
+    ${col(t("Help"), [`<a href="#/support">${t("Contact support")}</a>`, `<a href="/privacy" target="_blank" rel="noopener">${t("Privacy policy")}</a>`, `<a href="/terms" target="_blank" rel="noopener">${t("Terms of use")}</a>`])}
+  </div>
+  <div class="foot-bottom"><span>© ${new Date().getFullYear()} Boop VPN</span><span>${t("We don't keep browsing history")}</span></div>`;
 }
 
 /**
@@ -109,70 +161,224 @@ const buyBtn = (tariffId, cls, label) => `<button class="btn ${cls}" ${payOk() ?
 /** A tariff's length: "1 месяц", "7 дней". */
 const period = (x) => (x.durationUnit === "days" ? tp(x.durationValue, "{n} day|{n} days") : tp(x.durationValue, "{n} month|{n} months"));
 const dataText = (bytes) => (bytes == null ? t("Unlimited data") : t("{n} GB a month", { n: Math.round(bytes / 1e9) }));
-/** The recommended tariff: the first one with a badge, else the first one. */
-const bestIndex = (list) => Math.max(0, list.findIndex((x) => x.badge));
-/** All plan cards share one structure: badge line, name, price, four lines of terms, a button. */
-const planCard = (name, price, lines, button, badge, best, slot) => `<div class="card plan ${best ? "best" : ""}">
-  ${slot ? `<div class="badge-slot">${badge ? `<span class="badge best">${h(badge)}</span>` : ""}</div>` : ""}
-  <h3>${h(name)}</h3><div class="price">${h(price)}</div>
-  <ul>${lines.map((l) => `<li>${l}</li>`).join("")}</ul>${button}</div>`;
-const tariffCard = (x, best, slot) => planCard(x.name, money(x.priceMinor, x.currency),
-  [h(period(x)), tp(x.deviceLimit, "{n} device|{n} devices"), h(dataText(x.monthlyDataLimitBytes)), t("Works in other VPN apps too")],
-  buyBtn(x.id, best ? "" : "secondary", t("Buy")), x.badge, best, slot);
 const testPayBadge = () => (site?.testPayments ? `<span class="badge test">${t("Test payments, no real money")}</span>` : "");
+
+/* ---------------- pricing math ---------------- */
+
+/** A tariff's length in months (days count as 1/30 of a month), for ordering. */
+const monthsLong = (x) => (x.durationUnit === "days" ? x.durationValue / 30 : x.durationValue);
+/**
+ * Tariffs shortest first, each with its price per month (plans of 2+ months), and the saving against
+ * paying the 1-month tariff of the same currency every month: computed from the prices, never typed in.
+ */
+function pricedTariffs(list) {
+  const sorted = [...list].sort((a, b) => monthsLong(a) - monthsLong(b));
+  const monthly = sorted.find((x) => x.durationUnit === "months" && x.durationValue === 1);
+  const rows = sorted.map((x) => {
+    const months = x.durationUnit === "months" ? x.durationValue : 0;
+    const perMonth = months > 1 ? Math.round(x.priceMinor / months) : months === 1 ? x.priceMinor : null;
+    const full = monthly && months > 1 && monthly.currency === x.currency ? monthly.priceMinor * months : null;
+    const save = full && full > x.priceMinor ? Math.floor((1 - x.priceMinor / full) * 100) : 0;
+    return { x, months, perMonth, full: save > 0 ? full : null, save };
+  });
+  // The recommended plan: the owner's badge first, else the biggest saving, else the first one.
+  let best = rows.findIndex((r) => r.x.badge);
+  if (best < 0 && rows.some((r) => r.save > 0)) best = rows.reduce((b, r, i) => (r.save > rows[b].save ? i : b), 0);
+  return { rows, best: Math.max(0, best) };
+}
+
+/** "1 устройство", "До 5 устройств". */
+const devicesLine = (n) => (n === 1 ? tp(n, "{n} device|{n} devices") : tp(n, "Up to {n} device|Up to {n} devices"));
+const checks = (lines) => `<ul class="checks">${lines.filter(Boolean).map((l) => `<li>${icon("check")}<span>${l}</span></li>`).join("")}</ul>`;
+
+/** One plan card: badge line, name, price (per month when it applies), the bill, what is included, one button. */
+function planCard({ name, badge, best, price, per, note, lines, button }) {
+  return `<article class="plan ${best ? "best" : ""}">
+    <div class="plan-top"><h3>${h(name)}</h3>${badge ? `<span class="badge ${best ? "hot" : "best"}">${h(badge)}</span>` : ""}</div>
+    <div class="price"><b>${h(price)}</b>${per ? `<span>${per}</span>` : ""}</div>
+    <p class="price-note">${note || "&nbsp;"}</p>
+    ${checks(lines)}
+    ${button}
+  </article>`;
+}
+
+function tariffPlan(r, best) {
+  const x = r.x;
+  const price = money(r.perMonth ?? x.priceMinor, x.currency);
+  const per = r.perMonth != null ? t("per month") : h(t("for {period}", { period: period(x) }));
+  const bill = h(t("{price} for {period}", { price: money(x.priceMinor, x.currency), period: period(x) }));
+  const note = r.months > 1 ? `${r.full ? `<s>${h(money(r.full, x.currency))}</s> ` : ""}${bill}${r.save ? ` <span class="save">${h(t("Save {p}%", { p: r.save }))}</span>` : ""}` : r.months === 1 ? bill : "";
+  return planCard({
+    name: x.name, best, price, per, note,
+    badge: x.badge || (best ? t("Best value") : r.save ? t("Save {p}%", { p: r.save }) : ""),
+    lines: [devicesLine(x.deviceLimit), h(dataText(x.monthlyDataLimitBytes)), t("Every server location"), t("Protection against VPN blocking"), t("Works in other VPN apps too")],
+    button: buyBtn(x.id, best ? "" : "secondary", t("Get this plan")),
+  });
+}
+
+function freePlan(free, cur) {
+  return planCard({
+    name: t("Free"), price: money(0, cur),
+    per: free.days ? h(t("for {period}", { period: tp(free.days, "{n} day|{n} days") })) : t("forever"),
+    note: h(t("No payment needed")),
+    lines: [free.days ? tp(free.days, "{n} day|{n} days") : t("No time limit"), devicesLine(free.deviceLimit),
+      free.monthlyDataLimitBytes ? h(t("{n} GB a month", { n: Math.round(free.monthlyDataLimitBytes / 1e9) })) : t("Unlimited data"),
+      free.speedMbps ? h(t("Up to {n} Mbit/s", { n: free.speedMbps })) : t("In the Boop app")],
+    button: `<a class="btn secondary" href="#download">${t("Start for free")}</a>`,
+  });
+}
 
 /* ---------------- landing ---------------- */
 
-const ICONS = {
-  speed: '<path d="M4 14a8 8 0 1 1 16 0" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 14l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
-  lock: '<rect x="5" y="10" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/>',
-  eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 20L20 4" stroke="currentColor" stroke-width="2"/>',
-};
-const icon = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>`;
+/** The product picture in the hero: the Boop app, connected. Decorative, so hidden from screen readers. */
+function heroVisual() {
+  const bars = [38, 52, 44, 63, 58, 72, 66, 80, 74, 86, 78, 92];
+  return `<div class="hero-visual" aria-hidden="true">
+    <div class="orbit o1"></div><div class="orbit o2"></div>
+    <div class="phone">
+      <div class="phone-in">
+        <div class="ph-top"><span class="ph-logo"><img src="/favicon.svg" alt="">Boop</span><span class="ph-pill">${t("Protected")}</span></div>
+        <div class="ph-ring"><span class="pulse"></span><span class="pulse p2"></span><div class="ph-btn">${icon("shield")}</div></div>
+        <div class="ph-state"><b>${t("Protected")}</b><span>${t("Traffic is encrypted and masked")}</span></div>
+        <div class="ph-row">${icon("globe")}<div><b>${t("Auto, best server")}</b><span>${t("Lowest ping is chosen for you")}</span></div></div>
+        <div class="ph-graph">${bars.map((v, i) => `<i style="height:${v}%;animation-delay:${i * 90}ms"></i>`).join("")}</div>
+      </div>
+    </div>
+    <div class="float f1">${icon("bolt")}<span>${t("High speed")}</span></div>
+    <div class="float f2">${icon("ping")}<span>${t("Low ping")}</span></div>
+    <div class="float f3">${icon("lock")}<span>${t("Data security")}</span></div>
+  </div>`;
+}
+
+const sectionHead = (eyebrow, title, sub = "", extra = "") => `<div class="sec-head reveal">${eyebrow ? `<span class="eyebrow">${eyebrow}</span>` : ""}<h2>${title}</h2>${sub ? `<p>${sub}</p>` : ""}${extra}</div>`;
 
 async function home() {
   const plans = await api("/billing/plans");
-  const free = plans.free, best = bestIndex(plans.tariffs);
-  // A badge line in every card when any card has a badge, so names and prices stay on one line.
-  const slot = plans.tariffs.some((x) => x.badge);
+  const free = plans.free, { rows, best } = pricedTariffs(plans.tariffs);
   const cur = plans.tariffs[0]?.currency || (lang === "ru" ? "RUB" : "EUR");
-  const freeCard = planCard(t("Free"), money(0, cur),
-    [free.days ? tp(free.days, "{n} day|{n} days") : t("No time limit"), tp(free.deviceLimit, "{n} device|{n} devices"),
-      free.monthlyDataLimitBytes ? h(t("{n} GB a month", { n: Math.round(free.monthlyDataLimitBytes / 1e9) })) : t("Unlimited"),
-      free.speedMbps ? h(t("Up to {n} Mbit/s", { n: free.speedMbps })) : t("Boop app")],
-    `<a class="btn secondary" href="#download">${t("Download the app")}</a>`, null, false, slot);
+  const unlimitedPro = plans.tariffs.length > 0 && plans.tariffs.every((x) => x.monthlyDataLimitBytes == null);
+  const maxDevices = Math.max(0, ...plans.tariffs.map((x) => x.deviceLimit));
+  const tg = site?.telegramBotUrl, invite = site?.inviteRewardDays > 0;
+
+  const pillar = (ic, title, lead, lines) => `<article class="pillar reveal"><div class="pillar-ic">${icon(ic)}</div><h3>${title}</h3><p>${lead}</p>${checks(lines)}</article>`;
+  const extras = [
+    ["apps", t("Works in the apps you know"), t("Happ, v2RayTun, Hiddify, AmneziaVPN and the Boop apps. Add the key with a QR code or a link.")],
+    ["key", t("One key for every location"), t("The subscription link brings in every country and backup connection by itself.")],
+    tg ? ["plane", t("Everything in the Telegram bot"), t("Buy, get your keys, reminders before the end of your plan and support, right in the chat.")] : null,
+    invite ? ["gift", t("Invite your friends"), h(t("Get {days} of Pro for every friend you invite.", { days: tp(site.inviteRewardDays, "{n} day|{n} days") }))] : null,
+    ["chat", t("Support that answers"), t("Write to us through the form on the website or in the bot, and we will help you connect.")],
+  ].filter(Boolean);
+  const steps = [
+    [t("Choose a plan"), t("Start with the free plan or get Pro for a month or longer.")],
+    [t("Get your key"), t("Your key with a QR code and a link appears in your account right away.")],
+    [t("Turn on the VPN"), t("Add the key to the app in one tap and connect.")],
+  ];
+  const faq = [
+    [t("How is Boop different from a regular VPN?"), t("Boop masks the VPN connection, so it is hard to recognise and block. It keeps working on networks where ordinary VPNs are cut off.")],
+    [t("Is there a free plan?"), h(t("Yes. The free plan works in the Boop app with {data} and {devices}, no payment needed.", {
+      data: free.monthlyDataLimitBytes ? t("{n} GB a month", { n: Math.round(free.monthlyDataLimitBytes / 1e9) }) : t("Unlimited data").toLowerCase(),
+      devices: tp(free.deviceLimit, "{n} device|{n} devices") }))],
+    ...(maxDevices ? [[t("How many devices can I connect?"), h(t("Paid plans include up to {devices}. The subscription key for Happ, v2RayTun and Hiddify is not counted in this limit.", { devices: tp(maxDevices, "{n} device|{n} devices") }))]] : []),
+    [t("Do you keep logs?"), t("We don't keep the history of the sites you visit. To run the service we only need your e-mail or Telegram account and the amount of traffic, to count your plan's limits.")],
+    [t("How do I connect?"), t("Install the Boop app or Happ, v2RayTun, Hiddify or AmneziaVPN. Then scan the QR code from your account or paste the key link, and turn the VPN on.")],
+    [t("When does access turn on after payment?"), t("Right after the payment. Pro turns on and your key appears in your account.")],
+    [t("What if the VPN stops connecting?"), t("Your key has several locations and backup connections, so the app can switch to another one. If it still doesn't work, write to support.")],
+  ];
+
   view.innerHTML = `
-  <section class="hero">
-    <h1>${t("A fast and secure VPN.")}</h1>
-    <div class="cta">
-      <a class="btn large" href="#pricing">${t("Choose a plan")}</a>
-      <a class="btn secondary large" href="#download">${t("Download the app")}</a>
+  <section class="hero band">
+    <div class="glow g1"></div><div class="glow g2"></div><div class="gridlines"></div>
+    <div class="shell hero-in">
+      <div class="hero-copy">
+        <span class="eyebrow pill"><i></i>${t("Works where other VPNs are blocked")}</span>
+        <h1>${t("High speed. Low ping.")} <span class="grad">${t("Your data stays safe.")}</span></h1>
+        <p class="lead">${t("Boop encrypts all your traffic, masks the VPN from blocking and keeps no browsing history. Setting up takes a couple of minutes on a phone or a computer.")}</p>
+        <div class="cta">
+          <a class="btn large" href="#pricing">${t("Choose your plan")}${icon("arrow")}</a>
+          <a class="btn ghost-light large" href="#download">${icon("download")}${t("Download the app")}</a>
+        </div>
+        <ul class="trust">
+          <li>${icon("check")}${t("Free plan, no payment needed")}</li>
+          <li>${icon("check")}${t("We don't keep browsing history")}</li>
+          <li>${icon("check")}${t("For phones and computers")}</li>
+        </ul>
+      </div>
+      ${heroVisual()}
     </div>
   </section>
 
-  <section class="facts">${tiles([
-    `<div class="fact">${icon("speed")}<h3>${t("Fast")}</h3><p>${t("Connects in a second")}</p></div>`,
-    `<div class="fact">${icon("lock")}<h3>${t("Secure")}</h3><p>${t("Encryption on any network")}</p></div>`,
-    `<div class="fact">${icon("eye")}<h3>${t("No logs")}</h3><p>${t("No browsing history kept")}</p></div>`,
-  ])}</section>
+  <section class="compat"><div class="shell"><span>${t("Works in the apps you know")}</span>
+    <ul>${["Boop", "Happ", "v2RayTun", "Hiddify", "AmneziaVPN", "v2rayNG"].map((n) => `<li>${n}</li>`).join("")}</ul></div></section>
 
-  <div class="section-h" id="pricing"><h2>${t("Pricing")}</h2>${site?.testPayments ? testPayBadge() : ""}</div>
-  ${payOk() ? "" : `<div class="notice bad">${t("Payments are temporarily unavailable")}</div>`}
-  ${tiles([freeCard, ...plans.tariffs.map((x, i) => tariffCard(x, i === best, slot))])}
+  <section class="sec" id="features"><div class="shell">
+    ${sectionHead(t("Why Boop"), t("Speed, ping and protection without compromise"), t("We built Boop around the three things that matter most in a VPN."))}
+    <div class="pillars">
+      ${pillar("bolt", t("High speed"), t("Boop runs on AmneziaWG and VLESS Reality, modern protocols that use the channel carefully. Video, downloads and calls run smoothly."),
+        [t("AmneziaWG is built on the fast WireGuard"), unlimitedPro ? t("Unlimited traffic on Pro") : "", t("Good for HD video and large downloads")])}
+      ${pillar("ping", t("Low ping"), t("The closer the server, the faster the response. Pick a country by its ping or let Boop choose."),
+        [t("Servers in several countries"), t("The ping to every location is shown in the app"), t("The subscription picks the best server by itself")])}
+      ${pillar("shield", t("Data security"), t("All traffic goes through an encrypted tunnel, and masking keeps the VPN from being recognised and blocked."),
+        [t("Modern encryption of all traffic"), t("Masking against DPI blocking"), t("We don't keep browsing history"), t("Sign in with a one-time code, no password")])}
+    </div>
+    <div class="bento n${extras.length}">${extras.map(([ic, title, text]) => `<article class="tile reveal"><div class="tile-ic">${icon(ic)}</div><h3>${title}</h3><p>${text}</p></article>`).join("")}</div>
+  </div></section>
 
-  <div class="section-h" id="download"><h2>${t("Get the app")}</h2></div>
-  ${downloads()}`;
+  <section class="sec tint" id="how"><div class="shell">
+    ${sectionHead(t("How it works"), t("Connected in three steps"), t("No settings to figure out. It takes a couple of minutes."))}
+    <ol class="steps3">${steps.map(([title, text], i) => `<li class="reveal"><span class="num">${i + 1}</span><h3>${title}</h3><p>${text}</p></li>`).join("")}</ol>
+  </div></section>
+
+  <section class="sec" id="pricing"><div class="shell">
+    ${sectionHead(t("Pricing"), t("Simple plans, no hidden fees"), t("Start for free and move to Pro when you need more."), testPayBadge())}
+    ${payOk() ? "" : `<div class="notice bad">${t("Payments are temporarily unavailable")}</div>`}
+    <div class="plans n${rows.length + 1}">${freePlan(free, cur)}${rows.map((r, i) => tariffPlan(r, i === best)).join("")}</div>
+    <ul class="assure">
+      <li>${icon("bolt")}${t("Access turns on right after payment")}</li>
+      <li>${icon("key")}${t("The key and its QR code are in your account at once")}</li>
+      <li>${icon("chat")}<span>${t("Questions about payment? {a}Write to support{end}", { a: `<a href="#/support">`, end: "</a>" })}</span></li>
+    </ul>
+  </div></section>
+
+  <section class="sec tint" id="download"><div class="shell">
+    ${sectionHead(t("Apps"), t("Get the app"), t("Boop works on phones and computers. Your key also works in Happ, v2RayTun, Hiddify and v2rayNG."))}
+    ${downloads()}
+  </div></section>
+
+  <section class="sec" id="faq"><div class="shell narrow-shell">
+    ${sectionHead(t("Questions"), t("Frequently asked questions"))}
+    <div class="faq">${faq.map(([q, a], i) => `<details class="reveal"${i === 0 ? " open" : ""}><summary>${q}<span class="chev" aria-hidden="true"></span></summary><p>${a}</p></details>`).join("")}</div>
+    <p class="faq-more">${t("Didn't find an answer? {a}Write to support{end}", { a: `<a href="#/support">`, end: "</a>" })}</p>
+  </div></section>
+
+  <section class="final band"><div class="glow g1"></div><div class="glow g2"></div>
+    <div class="shell final-in reveal">
+      <h2>${t("Ready to connect?")}</h2>
+      <p>${t("Start for free, and move to Pro when you need more.")}</p>
+      <div class="cta"><a class="btn large" href="#pricing">${t("Choose your plan")}${icon("arrow")}</a><a class="btn ghost-light large" href="#download">${t("Start for free")}</a></div>
+    </div>
+  </section>`;
+  reveal();
+}
+
+/** Fades sections in as they scroll into view (not with reduced motion; see .reveal in style.css). */
+function reveal() {
+  const els = view.querySelectorAll(".reveal");
+  if (!("IntersectionObserver" in window) || matchMedia("(prefers-reduced-motion: reduce)").matches) { for (const e of els) e.classList.add("in"); return; }
+  document.documentElement.classList.add("anim");
+  const io = new IntersectionObserver((list) => { for (const e of list) if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }, { rootMargin: "0px 0px -4% 0px" });
+  for (const e of els) io.observe(e);
 }
 
 function downloads() {
   const a = site?.androidAppUrl, i = site?.iosAppUrl, tg = site?.telegramBotUrl;
   const soon = `<button class="btn secondary" disabled>${t("Coming soon")}</button>`;
+  const card = (ic, title, text, btn) => `<div class="card app-card"><div class="tile-ic">${icon(ic)}</div><h3>${title}</h3><p>${text}</p>${btn}</div>`;
   return tiles([
-    `<div class="card app-card"><h3>Android</h3>${a ? `<a class="btn secondary" href="${h(a)}">${t("Download for Android")}</a>` : soon}</div>`,
-    `<div class="card app-card"><h3>iPhone</h3>${i ? `<a class="btn secondary" href="${h(i)}">${t("Download on the App Store")}</a>` : soon}</div>`,
-    tg ? `<div class="card app-card"><h3>Telegram</h3><a class="btn secondary" href="${h(tg)}">${t("Open the bot")}</a></div>`
-       : `<div class="card app-card"><h3>AmneziaVPN</h3><a class="btn secondary" href="https://amnezia.org/downloads" rel="noreferrer">${t("Get AmneziaVPN")}</a></div>`,
-  ]);
+    card("android", "Android", t("The Boop app."), a ? `<a class="btn secondary" href="${h(a)}">${t("Download for Android")}</a>` : soon),
+    card("phone", "iPhone", t("The Boop app for iOS."), i ? `<a class="btn secondary" href="${h(i)}">${t("Download on the App Store")}</a>` : soon),
+    tg ? card("plane", "Telegram", t("Buy your key right in Telegram."), `<a class="btn secondary" href="${h(tg)}">${t("Open the bot")}</a>`)
+       : card("shield", "AmneziaVPN", t("Works with your Boop key."), `<a class="btn secondary" href="https://amnezia.org/downloads" rel="noreferrer">${t("Get AmneziaVPN")}</a>`),
+  ], "apps");
 }
 
 window.buy = async function (tariffId) {
@@ -195,6 +401,7 @@ function signin() {
   if (site?.emailSignIn === false) {
     view.innerHTML = `
     <div class="card signbox">
+      <div class="auth-mark"><img src="/favicon.svg" alt="" width="40" height="40"></div>
       <h1>${t("Sign in")}</h1>
       <div class="notice bad">${t("Sign-in by e-mail is temporarily unavailable")}</div>
       ${viaTelegram}
@@ -204,7 +411,9 @@ function signin() {
   }
   view.innerHTML = `
   <div class="card signbox">
+    <div class="auth-mark"><img src="/favicon.svg" alt="" width="40" height="40"></div>
     <h1>${t("Sign in")}</h1>
+    <p class="muted">${t("Enter your email. We'll send a 6-digit code, no password needed.")}</p>
     ${site?.testCodes ? `<p><span class="badge test">${t("Test mode, sign-in codes are shown on screen")}</span></p>` : ""}
     <form id="f1"><label for="email">${t("Email")}</label><input id="email" type="email" autocomplete="email" required placeholder="you@example.com">
       <label class="check"><input type="checkbox" id="acc-terms" required> <span>${t("I accept the {a}terms of use{end}", { a: `<a href="/terms" target="_blank" rel="noopener">`, end: "</a>" })}</span></label>
@@ -330,8 +539,8 @@ async function account(params) {
     </div>
     <div class="card">
       <div class="card-h"><h3>${isPro ? t("Extend") : t("Choose a plan")}</h3>${site?.testPayments ? testPayBadge() : ""}</div>
-      ${plans.tariffs.map((x) => `<div class="buyrow"><div><b>${h(x.name)}</b><div class="muted">${h(period(x))}, ${tp(x.deviceLimit, "{n} device|{n} devices")}</div></div>
-        <span class="price-s">${h(money(x.priceMinor, x.currency))}</span>${buyBtn(x.id, "secondary", t("Buy"))}</div>`).join("") || `<p class="muted">${t("No plans on sale right now.")}</p>`}
+      ${(({ rows, best }) => rows.map((r, i) => `<div class="buyrow"><div><b>${h(r.x.name)}</b>${r.save ? ` <span class="save">${h(t("Save {p}%", { p: r.save }))}</span>` : ""}<div class="muted">${h(period(r.x))}, ${tp(r.x.deviceLimit, "{n} device|{n} devices")}</div></div>
+        <span class="price-s">${h(money(r.x.priceMinor, r.x.currency))}</span>${buyBtn(r.x.id, i === best ? "" : "secondary", t("Buy"))}</div>`).join(""))(pricedTariffs(plans.tariffs)) || `<p class="muted">${t("No plans on sale right now.")}</p>`}
       ${payOk() ? "" : `<p class="paynote warn">${t("Payments are temporarily unavailable")}</p>`}
     </div>
   </div>
@@ -494,8 +703,8 @@ function breakdown(title, items, name) {
       <div class="track"><div style="width:${Math.max(2, (i.count / max) * 100)}%"></div></div></div>`).join("")}</div>`;
 }
 
-/* Chart colors: one blue for a single series, blue and orange for two (GitLab's data palette). */
-const C1 = "#1f75cb", C2 = "#e9762b";
+/* Chart colors: one violet for a single series, violet and pink for two (the brand pair, readable in both themes). */
+const C1 = "#7b61ff", C2 = "#ff4f79";
 const CLICKS = () => [{ key: "clicks", label: t("Clicks"), color: C1 }];
 const CONVERSIONS = () => [{ key: "signups", label: t("Sign-ups"), color: C1 }, { key: "paid", label: t("Paid"), color: C2 }];
 
@@ -1760,6 +1969,8 @@ async function render() {
   renderNav();
   const [path, query] = (location.hash.slice(1) || "/").split("?");
   const params = new URLSearchParams(query || "");
+  view.className = "";
+  view.dataset.page = path.startsWith("/") ? path.slice(1) || "home" : "home";
   try {
     if (!site) site = await api("/site").catch(() => ({}));
     if (path === "/signin") return signin();
@@ -1772,14 +1983,26 @@ async function render() {
     if (path === "/support" && typeof supportPage === "function") return await supportPage(params);
     if (path === "/status") return await status(params);
     if (path === "/analytics") return await analytics(params);
+    view.className = "home";
+    view.dataset.page = "home";
     await home();
-    if (location.hash === "#download") document.getElementById("download")?.scrollIntoView();
+    if (isAnchor(location.hash)) document.getElementById(location.hash.slice(1))?.scrollIntoView();
   } catch (e) {
     view.innerHTML = `<div class="card signbox center"><p class="warn">${h(e.message)}</p><button class="btn secondary" onclick="location.reload()">${t("Try again")}</button></div>`;
   }
 }
 
-window.addEventListener("hashchange", () => { if (location.hash !== "#download" && location.hash !== "#pricing") render(); });
+/** "#pricing", "#faq"…: a section of the landing page, not a route. */
+const isAnchor = (hash) => /^#[a-z]/.test(hash);
+window.addEventListener("hashchange", () => {
+  // On the landing page an anchor only scrolls (smoothly, see style.css); elsewhere it opens the landing page there.
+  if (isAnchor(location.hash) && view.dataset.page === "home" && document.getElementById(location.hash.slice(1))) {
+    document.getElementById(location.hash.slice(1)).scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    return;
+  }
+  if (!isAnchor(location.hash)) scrollTo(0, 0);
+  render();
+});
 {
   // A referral link (/r/<code>) lands here with ?ref=<code>; keep it until the person signs up.
   const ref = new URLSearchParams(location.search).get("ref");

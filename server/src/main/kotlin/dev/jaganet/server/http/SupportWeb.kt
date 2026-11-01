@@ -43,14 +43,14 @@ private object Legal {
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>$title | Boop VPN</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"></head>
 <body><header class="top"><div class="top-in"><a class="logo" href="/"><img src="/favicon.svg" alt="">Boop</a>
 <nav class="nav"><a class="btn secondary" href="/#/account">Личный кабинет</a></nav></div></header>
 <main class="narrow"><article class="card legal">
 $body
 </article></main>
-<footer><span>© Boop</span><nav><a href="/privacy">Политика конфиденциальности</a><a href="/terms">Пользовательское соглашение</a><a href="/#/support">Написать в поддержку</a><a href="/">На главную</a></nav></footer>
+<footer><div class="foot-bottom"><span>© Boop VPN</span><nav class="foot-links"><a href="/">На главную</a><a href="/privacy">Политика конфиденциальности</a><a href="/terms">Пользовательское соглашение</a><a href="/#/support">Написать в поддержку</a></nav></div></footer>
 </body></html>"""
     }
 }
