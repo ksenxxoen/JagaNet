@@ -603,7 +603,7 @@ form.rename input { flex: 1; max-width: 320px; }
   .float { font-size: 12px; padding: 6px 10px 6px 6px; gap: 8px; }
   .float svg.ic { width: 26px; height: 26px; padding: 5px; }
   .float.f1 { top: 6px; left: 12px; }
-  .float.f2 { right: 8px; top: auto; bottom: 150px; }
+  .float.f2 { right: 12px; top: 6px; bottom: auto; }
   .float.f3 { bottom: 6px; left: 20px; }
   .compat li { font-size: 15px; }
   .sec { padding: 72px 0; }
