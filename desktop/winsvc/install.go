@@ -25,6 +25,14 @@ const (
 	FlagService   = "--service"           // run as the service (only the SCM does this)
 	FlagInstall   = "--install-service"   // install or upgrade the service (elevated)
 	FlagUninstall = "--uninstall-service" // stop and remove it (elevated)
+	// The installer (Boop-Setup.exe) runs these as the ordinary user, after the
+	// elevated steps: they write the user's own HKCU Run key.
+	// The setup program's uninstaller removes the files itself; this only takes
+	// the service (and the old task and the Run key) away, so no file is left
+	// to a delete-at-reboot that could hit a later install.
+	FlagRemoveService = "--remove-service"
+	FlagAutostartOn   = "--autostart-on"  // start the installed program with Windows
+	FlagAutostartOff  = "--autostart-off" // do not
 )
 
 // State of the service as the SCM knows it.
@@ -166,11 +174,10 @@ func Install(sys System, extras Extras) error {
 	return nil
 }
 
-// Uninstall stops the service (its tunnel goes down: the adapter and the
+// RemoveService stops the service (its tunnel goes down: the adapter and the
 // firewall rules go with it, they belong to the service's process), deletes it
-// and removes its files and state. The program that is running it stays until
-// the next restart.
-func Uninstall(sys System) error {
+// and the old scheduled task. It leaves every file where it is.
+func RemoveService(sys System) error {
 	st, err := sys.ServiceState()
 	if err != nil {
 		return fmt.Errorf("service state: %w", err)
@@ -191,6 +198,13 @@ func Uninstall(sys System) error {
 			sys.Logf("old autostart task not removed: %v", err)
 		}
 	}
+	return errors.Join(errs...)
+}
+
+// Uninstall removes the service (RemoveService) and its files and state. The
+// program that is running it stays until the next restart.
+func Uninstall(sys System) error {
+	errs := []error{RemoveService(sys)}
 	for _, f := range []string{InstalledExe(sys), filepath.Join(sys.InstallDir(), "wintun.dll"), InstalledExe(sys) + ".old", InstalledExe(sys) + ".new"} {
 		if err := sys.RemoveFile(f); err != nil {
 			errs = append(errs, err)
@@ -259,4 +273,14 @@ func MigrateAutostart(a Autostart, exe string, serviceOK bool) error {
 	// elevated installer tries again (Install).
 	_ = a.DeleteTask()
 	return nil
+}
+
+// SetAutostart turns the user's start-with-Windows on (the Run key pointing at
+// exe, started to the tray) or off. The setup program calls it as the user who
+// started it, not as the elevated process, so it is that user's key.
+func SetAutostart(a Autostart, exe string, on bool) error {
+	if on {
+		return a.SetRunKey(RunCommand(exe))
+	}
+	return a.ClearRunKey()
 }

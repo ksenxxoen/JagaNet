@@ -48,6 +48,15 @@ func runServiceMode(args []string) bool {
 		os.Exit(runInstaller(false, flagValue(args, flagResult)))
 	case slices.Contains(args, winsvc.FlagUninstall):
 		os.Exit(runInstaller(true, flagValue(args, flagResult)))
+	case slices.Contains(args, winsvc.FlagRemoveService):
+		os.Exit(runRemoveService(flagValue(args, flagResult)))
+	case slices.Contains(args, winsvc.FlagAutostartOn), slices.Contains(args, winsvc.FlagAutostartOff):
+		// Run by the setup program as the ordinary user: only the Run key.
+		on := slices.Contains(args, winsvc.FlagAutostartOn)
+		if err := winsvc.SetAutostart(winsvc.User{}, winsvc.InstalledExe(winsvc.Real{}), on); err != nil {
+			os.Exit(exitFailed)
+		}
+		os.Exit(exitOK)
 	case slices.Contains(args, flagSelfUpdate):
 		os.Exit(runSelfUpdate())
 	}
@@ -125,6 +134,25 @@ func runInstaller(uninstall bool, resultFile string) int {
 		return fail(err)
 	}
 	log.Printf("done")
+	return exitOK
+}
+
+// runRemoveService is what the setup program's uninstaller runs: the service
+// goes, the files are left to the uninstaller.
+func runRemoveService(resultFile string) int {
+	openInstallLog()
+	if !winsvc.IsAdmin() {
+		return exitNotAdmin
+	}
+	log.Printf("remove service (%s)", version)
+	if err := winsvc.RemoveService(winsvc.Real{}); err != nil {
+		log.Printf("failed: %v", err)
+		if resultFile != "" {
+			_ = os.WriteFile(resultFile, []byte(winsvc.Message(err)), 0o600)
+		}
+		return exitFailed
+	}
+	_ = winsvc.User{}.ClearRunKey()
 	return exitOK
 }
 
