@@ -40,8 +40,6 @@ class FakeXray:
         self.up = True
         self.online = {}  # email -> {ip: last seen}, as with "statsUserOnline": true
         self.has_all = True  # statsonlineiplist -all (newer builds)
-        self.balancers = {}  # tag -> {"selected": [...], "override": ""}; empty = no RoutingService
-        self.bi_json = True  # bi -json (newer builds)
 
     def restart(self):
         """Xray restarted: users added through the API are gone, counters start from zero."""
@@ -114,27 +112,6 @@ class FakeXray:
     def do_statsgetallonlineusers(self, args):
         names = ["user>>>%s>>>online" % e for e, ips in self.online.items() if ips]
         return (json.dumps({"users": names}, indent=4) if names else "{}") + "\n"
-
-    def do_bi(self, args):
-        """Like main/commands/all/api/balancer_info.go: protojson with -json, else showBalancerInfo's table."""
-        json_out = args[0] == "-json"
-        if json_out and not self.bi_json:
-            return 2, "flag provided but not defined: -json\n"
-        tag = args[-1]
-        if not self.balancers:
-            return 1, "failed to get health information: rpc error: code = Unimplemented desc = unknown service xray.app.router.command.RoutingService\n"
-        b = self.balancers[tag]
-        if json_out:
-            msg = {"principleTarget": {"tag": b["selected"]}}
-            if b["override"]:
-                msg["override"] = {"target": b["override"]}
-            return json.dumps({"balancer": msg}, indent=2) + "\n"
-        rows = []
-        if b["override"]:
-            rows += ["  - Selecting Override:", "    %-4d%-14s " % (1, b["override"])]
-        rows.append("  - Selects:")
-        rows += ["    %-4d%-14s " % (i + 1, t) for i, t in enumerate(b["selected"])]
-        return "\n".join(rows) + "\n"
 
     def do_statsquery(self, args):
         assert args == ["-pattern", "user>>>"], args
@@ -266,35 +243,7 @@ class VlessAgentTest(unittest.TestCase):
     def test_report_says_the_agent_version(self):
         with mock.patch.object(self.agent, "system", return_value=({"cpu": 0.1}, (1, 1))), mock.patch.object(self.agent, "api") as api:
             self.agent.report_once(None)
-        self.assertEqual("3", api.call_args[0][2]["system"]["agent"])
-        self.assertNotIn("balancer", api.call_args[0][2], "no balancer named: nothing about it in the report")
-        self.assertFalse(any(c[0] == "bi" for c in self.xray.calls))
-
-    def test_entry_reports_the_balancers_choice(self):
-        self.xray.balancers = {"boop-exits": {"selected": ["boop-exit-node-fi"], "override": ""}}
-        res = {"version": "v1", "peers": self.peers(U1), "inbounds": [], "balancer": "boop-exits"}
-        with mock.patch.object(self.agent, "api", return_value=res):
-            self.agent.sync_once(None)
-        with mock.patch.object(self.agent, "system", return_value=({"cpu": 0.1}, (1, 1))), mock.patch.object(self.agent, "api") as api:
-            self.agent.report_once(None)
-        self.assertEqual({"tag": "boop-exits", "selected": ["boop-exit-node-fi"], "override": None}, api.call_args[0][2]["balancer"])
-        self.assertIn(("bi", ["-json", "boop-exits"]), self.xray.calls)
-
-    def test_balancer_text_output_on_xray_without_json(self):
-        self.xray.balancers = {"boop-exits": {"selected": ["boop-exit-a", "boop-exit-b"], "override": "boop-exit-b"}}
-        self.xray.bi_json = False
-        self.agent.BALANCER.tag = "boop-exits"
-        self.assertEqual({"tag": "boop-exits", "selected": ["boop-exit-a", "boop-exit-b"], "override": "boop-exit-b"}, self.agent.BALANCER.fetch())
-        self.assertIn(("bi", ["boop-exits"]), self.xray.calls)
-
-    def test_report_goes_without_the_balancer_when_xray_has_no_routing_service(self):
-        self.agent.BALANCER.tag = "boop-exits"
-        with mock.patch.object(self.agent, "system", return_value=({"cpu": 0.1}, (1, 1))), \
-                mock.patch.object(self.agent, "api") as api, mock.patch.object(self.agent, "log") as log:
-            self.agent.report_once(None)
-            self.agent.report_once(None)
-        self.assertNotIn("balancer", api.call_args[0][2])
-        self.assertEqual(1, log.call_count)
+        self.assertEqual("2", api.call_args[0][2]["system"]["agent"])
 
     def test_requests_carry_the_agent_user_agent_and_token(self):
         seen = {}
@@ -312,7 +261,7 @@ class VlessAgentTest(unittest.TestCase):
             self.assertEqual({"ok": True}, self.agent.api("GET", "/v1/node/peers"))
         req = seen["req"]
         self.assertEqual("https://panel.example.com/v1/node/peers", req.full_url)
-        self.assertEqual("BoopNodeAgent/3", req.get_header("User-agent"))
+        self.assertEqual("BoopNodeAgent/2", req.get_header("User-agent"))
         self.assertEqual("Bearer " + "t" * 30, req.get_header("Authorization"))
 
 
@@ -352,8 +301,7 @@ class AwgAgentTest(unittest.TestCase):
         self.assertEqual("amneziawg", body["protocol"])
         self.assertEqual([{"publicKey": "KEY1=", "rx": 10, "tx": 20, "lastHandshake": 1700000000, "torrentRx": 0, "torrentTx": 0,
                            "endpoint": "1.2.3.4"}], body["peers"])
-        self.assertEqual("3", body["system"]["agent"])
-        self.assertNotIn("balancer", body)
+        self.assertEqual("2", body["system"]["agent"])
 
     def test_endpoint_ip(self):
         self.assertEqual("1.2.3.4", self.agent.endpoint_ip("1.2.3.4:51820"))

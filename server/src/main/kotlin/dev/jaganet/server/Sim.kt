@@ -33,5 +33,5 @@ fun main() {
         |    owner@jaganet.dev  Owner dashboard
         |""".trimMargin(),
     )
-    serve(ctx, collectEveryMs = 5_000, background = SimNodes::agents)
+    serve(ctx, collectEveryMs = 5_000)
 }

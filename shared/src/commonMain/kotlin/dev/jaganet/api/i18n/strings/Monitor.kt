@@ -55,7 +55,7 @@ internal val monitorStrings: List<S> = listOf(
     S("Since {time}", "С {time}", "Seit {time}"),
     S("The problem lasted {n} minute.|The problem lasted {n} minutes.", "Проблема длилась {n} минуту.|Проблема длилась {n} минуты.|Проблема длилась {n} минут.", "Das Problem dauerte {n} Minute.|Das Problem dauerte {n} Minuten."),
     S("Server {host}, {time} UTC", "Сервер {host}, {time} UTC", "Server {host}, {time} UTC"),
-    S("Server status", "Состояние серверов", "Serverstatus"),
+    S("Server status", "Состояние сервера", "Serverstatus"),
     S("Test notification", "Тестовое уведомление", "Testbenachrichtigung"),
     S("Alerts from your server reach you here.", "Уведомления о сервере будут приходить сюда.", "Benachrichtigungen über deinen Server kommen hier an."),
     S(

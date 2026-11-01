@@ -19,11 +19,6 @@ endpoint IP (AmneziaWG / WireGuard) and, for VLESS, the users' online IPs from X
 (`xray api statsonlineiplist -all`, or per user on Xray builds without -all). Xray keeps those only
 with "statsUserOnline": true in its policy levels; without it the list is simply empty. A panel from
 before version 2 ignores the extra fields, and the panel accepts reports without them.
-
-Version 3 (status page): on a cascade entry that balances over exit nodes (the panel names the
-balancer in the peer list, or XRAY_BALANCER in the env file), the report also says which exit the
-balancer selects now (`xray api bi -json <tag>`, plain text on builds without -json). Xray answers
-only with "RoutingService" in its api services; without it the report simply goes without it.
 """
 import json
 import os
@@ -36,7 +31,7 @@ import time
 import urllib.error
 import urllib.request
 
-AGENT_VERSION = "3"
+AGENT_VERSION = "2"
 USER_AGENT = "BoopNodeAgent/" + AGENT_VERSION
 
 
@@ -295,64 +290,6 @@ class OnlineIps:
 ONLINE_IPS = OnlineIps()
 
 
-class Balancer:
-    """What a cascade entry's Xray balancer selects now, from `xray api bi` (RoutingService).
-
-    The tag comes from the panel's peer list ("balancer") or XRAY_BALANCER. `-json` gives
-    {"balancer": {"override": {"target": ...}, "principleTarget": {"tag": [...]}}}; builds without it
-    print "- Selects:" and numbered tags. Never fails the report: on any error it says so once and
-    the report goes without it.
-    """
-
-    SELECT_ROW = re.compile(r"^\s+\d+\s+(\S+)\s*$")
-
-    def __init__(self, tag=""):
-        self.tag = tag
-        self.json = True
-        self.warned = False
-
-    def fetch(self):
-        if not self.tag:
-            return None
-        try:
-            if self.json:
-                try:
-                    return self._parse_json(xray("bi", "-json", self.tag))
-                except (XrayError, ValueError):
-                    self.json = False
-            return self._parse_text(xray("bi", self.tag))
-        except XrayError as e:
-            if not self.warned:
-                log("balancer state is not available from Xray (%s); reports go without it" % e)
-                self.warned = True
-            return None
-
-    def _parse_json(self, out):
-        doc = json.loads(out.strip() or "{}")
-        b = doc.get("balancer", {}) or {}
-        selected = [t for t in ((b.get("principleTarget") or {}).get("tag") or []) if isinstance(t, str) and t]
-        override = (b.get("override") or {}).get("target") or None
-        return {"tag": self.tag, "selected": selected, "override": override}
-
-    def _parse_text(self, out):
-        selected, override, section = [], None, None
-        for line in out.splitlines():
-            if "Selecting Override" in line:
-                section = "override"
-            elif "Selects" in line:
-                section = "selects"
-            else:
-                m = self.SELECT_ROW.match(line)
-                if m and section == "selects":
-                    selected.append(m.group(1))
-                elif m and section == "override":
-                    override = m.group(1)
-        return {"tag": self.tag, "selected": selected, "override": override}
-
-
-BALANCER = Balancer(ENV.get("XRAY_BALANCER", ""))
-
-
 class Activity:
     """When each user last moved bytes: Xray has no handshakes, so a growing counter stands in for one."""
 
@@ -395,8 +332,6 @@ def sync_once(version):
     path = "/v1/node/peers" + ("?version=" + version if version else "")
     res = api("GET", path, timeout=40)
     if VLESS:
-        if res.get("balancer") and not ENV.get("XRAY_BALANCER"):
-            BALANCER.tag = res["balancer"]
         apply_vless(res["peers"], res.get("inbounds"))
     elif res["version"] != version:
         apply(res["peers"])
@@ -478,11 +413,7 @@ def report_once(prev):
                 p["endpoint"] = v[4]
             peers.append(p)
     info["agent"] = AGENT_VERSION
-    body = {"protocol": PROTOCOL, "peers": peers, "system": info}
-    balancer = BALANCER.fetch() if VLESS else None
-    if balancer:
-        body["balancer"] = balancer
-    api("POST", "/v1/node/report", body, timeout=30)
+    api("POST", "/v1/node/report", {"protocol": PROTOCOL, "peers": peers, "system": info}, timeout=30)
     return prev
 
 

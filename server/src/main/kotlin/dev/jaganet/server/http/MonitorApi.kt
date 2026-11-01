@@ -14,12 +14,6 @@ fun Route.monitorApi(s: Services) {
         if (call.principal(s).user.role != Role.OWNER) throw forbidden()
         call.respond(s.monitor.overview(call.request.queryParameters["range"] ?: "24h", call.apiLang()))
     }
-    // The status page in one request: ?range=1h|24h|7d|30d&open=<server ids with their charts open>.
-    get("/admin/servers/overview") {
-        if (call.principal(s).user.role != Role.OWNER) throw forbidden()
-        val open = call.request.queryParameters["open"].orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.take(50).toSet()
-        call.respond(s.serversOverview.get(call.request.queryParameters["range"], open, call.apiLang()))
-    }
     post("/admin/monitor/test") {
         if (call.principal(s).user.role != Role.OWNER) throw forbidden()
         s.monitor.testAlert()
