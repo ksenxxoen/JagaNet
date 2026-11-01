@@ -45,7 +45,7 @@ fun main() {
     serve(ctx, collectEveryMs = 60_000)
 }
 
-fun serve(ctx: Ctx, collectEveryMs: Long, wait: Boolean = true) {
+fun serve(ctx: Ctx, collectEveryMs: Long, wait: Boolean = true, background: (suspend (Services) -> Unit)? = null) {
     val services = Services(ctx)
     // Settings changed in the admin panel override the environment file.
     kotlinx.coroutines.runBlocking { services.settings.load(); services.referralRewards.load() }
@@ -86,6 +86,8 @@ fun serve(ctx: Ctx, collectEveryMs: Long, wait: Boolean = true) {
                 runCatching { services.diagnostics.prune() }.onFailure { log.error("problem report cleanup failed", it) }
                 // Client addresses (admin panel, issue #39) are kept 7 days.
                 runCatching { ctx.db.run { dev.jaganet.server.services.ClientIps.prune(it, ctx.now()) } }.onFailure { log.error("client address cleanup failed", it) }
+                // Node health samples for the status page are kept 30 days.
+                runCatching { services.nodes.pruneMetrics() }.onFailure { log.error("node metrics cleanup failed", it) }
                 delay(3_600_000L)
             }
         }
@@ -99,6 +101,8 @@ fun serve(ctx: Ctx, collectEveryMs: Long, wait: Boolean = true) {
                 delay(300_000L)
             }
         }
+        // The simulator's stand-in node agents.
+        if (background != null) launch { background(services) }
         launch {
             while (true) {
                 delay(collectEveryMs)

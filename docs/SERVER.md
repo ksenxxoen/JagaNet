@@ -221,6 +221,10 @@ users and sends their traffic on to the fastest **exit** (Xray `balancers` with 
    the users back within 25 seconds.
 4. Check: `journalctl -u xray` shows the observatory's probes; on an exit
    `xray api inbounduser --server=127.0.0.1:10085 -tag=vision` lists the entry's UUID.
+5. Optional, for the status page (`#/status`): add `"RoutingService"` to the entry's
+   `api.services`. The agent (version 3) then reports which exit the balancer selects now
+   (`xray api bi -json boop-exits`) and the map shows it. Without it the page shows the exits'
+   own health only. Exit pings are not shown: Xray has no command for the observatory's results.
 
 Get the fragment again and repeat step 3 after adding, removing or switching off an exit, or after
 changing an exit's address or keys. To undo: remove the outbounds `boop-exit-*`, the balancer
