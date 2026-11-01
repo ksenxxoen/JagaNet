@@ -1001,7 +1001,10 @@ function sparkline(values) {
  * the VPN, database or website down is red, any other warning orange; checks about other machines don't count.
  */
 const MAIN_DOWN = ["vpn", "db", "https"];
-const mainIssues = (d) => d.monitor.checks.filter((c) => (c.level === "warning" || c.level === "critical") && c.key !== "nodes" && c.key !== "blocklist");
+// The main server's own problems: its checks, leaving out the nodes' (shown on their cards) and the VPN
+// check when the main server runs no VPN of its own.
+const mainIssues = (d) => d.monitor.checks.filter((c) => (c.level === "warning" || c.level === "critical") && c.key !== "nodes" && c.key !== "blocklist"
+  && (c.key !== "vpn" || d.servers.some((x) => !x.remote)));
 function mainLevel(d) {
   const issues = mainIssues(d);
   if (issues.some((c) => c.level === "critical" && MAIN_DOWN.includes(c.key))) return "down";
@@ -1066,12 +1069,15 @@ function stMainBox(d) {
     [t("Telegram bot"), d.main.botEnabled ? (by.bot ? lv(by.bot) : "off") : "off", !d.main.botEnabled ? t("switched off") : by.bot === "ok" ? t("connected") : by.bot ? t("no connection") : t("unknown")],
     [t("Mail"), d.main.mailReady ? "ok" : "warn", t(d.main.mailReady ? "set up" : "not set up")],
     ...(local.length ? [[t("Own VPN"), local.some((x) => x.health === "down") ? "down" : by.vpn ? lv(by.vpn) : "ok", t("{n} online", { n: local.reduce((a, x) => a + x.online, 0) })]] : []),
+    // Whatever else makes the header orange or red (disk, ping, certificate…), so the reason is in view.
+    ...mainIssues(d).filter((c) => !["https", "db", "bot", "vpn"].includes(c.key))
+      .map((c) => [t(CHECK_NAMES[c.key] || c.key), lv(c.level), t(c.level === "critical" ? "problem" : "attention"), t(c.message, c.args)]),
   ];
   const head = { ok: ["ok", "Works"], warn: ["warn", "Attention"], down: ["down", "Problem"] }[mainLevel(d)] || ["off", "Unknown"];
   return `<div class="st-main">
     <div class="st-mh"><span class="muted">${t("Main server")}</span>${pill(head[0], t(head[1]))}</div>
     <div class="st-host st-ell">${h(d.main.host)}</div>
-    <ul class="st-svc">${rows.map(([n, c, v]) => `<li><span class="st-ell">${n}</span><span class="st-sv h-${c}"><i></i>${v}</span></li>`).join("")}</ul>
+    <ul class="st-svc">${rows.map(([n, c, v, why]) => `<li${why ? ` title="${h(why)}"` : ""}><span class="st-ell">${n}</span><span class="st-sv h-${c}"><i></i>${v}</span></li>`).join("")}</ul>
   </div>`;
 }
 
@@ -1084,6 +1090,29 @@ function stTile(x, right) {
     <div class="st-tt">${flagName(x)}${dot}</div>
     <div class="st-ts muted"><span>${h(protoOf(x)[0] || "")}</span><span class="st-ell">${x.health === "down" ? issueText(x.issues[0]) : t("{n} online", { n: x.online })}</span></div>
     ${bar(load, x.health === "warn" ? "warn" : x.health)}
+  </div>`;
+}
+
+/**
+ * A cascade entry on the map: the server people connect to, shown as the entry with its own host. Its
+ * location (country, name) is the exit it forwards to by itself, drawn among the exits ([stOwnExit]).
+ */
+function stEntryTile(e) {
+  const load = e.health === "down" || e.health === "off" ? null : Math.max(e.cpu || 0, e.maxPeers ? e.peers / e.maxPeers : 0);
+  const dot = e.health === "ok" ? `<span class="st-dot h-ok" title="${t("Works")}"></span>` : healthPill(e);
+  return `<div class="st-tile h-${e.health}">
+    <div class="st-tt"><b class="st-ell">${t("Entry")}</b>${dot}</div>
+    <div class="st-ts muted"><span class="st-ell">${h(e.host || "")}</span><span class="st-ell">${e.health === "down" ? issueText(e.issues[0]) : t("{n} online", { n: e.online })}</span></div>
+    ${bar(load, e.health === "warn" ? "warn" : e.health)}
+  </div>`;
+}
+
+/** The exit an entry forwards to by itself (its own location): no agent of its own, so it shares the entry's state. */
+function stOwnExit(e, badge) {
+  return `<div class="st-tile h-${e.health}">
+    <div class="st-tt">${flagName(e)}${badge ?? (e.health === "ok" ? `<span class="st-dot h-ok" title="${t("Works")}"></span>` : healthPill(e))}</div>
+    <div class="st-ts muted"><span>${h(protoOf(e)[0] || "")}</span></div>
+    ${bar(null, e.health)}
   </div>`;
 }
 
@@ -1101,9 +1130,12 @@ function stMap(d) {
       const badge = out ? pill("down", t("excluded")) : chosen.has(x.id) ? pill("ok", t("selected")) : e.balancer ? pill("off", t("standby")) : undefined;
       return stTile(x, badge);
     });
-    groups.push(`<div class="st-group"><div class="st-gh"><span>${t("Cascade")}</span><span class="muted">${exits.length + 1}</span></div>
+    const ownOut = e.health === "down" || e.health === "off";
+    const ownBadge = ownOut ? pill("down", t("excluded")) : chosen.has(e.id) ? pill("ok", t("selected")) : chosen.size ? pill("off", t("standby")) : undefined;
+    exitTiles.unshift(stOwnExit(e, ownBadge));
+    groups.push(`<div class="st-group"><div class="st-gh"><span>${t("Cascade")}</span><span class="muted">${exits.length + 2}</span></div>
       <div class="st-flow">
-        <div class="st-entry">${stTile(e)}</div>
+        <div class="st-entry">${stEntryTile(e)}</div>
         <span class="st-arrow" aria-hidden="true">${icon("arrow")}</span>
         <div class="st-bal"><span class="st-balchip">${icon("split")}${t("Balancer")}</span></div>
         <span class="st-arrow" aria-hidden="true">${icon("arrow")}</span>

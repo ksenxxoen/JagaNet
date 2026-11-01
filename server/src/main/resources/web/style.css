@@ -575,7 +575,7 @@ main.narrow .card:not(.keycard) .qr { display: block; margin: 20px auto 0; paddi
   --danger: #f05a4f; --danger-tint: rgba(240, 90, 79, .17); --danger-text: #ff9086; }
 .st-mh { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
 .st-host { margin: 8px 0 14px; font: 700 18px/26px var(--font); letter-spacing: -.01em; color: var(--heading); }
-.st-svc { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.st-svc { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .st-svc li { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 40px; padding: 0 12px; border-radius: 10px;
   background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .07); font-size: 14px; }
 .st-map.solo .st-svc { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
