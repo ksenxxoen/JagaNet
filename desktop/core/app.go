@@ -59,6 +59,7 @@ type App struct {
 	keys       []Key
 	pings      map[string]float64 // by pingKey: the last good measurement
 	down       map[string]bool    // by pingKey: the last measurement failed («недоступен»)
+	pingedAt   time.Time          // when pingAll last finished
 	conn       string
 	since      time.Time
 	current    string

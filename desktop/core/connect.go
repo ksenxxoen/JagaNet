@@ -319,15 +319,15 @@ func (a *App) establish(ctx context.Context, moveNow bool) error {
 	target := ""
 	switch {
 	case away:
-		target = a.pick(want, servers) // this node did not answer; try another
+		target = a.pickFresh(want, servers) // this node did not answer; try another
 	case st.Config != nil && st.Rekey && usable(st.Config.ServerID):
 		target = st.Config.ServerID // a new key on the same node
 	case st.Config == nil || !usable(st.Config.ServerID) || !sameProtocol(st.Config):
-		target = a.pick(want, servers)
+		target = a.pickFresh(want, servers)
 	case want != "auto" && st.CountryCode != want:
-		target = a.pick(want, servers)
+		target = a.pickFresh(want, servers)
 	case moveNow && want == "auto":
-		if best := a.pick(want, servers); best != st.Config.ServerID {
+		if best := a.pickFresh(want, servers); best != st.Config.ServerID {
 			target = best
 		}
 	}
