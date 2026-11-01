@@ -25,6 +25,7 @@ import dev.jaganet.server.services.Keys
 import dev.jaganet.server.services.VlessKeys
 import dev.jaganet.server.services.VlessLinks
 import dev.jaganet.server.services.VlessSubscription
+import dev.jaganet.server.services.XrayConfigs
 import io.ktor.http.withCharset
 import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
@@ -144,9 +145,10 @@ fun Route.website(s: Services) {
         call.respondText(Pages(call.pageLang()).key(k, token, s, other), ContentType.Text.Html)
     }
     /**
-     * The VLESS subscription with every location (issue #41). Base64 of the vless:// links for Happ,
-     * v2RayTun, Hiddify, v2rayNG; a sing-box or Clash Meta profile with an "Auto (best)" group for
-     * those clients (User-Agent or ?format=singbox|clash), see VlessSubscription. Works with the
+     * The VLESS subscription with every location (issue #41). Base64 of the vless:// links for
+     * Hiddify, v2rayNG and others; Xray configs with DNS and the QUIC block for Happ and v2RayTun
+     * (issue #59); a sing-box or Clash Meta profile with an "Auto (best)" group for those clients
+     * (User-Agent or ?format=json|singbox|clash), see VlessSubscription. Works with the
      * VLESS key's token and with the user's AmneziaWG key links. ?lang= names the backup links.
      */
     get("/k/{token}/vless") {
@@ -161,12 +163,23 @@ fun Route.website(s: Services) {
         call.response.header("subscription-userinfo", VlessSubscription.userInfo(up, down, s.vlessKeys.dataLimit(v.userId) ?: 0, expire))
         call.response.header("support-url", s.ctx.cfg.supportUrl ?: s.bot?.username?.let { "https://t.me/$it" } ?: base)
         call.response.header("profile-web-page-url", "$base/k/${call.parameters["token"]!!}")
-        var format = VlessSubscription.format(call.request.queryParameters["format"], call.request.headers[HttpHeaders.UserAgent])
-        if (format != VlessSubscription.Format.BASE64 && !VlessSubscription.hasGroups(v.locations)) format = VlessSubscription.Format.BASE64
+        val ua = call.request.headers[HttpHeaders.UserAgent]
+        val options = s.ctx.cfg.vlessSub
+        var format = VlessSubscription.format(call.request.queryParameters["format"], ua, options)
+        if ((format == VlessSubscription.Format.SINGBOX || format == VlessSubscription.Format.CLASH) && !VlessSubscription.hasGroups(v.locations)) format = VlessSubscription.Format.BASE64
         when (format) {
-            VlessSubscription.Format.BASE64 -> call.respondText(VlessKeys.subscription(v.links), ContentType.Text.Plain)
-            VlessSubscription.Format.SINGBOX -> call.respondText(VlessSubscription.singBox(v.locations, lang), ContentType.Application.Json)
-            VlessSubscription.Format.CLASH -> call.respondText(VlessSubscription.clash(v.locations, lang), ContentType("text", "yaml").withCharset(Charsets.UTF_8))
+            VlessSubscription.Format.BASE64 -> {
+                // Plain links: Happ and v2RayTun still get DNS or the QUIC block through their `routing` header (issue #59).
+                when (VlessSubscription.client(ua)) {
+                    VlessSubscription.Client.HAPP -> VlessSubscription.happRouting(options)
+                    VlessSubscription.Client.V2RAYTUN -> VlessSubscription.v2rayTunRouting(options)
+                    VlessSubscription.Client.OTHER -> null
+                }?.let { call.response.header("routing", it) }
+                call.respondText(VlessKeys.subscription(v.links), ContentType.Text.Plain)
+            }
+            VlessSubscription.Format.XRAY_JSON -> call.respondText(XrayConfigs.subscription(v.locations, lang, options), ContentType.Application.Json)
+            VlessSubscription.Format.SINGBOX -> call.respondText(VlessSubscription.singBox(v.locations, lang, options), ContentType.Application.Json)
+            VlessSubscription.Format.CLASH -> call.respondText(VlessSubscription.clash(v.locations, lang, options), ContentType("text", "yaml").withCharset(Charsets.UTF_8))
         }
     }
     // QR codes: 0.png, 1.png… one per link; sub.png for the subscription URL.

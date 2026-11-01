@@ -182,9 +182,23 @@ Every user's VLESS key works on every active VLESS node with *In subscriptions* 
 the panel hands each node's agent all users, so nothing is needed on the node beyond the setup
 above. A new node gets everyone within seconds of its agent starting; a node switched off or
 hidden in the panel drops them at once. The subscription (`/k/<token>/vless`) lists the nodes in
-the panel's order with their names; Happ, v2RayTun, v2rayNG and Hiddify get links, sing-box and
-Clash Meta clients a profile with an "Авто (лучший)" group. Optional: `SUPPORT_URL` in
-`/etc/jaganet/env` for the subscription's `support-url` (default: the Telegram bot, else the site).
+the panel's order with their names; v2rayNG and Hiddify get links, Happ and v2RayTun full Xray
+configs, sing-box and Clash Meta clients a profile; all but the links have an "Авто (лучший)"
+entry. Optional: `SUPPORT_URL` in `/etc/jaganet/env` for the subscription's `support-url`
+(default: the Telegram bot, else the site).
+
+The Xray configs and the profiles also carry DNS and a QUIC block (issue #59); each part has a
+switch in `/etc/jaganet/env`, all on by default:
+
+| Variable | Default | What it does |
+|---|---|---|
+| `VLESS_SUB_DNS` | `https://1.1.1.1/dns-query,https://8.8.8.8/dns-query` | Remote DNS of the clients: DNS over HTTPS through the tunnel, comma-separated `https://` addresses; `off` leaves DNS to the clients. No fake DNS, so Android's Private DNS check keeps working. |
+| `VLESS_SUB_BLOCK_QUIC` | on | UDP 443 (QUIC) blocked in the clients, so apps use TCP at once. `0` turns it off. |
+| `VLESS_SUB_XRAY_JSON` | on | Happ (1.63.1+) and v2RayTun get Xray configs. `0`: links again, with a `routing` header (Happ: DNS only, v2RayTun: the QUIC block only). |
+| `VLESS_ENTRY_BLOCK_QUIC` | on | The UDP 443 block in a cascade entry's balancer fragment (below). `0` leaves it out. |
+
+`?format=json`, `?format=base64`, `?format=singbox` or `?format=clash` on the subscription URL
+picks the format whatever the app.
 
 ### Cascade (server-side balancer)
 
@@ -206,17 +220,23 @@ users and sends their traffic on to the fastest **exit** (Xray `balancers` with 
          "users": [{"id": "<entry's UUID>", "encryption": "none", "flow": "xtls-rprx-vision"}]}]},
        "streamSettings": {"network": "tcp", "security": "reality",
          "realitySettings": {"serverName": "fi1.example.com", "fingerprint": "firefox",
-           "publicKey": "<exit's Reality public key>", "shortId": "a1b2c3d4"}}}],
+           "publicKey": "<exit's Reality public key>", "shortId": "a1b2c3d4"}}},
+       {"tag": "boop-block", "protocol": "blackhole"}],
      "routing": {"balancers": [{"tag": "boop-exits", "selector": ["boop-exit-"], "strategy": {"type": "leastPing"}}],
-       "rules": [{"type": "field", "inboundTag": ["vision", "xhttp"], "balancerTag": "boop-exits"}]},
+       "rules": [{"type": "field", "inboundTag": ["vision", "xhttp"], "network": "udp", "port": "443", "outboundTag": "boop-block"},
+         {"type": "field", "inboundTag": ["vision", "xhttp"], "balancerTag": "boop-exits"}]},
      "observatory": {"subjectSelector": ["boop-exit-"], "probeUrl": "https://www.gstatic.com/generate_204",
        "probeInterval": "1m", "enableConcurrency": true}
    }
    ```
 3. On the entry, merge it into `/usr/local/etc/xray/config.json` by hand: append the `outbounds`
    after your own (keep your first outbound, it stays the default for everything else), add
-   `routing.balancers`, put the rule **first** in `routing.rules` (before any rule that would catch
-   the users' traffic; keep the `api` rule above it if you have one), and add `observatory`. Then
+   `routing.balancers`, put the rules **first** in `routing.rules` in the fragment's order, the
+   UDP 443 block before the balancer's rule (before any rule that would catch the users' traffic;
+   keep the `api` rule above them if you have one), and add `observatory`. The UDP 443 block
+   (`boop-block`, issue #59) makes QUIC fail at once so the users' apps use TCP; if you added such a
+   rule by hand earlier, replace it with the fragment's. `VLESS_ENTRY_BLOCK_QUIC=0` in
+   `/etc/jaganet/env` leaves it out of the fragment. Then
    `xray run -test -c /usr/local/etc/xray/config.json` and `systemctl restart xray`; the agent puts
    the users back within 25 seconds.
 4. Check: `journalctl -u xray` shows the observatory's probes; on an exit
@@ -228,7 +248,7 @@ users and sends their traffic on to the fastest **exit** (Xray `balancers` with 
 
 Get the fragment again and repeat step 3 after adding, removing or switching off an exit, or after
 changing an exit's address or keys. To undo: remove the outbounds `boop-exit-*`, the balancer
-`boop-exits`, its rule and `observatory`, restart Xray, and set the nodes' *Cascade* back to None.
+`boop-exits`, its rules, `boop-block` and `observatory`, restart Xray, and set the nodes' *Cascade* back to None.
 With `VLESS_BALANCER=1` the entry also leads every subscription as "⚡ Авто" (its *Location name*
 if set) and the apps' list names it "Авто".
 
