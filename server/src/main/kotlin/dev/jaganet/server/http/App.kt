@@ -105,6 +105,10 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
     }
     val payments = Payments(ctx, billing, keys, tariffs, referralRewards)
     val site = Site(ctx)
+    /** The website's support form: e-mail to SUPPORT_EMAIL (default OWNER_EMAIL), plus the bot's support chat. */
+    val support = dev.jaganet.server.services.Support(ctx) {
+        bot?.let { b -> b.supportChat()?.let { chat -> { text: String -> b.sendText(chat, text) } } }
+    }
     /** Set when TELEGRAM_BOT_TOKEN is configured and the bot started. */
     @Volatile var bot: dev.jaganet.server.telegram.TelegramBot? = null
     val blocklists = dev.jaganet.server.services.Blocklists(ctx)
@@ -167,6 +171,7 @@ fun Application.jaganet(s: Services) {
     fun code(c: String) = c.also { if (!SIX.matches(it)) throw badRequest("Code must be 6 digits") }
 
     routing {
+        legalPages()
         website(s)
         ownerLoginLink(s)
         nodeFiles()
@@ -302,6 +307,7 @@ fun Application.jaganet(s: Services) {
             referralRewardsApi(s)
             salesApi(s)
             telegramWebApi(s)
+            supportApi(s)
             get("/admin/overview") {
                 call.owner()
                 call.respond(s.admin.overview(call.apiLang()))

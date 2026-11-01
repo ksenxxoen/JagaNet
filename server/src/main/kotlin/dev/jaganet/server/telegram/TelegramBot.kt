@@ -97,7 +97,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
     }
 
     /** The support chat: TELEGRAM_SUPPORT_CHAT_ID, else the first alert chat. */
-    private fun supportChat(): Long? = ctx.cfg.telegram.supportChatId ?: ctx.live.alertTelegramChats.firstOrNull()
+    fun supportChat(): Long? = ctx.cfg.telegram.supportChatId ?: ctx.live.alertTelegramChats.firstOrNull()
 
     suspend fun handle(update: JsonObject) {
         lastPollOk = ctx.now()
