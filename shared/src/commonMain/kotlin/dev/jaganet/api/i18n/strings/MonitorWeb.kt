@@ -38,6 +38,8 @@ internal val monitorWebStrings: List<S> = listOf(
     S("connected", "на связи", "verbunden"),
     S("no connection", "нет связи", "keine Verbindung"),
     S("set up", "настроена", "eingerichtet"),
+    S("attention", "внимание", "Achtung"),
+    S("problem", "проблема", "Problem"),
     S("not set up", "не настроена", "nicht eingerichtet"),
     S("switched off", "выключен", "aus"),
     S("unknown", "неизвестно", "unbekannt"),
