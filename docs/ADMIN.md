@@ -161,6 +161,18 @@ Every minute, kept 30 days, page `#/status`:
 - **Services**: VPN interface (devices, online now), database, website over HTTPS, certificate, Telegram bot.
 - **Resources**: CPU, memory, disk.
 
+The page `#/status` ("Состояние серверов") makes one request every 15 seconds,
+`GET /v1/admin/servers/overview?range=1h|24h|7d|30d&open=<server ids>` (owner only): a verdict with
+counts, five numbers (nodes online, devices online, traffic now, the main server, open alerts), a map
+(the main server's site, database, bot, mail and own VPN; cascades with the balancer's selected and
+excluded exits; standalone nodes), a card per server (bars for devices, CPU, memory, channel; traffic
+sparkline; last report) and the alerts. A click on a card opens its charts: for a node from
+`node_metrics` (V24, one sample per agent report, kept 30 days), for the main server the monitoring
+sections below. Colors: green works, orange attention (CPU, memory or places at 90%, the owner's
+"unstable" or "blocked" mark, a warning check), red not responding (no agent report for 3 minutes;
+on the main server the VPN, database or website down), gray off, maintenance or not installed.
+The selected exit of a cascade comes from the entry's agent (version 3, `xray api bi`, see SERVER.md).
+
 An alert opens when a problem lasts a few minutes (2 for the VPN and database, 3 for ping, 5 for
 channel load…), is sent once by e-mail and Telegram, repeated every 6 hours while critical, and a
 "Fixed" message follows when it is over.

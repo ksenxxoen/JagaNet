@@ -353,13 +353,14 @@ class Monitor(
 
     /* ---------------- owner API ---------------- */
 
-    suspend fun overview(range: String, readerLang: Lang = lang): MonitorRes {
+    /** [withSeries] false leaves the measurements out (the status page asks for them only for an open card). */
+    suspend fun overview(range: String, readerLang: Lang = lang, withSeries: Boolean = true): MonitorRes {
         val span = when (range) { "1h" -> Duration.ofHours(1); "7d" -> Duration.ofDays(7); "30d" -> Duration.ofDays(30); else -> Duration.ofHours(24) }
         // At most ~300 points: average over buckets of this many seconds.
         val bucket = maxOf(60L, span.seconds / 300)
         val now = ctx.now()
         return ctx.db.run { sql ->
-            val series = sql.query(
+            val series = if (!withSeries) emptyList() else sql.query(
                 """SELECT to_timestamp(floor(extract(epoch FROM ts) / ?) * ?) AS t,
                           avg(cpu) AS cpu, avg(mem_used)::bigint AS mem_used, max(mem_total) AS mem_total,
                           min(disk_free) AS disk_free, max(disk_total) AS disk_total,

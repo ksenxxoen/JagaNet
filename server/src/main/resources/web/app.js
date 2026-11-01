@@ -898,14 +898,275 @@ const kpi = (label, value, note) => `<div class="card kpi"><div class="muted">${
 const kpis = (list) => tiles(list.map(([l, v, n]) => kpi(l, v, n)), "kpis");
 const meter = (part, whole) => `<div class="meter"><div style="width:${Math.min(100, Math.max(1, (part / whole) * 100))}%" class="${part / whole >= 0.9 ? "hot" : ""}"></div></div>`;
 
-async function status(params) {
-  if (!store.get("token")) return go("#/signin");
-  if (role !== "owner") return go("#/account");
-  const range = RANGES.some(([k]) => k === params.get("range")) ? params.get("range") : store.get("monRange") || "24h";
-  store.set("monRange", range);
-  const m = await api(`/admin/monitor?range=${range}`);
-  if (!location.hash.startsWith("#/status")) return;
-  const net = m.network, last = m.series[m.series.length - 1];
+/*
+ * The status page: one request (/admin/servers/overview) every 15 seconds. Verdict, numbers, the map
+ * (main server, cascades, standalone nodes), a card per server (a click opens its charts; the main
+ * server's are the monitoring sections) and the alerts. One color language: green works, orange
+ * attention, red not responding, gray off. A refresh only replaces what changed, so open cards,
+ * hover and the scroll position stay.
+ */
+const PROTO = { amneziawg: "AWG", wireguard: "WG", vless: "VLESS", "jaga-custom": "Custom" };
+const OFF_WORDS = { disabled: "Switched off", maintenance: "Maintenance", waiting: "Waiting for install" };
+const HEALTH_RANK = { off: 0, ok: 1, warn: 2, down: 3 };
+const stOpen = new Set();
+let stData = null, stSkew = 0, stEventsAll = false, stRange = "24h", stLayout = "";
+
+ICONS.alert = '<path d="M12 4 2.8 19.5h18.4L12 4z"/><path d="M12 10v4.5M12 17.2h.01"/>';
+ICONS.chev = '<path d="m7 10 5 5 5-5"/>';
+ICONS.split = '<path d="M4 12h6l4-6h6M14 18h6M10 12l4 6"/>';
+
+const stNow = () => Date.now() - stSkew;
+const flagOf = (cc) => (/^[A-Z]{2}$/.test(cc || "") ? String.fromCodePoint(...[...cc].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)) : "");
+const srvName = (x) => x.displayName || x.name;
+const flagName = (x) => `<span class="st-name"><span class="st-flag" aria-hidden="true">${flagOf(x.countryCode)}</span><span class="st-ell">${h(srvName(x))}</span></span>`;
+const protoOf = (x) => (x.protocols || []).map((p) => PROTO[p] || p.toUpperCase());
+
+/** "6 с назад", "4 мин назад", "2 ч 05 мин назад". */
+function ago(iso) {
+  if (!iso) return t("never");
+  const ms = Math.max(0, stNow() - Date.parse(iso));
+  if (ms < 60e3) return t("{n} s ago", { n: Math.max(1, Math.round(ms / 1000)) });
+  if (ms < 3600e3) return t("{n} min ago", { n: Math.round(ms / 60e3) });
+  return t("{time} ago", { time: duration(ms) });
+}
+
+/** One issue of a server in a few words. */
+function issueText(i) {
+  const a = i.args || {};
+  switch (i.code) {
+    case "silent": return a.since ? t("No report for {time}", { time: duration(stNow() - Date.parse(a.since)) }) : t("No report yet");
+    case "cpu": return t("CPU {p}%", a);
+    case "memory": return t("Memory {p}%", a);
+    case "full": return t("{peers} of {max} places taken", a);
+    case "degraded": return t("Unstable");
+    case "blocked": return t("Blocked in some networks");
+    case "vpn": return t(i.message || "The VPN interface doesn't answer", a);
+    case "check": return `${t(CHECK_NAMES[a.key] || a.key)}: ${t(i.message, a)}`;
+    default: return t(OFF_WORDS[i.code] || i.code);
+  }
+}
+
+/** The status pill: a colored dot and one or two words. */
+const pill = (cls, text) => `<span class="st-pill h-${cls}"><i></i>${text}</span>`;
+function healthPill(x) {
+  const first = x.issues?.[0];
+  if (x.health === "ok") return pill("ok", t("Works"));
+  if (x.health === "down") return pill("down", t("Not responding"));
+  if (x.health === "off") return pill("off", t(OFF_WORDS[first?.code] || "Switched off"));
+  const short = first?.code === "cpu" ? t("CPU {p}%", first.args) : first?.code === "memory" ? t("Memory {p}%", first.args) : first?.code === "full" ? t("Almost full") : t("Attention");
+  return pill("warn", short);
+}
+
+/**
+ * Columns for n tiles, at most max (or one less): full rows when possible, else the fullest last row
+ * (5 tiles in 3 + 2, not 4 + 1); the short last row is centered.
+ */
+function balancedCols(n, max) {
+  if (n <= max) return Math.max(1, n);
+  let best = max, fill = (n % max || max) / max;
+  for (let c = max - 1; c >= Math.max(2, max - 1); c--) {
+    const f = (n % c || c) / c;
+    if (f > fill) { best = c; fill = f; }
+  }
+  return best;
+}
+/** "phone", "tablet" or "wide": the page lays tiles and cards out by the space it has. */
+const stWidth = () => (view.clientWidth < 600 ? "phone" : view.clientWidth < 1000 ? "tablet" : "wide");
+
+const bar = (share, cls = "") => `<div class="st-bar"><i class="${cls ? "h-" + cls : ""}" style="width:${share == null ? 0 : Math.max(2, Math.min(100, share * 100)).toFixed(1)}%"></i></div>`;
+const shareCls = (s) => (s >= 0.9 ? "warn" : "");
+
+/** Traffic over the range as a small line (gaps where nothing was reported). */
+function sparkline(values) {
+  const W = 400, H = 40, v = values || [], max = Math.max(1, ...v.filter((x) => x != null));
+  const step = W / Math.max(1, v.length - 1);
+  let d = "", fill = "", run = [];
+  const flush = () => {
+    if (run.length > 1) {
+      const p = run.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join("");
+      d += p;
+      fill += `${p}L${run[run.length - 1][0].toFixed(1)} ${H}L${run[0][0].toFixed(1)} ${H}Z`;
+    }
+    run = [];
+  };
+  v.forEach((x, i) => (x == null ? flush() : run.push([i * step, H - 3 - (x / max) * (H - 8)])));
+  flush();
+  return `<svg class="st-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${fill ? `<path d="${fill}" class="area"/><path d="${d}" class="line"/>` : `<line x1="0" x2="${W}" y1="${H - 3}" y2="${H - 3}" class="none"/>`}</svg>`;
+}
+
+/* ---- the parts of the page ---- */
+
+/**
+ * The main server's own state, by the rules the server uses for its VPN card (ServersOverview.classify):
+ * the VPN, database or website down is red, any other warning orange; checks about other machines don't count.
+ */
+const MAIN_DOWN = ["vpn", "db", "https"];
+const mainIssues = (d) => d.monitor.checks.filter((c) => (c.level === "warning" || c.level === "critical") && c.key !== "nodes" && c.key !== "blocklist");
+function mainLevel(d) {
+  const issues = mainIssues(d);
+  if (issues.some((c) => c.level === "critical" && MAIN_DOWN.includes(c.key))) return "down";
+  return issues.length ? "warn" : d.monitor.checks.length ? "ok" : "off";
+}
+
+function stVerdict(d) {
+  const counts = { ok: 0, warn: 0, down: 0, off: 0 };
+  for (const x of d.servers) counts[x.health]++;
+  const mon = d.monitor;
+  const problems = [...d.servers].filter((x) => x.health === "down" || x.health === "warn").sort((a, b) => HEALTH_RANK[b.health] - HEALTH_RANK[a.health])
+    .map((x) => [x.health, `${srvName(x)}: ${issueText(x.issues[0])}`]);
+  // Main server checks about the machine itself (not its nodes) when it has no VPN card of its own.
+  if (!d.servers.some((x) => !x.remote)) {
+    for (const c of mainIssues(d)) problems.push([MAIN_DOWN.includes(c.key) && c.level === "critical" ? "down" : "warn", `${t(CHECK_NAMES[c.key] || c.key)}: ${t(c.message, c.args)}`]);
+  }
+  const level = problems.some((p) => p[0] === "down") ? "down" : problems.length ? "warn" : d.servers.length || mon.checks.length ? "ok" : "off";
+  const title = { ok: "Everything works", warn: "Works with warnings", down: "There is a problem", off: "State unknown" }[level];
+  const detail = problems.length
+    ? h(problems[0][1]) + (problems.length > 1 ? ` <span class="muted">${t("and {n} more", { n: problems.length - 1 })}</span>` : "")
+    : mon.checkedAt ? t("Checked at {time}", { time: h(dateTime(mon.checkedAt)) }) : t("Not checked yet");
+  const pills = [
+    counts.ok + counts.warn ? pill("ok", tp(counts.ok + counts.warn, "{n} working|{n} working")) : "",
+    counts.warn ? pill("warn", tp(counts.warn, "{n} warning|{n} warnings")) : "",
+    counts.down ? pill("down", tp(counts.down, "{n} not responding|{n} not responding")) : "",
+    counts.off ? pill("off", tp(counts.off, "{n} off|{n} off")) : "",
+  ].join("");
+  return `<section class="card st-verdict h-${level}">
+    <span class="st-vic">${icon(level === "ok" ? "check" : "alert")}</span>
+    <div class="st-vt"><b>${t(title)}</b><div class="st-ell muted">${detail}</div></div>
+    <div class="st-pills">${pills}</div></section>`;
+}
+
+function stKpis(d) {
+  const s = d.servers, m = d.main, mon = d.monitor;
+  const working = s.filter((x) => x.health === "ok" || x.health === "warn").length;
+  const off = s.filter((x) => x.health === "off").length;
+  const live = s.filter((x) => x.remote && (x.health === "ok" || x.health === "warn"));
+  const rx = (m.rxBps || 0) + live.reduce((a, x) => a + (x.rxBps || 0), 0), tx = (m.txBps || 0) + live.reduce((a, x) => a + (x.txBps || 0), 0);
+  const online = s.reduce((a, x) => a + x.online, 0), keys = s.reduce((a, x) => a + x.peers, 0);
+  const lvl = { ok: ["ok", "Fine"], warn: ["warn", "Attention"], down: ["down", "Problem"] }[mainLevel(d)] || ["off", "Unknown"];
+  const open = mon.alerts.filter((a) => !a.resolvedAt);
+  const memShare = m.memTotal ? (m.memUsed / m.memTotal) * 100 : null;
+  const tile = (label, value, note, cls = "") => `<div class="card kpi"><div class="muted">${label}</div><div class="kpi-v ${cls}">${value}</div><div class="muted kpi-n st-ell">${note || "&nbsp;"}</div></div>`;
+  return `<div class="st-kpis">
+    ${tile(t("Nodes online"), `${working} / ${s.length}`, off ? tp(off, "{n} off|{n} off") : "")}
+    ${tile(t("Devices online"), online, tp(keys, "of {n} key|of {n} keys"))}
+    ${tile(t("Traffic now"), h(bits(rx + tx)), `↓ ${h(bits(rx))} ↑ ${h(bits(tx))}`)}
+    ${tile(t("Main server"), t(lvl[1]), m.cpu != null ? t("CPU {cpu}, memory {mem}", { cpu: percent(m.cpu * 100), mem: percent(memShare) }) : "", "h-" + lvl[0])}
+    ${tile(t("Open alerts"), open.length, open.length ? t("Latest {time}", { time: h(ago(open.map((a) => a.openedAt).sort().pop())) }) : "", open.length ? (open.some((a) => a.level === "critical") ? "h-down" : "h-warn") : "")}
+  </div>`;
+}
+
+/** The main server box of the map: its services, each with a colored state. */
+function stMainBox(d) {
+  const mon = d.monitor, by = Object.fromEntries(mon.checks.map((c) => [c.key, c.level]));
+  const lv = (l) => ({ ok: "ok", warning: "warn", critical: "down" }[l] || "off");
+  const local = d.servers.filter((x) => !x.remote);
+  const rows = [
+    [t("Website and API"), by.https ? lv(by.https) : "off", by.https ? t(by.https === "ok" ? "working" : "not responding") : t("unknown")],
+    [t("Database"), by.db ? lv(by.db) : "off", by.db ? t(by.db === "ok" ? "working" : "not responding") : t("unknown")],
+    [t("Telegram bot"), d.main.botEnabled ? (by.bot ? lv(by.bot) : "off") : "off", !d.main.botEnabled ? t("switched off") : by.bot === "ok" ? t("connected") : by.bot ? t("no connection") : t("unknown")],
+    [t("Mail"), d.main.mailReady ? "ok" : "warn", t(d.main.mailReady ? "set up" : "not set up")],
+    ...(local.length ? [[t("Own VPN"), local.some((x) => x.health === "down") ? "down" : by.vpn ? lv(by.vpn) : "ok", t("{n} online", { n: local.reduce((a, x) => a + x.online, 0) })]] : []),
+  ];
+  const head = { ok: ["ok", "Works"], warn: ["warn", "Attention"], down: ["down", "Problem"] }[mainLevel(d)] || ["off", "Unknown"];
+  return `<div class="st-main">
+    <div class="st-mh"><span class="muted">${t("Main server")}</span>${pill(head[0], t(head[1]))}</div>
+    <div class="st-host st-ell">${h(d.main.host)}</div>
+    <ul class="st-svc">${rows.map(([n, c, v]) => `<li><span class="st-ell">${n}</span><span class="st-sv h-${c}"><i></i>${v}</span></li>`).join("")}</ul>
+  </div>`;
+}
+
+/** A compact node on the map: colored stripe, name, state, protocol and devices, a load bar. */
+function stTile(x, right) {
+  // Load: the busier of processor and device places (memory is mostly cache on a VPN node).
+  const load = x.health === "down" || x.health === "off" ? null : Math.max(x.cpu || 0, x.maxPeers ? x.peers / x.maxPeers : 0);
+  const dot = right ?? (x.health === "ok" ? `<span class="st-dot h-ok" title="${t("Works")}"></span>` : healthPill(x));
+  return `<div class="st-tile h-${x.health}">
+    <div class="st-tt">${flagName(x)}${dot}</div>
+    <div class="st-ts muted"><span>${h(protoOf(x)[0] || "")}</span><span class="st-ell">${x.health === "down" ? issueText(x.issues[0]) : t("{n} online", { n: x.online })}</span></div>
+    ${bar(load, x.health === "warn" ? "warn" : x.health)}
+  </div>`;
+}
+
+function stMap(d) {
+  const remote = d.servers.filter((x) => x.remote);
+  const entries = d.balancer ? remote.filter((x) => x.cascadeRole === "entry") : [];
+  const exits = d.balancer ? remote.filter((x) => x.cascadeRole === "exit") : [];
+  const loose = remote.filter((x) => !entries.includes(x) && !exits.includes(x));
+  const width = stWidth();
+  const groups = [];
+  for (const e of entries) {
+    const chosen = new Set([...(e.balancer?.selected || []), ...(e.balancer?.override ? [e.balancer.override] : [])]);
+    const exitTiles = exits.map((x) => {
+      const out = x.health === "down" || x.health === "off";
+      const badge = out ? pill("down", t("excluded")) : chosen.has(x.id) ? pill("ok", t("selected")) : e.balancer ? pill("off", t("standby")) : undefined;
+      return stTile(x, badge);
+    });
+    groups.push(`<div class="st-group"><div class="st-gh"><span>${t("Cascade")}</span><span class="muted">${exits.length + 1}</span></div>
+      <div class="st-flow">
+        <div class="st-entry">${stTile(e)}</div>
+        <span class="st-arrow" aria-hidden="true">${icon("arrow")}</span>
+        <div class="st-bal"><span class="st-balchip">${icon("split")}${t("Balancer")}</span></div>
+        <span class="st-arrow" aria-hidden="true">${icon("arrow")}</span>
+        <div class="st-exits">${exitTiles.join("") || `<p class="muted">${t("no data")}</p>`}</div>
+      </div></div>`);
+  }
+  if (loose.length || !groups.length && remote.length) {
+    const cols = width === "phone" ? 1 : balancedCols(loose.length, 3);
+    groups.push(`<div class="st-group"><div class="st-gh"><span>${t("Standalone nodes")}</span><span class="muted">${loose.length}</span></div>
+      <div class="st-tiles" style="--cols:${cols}">${loose.map((x) => stTile(x)).join("")}</div></div>`);
+  }
+  return `<div class="card st-map ${groups.length ? "" : "solo"}">${stMainBox(d)}${groups.length ? `<div class="st-groups">${groups.join("")}</div>` : ""}</div>`;
+}
+
+/** A server's card: where it is, its roles, four numbers with bars, traffic over the range, the last report. */
+function stCard(x, d, maxChannel) {
+  // The main server's own numbers are always fresh (it serves this page); a silent node's are not.
+  const live = x.health === "ok" || x.health === "warn" || (!x.remote && x.cpu != null);
+  const open = stOpen.has(x.id);
+  const tags = [
+    ...protoOf(x).map((p) => `<span class="st-tag">${h(p)}</span>`),
+    !x.remote ? `<span class="st-tag accent">${t("Main server")}</span>` : "",
+    x.cascadeRole === "entry" ? `<span class="st-tag accent">${t("Entry")}</span><span class="st-tag accent">${t("Balancer")}</span>` : "",
+    x.cascadeRole === "exit" ? `<span class="st-tag accent">${t("Exit")}</span>` : "",
+    x.remote && x.agentVersion ? `<span class="st-tag">${t("agent {v}", { v: h(x.agentVersion) })}</span>` : "",
+  ].join("");
+  const problem = x.health === "down" || x.health === "warn" ? `<p class="st-problem h-${x.health}">${h(x.issues.map(issueText).join(". "))}</p>` : "";
+  const mem = x.memTotal ? x.memUsed / x.memTotal : null;
+  const channel = (x.rxBps || 0) + (x.txBps || 0);
+  const metric = (label, value, share, cls = "") => `<div class="st-m"><div class="st-mr"><span class="muted">${label}</span><b>${live ? value : `<span class="muted">${t("no data")}</span>`}</b></div>${bar(live ? share : null, cls)}</div>`;
+  return `<article class="card st-card h-${x.health} ${open ? "on" : ""}" data-key="${h(x.id)}" data-open="${h(x.id)}" tabindex="0" role="button" aria-expanded="${open}">
+    <div class="st-ch"><div class="st-ct">${flagName(x)}<div class="st-loc muted st-ell">${h([x.city, x.host].filter(Boolean).join(", "))}</div></div>${healthPill(x)}</div>
+    <div class="st-tags">${tags}</div>
+    ${problem}
+    <div class="st-metrics">
+      ${metric(t("Online"), `${x.online} / ${x.maxPeers}`, x.maxPeers ? x.online / x.maxPeers : 0, "accent")}
+      ${metric(t("CPU"), percent((x.cpu || 0) * 100), x.cpu || 0, shareCls(x.cpu || 0))}
+      ${metric(t("Memory"), mem == null ? "0%" : percent(mem * 100), mem, shareCls(mem || 0))}
+      ${metric(t("Channel"), h(bits(channel)), maxChannel ? channel / maxChannel : 0, "accent")}
+    </div>
+    ${sparkline(x.spark)}
+    <div class="st-foot muted"><span class="st-ell">${t("Report {time}", { time: h(ago(x.lastReportAt)) })}</span><span class="st-ell">${t("{size} a day", { size: h(bytes(x.traffic24h)) })}</span>${icon("chev", "ic st-chev")}</div>
+  </article>`;
+}
+
+/** An open card's charts, full width under its row. The main server shows the monitoring sections. */
+function stDetail(x, d) {
+  const headRow = `<div class="st-dh"><h3>${flagName(x)}</h3><button class="btn secondary small" type="button" data-open="${h(x.id)}">${t("Close")}</button></div>`;
+  if (!x.remote) return `<section class="st-detail" data-key="detail-${h(x.id)}">${headRow}${stMainCharts(d)}</section>`;
+  if (!x.history) return `<section class="st-detail" data-key="detail-${h(x.id)}">${headRow}<p class="muted st-loading">${t("Loading…")}</p></section>`;
+  const pts = x.history.map((p) => ({ ts: p.ts, rx: p.rxBps, tx: p.txBps, cpu: p.cpu == null ? null : p.cpu * 100, mem: p.mem == null ? null : p.mem * 100, online: p.online }));
+  const whole = (v) => String(Math.round(v));
+  return `<section class="st-detail" data-key="detail-${h(x.id)}">${headRow}
+    ${lineChart(pts, [{ key: "rx", label: t("Download"), color: DOWN }, { key: "tx", label: t("Upload"), color: UP }], t("Throughput"), bits)}
+    ${lineChart(pts, [{ key: "cpu", label: t("Processor"), color: DOWN }, { key: "mem", label: t("Memory"), color: UP }], t("Processor and memory, %"), (v) => `${whole(v)}%`, { top: 100 })}
+    ${lineChart(pts, [{ key: "online", label: t("Online"), color: ONE }], t("Devices online"), whole)}
+  </section>`;
+}
+
+/** The main server's monitoring, as the status page had it: checks, network, resources, VPN. */
+function stMainCharts(d) {
+  const m = d.monitor, net = m.network, last = m.series[m.series.length - 1];
+  if (!m.series.length && !m.checks.length) return `<p class="muted st-loading">${t("Loading…")}</p>`;
   const pts = m.series.map((p) => ({
     ts: p.ts, rx: p.rxBps, tx: p.txBps, load: p.utilization == null ? null : p.utilization * 100, ping: p.pingMs ?? null, loss: p.lossPct ?? null,
     errors: p.errors, drops: p.drops, cpu: p.cpu * 100, mem: p.memTotal ? (p.memUsed / p.memTotal) * 100 : null, online: p.online,
@@ -915,19 +1176,12 @@ async function status(params) {
   const capNote = net.capacityMbps
     ? t(net.capacitySource === "config" ? "Capacity {speed}" : "Capacity {speed}, reported by the network card", { speed: bits(net.capacityMbps * 1e6) })
     : t("Capacity unknown");
-  const banner = { ok: "Everything works", warning: "Something needs attention", critical: "There is a problem" }[m.overall] || "State unknown";
-  const open = m.alerts.filter((a) => !a.resolvedAt), done = m.alerts.filter((a) => a.resolvedAt);
   const monthTotal = (net.monthRxBytes || 0) + (net.monthTxBytes || 0);
-
-  view.innerHTML = `
-  ${head(t("Server status"), "", `<div class="chips">${RANGES.map(([k, l]) => `<a class="chip ${k === range ? "on" : ""}" href="#/status?range=${k}">${t(l)}</a>`).join("")}</div>`)}
-  <div class="notice ${{ ok: "ok", warning: "bad", critical: "danger" }[m.overall] || ""}"><div class="grow"><b>${t(banner)}</b>
-    <div class="muted">${m.checkedAt ? t("Checked at {time}", { time: h(dateTime(m.checkedAt)) }) : t("Not checked yet")}</div></div></div>
-
+  return `
   <div class="card tablewrap"><table class="data alerts"><thead><tr><th>${t("Check")}</th><th>${t("Details")}</th><th>${t("Status")}</th></tr></thead>
-    <tbody>${m.checks.map((c) => `<tr><td><b>${t(CHECK_NAMES[c.key] || c.key)}</b></td><td>${h(t(c.message, c.args))}</td><td>${levelBadge(c.level)}</td></tr>`).join("")}</tbody></table></div>
+    <tbody>${m.checks.map((c) => `<tr><td><b>${t(CHECK_NAMES[c.key] || c.key)}</b></td><td>${h(t(c.message, c.args))}</td><td>${levelBadge(c.level)}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">${t("Not checked yet")}</td></tr>`}</tbody></table></div>
 
-  <div class="h2row"><h2>${t("Network")}</h2>${net.iface ? `<span class="muted">${t("Interface {name}", { name: `<span class="mono">${h(net.iface)}</span>` })}</span>` : ""}</div>
+  <div class="st-sub"><h3>${t("Network")}</h3>${net.iface ? `<span class="muted">${t("Interface {name}", { name: `<span class="mono">${h(net.iface)}</span>` })}</span>` : ""}</div>
   ${kpis([
     [t("Download speed"), h(bits(last?.rxBps)), ""],
     [t("Upload speed"), h(bits(last?.txBps)), ""],
@@ -943,7 +1197,7 @@ async function status(params) {
   </div>
   ${lineChart(pts, [{ key: "errors", label: t("Errors"), color: DOWN }, { key: "drops", label: t("Lost"), color: UP }], t("Network card errors and lost packets"), whole)}
 
-  <div class="h2row"><h2>${t("Resources")}</h2></div>
+  <div class="st-sub"><h3>${t("Resources")}</h3></div>
   ${kpis([
     [t("Processor"), last ? percent(last.cpu * 100) : "0%", ""],
     [t("Memory"), last ? percent((last.memUsed / (last.memTotal || 1)) * 100) : "0%", last ? t("{used} of {total}", { used: h(bytes(last.memUsed)), total: h(bytes(last.memTotal)) }) : ""],
@@ -951,38 +1205,175 @@ async function status(params) {
   ])}
   ${lineChart(pts, [{ key: "cpu", label: t("Processor"), color: DOWN }, { key: "mem", label: t("Memory"), color: UP }], t("Processor and memory, %"), (v) => `${whole(v)}%`, { top: 100 })}
 
-  <div class="h2row"><h2>VPN</h2></div>
+  <div class="st-sub"><h3>VPN</h3></div>
   ${kpis([
     [t("Keys on the server"), last ? last.peers : 0, ""],
     [t("Connected now"), last ? last.online : 0, ""],
   ])}
-  ${lineChart(pts, [{ key: "online", label: t("Online"), color: ONE }], t("Devices online"), whole)}
-
-  <div class="h2row"><h2>${t("Alerts")}</h2></div>
-  <div class="card tablewrap"><table class="data alerts"><thead><tr><th>${t("Level")}</th><th>${t("Message")}</th><th>${t("Started")}</th></tr></thead>
-  <tbody>${open.map((a) => `<tr><td>${levelBadge(a.level)}</td><td>${h(t(a.message, a.args))}</td><td>${h(dateTime(a.openedAt))}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">${t("No open alerts")}</td></tr>`}</tbody></table></div>
-  ${done.length ? `<div class="h2row"><h2>${t("Resolved alerts")}</h2></div>
-  <div class="card tablewrap"><table class="data alerts"><thead><tr><th>${t("Level")}</th><th>${t("Message")}</th><th>${t("Started")}</th><th>${t("Ended")}</th><th>${t("Duration")}</th></tr></thead>
-  <tbody>${done.map((a) => `<tr><td>${levelBadge(a.level)}</td><td>${h(t(a.message, a.args))}</td><td>${h(dateTime(a.openedAt))}</td><td>${h(dateTime(a.resolvedAt))}</td><td>${h(duration(Date.parse(a.resolvedAt) - Date.parse(a.openedAt)))}</td></tr>`).join("")}</tbody></table></div>` : ""}
-
-  <div class="h2row"><h2>${t("Notifications")}</h2><a class="btn secondary" href="#/admin?tab=alerts">${t("Change recipients")}</a></div>
-  <div class="card notify">
-    <div class="nrow"><b>${t("Email")}</b><span>${m.notify.emails.length ? m.notify.emails.map((e) => `<span class="mono">${h(e)}</span>`).join("<br>") : `<span class="muted">${t("No email addresses")}</span>`}</span></div>
-    ${m.notify.emailReady ? "" : `<div class="nrow"><span></span><span class="warn">${t("E-mail is not set up")} <a href="#/admin?tab=email">${t("Set up e-mail")}</a></span></div>`}
-    <div class="nrow"><b>Telegram</b><span>${tp(m.notify.telegramChats, "{n} Telegram chat|{n} Telegram chats")}</span></div>
-    <div class="actionsrow"><button class="btn secondary" id="testnote">${t("Send test notification")}</button><span id="testres" class="muted"></span></div>
-  </div>`;
-
-  wireCharts(view);
-  const btn = document.getElementById("testnote"), res = document.getElementById("testres");
-  btn.onclick = async () => {
-    btn.disabled = true; res.className = "muted"; res.textContent = "";
-    try { await api("/admin/monitor/test", { method: "POST" }); res.textContent = t("Sent"); }
-    catch (e) { res.className = "warn"; res.textContent = e.message; }
-    btn.disabled = false;
-  };
-  statusTimer = setTimeout(() => { if (location.hash.startsWith("#/status")) render(); }, 60000);
+  ${lineChart(pts, [{ key: "online", label: t("Online"), color: ONE }], t("Devices online"), whole)}`;
 }
+
+/** Cards and the open cards' charts, in reading order: each chart panel after the row of its card. */
+function stCards(d) {
+  const width = stWidth();
+  const cols = width === "phone" ? 1 : balancedCols(d.servers.length, width === "tablet" ? 2 : 3);
+  const maxChannel = Math.max(0, ...d.servers.filter((x) => x.health === "ok" || x.health === "warn").map((x) => (x.rxBps || 0) + (x.txBps || 0)));
+  const items = [];
+  d.servers.forEach((x, i) => {
+    items.push([x.id, stCard(x, d, maxChannel)]);
+    const rowEnd = Math.min(d.servers.length, Math.ceil((i + 1) / cols) * cols) - 1;
+    if (i === rowEnd) {
+      for (const y of d.servers.slice(rowEnd - ((rowEnd % cols)), rowEnd + 1)) if (stOpen.has(y.id)) items.push(["detail-" + y.id, stDetail(y, d)]);
+    }
+  });
+  return { cols, items };
+}
+
+function stEvents(d) {
+  const all = d.monitor.alerts, shown = stEventsAll ? all : all.slice(0, 8);
+  const today = localDay(new Date(stNow()).toISOString());
+  const when = (iso) => (localDay(iso) === today ? clock(iso) : `${shortDate(localDay(iso))} ${clock(iso)}`);
+  const row = (a) => {
+    const st = a.resolvedAt ? pill("ok", t("resolved")) : pill(a.level === "critical" ? "down" : "warn", t("ongoing"));
+    const lasted = a.resolvedAt ? duration(Date.parse(a.resolvedAt) - Date.parse(a.openedAt)) : duration(stNow() - Date.parse(a.openedAt));
+    return `<li class="st-ev"><span class="st-time">${h(when(a.openedAt))}</span><span class="st-evt"><b>${t(CHECK_NAMES[a.key] || a.key)}.</b> <span class="muted">${h(t(a.message, a.args))}</span></span><span class="st-dur muted">${h(lasted)}</span>${st}</li>`;
+  };
+  return `<ul class="card st-events">${shown.map(row).join("") || `<li class="st-ev empty muted">${t("No alerts")}</li>`}</ul>
+    ${all.length > shown.length ? `<div class="st-more"><button class="btn secondary small" type="button" id="st-all">${t("Show all")}</button></div>` : ""}`;
+}
+
+function stNotify(d) {
+  const n = d.monitor.notify;
+  return `<div class="st-sub"><h3>${t("Notifications")}</h3><a class="btn secondary small" href="#/admin?tab=alerts">${t("Change recipients")}</a></div>
+  <div class="card notify">
+    <div class="nrow"><b>${t("Email")}</b><span>${n.emails.length ? n.emails.map((e) => `<span class="mono">${h(e)}</span>`).join("<br>") : `<span class="muted">${t("No email addresses")}</span>`}</span></div>
+    ${n.emailReady ? "" : `<div class="nrow"><span></span><span class="warn">${t("E-mail is not set up")} <a href="#/admin?tab=email">${t("Set up e-mail")}</a></span></div>`}
+    <div class="nrow"><b>Telegram</b><span>${tp(n.telegramChats, "{n} Telegram chat|{n} Telegram chats")}</span></div>
+    <div class="actionsrow"><button class="btn secondary" type="button" id="testnote">${t("Send test notification")}</button><span id="testres" class="muted"></span></div>
+  </div>`;
+}
+
+/* ---- painting without flicker ---- */
+
+/** Replaces a part only when its HTML changed. */
+function stPatch(id, html) {
+  const el = document.getElementById(id);
+  if (!el || el._html === html) return false;
+  el.innerHTML = html;
+  el._html = html;
+  wireCharts(el);
+  return true;
+}
+
+/** Keyed children: only the changed cards and panels are replaced, the rest stay (focus, hover). */
+function stPatchList(el, items) {
+  const keys = items.map((i) => i[0]).join("\n");
+  if (el._keys !== keys) {
+    el.innerHTML = items.map((i) => i[1]).join("");
+    el._keys = keys;
+    el._htmls = items.map((i) => i[1]);
+    wireCharts(el);
+    return;
+  }
+  items.forEach(([, html], i) => {
+    if (el._htmls[i] === html) return;
+    const tpl = document.createElement("template");
+    tpl.innerHTML = html.trim();
+    const node = tpl.content.firstElementChild;
+    el.children[i].replaceWith(node);
+    el._htmls[i] = html;
+    wireCharts(node);
+  });
+}
+
+function stPaint() {
+  const d = stData;
+  if (!d || !document.getElementById("st-body")) return;
+  stLayout = stWidth();
+  stPatch("st-verdict", stVerdict(d));
+  stPatch("st-kpis", stKpis(d));
+  stPatch("st-map", stMap(d));
+  const { cols, items } = stCards(d);
+  const grid = document.getElementById("st-cards");
+  grid.style.setProperty("--cols", cols);
+  stPatchList(grid, items);
+  stPatch("st-events", stEvents(d));
+  stPatch("st-notify", stNotify(d));
+}
+
+async function stLoad() {
+  clearTimeout(statusTimer);
+  const range = stRange;
+  const open = [...stOpen].map(encodeURIComponent).join(",");
+  try {
+    const d = await api(`/admin/servers/overview?range=${range}${open ? `&open=${open}` : ""}`);
+    if (!location.hash.startsWith("#/status") || range !== stRange) return;
+    stSkew = Date.now() - Date.parse(d.now);
+    // Cards opened while this was on its way keep their "Loading" until the next answer.
+    stData = d;
+    stPaint();
+  } catch (e) {
+    if (!stData) throw e;
+  }
+  if (location.hash.startsWith("#/status")) statusTimer = setTimeout(() => stLoad().catch(() => {}), 15000);
+}
+
+function stToggle(id) {
+  if (stOpen.has(id)) stOpen.delete(id); else stOpen.add(id);
+  stPaint();
+  stLoad().catch(() => {});
+}
+
+async function status(params) {
+  if (!store.get("token")) return go("#/signin");
+  if (role !== "owner") return go("#/account");
+  const range = RANGES.some(([k]) => k === params.get("range")) ? params.get("range") : store.get("monRange") || "24h";
+  store.set("monRange", range);
+  if (range !== stRange) stData = null;
+  stRange = range;
+  const legend = [["ok", "Works"], ["warn", "Attention"], ["down", "Not responding"], ["off", "Switched off"]]
+    .map(([c, l]) => `<span class="st-sv h-${c}"><i></i>${t(l)}</span>`).join("");
+  view.innerHTML = `
+  ${head(t("Server status"), "", `<div class="chips">${RANGES.map(([k, l]) => `<a class="chip ${k === range ? "on" : ""}" href="#/status?range=${k}">${t(l)}</a>`).join("")}</div>`)}
+  <div id="st-body">
+    <div id="st-verdict"></div>
+    <div id="st-kpis"></div>
+    <div class="h2row"><h2>${t("Map")}</h2><div class="st-legend">${legend}</div></div>
+    <div id="st-map"></div>
+    <div class="h2row"><h2>${t("All servers")}</h2></div>
+    <div id="st-cards" class="st-cards"></div>
+    <div class="h2row"><h2>${t("Alerts and events")}</h2></div>
+    <div id="st-events"></div>
+    <div id="st-notify"></div>
+  </div>`;
+  const body = document.getElementById("st-body");
+  body.addEventListener("click", async (e) => {
+    const all = e.target.closest("#st-all");
+    if (all) { stEventsAll = true; stPaint(); return; }
+    const test = e.target.closest("#testnote");
+    if (test) {
+      const res = document.getElementById("testres");
+      test.disabled = true; res.className = "muted"; res.textContent = "";
+      try { await api("/admin/monitor/test", { method: "POST" }); res.textContent = t("Sent"); }
+      catch (x) { res.className = "warn"; res.textContent = x.message; }
+      test.disabled = false;
+      return;
+    }
+    const card = e.target.closest("[data-open]");
+    if (card && !e.target.closest("a")) stToggle(card.dataset.open);
+  });
+  body.addEventListener("keydown", (e) => {
+    const card = e.target.closest?.("article[data-open]");
+    if (card && e.target === card && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); stToggle(card.dataset.open); }
+  });
+  if (stData) stPaint();
+  await stLoad();
+}
+
+window.addEventListener("resize", () => {
+  clearTimeout(stPaint.timer);
+  stPaint.timer = setTimeout(() => { if (location.hash.startsWith("#/status") && stData && stWidth() !== stLayout) stPaint(); }, 150);
+});
 
 /* ---------------- traffic analytics (owners) ---------------- */
 
