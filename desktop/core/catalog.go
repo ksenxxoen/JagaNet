@@ -66,7 +66,7 @@ func (a *App) pick(want string, servers []Server) string {
 func (a *App) choose(want string, servers []Server, honorSkip bool) string {
 	best, tier, score := "?", 0, math.MaxFloat64
 	for _, s := range servers {
-		if protocolOf(s) == "" || s.Load >= 1 || (want != "auto" && s.CountryCode != want) {
+		if a.protocolOf(s) == "" || s.Load >= 1 || (want != "auto" && s.CountryCode != want) {
 			continue
 		}
 		if honorSkip && slices.Contains(a.skip, s.ID) {
@@ -160,7 +160,7 @@ func (a *App) pingAll() {
 	a.mu.Lock()
 	targets := map[string]PingTarget{}
 	for _, s := range a.servers {
-		if t := pingTarget(s); t.Host != "" && protocolOf(s) != "" {
+		if t := pingTarget(s); t.Host != "" && a.protocolOf(s) != "" {
 			targets[t.key()] = t
 		}
 	}
@@ -249,7 +249,7 @@ func (a *App) nodesLeft() int {
 	}
 	n := 0
 	for _, s := range a.servers {
-		if protocolOf(s) == "" || s.Load >= 1 || statusTier(s.Status, want == "auto") < 0 {
+		if a.protocolOf(s) == "" || s.Load >= 1 || statusTier(s.Status, want == "auto") < 0 {
 			continue
 		}
 		if want != "auto" && s.CountryCode != want {

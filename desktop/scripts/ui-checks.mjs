@@ -399,6 +399,88 @@ try {
     await page.waitForTimeout(300);
   });
 
+  // ---- issue #39: the owner blocked the account ----
+  await attempt("account blocked", async () => {
+    const txt = (id) => page.evaluate((id) => document.getElementById(id).textContent, id);
+    let support = 0;
+    await page.route("**/rpc/support", (r) => { support++; r.fulfill({ status: 200, body: "null", contentType: "application/json" }); });
+    const plan = { name: "Pro", pro: true, expiresAt: "2099-01-01T00:00:00Z", warn: "soon", daysLeft: 2 };
+    await show({ ...main, conn: "problem", problem: "account_blocked", plan });
+    check("blocked account: says so, not «Тариф закончился»", (await txt("detail")) === "Аккаунт заблокирован. Напишите в поддержку.");
+    check("blocked account: the action is support, no renewal", (await page.evaluate(() => document.getElementById("detail-btn").dataset.action)) === "support" &&
+      (await txt("detail-btn")) === "Написать в поддержку");
+    check("blocked account: no plan banner with «Продлить»", await hidden("plan-banner"));
+    check("blocked account: «Сообщить о проблеме» is there", !(await hidden("report-btn")));
+    await click("#detail-btn");
+    await page.waitForTimeout(150);
+    check("«Написать в поддержку» opens support", support === 1);
+    // Go knows it from /me before anyone presses connect: shown while off too.
+    await show({ ...main, conn: "off", problem: "account_blocked" });
+    check("blocked account while off: text and action", (await txt("detail")) === "Аккаунт заблокирован. Напишите в поддержку." && !(await hidden("detail-btn")) && (await txt("hint")) === "");
+    await show({ ...main, conn: "off" });
+    check("not blocked: no text, no action", (await txt("detail")) === "" && (await hidden("detail-btn")));
+    await page.unroute("**/rpc/support");
+  });
+
+  // ---- sign-in by a device code (the bot's /app and the website give it) ----
+  await attempt("device code and Telegram account", async () => {
+    const txt = (id) => page.evaluate((id) => document.getElementById(id).textContent, id);
+    await show({ screen: "signin" });
+    check("«Войти по коду с устройства», the words of the bot and the website", (await txt("to-pair")) === "Войти по коду с устройства");
+    check("the pair form says where the code is", /Telegram/.test(await txt("pair-note")) && /\/app/.test(await txt("pair-note")));
+    await show({ ...main, email: "tg42@telegram.invalid" });
+    check("a Telegram-only account is «Telegram» in settings", (await txt("s-email")) === "Telegram");
+    await show(main);
+    check("an e-mail account shows the address", (await txt("s-email")) === "demo@example.com");
+  });
+
+  // ---- issue #40: «Пригласить друга» ----
+  await attempt("invite a friend", async () => {
+    const txt = (id) => page.evaluate((id) => document.getElementById(id).textContent, id);
+    const inv = { available: true, enabled: true, code: "BOOP42", webUrl: "https://boopvpn.app/r/BOOP42", telegramUrl: "https://t.me/boopvpn_bot?start=ref_BOOP42",
+      rewardDays: 14, condition: "first_payment", inviteeDays: 7, invited: 3, paid: 1, daysEarned: 14 };
+    let answer = { available: false };
+    await page.route("**/rpc/invite", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(answer) }));
+    let copiedByGo = 0;
+    await page.route("**/rpc/copyText", (r) => { copiedByGo++; r.fulfill({ status: 200, contentType: "application/json", body: "false" }); });
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: `http://127.0.0.1:${port}` });
+    await show(main);
+    await click("#open-settings");
+    await page.waitForTimeout(250);
+    check("invite: hidden when the panel has no program for this account", await hidden("s-invite"));
+    await click("#settings [data-close]");
+    await page.waitForTimeout(300);
+    answer = inv;
+    await click("#open-settings");
+    await page.waitForTimeout(250);
+    check("invite: shown", !(await hidden("s-invite")));
+    check("invite: «+14 дней за друга, который оплатит подписку»", (await txt("s-invite-reward")) === "+14 дней за друга, который оплатит подписку");
+    check("invite: the friend's bonus", (await txt("s-invite-extra")) === "Друг тоже получит +7 дней." && !(await hidden("s-invite-extra")));
+    check("invite: both links", (await txt("s-invite-web-url")) === inv.webUrl && (await txt("s-invite-tg-url")) === inv.telegramUrl && !(await hidden("s-invite-tg")));
+    check("invite: invited / paid / days", (await txt("s-invite-invited")) === "3" && (await txt("s-invite-paid")) === "1" && (await txt("s-invite-days")) === "14");
+    await click("#s-invite-tg-copy");
+    await page.waitForTimeout(200);
+    check("invite: «Скопировать» asks Go, then copies itself", copiedByGo === 1 && (await page.evaluate(() => navigator.clipboard.readText())) === inv.telegramUrl && (await txt("s-invite-tg-copy")) === "Скопировано");
+    await page.waitForTimeout(2100);
+    check("invite: the button reads «Скопировать» again", (await txt("s-invite-tg-copy")) === "Скопировать");
+    // Signup reward, no bonus for the friend, no bot link; one day.
+    await click("#settings [data-close]");
+    await page.waitForTimeout(300);
+    answer = { ...inv, condition: "signup", rewardDays: 1, inviteeDays: 0, telegramUrl: undefined };
+    await click("#open-settings");
+    await page.waitForTimeout(250);
+    check("invite: signup reward, one day", (await txt("s-invite-reward")) === "+1 день за друга, который зарегистрируется");
+    check("invite: no bot link, no friend's bonus", (await hidden("s-invite-tg")) && (await hidden("s-invite-extra")));
+    // Signed out: the section is gone (another account may come next).
+    await show({ screen: "signin" });
+    await show(main);
+    check("invite: forgotten after sign-out", await hidden("s-invite"));
+    await click("#settings [data-close]");
+    await page.waitForTimeout(300);
+    await page.unroute("**/rpc/invite");
+    await page.unroute("**/rpc/copyText");
+  });
+
   await attempt("focus stays in the sheet", async () => {
     await show(main);
     await click("#open-settings");
@@ -428,7 +510,7 @@ try {
           const els = [document.documentElement, document.body, ...document.querySelectorAll(".sheet:not([hidden]), .screen:not([hidden]), .dialog-wrap:not([hidden]) .dialog")];
           for (const el of els) if (el.scrollWidth > el.clientWidth + 1) out.push(`${name}: ${el.id || el.className} ${el.scrollWidth}>${el.clientWidth}`);
         };
-        for (const [name, st, open] of [["signin", { screen: "signin" }], ["main", {}], ["problem", { conn: "problem", problem: "no_handshake" }], ["settings", {}, "settings"], ["keys", {}, "keys"], ["places", {}, "places"], ["report", {}, "report"]]) {
+        for (const [name, st, open] of [["signin", { screen: "signin" }], ["main", {}], ["problem", { conn: "problem", problem: "no_handshake" }], ["account blocked", { conn: "off", problem: "account_blocked" }], ["settings", {}, "settings"], ["keys", {}, "keys"], ["places", {}, "places"], ["report", {}, "report"]]) {
           ["places", "keys", "settings", "report"].forEach((id) => { document.getElementById(id).hidden = true; });
           syncPanel();
           window.boop.update({ ...long, ...st });
@@ -436,6 +518,7 @@ try {
             openReport();
             showReportResult({ sent: false, error: "Слишком много отчётов с этого устройства, попробуйте через час", file: "C:\\Users\\очень.длинное.имя.пользователя\\AppData\\Local\\Boop\\boop-report-20270115-101500.txt" }, false);
           } else if (open) openSheet(open, false);
+          if (open === "settings") { invite = { available: true, webUrl: "https://boopvpn.app/r/" + "ОЧЕНЬДЛИННЫЙКОД".repeat(8), telegramUrl: "https://t.me/boopvpn_bot?start=ref_" + "X".repeat(120), rewardDays: 14, condition: "first_payment", inviteeDays: 7, invited: 123456, paid: 98765, daysEarned: 1234567 }; renderInvite(); }
           scan(name);
         }
         return out;

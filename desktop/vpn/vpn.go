@@ -60,3 +60,11 @@ type Tunnel interface {
 	// Up reports whether the adapter is in place (and the kill switch with it).
 	Up() bool
 }
+
+// Carrier is a Tunnel that carries only some protocols (the panel's ids, e.g.
+// "amneziawg"). The app asks the panel only for nodes of those and never puts
+// another kind into it. A Tunnel that is not a Carrier runs every protocol the
+// app knows (Windows; the dev stand-in).
+type Carrier interface {
+	Protocols() []string
+}

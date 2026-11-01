@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
-import { startPanel } from "./fakepanel.mjs";
+import { startPanel, SAMPLE_INVITE } from "./fakepanel.mjs";
 
 const { chromium } = createRequire(import.meta.url)("playwright");
 const root = resolve(process.argv[2] || resolve(dirname(fileURLToPath(import.meta.url)), ".."));
@@ -47,7 +47,12 @@ async function launch({ env = {}, data } = {}) {
   const t = {
     page, data, proc,
     stop: async () => { proc.kill("SIGTERM"); await ctx.close(); },
-    click: (sel) => page.evaluate((s) => document.querySelector(s).click(), sel),
+    // The connect button ignores clicks while its last call is still answering (busyToggle): a click
+    // right after the state changed could be dropped, so it first waits for the button to be free.
+    click: async (sel) => {
+      if (sel === "#boop") await page.waitForFunction(() => !document.getElementById("boop").disabled, null, { timeout: 5000 }).catch(() => {});
+      return page.evaluate((s) => document.querySelector(s).click(), sel);
+    },
     text: (id) => page.evaluate((id) => document.getElementById(id).textContent, id),
     hidden: (id) => page.evaluate((id) => document.getElementById(id).hidden, id),
     state: () => page.evaluate(() => S),
@@ -96,7 +101,9 @@ try {
   await w.until("sign-in screen", async () => (await screen(w)) === "signin");
   await w.type("email", "demo@example.com"); await w.submit("f-email");
   await w.until("code form", async () => !(await w.hidden("f-code")));
-  await w.type("code", "000000"); await w.submit("f-code");
+  // Six digits submit by themselves (app.js). A second, explicit submit used to race the first: the
+  // first answer clears the field, the second then says «Введите шесть цифр.» instead (the old flake).
+  await w.type("code", "000000");
   await w.until("wrong code is explained under the field", async () => !(await w.hidden("err-code")) && (await w.text("err-code")).includes("Неверный код"));
   check("a wrong code keeps the sign-in screen", (await screen(w)) === "signin");
   await w.stop();
@@ -112,13 +119,22 @@ try {
   await a.until("back on sign-in after sign out", async () => (await screen(a)) === "signin");
   check("sign-out asked the panel to drop the device", panel.calls.some((c) => c.startsWith("DELETE devices/")));
 
-  // device code: wrong, then right
+  // device code: wrong, then right. The bot and the website say «Войти по коду с устройства».
+  check("the device-code button has the bot's and the website's words", (await a.text("to-pair")) === "Войти по коду с устройства");
   await a.click("#to-pair");
   await a.until("pair form", async () => !(await a.hidden("f-pair")));
   await a.type("pair", "111111"); await a.submit("f-pair");
   await a.until("wrong pairing code is explained", async () => !(await a.hidden("err-pair")));
   await a.type("pair", panel.pairCode); await a.submit("f-pair");
   await a.until("signed in by device code", async () => (await screen(a)) === "main");
+  // The code came from the Telegram bot: an account without e-mail. Settings name it «Telegram»
+  // (not tg42@telegram.invalid), and it connects like any other.
+  await a.until("Telegram account loaded", async () => (await a.state()).email === "tg42@telegram.invalid" && (await a.state()).countries.length === 3);
+  check("a Telegram-only account is shown as «Telegram»", (await a.text("s-email")) === "Telegram");
+  await a.click("#boop");
+  await a.until("a Telegram-only account connects", async () => (await a.conn()) === "on");
+  await a.click("#boop");
+  await a.until("off", async () => (await a.conn()) === "off");
 
   // sign out again, then through the website
   await a.click("#open-settings"); await a.click("#s-signout");
@@ -172,6 +188,8 @@ try {
   await a.until("the list shows the new name", async () => (await a.state()).keys.some((k) => k.name === "Рабочий ноутбук"));
   check("a rename does not drop the connection", (await a.conn()) === "on");
   await a.page.keyboard.press("Escape");
+  // Let the keys sheet finish closing first: a sheet opened during another's close could be lost.
+  await a.until("keys sheet closed", async () => (await a.hidden("keys")) && !(await a.page.evaluate(() => document.querySelector(".sheet.closing"))));
 
   /* ---------- 3. strict mode setting survives a restart ---------- */
   await a.click("#open-settings");
@@ -209,6 +227,41 @@ try {
   await b.click("#boop");
   await b.until("off after leaving the problem", async () => (await b.conn()) === "off");
   delete panel.status["tunnel"];
+
+  // blocked by the owner (issue #39): 403 FORBIDDEN is not "plan ended"; the action opens support
+  panel.blocked = true;
+  await b.click("#boop");
+  await b.until("account blocked problem", async () => (await b.conn()) === "problem" && (await detail(b)) === (await TXT(b)).accountBlocked);
+  check("blocked: the action is «Написать в поддержку», no renewal", (await b.text("detail-btn")) === "Написать в поддержку" && !(await detail(b)).includes("Тариф"));
+  check("blocked: the state says account_blocked", (await b.state()).problem === "account_blocked");
+  await b.click("#boop");
+  await b.until("off, still saying the account is blocked", async () => (await b.conn()) === "off" && (await detail(b)) === (await TXT(b)).accountBlocked && !(await b.hidden("detail-btn")));
+  panel.blocked = false;
+  await b.click("#boop");
+  await b.until("connects once unblocked", async () => (await b.conn()) === "on");
+  check("the blocked text is gone once connected", (await detail(b)) === "");
+  await b.click("#boop");
+  await b.until("off", async () => (await b.conn()) === "off");
+
+  // «Пригласить друга» (issue #40): hidden while the panel says 404, filled from GET /v1/referrals/invite
+  await b.click("#open-settings");
+  await sleep(600);
+  check("invite: hidden while the program is off (404)", await b.hidden("s-invite") && panel.calls.includes("GET referrals/invite"));
+  await b.page.keyboard.press("Escape");
+  await sleep(300);
+  panel.invite = SAMPLE_INVITE;
+  await b.click("#open-settings");
+  await b.until("invite section shown", async () => !(await b.hidden("s-invite")));
+  check("invite: the reward", (await b.text("s-invite-reward")) === "+14 дней за друга, который оплатит подписку");
+  check("invite: the links", (await b.text("s-invite-web-url")) === SAMPLE_INVITE.webUrl && (await b.text("s-invite-tg-url")) === SAMPLE_INVITE.telegramUrl);
+  check("invite: the counts", (await b.text("s-invite-invited")) === "3" && (await b.text("s-invite-paid")) === "1" && (await b.text("s-invite-days")) === "14");
+  await b.page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await b.click("#s-invite-web-copy");
+  await b.until("invite: copied", async () => (await b.text("s-invite-web-copy")) === "Скопировано");
+  check("invite: the link is on the clipboard", (await b.page.evaluate(() => navigator.clipboard.readText())) === SAMPLE_INVITE.webUrl);
+  await b.page.keyboard.press("Escape");
+  await sleep(300);
+  panel.invite = null;
 
   // key removed on the panel: falls back to the app's own key and connects
   panel.keys.push({ id: "gone", name: "Gone", countryCode: "NL", lastSeenAt: null });

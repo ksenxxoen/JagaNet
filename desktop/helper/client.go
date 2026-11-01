@@ -104,7 +104,14 @@ func (c *Client) Hello() (Response, error) {
 	return answer(c.call(Request{Op: OpHello}, 3*time.Second))
 }
 
+// Protocols makes the Client a vpn.Carrier: boop-helper runs AmneziaWG only
+// (vpn.LinuxTunnel), so the Linux app is not offered VLESS nodes it cannot carry.
+func (c *Client) Protocols() []string { return []string{"amneziawg"} }
+
 func (c *Client) Apply(cfg *vpn.Config) error {
+	if cfg != nil && cfg.Vless != nil {
+		return errors.New("helper: VLESS is not supported on Linux yet")
+	}
 	_, err := answer(c.call(Request{Op: OpUp, Config: Wire(cfg)}, 30*time.Second))
 	return err
 }

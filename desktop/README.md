@@ -1,13 +1,13 @@
 # Boop для компьютера
 
 Один клиент (`desktop/`) для Windows и Linux: окно `ui/` (HTML/CSS/JS) рисует, Go (`core/`) держит
-состояние и туннель AmneziaWG. Устройство — в [ARCHITECTURE.md](ARCHITECTURE.md).
+состояние и туннель (Windows: AmneziaWG и VLESS; Linux: пока только AmneziaWG, VLESS-серверы там не показываются). Устройство — в [ARCHITECTURE.md](ARCHITECTURE.md).
 
 | | Windows | Ubuntu 22.04 / 24.04 |
 | --- | --- | --- |
 | Сборка | `./build.sh [версия] [api]` → `dist/Boop.exe` | `./build-linux.sh [версия] [api]` → `dist/boop_<версия>~ubuntu22.04_amd64.deb`, `…~ubuntu24.04_amd64.deb` |
 | Окно | WebView2 | WebKitGTK (webview_go) |
-| Туннель | в самом приложении (администратор) | служба `boop-helper` (root), окно — от пользователя |
+| Туннель | в самом приложении (администратор): AmneziaWG и VLESS | служба `boop-helper` (root), окно — от пользователя; только AmneziaWG |
 | Обновления | скачивает и ставит сам | только сообщает о версии и открывает ссылку на .deb |
 | Подпись | [SIGNING.md](SIGNING.md) | нет (пакет ставится локально через apt) |
 
@@ -27,9 +27,9 @@ WebKitGTK в пакете — ровно те, что в этом выпуске
 
 ```sh
 cd desktop
-./build-linux.sh 1.2.0          # адреса панели — список из ui.go (основной + запасной)
-# dist/boop_1.2.0~ubuntu22.04_amd64.deb
-# dist/boop_1.2.0~ubuntu24.04_amd64.deb   (+ .sha256 рядом)
+./build-linux.sh 1.3.0          # адреса панели — список из ui.go (основной + запасной)
+# dist/boop_1.3.0~ubuntu22.04_amd64.deb
+# dist/boop_1.3.0~ubuntu24.04_amd64.deb   (+ .sha256 рядом)
 ```
 
 * Каждый пакет проверяется `lintian` внутри своего выпуска; ошибка lintian — ошибка сборки.
@@ -53,7 +53,7 @@ cd desktop
 ## Linux: установка
 
 ```sh
-sudo apt install ./boop_1.2.0~ubuntu24.04_amd64.deb     # на 22.04 — …~ubuntu22.04…
+sudo apt install ./boop_1.3.0~ubuntu24.04_amd64.deb     # на 22.04 — …~ubuntu22.04…
 ```
 
 Пакет ставит `/usr/bin/boop`, `/usr/lib/boop/boop-helper`, службу `boop-helper.service` (включается и
@@ -100,7 +100,7 @@ systemd-resolved: `resolvectl dns boop0 …`, `resolvectl domain boop0 ~.`. Пр
 `DOWNLOADS_DIR` сервера:
 
 * `boop-ubuntu22.04.deb` и `boop-ubuntu24.04.deb` (переименованные пакеты из `dist/`);
-* `desktop-linux.json`: `{"version":"1.2.0","notes":"…","mandatory":false}`.
+* `desktop-linux.json`: `{"version":"1.3.0","notes":"…","mandatory":false}`.
 
 Пока их нет, Linux-клиент получает 404 и ничего не предлагает. Windows-клиенты спрашивают без
 параметров и получают то же, что и раньше (`desktop.json` + `Boop.exe`).

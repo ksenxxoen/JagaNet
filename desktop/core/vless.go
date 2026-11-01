@@ -21,17 +21,40 @@ import (
 // ProtocolVless is VLESS+Reality through Xray-core.
 const ProtocolVless = "vless"
 
-// SupportedProtocols is what this app runs, in its order of preference; GET
-// /servers sends it so the panel lists VLESS nodes (issue #28).
+// SupportedProtocols is every protocol this app knows, in its order of
+// preference. What one app actually runs is narrower when its tunnel says so
+// (vpn.Carrier: the Linux helper carries AmneziaWG only): API.Protocols, set
+// by Init. GET /servers names those, so the panel lists only nodes the app can
+// use (issue #28).
 var SupportedProtocols = []string{Protocol, ProtocolVless}
 
-func supported(protocol string) bool { return slices.Contains(SupportedProtocols, protocol) }
+// carried is SupportedProtocols narrowed to what a tunnel says it carries, in
+// the app's order. A tunnel that is not a vpn.Carrier carries all of them.
+func carried(t vpn.Tunnel) []string {
+	c, ok := t.(vpn.Carrier)
+	if !ok {
+		return slices.Clone(SupportedProtocols)
+	}
+	has := c.Protocols()
+	var out []string
+	for _, p := range SupportedProtocols {
+		if slices.Contains(has, p) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// runs reports whether this app's tunnel carries a protocol.
+func (a *App) runs(protocol string) bool { return slices.Contains(a.API.protocols(), protocol) }
 
 // protocolOf is the protocol the app uses on a node: the first of the node's
 // (the panel's order) this app runs, or "" when it runs none of them.
-func protocolOf(s Server) string {
+func (a *App) protocolOf(s Server) string { return protocolFor(s, a.API.protocols()) }
+
+func protocolFor(s Server, runs []string) string {
 	for _, p := range s.Protocols {
-		if supported(p) {
+		if slices.Contains(runs, p) {
 			return p
 		}
 	}

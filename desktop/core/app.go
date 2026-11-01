@@ -79,6 +79,9 @@ type App struct {
 	stop       context.CancelFunc
 	resyncCh   chan struct{}
 	signingOut bool // sign-out in progress: connect() refuses
+	// accountBlocked: the panel's last answer was "this account is blocked"
+	// (connect.go, setBlocked); cleared by the next good /me.
+	accountBlocked bool
 
 	probing   bool      // a probe is running
 	probeAt   time.Time // when the last probe finished
@@ -108,6 +111,9 @@ func (a *App) Init() {
 		a.Prober = netProber(a.API)
 	}
 	a.API.Token = func() string { a.mu.Lock(); defer a.mu.Unlock(); return a.Store.Token }
+	if a.API.Protocols == nil && a.Tunnel != nil {
+		a.API.Protocols = carried(a.Tunnel)
+	}
 	a.rememberBase()
 	a.reports = NewReporter(a.API.Event)
 	SetTunnelActive(func() bool { return a.Tunnel != nil && a.Tunnel.Up() })

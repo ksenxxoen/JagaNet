@@ -40,7 +40,7 @@ internal val telegramStrings: List<S> = listOf(
     S("Your VPN key", "Ваш VPN-ключ", "Dein VPN-Schlüssel"),
     S(
         "Install the Boop app, tap Sign in with a device code and enter this code",
-        "Установите приложение Boop, нажмите «Войти по коду устройства» и введите этот код",
+        "Установите приложение Boop, нажмите «Войти по коду с устройства» и введите этот код",
         "Installiere die Boop-App, tippe auf „Mit Gerätecode anmelden“ und gib diesen Code ein",
     ),
     S(

@@ -31,6 +31,9 @@ const (
 	// ProbBlocked: the internet works outside the tunnel, the node does not answer
 	// (the network drops VPN). Set by the probe (probe.go), never by the supervisor.
 	ProbBlocked = "blocked"
+	// ProbAccountBlocked: the owner blocked the account (panel 403 FORBIDDEN,
+	// issue #39). Not the plan: renewing does not help, support does.
+	ProbAccountBlocked = "account_blocked"
 )
 
 // Supervisor decides what a connected attempt should do. It does no I/O;

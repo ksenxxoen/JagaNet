@@ -47,6 +47,13 @@ const TXT = {
   reportCopied: "Текст отчёта скопирован в буфер обмена: его можно вставить в письмо или сообщение в поддержку.",
   reportNotCopied: "Скопировать текст не получилось. Нажмите «Скопировать».",
   reportCopiedAgain: "Скопировано", copyReport: "Скопировать", done: "Готово", cancel: "Отмена",
+  // The owner blocked the account (issue #39); same words as accountBlockedText in core/notify.go.
+  accountBlocked: "Аккаунт заблокирован. Напишите в поддержку.", support: "Написать в поддержку",
+  // A Telegram-only account has a placeholder address (tg<id>@telegram.invalid) instead of an e-mail.
+  telegramAccount: "Telegram",
+  // «Пригласить друга» (issue #40).
+  inviteForPaid: "за друга, который оплатит подписку", inviteForSignup: "за друга, который зарегистрируется",
+  inviteeGets: "Друг тоже получит", copied: "Скопировано", copyFailed: "Не удалось скопировать",
 };
 
 let S = { screen: "", conn: "off", countries: [] };
@@ -159,6 +166,7 @@ function problemAction() {
     case "key_removed": return { action: "keys", label: TXT.changeKey };
     case "no_handshake": case "dead": return { action: "places", label: TXT.changeCountry };
     case "blocked": return { action: "places", label: TXT.otherCountry };
+    case "account_blocked": return { action: "support", label: TXT.support };
     default: return null;
   }
 }
@@ -176,6 +184,8 @@ function render(next) {
   renderUpdate();
   renderPlanWarn();
   renderNotice();
+  if (S.screen !== "main") invite = null; // another account may sign in next
+  renderInvite();
   if (S.screen === "signin" && prev.screen !== "signin") showForm("f-email");
   if (S.screen === "signin" && prev.webLogin && !S.webLogin && !$("f-web").hidden) showForm("f-email");
   if (S.screen !== "main") return;
@@ -188,10 +198,11 @@ function render(next) {
   boop.setAttribute("aria-label", S.conn === "off" ? TXT.connect : S.conn === "on" ? TXT.disconnect : TXT.disconnect);
   if (prev.conn !== S.conn && S.conn === "on") { boop.classList.remove("bump"); void boop.offsetWidth; boop.classList.add("bump"); }
   $("status").textContent = STATUS[S.conn] || TXT.off;
-  $("hint").textContent = S.conn === "off" ? TXT.hintOff : "";
+  $("hint").textContent = S.conn === "off" && S.problem !== "account_blocked" ? TXT.hintOff : "";
   $("detail").textContent = detailText();
   const act = $("detail-btn");
-  const pa = S.conn !== "off" && S.conn !== "on" ? problemAction() : null;
+  // The blocked account is said (with its action) while off too: Go knows it from /me.
+  const pa = (S.conn !== "off" && S.conn !== "on") || S.problem === "account_blocked" ? problemAction() : null;
   if (pa) {
     act.hidden = false;
     act.dataset.action = pa.action;
@@ -217,7 +228,7 @@ function render(next) {
   if (!$("keys").hidden) renderKeys();
   $("s-key").hidden = !(S.keys || []).length;
   $("s-key-name").textContent = key ? key.name : TXT.own;
-  $("s-email").textContent = S.email || "";
+  $("s-email").textContent = accountName(S.email);
   $("s-plan").textContent = planText();
   $("s-plan-badge").hidden = !planExpired();
   $("s-auto").checked = !!S.autoConnect;
@@ -233,6 +244,7 @@ function render(next) {
 }
 
 function detailText() {
+  if (S.problem === "account_blocked") return TXT.accountBlocked;
   if (!S.problem || S.conn === "off") return "";
   if (S.problem === "offline") return TXT.offline;
   if (S.problem === "plan") return TXT.plan;
@@ -270,7 +282,7 @@ function renderUpdate() {
 // The plan ends in 1–3 days or today (Go decides by the computer's clock: S.plan.warn, S.plan.daysLeft).
 // Not on the sign-in screen and not next to the "plan has ended" problem, which says more.
 function renderPlanWarn() {
-  const p = S.screen === "main" && S.problem !== "plan" ? S.plan : null;
+  const p = S.screen === "main" && S.problem !== "plan" && S.problem !== "account_blocked" ? S.plan : null;
   const warn = p ? p.warn : "";
   $("plan-banner").hidden = !warn;
   if (!warn) return;
@@ -291,6 +303,46 @@ function dayWord(n) {
   const t = n % 100, u = n % 10;
   return t >= 11 && t <= 14 ? TXT.days[2] : u === 1 ? TXT.days[0] : u >= 2 && u <= 4 ? TXT.days[1] : TXT.days[2];
 }
+
+// The account line in settings: the e-mail, or «Telegram» for an account made in the bot.
+function accountName(email) {
+  return /@telegram\.invalid$/i.test(email || "") ? TXT.telegramAccount : email || "";
+}
+
+/* «Пригласить друга» (issue #40): Go asks the panel when settings open; the section stays hidden
+   while the program is off for this account (404, or rewards off). */
+let invite = null;
+function renderInvite() {
+  const inv = S.screen === "main" && invite && invite.available ? invite : null;
+  $("s-invite").hidden = !inv;
+  if (!inv) return;
+  const n = inv.rewardDays;
+  $("s-invite-reward").textContent = `+${n} ${dayWord(n)} ${inv.condition === "signup" ? TXT.inviteForSignup : TXT.inviteForPaid}`;
+  const m = inv.inviteeDays || 0;
+  $("s-invite-extra").hidden = !m;
+  $("s-invite-extra").textContent = m ? `${TXT.inviteeGets} +${m} ${dayWord(m)}.` : "";
+  $("s-invite-web-url").textContent = inv.webUrl;
+  $("s-invite-tg").hidden = !inv.telegramUrl;
+  $("s-invite-tg-url").textContent = inv.telegramUrl || "";
+  $("s-invite-invited").textContent = String(inv.invited || 0);
+  $("s-invite-paid").textContent = String(inv.paid || 0);
+  $("s-invite-days").textContent = String(inv.daysEarned || 0);
+}
+function loadInvite() {
+  call("invite", null, { silent: true }).then((r) => { invite = r; renderInvite(); }).catch(() => {});
+}
+// Go copies where it can (Windows); else the window does. The button says how it went for a moment.
+const copyTimers = {};
+async function copyLink(btn, text) {
+  let ok = false;
+  try { ok = await call("copyText", text, { silent: true }); } catch { ok = false; }
+  if (!ok) ok = await copyHere(text);
+  btn.textContent = ok ? TXT.copied : TXT.copyFailed;
+  clearTimeout(copyTimers[btn.id]);
+  copyTimers[btn.id] = setTimeout(() => (btn.textContent = TXT.copyReport), 2000);
+}
+$("s-invite-web-copy").onclick = (e) => { if (invite) copyLink(e.currentTarget, invite.webUrl); };
+$("s-invite-tg-copy").onclick = (e) => { if (invite && invite.telegramUrl) copyLink(e.currentTarget, invite.telegramUrl); };
 
 function planExpired() {
   const p = S.plan;
@@ -586,6 +638,7 @@ function openSheet(id, focus = true) {
   if (focus) setTimeout(() => { if (!$(id).hidden && first && !first.hidden) first.focus(); }, 30);
   if (id === "places") { $("place-search").value = ""; renderPlaces(true); call("refreshPings", null, { silent: true }).catch(() => {}); }
   if (id === "keys") { renderKeys(true); call("refreshKeys", null, { silent: true }).catch(() => {}); }
+  if (id === "settings") loadInvite();
 }
 function closeSheet(id, quiet) {
   const el = $(id);
@@ -760,6 +813,7 @@ $("detail-btn").onclick = (e) => {
   if (a === "places" || a === "keys") openSheet(a);
   else if (a === "extend") call("extend").catch(() => {});
   else if (a === "signOut") call("signOut").catch(() => {});
+  else if (a === "support") call("support").catch(() => {});
 };
 $("s-report").onclick = (e) => openReport(e.currentTarget);
 $("report-btn").onclick = (e) => openReport(e.currentTarget);

@@ -32,7 +32,10 @@ type API struct {
 	// ManifestQuery is added to GET /v1/app/desktop, e.g. "platform=linux&distro=ubuntu24.04".
 	// Empty on Windows: the panel answers with the Windows build, as it always has.
 	ManifestQuery string
-	http          *http.Client
+	// Protocols are the ones this app's tunnel carries (App.Init sets them from
+	// vpn.Carrier); nil means SupportedProtocols.
+	Protocols []string
+	http      *http.Client
 	bs            baseState
 	// From APIConnectBudget and PrimaryRetry when made; tests shorten them.
 	connectBudget, primaryRetry time.Duration
@@ -324,8 +327,15 @@ func (a *API) Me(ctx context.Context) (m Me, err error) {
 // lists VLESS nodes to it (a panel without the parameter only lists the old ones).
 func (a *API) Servers(ctx context.Context) (ServerList, error) {
 	var r ServerList
-	err := a.do(ctx, "GET", "servers?supportedProtocols="+strings.Join(SupportedProtocols, ","), nil, &r)
+	err := a.do(ctx, "GET", "servers?supportedProtocols="+strings.Join(a.protocols(), ","), nil, &r)
 	return r, err
+}
+
+func (a *API) protocols() []string {
+	if a != nil && a.Protocols != nil {
+		return a.Protocols
+	}
+	return SupportedProtocols
 }
 
 type Key struct {

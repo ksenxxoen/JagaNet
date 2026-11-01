@@ -13,12 +13,23 @@
 //   FAKE_EXPIRES_DAYS=2 node scripts/fakepanel.mjs      # prints the URL; plan ends in 2 days
 //   FAKE_VLESS=1 node scripts/fakepanel.mjs              # with the two VLESS nodes
 //   FAKE_NOTICE="Плановые работы" FAKE_STATUS=s-nl:maintenance,s-fi:degraded node scripts/fakepanel.mjs
+//   FAKE_INVITE=1 node scripts/fakepanel.mjs             # «Пригласить друга» in settings (issue #40)
+//   FAKE_BLOCKED=1 node scripts/fakepanel.mjs            # the owner blocked the account (issue #39)
+// `blocked` answers every signed-in request 403 FORBIDDEN as the panel does; `invite` is GET
+// /v1/referrals/invite (null: 404); a device code (auth/pair/redeem) signs in a Telegram-only account.
 //   BOOP_API=<that URL> go run .                        # sign in with demo@example.com / 123456
 import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const DEFAULT_EXPIRES = "2027-03-15T00:00:00Z";
+
+// GET /v1/referrals/invite as the panel sends it (InviteRes, issue #40), for `p.invite`.
+export const SAMPLE_INVITE = {
+  enabled: true, code: "BOOP42", webUrl: "https://boopvpn.app/r/BOOP42", telegramUrl: "https://t.me/boopvpn_bot?start=ref_BOOP42",
+  rewardDays: 14, condition: "first_payment", inviteeDays: 7, invited: 3, paid: 1, daysEarned: 14,
+  rewards: [{ at: "2026-10-20T10:00:00Z", who: "al***@gmail.com", days: 14, status: "granted", kind: "referrer" }],
+};
 
 const b64 = () => randomBytes(32).toString("base64");
 
@@ -44,12 +55,15 @@ export async function startPanel() {
     serversQuery: "",
     protocols: [],
     tunnels: {}, // session token -> { serverID, version }: each signed-in device has its own tunnel
+    users: {}, // session token -> the account it belongs to (/me answers with it)
+    blocked: false, // the owner blocked the account (issue #39): every signed-in request is 403 FORBIDDEN
+    invite: null, // GET /v1/referrals/invite (issue #40); null: 404, the program is not open
     url: "",
     close: () => new Promise((r) => srv.close(r)),
     reset() {
       p.down = false; p.status = {}; p.calls = []; p.webAllowed = false; p.expiresAt = DEFAULT_EXPIRES;
       p.statuses = {}; p.notices = {}; p.notice = null; p.diagnostics = [];
-      p.vless = false; p.serversQuery = ""; p.protocols = [];
+      p.vless = false; p.serversQuery = ""; p.protocols = []; p.blocked = false; p.invite = null;
     },
   };
   const servers = [
@@ -76,7 +90,15 @@ export async function startPanel() {
     },
   });
   let sessions = 0;
-  const session = (device) => ({ token: `tok-${device}-${++sessions}`, user: { id: "u1", email: "demo@example.com" }, deviceId: device });
+  const DEMO = { id: "u1", email: "demo@example.com" };
+  // A device code from the Telegram bot (/app) signs in an account made in Telegram: no e-mail, only
+  // the panel's placeholder address (TelegramAccounts.placeholderEmail).
+  const TG = { id: "u2", email: "tg42@telegram.invalid" };
+  const session = (device, user = DEMO) => {
+    const s = { token: `tok-${device}-${++sessions}`, user, deviceId: device };
+    p.users["Bearer " + s.token] = user;
+    return s;
+  };
   const config = (id) => {
     const v = vlessServers().find((x) => x.id === id);
     if (v) return vlessConfig(v);
@@ -99,16 +121,19 @@ export async function startPanel() {
       if (p.down) return req.socket.destroy();
       const reply = (code, v) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(v)); };
       const fail = (code, message) => reply(code, { error: { code: "x", message } });
+      // Blocked by the owner: as services/Auth.kt, for every signed-in request, the message translated.
+      if (p.blocked && req.headers.authorization) return reply(403, { error: { code: "FORBIDDEN", message: "Этот аккаунт заблокирован" } });
       if (p.status[path]) return fail(p.status[path], "forced " + path);
       const tun = (p.tunnels[req.headers.authorization || ""] ||= { serverID: "", version: 0 });
 
       if (path === "auth/email/start") return reply(200, { devCode: p.emailCode });
       if (path === "auth/email/verify") return body.code === p.emailCode ? reply(200, session("dev-mail")) : fail(400, "Неверный код");
-      if (path === "auth/pair/redeem") return body.code === p.pairCode ? reply(200, session("dev-pair")) : fail(400, "Код не подходит");
+      if (path === "auth/pair/redeem") return body.code === p.pairCode ? reply(200, session("dev-pair", TG)) : fail(400, "Код не подходит");
+      if (path === "referrals/invite") return p.invite ? reply(200, p.invite) : reply(404, { error: { code: "NOT_FOUND", message: "The referral program is not available" } });
       if (path === "auth/app/start") return reply(200, { id: "login-1", secret: "s", code: "4821", url: "http://127.0.0.1:1/allow" });
       if (path === "auth/app/poll") return reply(200, p.webAllowed ? { session: session("dev-web") } : {});
       if (path === "auth/logout") return reply(200, { ok: true });
-      if (path === "me") return reply(200, { user: { id: "u1", email: "demo@example.com" }, entitlement: { plan: "pro", tariffName: "Pro", expiresAt: p.expiresAt } });
+      if (path === "me") return reply(200, { user: p.users[req.headers.authorization || ""] || DEMO, entitlement: { plan: "pro", tariffName: "Pro", expiresAt: p.expiresAt } });
       if (path === "servers") {
         p.serversQuery = (req.url || "").split("?")[1] || "";
         const named = (new URLSearchParams(p.serversQuery).get("supportedProtocols") || "").split(",");
@@ -156,6 +181,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const p = await startPanel();
   if (process.env.FAKE_NOTICE) p.notice = process.env.FAKE_NOTICE;
   if (process.env.FAKE_VLESS) p.vless = true;
+  if (process.env.FAKE_BLOCKED) p.blocked = true;
+  if (process.env.FAKE_INVITE) p.invite = SAMPLE_INVITE;
   for (const pair of (process.env.FAKE_STATUS || "").split(",").filter(Boolean)) { const [id, st] = pair.split(":"); p.statuses[id] = st; }
   if (process.env.FAKE_EXPIRES_DAYS) p.expiresAt = new Date(Date.now() + Number(process.env.FAKE_EXPIRES_DAYS) * 86_400_000).toISOString();
   console.log(`fake panel on ${p.url} (plan ends ${p.expiresAt || "never"}); sign in with demo@example.com, code ${p.emailCode}`);
