@@ -37,4 +37,20 @@ class BlocklistsTest {
         assertFalse(runBlocking { lists.refresh() })
         assertTrue(lists.check("78.47.126.1").listed)
     }
+
+    @Test fun `a wide subnet alone is a subnet-only hit, an exact address is an alarm`() = harness {
+        val text = "10.0.0.0/22\n203.0.113.7\n198.51.100.0/24\n"
+        fun lists(warnPrefix: Int) = Blocklists(Ctx(cfg.copy(monitor = cfg.monitor.copy(blocklistRknUrl = "rkn", blocklistCdnUrl = "", rknSubnetWarnPrefix = warnPrefix)), ctx.db, ctx.drivers, ctx.mailer, ctx.now)) { text }
+        val l = lists(32)
+        runBlocking { l.refresh() }
+        assertTrue(l.check("10.0.1.5").rknSubnetOnly)
+        assertEquals(listOf("10.0.0.0/22"), l.check("10.0.1.5").rknSubnets)
+        assertFalse(l.check("203.0.113.7").rknSubnetOnly)
+        assertEquals(listOf("203.0.113.7"), l.check("203.0.113.7").rknExact)
+        assertFalse(l.check("192.0.2.1").listed)
+        val l24 = lists(24)
+        runBlocking { l24.refresh() }
+        assertEquals(listOf("198.51.100.0/24"), l24.check("198.51.100.9").rknExact)
+        assertTrue(l24.check("10.0.1.5").rknSubnetOnly)
+    }
 }

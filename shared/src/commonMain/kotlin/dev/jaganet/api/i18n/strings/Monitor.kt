@@ -55,7 +55,7 @@ internal val monitorStrings: List<S> = listOf(
     S("Since {time}", "С {time}", "Seit {time}"),
     S("The problem lasted {n} minute.|The problem lasted {n} minutes.", "Проблема длилась {n} минуту.|Проблема длилась {n} минуты.|Проблема длилась {n} минут.", "Das Problem dauerte {n} Minute.|Das Problem dauerte {n} Minuten."),
     S("Server {host}, {time} UTC", "Сервер {host}, {time} UTC", "Server {host}, {time} UTC"),
-    S("Server status", "Состояние сервера", "Serverstatus"),
+    S("Server status", "Состояние серверов", "Serverstatus"),
     S("Test notification", "Тестовое уведомление", "Testbenachrichtigung"),
     S("Alerts from your server reach you here.", "Уведомления о сервере будут приходить сюда.", "Benachrichtigungen über deinen Server kommen hier an."),
     S(
@@ -73,6 +73,7 @@ internal val monitorStrings: List<S> = listOf(
     S("VPN nodes", "VPN-ноды", "VPN-Knoten"),
     S("Block lists", "Списки блокировок", "Sperrlisten"),
     S("On the Roskomnadzor block list: {nodes}", "В реестре блокировок Роскомнадзора: {nodes}", "Auf der Sperrliste von Roskomnadzor: {nodes}"),
+    S("In a registry subnet, the address itself is not listed: {nodes}", "Адрес входит в подсеть реестра, сам адрес в списке не найден: {nodes}", "Adresse liegt in einem Registry-Subnetz, die Adresse selbst ist nicht gelistet: {nodes}"),
     S("In ranges throttled in Russia ({providers}): {nodes}", "В диапазонах, которые замедляют в России ({providers}): {nodes}", "In Bereichen, die in Russland gedrosselt werden ({providers}): {nodes}"),
     S("{n} VPN addresses checked, none on the lists", "Проверено адресов VPN: {n}, ни одного в списках", "{n} VPN-Adressen geprüft, keine auf den Listen"),
 )

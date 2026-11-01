@@ -92,7 +92,7 @@ func startNode(t *testing.T) testNode {
 			}),
 			ProxySettings: serial.ToTypedMessage(&inbound.Config{
 				Decryption: "none",
-				Clients: []*protocol.User{{Email: id, Account: serial.ToTypedMessage(&vless.Account{
+				Users: []*protocol.User{{Email: id, Account: serial.ToTypedMessage(&vless.Account{
 					Id: id, Flow: flow, Encryption: "none",
 				})}},
 			}),
@@ -121,9 +121,15 @@ func startNode(t *testing.T) testNode {
 			}, ""),
 		},
 		Outbound: []*core.OutboundHandlerConfig{{
-			ProxySettings: serial.ToTypedMessage(&freedom.Config{DestinationOverride: &freedom.DestinationOverride{
-				Server: &protocol.ServerEndpoint{Address: xnet.NewIPOrDomain(xnet.LocalHostIP), Port: uint32(echo)},
-			}}),
+			// Since Xray 26 freedom blackholes private addresses (127.0.0.1 here) for
+			// flows that came in over VLESS unless a final rule allows them; a node
+			// sends to the internet, this test node to its local echo server.
+			ProxySettings: serial.ToTypedMessage(&freedom.Config{
+				DestinationOverride: &freedom.DestinationOverride{
+					Server: &protocol.ServerEndpoint{Address: xnet.NewIPOrDomain(xnet.LocalHostIP), Port: uint32(echo)},
+				},
+				FinalRules: []*freedom.FinalRuleConfig{{Action: freedom.RuleAction_Allow}},
+			}),
 		}},
 	}
 	srv, err := core.New(cfg)

@@ -56,6 +56,11 @@ type Supervisor struct {
 	Nudges      int
 	EnteredOn   bool
 	Reported    bool // this problem's failure report went out; again only after the tunnel is up
+	// Failed: a connection that never came up ran out of ConnectBudget and the
+	// app stopped trying (issue #53). Nothing more is nudged, switched or woken;
+	// the window offers «Повторить» (App.Retry). A tunnel left in place (strict
+	// kill switch) that comes up after all is still taken.
+	Failed bool
 }
 
 // Sample is one observation of the tunnel.
@@ -81,6 +86,7 @@ type Step struct {
 	Notify  string
 	Reason  string
 	Report  string // a failure report for the panel: EvHandshakeFailed or EvNoRx, once per problem
+	GaveUp  bool   // the first connection is over budget: stop trying until the user asks again
 }
 
 // Started begins a fresh attempt. rx is the counter at apply time.
@@ -97,6 +103,13 @@ func (s *Supervisor) Started(now time.Time, rx uint64) {
 // Tick advances the state machine by one observation.
 func (s *Supervisor) Tick(sm Sample) Step {
 	defer s.remember(sm)
+
+	if s.Failed {
+		if s.Released || !s.cameUp(sm) {
+			return Step{Phase: "problem", Reason: "failed"}
+		}
+		s.Failed = false
+	}
 
 	if s.Released {
 		if !sm.Now.Before(s.NextRetry) {
@@ -223,6 +236,21 @@ func (s *Supervisor) giveUp(sm Sample, code string, attemptDone bool) Step {
 	if code == ProbNoHandshake && !s.Reported {
 		s.Reported = true
 		step.Report = EvHandshakeFailed
+	}
+	// A connection that never came up: give up instead of trying again every
+	// RetryAfterRelease for ever while the window says «Подключение…» (issue #53).
+	// Without the strict kill switch the internet is given back; with it the
+	// tunnel (and its firewall) stays until the user retries or disconnects.
+	// A connection that worked and then died keeps reconnecting by itself.
+	if code == ProbNoHandshake && !s.EnteredOn && s.DeadSince.IsZero() {
+		s.Failed = true
+		step.GaveUp = true
+		step.Reason = "gave_up"
+		if !sm.Strict {
+			s.Released = true
+			step.Release = true
+		}
+		return step
 	}
 	if !sm.Strict {
 		if !s.Released {

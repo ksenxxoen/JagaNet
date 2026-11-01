@@ -38,7 +38,7 @@ func TestSupervisorHandshakeThenGiveUp(t *testing.T) {
 	s.Tick(Sample{Now: t0.Add(20 * time.Second), Fastest: true, NodesLeft: 2})
 	s.Tick(Sample{Now: t0.Add(40 * time.Second), Fastest: true, NodesLeft: 1})
 	gave := s.Tick(Sample{Now: t0.Add(45 * time.Second), Fastest: true, NodesLeft: 1})
-	if gave.Phase != "problem" || !gave.Release || gave.Problem != ProbNoHandshake || gave.Notify != ProbNoHandshake {
+	if gave.Phase != "problem" || !gave.Release || !gave.GaveUp || gave.Problem != ProbNoHandshake || gave.Notify != ProbNoHandshake {
 		t.Fatalf("release at 45s: %+v", gave)
 	}
 
@@ -50,13 +50,22 @@ func TestSupervisorHandshakeThenGiveUp(t *testing.T) {
 	}
 }
 
+// A connection that worked and then died keeps trying on its own: released
+// after the reconnect budget, woken RetryAfterRelease later.
 func TestSupervisorReleaseThenRetry(t *testing.T) {
 	t0 := time.Unix(1_700_000_000, 0)
 	var s Supervisor
 	s.Started(t0, 0)
-	s.Tick(Sample{Now: t0.Add(ConnectBudget)})
-	if !s.Released {
-		t.Fatal("expected release")
+	if up := s.Tick(Sample{Now: t0.Add(time.Second), Handshake: t0.Add(time.Second)}); up.Phase != "on" {
+		t.Fatalf("up: %+v", up)
+	}
+	dead := t0.Add(time.Second + DeadHandshakeAge)
+	if d := s.Tick(Sample{Now: dead, Handshake: t0.Add(time.Second)}); d.Phase != "reconnecting" {
+		t.Fatalf("dead: %+v", d)
+	}
+	rel := s.Tick(Sample{Now: dead.Add(ReconnectBudget), Handshake: t0.Add(time.Second)})
+	if !rel.Release || rel.GaveUp || rel.Problem != ProbDead || !s.Released || s.Failed {
+		t.Fatalf("expected release, not giving up: %+v", rel)
 	}
 	wait := s.Tick(Sample{Now: s.NextRetry.Add(-time.Second)})
 	if wait.Wake || wait.Reason != "waiting" {
@@ -68,8 +77,52 @@ func TestSupervisorReleaseThenRetry(t *testing.T) {
 	}
 	// The retry may hold the kill switch only for one handshake window.
 	again := s.Tick(Sample{Now: s.GraceUntil})
-	if !again.Release || again.Phase != "problem" {
+	if !again.Release || again.Phase != "problem" || again.GaveUp {
 		t.Fatalf("release after the short retry: %+v", again)
+	}
+}
+
+// A first connection that never comes up is given up after ConnectBudget
+// (issue #53): no wake every RetryAfterRelease, nothing more until App.Retry.
+func TestSupervisorGivesUpOnFirstConnect(t *testing.T) {
+	t0 := time.Unix(1_700_000_000, 0)
+	var s Supervisor
+	s.Started(t0, 0)
+	if step := s.Tick(Sample{Now: t0.Add(ConnectBudget - time.Second)}); step.GaveUp || step.Phase != "connecting" {
+		t.Fatalf("gave up too soon: %+v", step)
+	}
+	gave := s.Tick(Sample{Now: t0.Add(ConnectBudget)})
+	if !gave.GaveUp || !gave.Release || gave.Phase != "problem" || gave.Problem != ProbNoHandshake ||
+		gave.Notify != ProbNoHandshake || gave.Report != EvHandshakeFailed || !s.Failed {
+		t.Fatalf("give up at the budget: %+v", gave)
+	}
+	for i := 1; i <= 10; i++ {
+		now := t0.Add(ConnectBudget + time.Duration(i)*RetryAfterRelease)
+		step := s.Tick(Sample{Now: now, Fastest: true, NodesLeft: 3})
+		if step.Wake || step.Nudge || step.Switch || step.Release || step.Problem != "" || step.Phase != "problem" || step.Reason != "failed" {
+			t.Fatalf("tried again after giving up (%d): %+v", i, step)
+		}
+	}
+	// Released, the tunnel is down: counters left over do not bring it up.
+	if step := s.Tick(Sample{Now: t0.Add(time.Hour), Rx: 10, Handshake: t0.Add(time.Hour)}); step.Phase != "problem" {
+		t.Fatalf("came up while released: %+v", step)
+	}
+
+	// Strict kill switch: given up as well, but the tunnel and its firewall stay.
+	s = Supervisor{}
+	s.Started(t0, 0)
+	strict := s.Tick(Sample{Now: t0.Add(ConnectBudget), Strict: true})
+	if !strict.GaveUp || strict.Release || strict.Nudge || strict.Switch || strict.Phase != "problem" || s.Released {
+		t.Fatalf("strict: %+v", strict)
+	}
+	quiet := s.Tick(Sample{Now: t0.Add(ConnectBudget + HandshakeTimeout), Strict: true})
+	if quiet.Nudge || quiet.Switch || quiet.Wake || quiet.Phase != "problem" {
+		t.Fatalf("strict tried again: %+v", quiet)
+	}
+	// The tunnel left in place comes up after all: taken.
+	up := s.Tick(Sample{Now: t0.Add(2 * ConnectBudget), Strict: true, Handshake: t0.Add(2 * ConnectBudget)})
+	if up.Phase != "on" || !up.Clear || up.Notify != "up" || s.Failed {
+		t.Fatalf("strict, up after giving up: %+v", up)
 	}
 }
 

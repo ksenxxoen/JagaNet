@@ -30,6 +30,10 @@ type App struct {
 	OnNotify func(string)
 	// ApplyUpdate replaces this process with a staged exe. Nil outside Windows.
 	ApplyUpdate func(staged string) error
+	// OnUserAttempt, when set, is called as a connection attempt starts from the
+	// person (connect, retry). The Windows host lets the service installer ask
+	// for the administrator prompt again only then, not on every automatic retry.
+	OnUserAttempt func()
 	// UpdateDir is where a downloaded exe is staged. Empty skips installing.
 	UpdateDir string
 	// UpdateLink: the app does not install updates itself, "update" opens the
@@ -52,25 +56,28 @@ type App struct {
 	// fills in the real one unless a test already did.
 	Prober Prober
 
-	mu         sync.Mutex
-	plan       *Plan
-	servers    []Server
-	notice     string // the owner's note for everyone (GET /servers)
-	keys       []Key
-	pings      map[string]float64 // by pingKey: the last good measurement
-	down       map[string]bool    // by pingKey: the last measurement failed («недоступен»)
-	pingedAt   time.Time          // when pingAll last finished
-	conn       string
-	since      time.Time
-	current    string
-	curHost    string
-	curTarget  PingTarget // where the node in use is pinged
-	curPing    *float64
-	applied    string // TunnelState.version now in the tunnel
-	peerKey    string
-	problem    string
-	released   bool
-	asleep     bool // tunnel is down on purpose; sync must not bring it back
+	mu        sync.Mutex
+	plan      *Plan
+	servers   []Server
+	notice    string // the owner's note for everyone (GET /servers)
+	keys      []Key
+	pings     map[string]float64 // by pingKey: the last good measurement
+	down      map[string]bool    // by pingKey: the last measurement failed («недоступен»)
+	pingedAt  time.Time          // when pingAll last finished
+	conn      string
+	since     time.Time
+	current   string
+	curHost   string
+	curTarget PingTarget // where the node in use is pinged
+	curPing   *float64
+	applied   string // TunnelState.version now in the tunnel
+	peerKey   string
+	problem   string
+	released  bool
+	asleep    bool // tunnel is down on purpose; sync must not bring it back
+	// failed: the first connection ran out of ConnectBudget and the app stopped
+	// trying (issue #53); the window shows the error and «Повторить» (Retry).
+	failed     bool
 	skip       []string
 	hold       *tunnelHold
 	available  *Manifest

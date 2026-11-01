@@ -11,6 +11,8 @@
 | Обновления | скачивает и ставит сам | только сообщает о версии и открывает ссылку на .deb |
 | Подпись | [SIGNING.md](SIGNING.md) | нет (пакет ставится локально через apt) |
 
+Установщик для Windows (`Boop-Setup-<версия>.exe`, Inno Setup): [installer/README.md](installer/README.md).
+
 Разработка без Windows и без туннеля: `go run .` — окно в браузере на `127.0.0.1:5199` с поддельным
 туннелем (`main_other.go`); проверки UI — `node scripts/ui-checks.mjs`, `node scripts/e2e.mjs`.
 
@@ -22,14 +24,14 @@
 ## Linux: сборка
 
 Нужен Docker (сборка идёт в контейнерах `ubuntu:22.04` и `ubuntu:24.04`, поэтому glibc, GTK и
-WebKitGTK в пакете — ровно те, что в этом выпуске Ubuntu) и Go 1.25 на машине сборки (Go и модули
+WebKitGTK в пакете — ровно те, что в этом выпуске Ubuntu) и Go 1.27 на машине сборки (Go и модули
 скачиваются на хосте и проверяются по хэшу; контейнеру нужен только архив Ubuntu).
 
 ```sh
 cd desktop
-./build-linux.sh 1.3.0          # адреса панели — список из ui.go (основной + запасной)
-# dist/boop_1.3.0~ubuntu22.04_amd64.deb
-# dist/boop_1.3.0~ubuntu24.04_amd64.deb   (+ .sha256 рядом)
+./build-linux.sh 1.3.1          # адреса панели — список из ui.go (основной + запасной)
+# dist/boop_1.3.1~ubuntu22.04_amd64.deb
+# dist/boop_1.3.1~ubuntu24.04_amd64.deb   (+ .sha256 рядом)
 ```
 
 * Каждый пакет проверяется `lintian` внутри своего выпуска; ошибка lintian — ошибка сборки.
@@ -53,7 +55,7 @@ cd desktop
 ## Linux: установка
 
 ```sh
-sudo apt install ./boop_1.3.0~ubuntu24.04_amd64.deb     # на 22.04 — …~ubuntu22.04…
+sudo apt install ./boop_1.3.1~ubuntu24.04_amd64.deb     # на 22.04 — …~ubuntu22.04…
 ```
 
 Пакет ставит `/usr/bin/boop`, `/usr/lib/boop/boop-helper`, службу `boop-helper.service` (включается и
@@ -100,7 +102,7 @@ systemd-resolved: `resolvectl dns boop0 …`, `resolvectl domain boop0 ~.`. Пр
 `DOWNLOADS_DIR` сервера:
 
 * `boop-ubuntu22.04.deb` и `boop-ubuntu24.04.deb` (переименованные пакеты из `dist/`);
-* `desktop-linux.json`: `{"version":"1.3.0","notes":"…","mandatory":false}`.
+* `desktop-linux.json`: `{"version":"1.3.1","notes":"…","mandatory":false}`.
 
 Пока их нет, Linux-клиент получает 404 и ничего не предлагает. Windows-клиенты спрашивают без
 параметров и получают то же, что и раньше (`desktop.json` + `Boop.exe`).

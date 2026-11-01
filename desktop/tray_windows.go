@@ -3,17 +3,13 @@
 package main
 
 import (
-	"encoding/xml"
+	"errors"
 	"os"
-	"os/exec"
-	"os/user"
-	"strings"
 	"sync"
-	"syscall"
-	"unicode/utf16"
 	"unsafe"
 
 	"github.com/ksenxxoen/JagaNet/desktop/core"
+	"github.com/ksenxxoen/JagaNet/desktop/winsvc"
 	"golang.org/x/sys/windows"
 )
 
@@ -271,25 +267,18 @@ func (t *tray) menu() {
 
 /* ---------- start with Windows ---------- */
 
-// The app needs administrator rights, which the Run key can't give at sign in;
-// a scheduled task with the highest rights can.
-const taskName = "Boop VPN"
-
-func schtasks(args ...string) error {
-	c := exec.Command("schtasks.exe", args...)
-	c.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000 /* CREATE_NO_WINDOW */}
-	return c.Run()
-}
+// The window runs without administrator rights now (the tunnel is the service's),
+// so the plain per-user Run key starts it at sign in: no scheduled task with
+// the highest rights, no UAC prompt.
 
 var (
 	autoMu sync.Mutex
 	autoOn bool
 )
 
-// refreshAutostart asks the scheduler. state() must not: it used to spawn
-// schtasks.exe on every UI refresh and held the app lock while it did.
+// refreshAutostart reads the Run key. state() must not: keep the registry out of the UI refresh.
 func refreshAutostart() {
-	on := schtasks("/Query", "/TN", taskName) == nil
+	on := winsvc.User{}.RunKeyOn()
 	autoMu.Lock()
 	autoOn = on
 	autoMu.Unlock()
@@ -308,57 +297,35 @@ func setAutoCached(on bool) {
 }
 
 func setAutostart(on bool) error {
+	u := winsvc.User{}
 	if !on {
-		if !autostartOn() {
-			return nil
-		}
-		err := schtasks("/Delete", "/TN", taskName, "/F")
-		if err == nil {
-			setAutoCached(false)
-		}
+		_ = u.ClearRunKey()
+		_ = u.DeleteTask() // an old one, if it is still there
+		setAutoCached(false)
+		return nil
+	}
+	exe := autostartExe()
+	if exe == "" {
+		return errors.New("no program path")
+	}
+	if err := u.SetRunKey(winsvc.RunCommand(exe)); err != nil {
 		return err
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		return err
+	setAutoCached(true)
+	return nil
+}
+
+// autostartExe is the program the Run key starts: the installed copy when there
+// is one (it is the one the updater keeps current), otherwise this one.
+func autostartExe() string {
+	if p := winsvc.InstalledExe(winsvc.Real{}); fileExists(p) {
+		return p
 	}
-	u, err := user.Current()
-	if err != nil {
-		return err
-	}
-	// Written as XML: a plain schtasks task would not start on battery.
-	esc := func(s string) string { var b strings.Builder; _ = xml.EscapeText(&b, []byte(s)); return b.String() }
-	task := `<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <Triggers><LogonTrigger><Enabled>true</Enabled><UserId>` + esc(u.Username) + `</UserId></LogonTrigger></Triggers>
-  <Principals><Principal id="Author"><UserId>` + esc(u.Username) + `</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>
-  <Settings>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
-    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
-    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
-    <Priority>4</Priority>
-  </Settings>
-  <Actions Context="Author"><Exec><Command>` + esc(exe) + `</Command><Arguments>--tray</Arguments></Exec></Actions>
-</Task>`
-	f, err := os.CreateTemp("", "boop-task-*.xml")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	u16 := utf16.Encode([]rune(task))
-	buf := []byte{0xff, 0xfe}
-	for _, c := range u16 {
-		buf = append(buf, byte(c), byte(c>>8))
-	}
-	_, err = f.Write(buf)
-	f.Close()
-	if err != nil {
-		return err
-	}
-	err = schtasks("/Create", "/TN", taskName, "/XML", f.Name(), "/F")
-	if err == nil {
-		setAutoCached(true)
-	}
-	return err
+	exe, _ := os.Executable()
+	return exe
+}
+
+func fileExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
 }

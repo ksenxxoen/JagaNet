@@ -88,6 +88,10 @@ const states = {
   "rename": { ...on, act: `openSheet("keys"); renameKey({ id: "k1", name: "Demo phone" })` },
   "toast": { ...on, act: `toast("Не удалось подключиться. Проверьте интернет.")` },
   // Issue #11: «Сообщить о проблеме» next to the problem, in the settings, the dialog and its results.
+  // Issue #53: the app gave up on the connection and waits for «Повторить».
+  "failed": { conn: "problem", problem: "no_handshake", failed: true, released: true },
+  "failed-blocked": { conn: "problem", problem: "blocked", failed: true, released: true },
+  "failed-strict": { conn: "problem", problem: "blocked", failed: true, strictKill: true },
   "report-main": { conn: "problem", problem: "blocked", released: true },
   "report-settings": { ...on, act: `openSheet("settings"); $("s-report").scrollIntoView({ block: "center" })` },
   "report-dialog": { conn: "problem", problem: "blocked", released: true, act: `openReport(); $("report-comment").value = "После обеда перестали открываться сайты, переподключение не помогает"` },

@@ -262,18 +262,23 @@ func (st *Stack) relayTCP(app *gonet.TCPConn, dst netip.AddrPort) {
 	mu.Unlock()
 }
 
-func (st *Stack) acceptUDP(r *udp.ForwarderRequest) {
+// acceptUDP takes a new UDP flow. It always reports the packet as handled (gVisor's
+// udp.ForwarderHandler since 2025): a flow that cannot be opened is dropped quietly, as
+// before, and never answered with an ICMP port unreachable, which the apps would read as
+// "nothing there" while the node is only slow.
+func (st *Stack) acceptUDP(r *udp.ForwarderRequest) bool {
 	id := r.ID()
 	dst := addrPort(id.LocalAddress, id.LocalPort)
 	var wq waiter.Queue
 	ep, err := r.CreateEndpoint(&wq)
 	if err != nil {
-		return
+		return true
 	}
 	app := gonet.NewUDPConn(&wq, ep)
 	if !st.spawn(func() { st.relayUDP(app, dst) }) {
 		app.Close()
 	}
+	return true
 }
 
 // relayUDP carries one UDP flow (one app port to one address) as one Xray UDP

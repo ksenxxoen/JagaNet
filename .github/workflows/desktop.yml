@@ -54,14 +54,45 @@ jobs:
       - name: go vet (windows)
         run: GOOS=windows GOARCH=amd64 go vet ./...
 
+      # Issue #53: the embedded Xray-core must not be older than the nodes' (the one
+      # constant to change is NodeCoreVersion in vpn/xray/version.go).
+      - name: xray-core not older than the nodes
+        run: go test -count=1 -run '^TestEmbeddedCoreNotOlderThanNodes$' -v ./vpn/xray/
+
+      # No GPL code in the binaries. Xray-core up to 25.x imported sagernet/sing
+      # (GPL-3.0); 26.x does not. If a new version brings it back, stop here.
+      - name: no GPL modules linked
+        run: |
+          mods="$( { GOOS=windows go list -deps -f '{{with .Module}}{{.Path}}{{end}}' . ;
+                     GOOS=linux go list -deps -tags boopapp -f '{{with .Module}}{{.Path}}{{end}}' . ./cmd/... ; } | sort -u)"
+          echo "$mods"
+          if grep -E '^github\.com/sagernet/' <<<"$mods"; then
+            echo "::error::a GPL module is linked (see desktop/ARCHITECTURE.md, Licences)"
+            exit 1
+          fi
+
       - name: go test
         run: go test -race -count=1 ./...
+
+      # A real Xray node of the version the nodes run, built from source (NodeCoreModule),
+      # for TestExternalNode below: the embedded engine against it on Vision and XHTTP.
+      - name: Xray node binary
+        run: |
+          mod="$(sed -n 's/^[[:space:]]*NodeCoreModule = "\(.*\)"$/\1/p' vpn/xray/version.go)"
+          test -n "$mod"
+          GOBIN="$RUNNER_TEMP/xray-node" go install -trimpath github.com/xtls/xray-core/main@"$mod"
+          "$RUNNER_TEMP/xray-node/main" version
 
       # Xray-core's Vision and XHTTP do not survive -race (checkptr, a race inside
       # XHTTP's client; see vpn/xray/race_test.go), so the VLESS tests carry
       # traffic over them in a second run without it.
-      - name: go test (VLESS without -race)
-        run: go test -count=1 ./vpn/xray/
+      - name: go test (VLESS without -race, real Xray node)
+        env:
+          BOOP_XRAY_BIN: ${{ runner.temp }}/xray-node/main
+          BOOP_XRAY_REQUIRED: "1"
+        run: |
+          go test -count=1 ./vpn/xray/
+          go test -count=1 -run '^TestExternalNode$' -v ./vpn/xray/ | grep -E '^\s*(---|externalnode_test|ok|PASS|FAIL)'
 
       - name: SHA-256
         run: |
@@ -125,5 +156,178 @@ jobs:
         with:
           name: e2e-logs
           path: ${{ runner.temp }}/e2e-logs
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Issue #65: the service was never tried on a real Windows (1.4.0 failed to
+  # install everywhere). The runner is an administrator, so the elevated half
+  # (--install-service) runs here as it does after the UAC prompt.
+  windows-service:
+    name: service install on Windows (e2e)
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: .
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Boop.exe-${{ github.event.pull_request.head.sha || github.sha }}
+          path: dist
+
+      - name: install, upgrade, uninstall
+        run: |
+          $exe = Join-Path $PWD 'dist\Boop.exe'
+          $dir = Join-Path $env:ProgramFiles 'Boop'
+          $data = Join-Path $env:ProgramData 'Boop'
+          function Run($flag) {
+            $p = Start-Process -FilePath $exe -ArgumentList $flag -Wait -PassThru
+            return $p.ExitCode
+          }
+          function Dump {
+            foreach ($f in @("$data\install.log", "$data\service.log", "$env:TEMP\install.log")) {
+              if (Test-Path $f) { Write-Host "--- $f"; Get-Content $f -Tail 60 }
+            }
+          }
+          function Check($ok, $what) {
+            if (-not $ok) { Dump; throw "FAILED: $what" }
+            Write-Host "ok: $what"
+          }
+
+          Check ((Run '--install-service') -eq 0) 'install exits 0'
+          $svc = Get-Service BoopVPN
+          Check ($svc.Status -eq 'Running') 'service BoopVPN is Running'
+          Check (Test-Path "$dir\Boop.exe") 'Boop.exe in Program Files'
+          Check (Test-Path "$dir\wintun.dll") 'wintun.dll in Program Files'
+          Check ([System.IO.Directory]::GetFiles('\\.\pipe\') -contains '\\.\pipe\BoopVPN') 'pipe BoopVPN exists'
+
+          # Ordinary users may read and run, not write.
+          $acl = (Get-Acl $dir).Access | Where-Object { $_.IdentityReference -match 'Users$' }
+          Check (($acl | Where-Object { $_.FileSystemRights -match 'Write|Modify|FullControl' }).Count -eq 0) 'Users cannot write Program Files\Boop'
+
+          # Upgrade over a running service.
+          Check ((Run '--install-service') -eq 0) 'second install (upgrade) exits 0'
+          Check ((Get-Service BoopVPN).Status -eq 'Running') 'service Running after upgrade'
+
+          Check ((Run '--uninstall-service') -eq 0) 'uninstall exits 0'
+          Start-Sleep -Seconds 2
+          Check ($null -eq (Get-Service BoopVPN -ErrorAction SilentlyContinue)) 'service removed'
+          Check (-not (Test-Path "$dir\Boop.exe")) 'Boop.exe removed'
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: service-logs
+          path: |
+            C:\ProgramData\Boop\*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Issue #64: Boop-Setup-<version>.exe (Inno Setup) around the same Boop.exe the
+  # build job made. Silent install -> service Running -> silent uninstall ->
+  # service and files gone. Unsigned here (no secrets in CI).
+  windows-installer:
+    name: Boop-Setup.exe on Windows (build + e2e)
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: Boop.exe-${{ github.event.pull_request.head.sha || github.sha }}
+          path: desktop/dist
+
+      - name: Inno Setup
+        run: |
+          if (-not (Get-Command ISCC.exe -ErrorAction SilentlyContinue) -and
+              -not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+          }
+
+      - name: build the setup program
+        run: ./desktop/installer/build.ps1
+
+      - name: install, upgrade, uninstall (silent)
+        run: |
+          $setup = (Get-ChildItem desktop/dist/Boop-Setup-*.exe | Select-Object -First 1).FullName
+          Write-Host "setup: $setup"
+          $dir = Join-Path $env:ProgramFiles 'Boop'
+          $data = Join-Path $env:ProgramData 'Boop'
+          function Dump {
+            foreach ($f in @("$data\install.log", "$data\service.log")) {
+              if (Test-Path $f) { Write-Host "--- $f"; Get-Content $f -Tail 60 }
+            }
+            Get-ChildItem $env:TEMP -Filter 'Setup Log*' -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "--- $($_.FullName)"; Get-Content $_.FullName -Tail 60 }
+          }
+          function Check($ok, $what) {
+            if (-not $ok) { Dump; throw "FAILED: $what" }
+            Write-Host "ok: $what"
+          }
+          function Setup($argv) {
+            (Start-Process -FilePath $setup -ArgumentList $argv -Wait -PassThru).ExitCode
+          }
+          $silent = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG'
+
+          Check ((Setup "$silent /TASKS=autostart") -eq 0) 'install exits 0'
+          Check ((Get-Service BoopVPN).Status -eq 'Running') 'service BoopVPN is Running'
+          Check (Test-Path "$dir\Boop.exe") 'Boop.exe in Program Files'
+          Check (Test-Path "$dir\wintun.dll") 'wintun.dll in Program Files'
+          Check (Test-Path "$dir\unins000.exe") 'uninstaller present'
+          Check ([System.IO.Directory]::GetFiles('\\.\pipe\') -contains '\\.\pipe\BoopVPN') 'pipe BoopVPN exists'
+          Check (Test-Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Boop VPN.lnk") 'Start menu shortcut'
+          $acl = (Get-Acl $dir).Access | Where-Object { $_.IdentityReference -match 'Users$' }
+          Check (($acl | Where-Object { $_.FileSystemRights -match 'Write|Modify|FullControl' }).Count -eq 0) 'Users cannot write Program Files\Boop'
+          $run = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue).BoopVPN
+          Write-Host "Run key: $run"   # informational: the runner has no interactive shell for runasoriginaluser
+
+          # Over an existing install (the service is running).
+          Check ((Setup "$silent /TASKS=autostart") -eq 0) 'install over the existing one exits 0'
+          Check ((Get-Service BoopVPN).Status -eq 'Running') 'service Running after upgrade'
+
+          # Uninstall, data kept by default.
+          New-Item -ItemType Directory -Force "$data" | Out-Null
+          Set-Content "$data\keep.txt" 'x'
+          $unins = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait -PassThru
+          Check ($unins.ExitCode -eq 0) 'uninstall exits 0'
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Get-Service BoopVPN -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
+          while ((Test-Path "$dir\Boop.exe") -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
+          Check ($null -eq (Get-Service BoopVPN -ErrorAction SilentlyContinue)) 'service removed'
+          Check (-not (Test-Path "$dir\Boop.exe")) 'Boop.exe removed'
+          Check (-not (Test-Path "$dir\wintun.dll")) 'wintun.dll removed'
+          Check (Test-Path "$data\keep.txt") 'data kept without /PURGEDATA'
+
+          # Again, now with /PURGEDATA.
+          Check ((Setup $silent) -eq 0) 'second install exits 0'
+          $unins = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /PURGEDATA' -Wait -PassThru
+          Check ($unins.ExitCode -eq 0) 'uninstall /PURGEDATA exits 0'
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Test-Path $data) -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
+          Check (-not (Test-Path $data)) 'ProgramData\Boop removed with /PURGEDATA'
+          Check ($null -eq (Get-Service BoopVPN -ErrorAction SilentlyContinue)) 'service removed again'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Boop-Setup-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            desktop/dist/Boop-Setup-*.exe
+            desktop/dist/Boop-Setup-*.exe.sha256
+          retention-days: 7
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: installer-logs
+          path: |
+            C:\ProgramData\Boop\*.log
           retention-days: 7
           if-no-files-found: ignore

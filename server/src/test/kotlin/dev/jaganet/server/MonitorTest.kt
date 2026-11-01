@@ -115,4 +115,28 @@ class MonitorTest {
         val o = signIn("owner@test.dev").api.adminMonitor("24h")
         assertEquals(CheckLevel.UNKNOWN, o.overall)
     }
+
+    @Test fun `a restart does not repeat an open problem that was already announced`() = harness {
+        val p = FakeProbe(); val sent = mutableListOf<Sent>()
+        val m = monitor(p, sent)
+        minute(m, p)
+        p.httpOk = false
+        repeat(3) { minute(m, p) }
+        val opened = sent.count { it.subject.contains("Проблема") }
+        assertEquals(1, opened)
+        // Long after opening, the reminder goes out once ...
+        clock = clock.plus(Duration.ofHours(30))
+        minute(m, p)
+        val afterRemind = sent.size
+        assertEquals(opened + 1, afterRemind)
+        // ... and a restarted panel (new instance, same database) stays quiet.
+        val p2 = FakeProbe().also { it.httpOk = false }
+        val m2 = monitor(p2, sent)
+        repeat(3) { minute(m2, p2) }
+        assertEquals(afterRemind, sent.size)
+        // A change (recovery) is still announced.
+        p2.httpOk = true
+        repeat(3) { minute(m2, p2) }
+        assertTrue(sent.size > afterRemind)
+    }
 }

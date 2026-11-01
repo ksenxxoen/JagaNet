@@ -17,7 +17,18 @@ const (
 	accountBlockedText = "Аккаунт заблокирован. Напишите в поддержку."
 )
 
+// ServiceError is a problem with the Windows service that holds the tunnel
+// (not installed, the administrator prompt declined, install failed). Msg is
+// shown to the person as it is: what happened and that «Повторить» tries again.
+type ServiceError struct{ Msg string }
+
+func (e *ServiceError) Error() string { return e.Msg }
+
 func (a *App) humanize(err error) error {
+	var se *ServiceError
+	if errors.As(err, &se) {
+		return errors.New(se.Msg)
+	}
 	if errors.Is(err, ErrOffline) {
 		return errors.New(offline)
 	}
@@ -51,12 +62,45 @@ func (a *App) alert(code string) {
 	a.told[code] = true
 	released := a.released
 	strict := a.Store != nil && a.Store.StrictKill
+	failed := a.failed
 	fn := a.OnNotify
 	a.mu.Unlock()
 	msg := phrase(code, released, strict)
+	if failed {
+		msg = failedPhrase(code, released, strict)
+	}
 	if fn != nil && msg != "" {
 		fn(msg)
 	}
+}
+
+// Same words as TXT.failed* in ui/app.js: the app gave up on the connection (issue #53).
+const (
+	failedTitle    = "Не удалось подключиться."
+	failedNoAnswer = "Сервер не отвечает."
+	failedOffline  = "Нет сети."
+	failedOpen     = "Интернет работает без VPN."
+)
+
+// failedPhrase is what the tray says when the app gave up on a connection: why,
+// whether the internet works meanwhile (closed only with the strict kill switch and the tunnel not released),
+// and nothing about trying again.
+func failedPhrase(code string, released, strict bool) string {
+	why := failedNoAnswer
+	switch code {
+	case ProbOffline:
+		why = failedOffline
+	case ProbBlocked:
+		why = blockedText
+	case ProbNoHandshake, ProbDead:
+	default:
+		return phrase(code, released, strict)
+	}
+	tail := failedOpen
+	if strict && !released {
+		tail = strictClosed
+	}
+	return failedTitle + " " + why + " " + tail
 }
 
 func phrase(code string, released, strict bool) string {

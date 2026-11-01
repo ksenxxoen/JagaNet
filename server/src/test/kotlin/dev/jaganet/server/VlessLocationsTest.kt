@@ -130,7 +130,7 @@ class VlessLocationsTest {
         services.vlessKeys.sync()
         val uuid = uuidOf(u.session.user.id)
         val token = tokenOf(u.session.user.id)
-        val res = sub(token, ua = "Happ/3.1.0")
+        val res = sub(token, ua = "v2rayNG/1.10.5")
         assertEquals(HttpStatusCode.OK, res.status)
         assertEquals(listOf("🇳🇱 Амстердам", "🇳🇱 Амстердам (запасной)", "🇫🇮 Финляндия", "🇫🇮 Финляндия (запасной)"), names(res.bodyAsText()))
         val links = String(Base64.getDecoder().decode(res.bodyAsText())).split("\n")
@@ -239,8 +239,8 @@ class VlessLocationsTest {
             assertFalse("xhttp" in y)
         }
 
-        // Happ, v2RayTun, v2rayNG, Hiddify and unknown clients: base64 with XHTTP too; ?format=base64 wins over the User-Agent.
-        for (res in listOf(sub(token, ua = "Happ/3.1"), sub(token, ua = "v2rayNG/1.9"), sub(token, ua = "v2RayTun/5"), sub(token, ua = "HiddifyNext/2.5.7 (android) like ClashMeta v2ray sing-box"), sub(token), sub(token, "?format=base64", ua = "mihomo/1.19"))) {
+        // v2rayNG, Hiddify and unknown clients: base64 with XHTTP too; ?format=base64 wins over the User-Agent (Happ and v2RayTun: VlessSubscriptionClientsTest).
+        for (res in listOf(sub(token, "?format=base64", ua = "Happ/3.1"), sub(token, ua = "v2rayNG/1.9"), sub(token, "?format=links", ua = "v2RayTun/5"), sub(token, ua = "HiddifyNext/2.5.7 (android) like ClashMeta v2ray sing-box"), sub(token), sub(token, "?format=base64", ua = "mihomo/1.19"))) {
             assertTrue(res.headers["Content-Type"]!!.startsWith("text/plain"))
             assertEquals(4, String(Base64.getDecoder().decode(res.bodyAsText())).split("\n").size)
         }
@@ -269,7 +269,10 @@ class VlessLocationsTest {
         assertTrue(Vless.isUuid(cascadeUuid))
 
         val f = services.nodes.balancer(entry.id)
-        val outbounds = f["outbounds"]!!.jsonArray.map { it.jsonObject }
+        val all = f["outbounds"]!!.jsonArray.map { it.jsonObject }
+        // The QUIC block's blackhole comes last (issue #59), the exits before it.
+        assertEquals(mapOf("tag" to XrayBalancer.BLOCK, "protocol" to "blackhole"), all.last().mapValues { it.value.jsonPrimitive.content })
+        val outbounds = all.dropLast(1)
         assertEquals(listOf(XrayBalancer.PREFIX + x1.id, XrayBalancer.PREFIX + x2.id).sorted(), outbounds.map { it["tag"]!!.jsonPrimitive.content }.sorted())
         for (o in outbounds) {
             val vnext = o["settings"]!!.jsonObject["vnext"]!!.jsonArray.single().jsonObject
@@ -285,7 +288,13 @@ class VlessLocationsTest {
         val balancer = routing["balancers"]!!.jsonArray.single().jsonObject
         assertEquals("leastPing", balancer["strategy"]!!.jsonObject["type"]!!.jsonPrimitive.content)
         assertEquals(listOf(XrayBalancer.PREFIX), balancer["selector"]!!.jsonArray.map { it.jsonPrimitive.content })
-        val rule = routing["rules"]!!.jsonArray.single().jsonObject
+        val (quic, rule) = routing["rules"]!!.jsonArray.map { it.jsonObject }.also { assertEquals(2, it.size) }
+        // UDP 443 is blocked before the balancer's rule (VLESS_ENTRY_BLOCK_QUIC, on by default).
+        assertEquals(listOf("vision", "xhttp"), quic["inboundTag"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals("udp", quic["network"]!!.jsonPrimitive.content)
+        assertEquals("443", quic["port"]!!.jsonPrimitive.content)
+        assertEquals(XrayBalancer.BLOCK, quic["outboundTag"]!!.jsonPrimitive.content)
+        assertFalse("balancerTag" in quic)
         assertEquals(listOf("vision", "xhttp"), rule["inboundTag"]!!.jsonArray.map { it.jsonPrimitive.content })
         assertEquals(XrayBalancer.BALANCER, rule["balancerTag"]!!.jsonPrimitive.content)
         assertEquals(listOf(XrayBalancer.PREFIX), f["observatory"]!!.jsonObject["subjectSelector"]!!.jsonArray.map { it.jsonPrimitive.content })

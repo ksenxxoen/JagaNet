@@ -13,11 +13,11 @@
 # The Windows build is ./build.sh, unchanged.
 set -euo pipefail
 cd "$(dirname "$0")"
-VERSION="${1:-1.3.0}"
+VERSION="${1:-1.3.1}"
 API="${2:-}"   # empty: the list in ui.go (main address, then the spares); see build.sh
 RELEASES="${BOOP_LINUX_RELEASES:-22.04 24.04}"
-GO_VERSION=1.25.0
-GO_SHA256=2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613
+GO_VERSION=1.27.3
+GO_SHA256=65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40
 [[ "$VERSION" =~ ^[0-9][0-9A-Za-z.+-]*$ ]] || { echo "version must start with a digit: $VERSION" >&2; exit 1; }
 mkdir -p build dist
 

@@ -61,6 +61,10 @@ data class Config(
     val referralsPublic: Boolean = false,
     /** VLESS_BALANCER=1: cascade entries balance over exit nodes (issue #41) and lead the subscription as "Auto". */
     val vlessBalancer: Boolean = false,
+    /** What VLESS subscriptions tell the clients besides the links: DNS, the QUIC block, Xray JSON (VLESS_SUB_*, issue #59). */
+    val vlessSub: dev.jaganet.server.services.SubscriptionOptions = dev.jaganet.server.services.SubscriptionOptions(),
+    /** VLESS_ENTRY_BLOCK_QUIC=0 leaves the UDP 443 block out of a cascade entry's balancer fragment (issue #59). */
+    val entryBlockQuic: Boolean = true,
     /** SUPPORT_URL: the `support-url` header of VLESS subscriptions; default the Telegram bot, else the website. */
     val supportUrl: String? = null,
     /** SUPPORT_EMAIL: where the website's support form sends messages; default OWNER_EMAIL. */
@@ -105,6 +109,8 @@ data class Config(
                 signupProDays = num("SIGNUP_PRO_DAYS", 0).toInt().coerceAtLeast(0),
                 referralsPublic = env["REFERRALS_PUBLIC"] == "1",
                 vlessBalancer = env["VLESS_BALANCER"] == "1",
+                vlessSub = dev.jaganet.server.services.SubscriptionOptions.load(env),
+                entryBlockQuic = env["VLESS_ENTRY_BLOCK_QUIC"]?.trim() != "0",
                 supportUrl = env["SUPPORT_URL"]?.takeIf { it.isNotBlank() },
                 supportEmail = env["SUPPORT_EMAIL"]?.trim()?.takeIf { it.isNotBlank() },
                 referralRewards = RewardRules(
@@ -140,6 +146,8 @@ data class Config(
                     wanInterface = env["WAN_INTERFACE"]?.takeIf { it.isNotBlank() },
                     pingTargets = (env["PING_TARGETS"] ?: "1.1.1.1,8.8.8.8").split(',').map { it.trim() }.filter { it.isNotEmpty() },
                     blocklistRknUrl = env["BLOCKLIST_RKN_URL"] ?: "https://antifilter.network/download/ipsum.lst",
+                    rknSubnetWarnPrefix = env["RKN_SUBNET_WARN_PREFIX"]?.trim()?.toIntOrNull()?.coerceIn(0, 32) ?: 32,
+                    alertRemindHours = env["ALERT_REMIND_HOURS"]?.trim()?.toLongOrNull()?.coerceAtLeast(1) ?: 24,
                     blocklistCdnUrl = env["BLOCKLIST_CDN_URL"] ?: "https://raw.githubusercontent.com/123jjck/cdn-ip-ranges/refs/heads/main/all/all.csv",
                 ),
                 trafficClassesFile = env["TRAFFIC_CLASSES_FILE"]?.takeIf { it.isNotBlank() } ?: "/run/boop/traffic.json",
@@ -191,4 +199,8 @@ data class MonitorConfig(
     val blocklistRknUrl: String = "",
     /** Hosting and CDN ranges throttled in Russia (123jjck/cdn-ip-ranges, as cheburcheck.ru uses); empty = off. */
     val blocklistCdnUrl: String = "",
+    /** IPv4 registry subnets with a prefix shorter than this are only a warning (the address itself is not listed); 32 = only an exact match is an alarm. */
+    val rknSubnetWarnPrefix: Int = 32,
+    /** How often a still-open critical problem is repeated, in hours. */
+    val alertRemindHours: Long = 24,
 )

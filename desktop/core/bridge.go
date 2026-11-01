@@ -73,6 +73,8 @@ var commands = map[string]handler{
 	"signOut":        none((*App).cmdSignOut),
 	// the connection
 	"toggle": none(func(a *App, _ context.Context) (any, error) { a.flip(); return nil, nil }),
+	// «Повторить» after the app gave up on a connection (UIState.failed, issue #53)
+	"retry": none(func(a *App, _ context.Context) (any, error) { a.Retry(); return nil, nil }),
 	// keys and places
 	"refreshKeys": none((*App).cmdRefreshKeys),
 	"renameKey":   object((*App).cmdRenameKey),
@@ -111,7 +113,7 @@ var commands = map[string]handler{
 	// «Пригласить друга» (issue #40): the links and what they earned; copying one
 	"invite":   none((*App).cmdInvite),
 	"copyText": text((*App).cmdCopyText),
-	"update": none((*App).cmdUpdate),
+	"update":   none((*App).cmdUpdate),
 	// "Сообщить о проблеме": build, send and copy the report; copy the last one again
 	"reportProblem": object((*App).cmdReportProblem),
 	"copyReport":    none((*App).cmdCopyReport),

@@ -100,6 +100,11 @@ data class NodePeersRes(
     val limit: NodeLimit? = null,
     /** VLESS only: the inbounds from the node's settings (agents prefer their own XRAY_INBOUNDS list). */
     val inbounds: List<NodeInbound> = emptyList(),
+    /**
+     * A balancing cascade entry only: the tag of its Xray balancer (XrayBalancer.BALANCER). An agent from
+     * version 3 reports what the balancer selects (`xray api bi`); older agents ignore the field.
+     */
+    val balancer: String? = null,
 )
 
 @Serializable
@@ -135,12 +140,28 @@ data class NodeSystem(
     val agent: String? = null,
 )
 
+/**
+ * Agent version 3, a balancing cascade entry only: what its Xray balancer selects now
+ * (`xray api bi`). [selected] are outbound tags (`boop-exit-<node id>`), [override] a target set by hand.
+ */
 @Serializable
-data class NodeReportReq(val protocol: String, val peers: List<NodePeerCounter>, val system: NodeSystem = NodeSystem())
+data class NodeBalancerReport(val tag: String = "", val selected: List<String> = emptyList(), val override: String? = null)
+
+@Serializable
+data class NodeReportReq(
+    val protocol: String,
+    val peers: List<NodePeerCounter>,
+    val system: NodeSystem = NodeSystem(),
+    /** Since agent version 3, optional: the balancer's choice on a cascade entry. */
+    val balancer: NodeBalancerReport? = null,
+)
 
 /** What the agent last said about the machine, plus speeds worked out from the previous report. */
 @Serializable
-private data class StoredReport(val at: Long, val system: NodeSystem, val rxBps: Long = 0, val txBps: Long = 0)
+internal data class StoredReport(val at: Long, val system: NodeSystem, val rxBps: Long = 0, val txBps: Long = 0, val balancer: NodeBalancerReport? = null)
+
+/** servers.report as stored by [Nodes.report]; null when there is none or it can't be read. */
+internal fun storedReport(r: Row): StoredReport? = r.jsonOrNull("report")?.let { runCatching { Protocols.decode<StoredReport>(it) }.getOrNull() }
 
 /** Peer counters for one node and protocol: reported by its agent, or read locally. */
 suspend fun readCounters(ctx: Ctx, server: Row, protocol: String): List<PeerCounters> {
@@ -214,7 +235,7 @@ class Nodes(private val ctx: Ctx) {
     private fun toAdmin(r: Row, now: Instant): AdminNode {
         val remote = r.strOrNull("agent_token_hash") != null
         val last = r.instantOrNull("last_report_at")
-        val rep = r.jsonOrNull("report")?.let { runCatching { Protocols.decode<StoredReport>(it) }.getOrNull() }
+        val rep = storedReport(r)
         val protocols = r.json("protocols")
         val state = when {
             !r.bool("active") -> NodeState.DISABLED
@@ -383,7 +404,7 @@ class Nodes(private val ctx: Ctx) {
                 ?.let { XrayBalancer.Exit(e.str("id"), it) }
         }
         if (exits.isEmpty()) throw badRequest("No active exit nodes: mark at least one VLESS node as an exit")
-        XrayBalancer.fragment(entry.transports.map { it.tag }, s.str("cascade_uuid"), exits)
+        XrayBalancer.fragment(entry.transports.map { it.tag }, s.str("cascade_uuid"), exits, ctx.cfg.entryBlockQuic)
     }
 
     /** The VPN address devices get: the host name when set, else the machine's address. */
@@ -648,7 +669,8 @@ class Nodes(private val ctx: Ctx) {
                 inbounds.joinToString("") { "|${it.tag}:${it.flow}" }).toByteArray())
             .take(12).joinToString("") { "%02x".format(it) }
         val iface = when (protocol) { Protocols.AMNEZIAWG -> IFACE_AWG; Protocols.VLESS -> IFACE_XRAY; else -> IFACE_WG }
-        NodePeersRes(version, protocol, iface, peers, limit, inbounds)
+        val balancer = if (vless && VlessLocations.isBalancingEntry(ctx, s)) XrayBalancer.BALANCER else null
+        NodePeersRes(version, protocol, iface, peers, limit, inbounds, balancer)
     }
 
     /**
@@ -667,33 +689,54 @@ class Nodes(private val ctx: Ctx) {
 
     /** Counters and machine health, every minute. */
     suspend fun report(token: String?, req: NodeReportReq) {
-        ctx.db.tx { sql ->
-            val s = bySql(sql, token)
-            val id = s.str("id")
-            val now = ctx.now()
-            for (p in req.peers.take(70_000)) {
-                sql.exec(
-                    """INSERT INTO node_peer_counters (server_id, protocol, peer_key, rx_bytes, tx_bytes, last_handshake, torrent_rx, torrent_tx, endpoint, ips)
-                       VALUES (?,?,?,?,?,?,?,?,?,?)
-                       ON CONFLICT (server_id, protocol, peer_key) DO UPDATE SET rx_bytes=EXCLUDED.rx_bytes, tx_bytes=EXCLUDED.tx_bytes,
-                         last_handshake=EXCLUDED.last_handshake, torrent_rx=EXCLUDED.torrent_rx, torrent_tx=EXCLUDED.torrent_tx,
-                         endpoint=EXCLUDED.endpoint, ips=EXCLUDED.ips""",
-                    id, req.protocol, p.publicKey, p.rx, p.tx, if (p.lastHandshake > 0) Instant.ofEpochSecond(p.lastHandshake) else null,
-                    p.torrentRx, p.torrentTx, ClientIps.hostOf(p.endpoint), ClientIps.ipsJson(p.ips),
-                )
-            }
-            // Peers the node no longer has (removed devices) don't need counters anymore.
+        ctx.db.tx { sql -> record(sql, bySql(sql, token), req) }
+    }
+
+    /** The simulator's stand-in agents report through here (no token). */
+    suspend fun simulatedReport(id: String, req: NodeReportReq) {
+        ctx.db.tx { sql -> record(sql, sql.one("SELECT * FROM servers WHERE id=?", id) ?: throw notFound("Node not found"), req) }
+    }
+
+    private fun record(sql: Sql, s: Row, req: NodeReportReq) {
+        val id = s.str("id")
+        val now = ctx.now()
+        for (p in req.peers.take(70_000)) {
             sql.exec(
-                """DELETE FROM node_peer_counters WHERE server_id=? AND peer_key NOT IN (SELECT peer_key FROM tunnels WHERE server_id=?)
-                     AND peer_key NOT IN (SELECT peer_key FROM vless_replicas WHERE server_id=?)""",
-                id, id, id,
+                """INSERT INTO node_peer_counters (server_id, protocol, peer_key, rx_bytes, tx_bytes, last_handshake, torrent_rx, torrent_tx, endpoint, ips)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT (server_id, protocol, peer_key) DO UPDATE SET rx_bytes=EXCLUDED.rx_bytes, tx_bytes=EXCLUDED.tx_bytes,
+                     last_handshake=EXCLUDED.last_handshake, torrent_rx=EXCLUDED.torrent_rx, torrent_tx=EXCLUDED.torrent_tx,
+                     endpoint=EXCLUDED.endpoint, ips=EXCLUDED.ips""",
+                id, req.protocol, p.publicKey, p.rx, p.tx, if (p.lastHandshake > 0) Instant.ofEpochSecond(p.lastHandshake) else null,
+                p.torrentRx, p.torrentTx, ClientIps.hostOf(p.endpoint), ClientIps.ipsJson(p.ips),
             )
-            val prev = s.jsonOrNull("report")?.let { runCatching { Protocols.decode<StoredReport>(it) }.getOrNull() }
-            val secs = prev?.let { (now.toEpochMilli() - it.at) / 1000.0 }?.takeIf { it > 0 }
-            fun bps(a: Long, b: Long?) = if (secs == null || b == null || a < b) 0L else ((a - b) * 8 / secs).toLong()
-            val stored = StoredReport(now.toEpochMilli(), req.system, bps(req.system.rxBytes, prev?.system?.rxBytes), bps(req.system.txBytes, prev?.system?.txBytes))
-            sql.exec("UPDATE servers SET last_report_at=?, report=? WHERE id=?", now, Jsonb(Protocols.encode(stored).toString()), id)
         }
+        // Peers the node no longer has (removed devices) don't need counters anymore.
+        sql.exec(
+            """DELETE FROM node_peer_counters WHERE server_id=? AND peer_key NOT IN (SELECT peer_key FROM tunnels WHERE server_id=?)
+                 AND peer_key NOT IN (SELECT peer_key FROM vless_replicas WHERE server_id=?)""",
+            id, id, id,
+        )
+        val prev = storedReport(s)
+        val secs = prev?.let { (now.toEpochMilli() - it.at) / 1000.0 }?.takeIf { it > 0 }
+        fun bps(a: Long, b: Long?) = if (secs == null || b == null || a < b) 0L else ((a - b) * 8 / secs).toLong()
+        val balancer = req.balancer?.let { b ->
+            b.copy(tag = b.tag.take(64), selected = b.selected.take(32).map { it.take(80) }, override = b.override?.take(80)?.ifEmpty { null })
+        }
+        val stored = StoredReport(now.toEpochMilli(), req.system, bps(req.system.rxBytes, prev?.system?.rxBytes), bps(req.system.txBytes, prev?.system?.txBytes), balancer)
+        sql.exec("UPDATE servers SET last_report_at=?, report=? WHERE id=?", now, Jsonb(Protocols.encode(stored).toString()), id)
+        // One health sample per report for the status page's per-node charts (V24, kept 30 days).
+        val online = sql.one("SELECT count(*)::int AS n FROM tunnels WHERE server_id=? AND last_seen_at > ?", id, now.minus(NODE_OFFLINE))!!.int("n")
+        sql.exec(
+            """INSERT INTO node_metrics (server_id, ts, cpu, mem_used, mem_total, rx_bps, tx_bps, online) VALUES (?,?,?,?,?,?,?,?)
+               ON CONFLICT (server_id, ts) DO NOTHING""",
+            id, now, req.system.cpu, req.system.memUsed, req.system.memTotal, stored.rxBps, stored.txBps, online,
+        )
+    }
+
+    /** Node health samples are kept 30 days (hourly cleanup). */
+    suspend fun pruneMetrics() {
+        ctx.db.run { it.exec("DELETE FROM node_metrics WHERE ts < ?", ctx.now().minus(Duration.ofDays(30))) }
     }
 }
 
