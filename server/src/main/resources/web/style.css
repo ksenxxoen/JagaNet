@@ -318,3 +318,16 @@ form.rename { display: flex; gap: 8px; margin-bottom: 4px; }
 form.rename[hidden], h3[hidden] { display: none; }
 form.rename input { flex: 1; max-width: 320px; }
 .stack { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+
+/* ---------- legal pages, consent checkboxes, support form ---------- */
+.signbox form label.check { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; font-weight: 400; cursor: pointer; line-height: 20px; }
+.signbox form label.check + .btn, .signbox form label.check + label.check + .btn { margin-top: 16px; }
+.btn:disabled, .btn[disabled] { opacity: .5; cursor: not-allowed; }
+.legal-note { margin-top: 12px; }
+.legal-note a, label.check a { color: var(--primary); text-decoration: underline; }
+.card.legal { padding: 24px; margin-top: 24px; line-height: 1.6; }
+.card.legal h1 { margin-bottom: 16px; }
+.card.legal p { margin: 0 0 12px; }
+.card.legal blockquote { margin: 0 0 16px; padding: 8px 16px; border-left: 3px solid var(--border); color: var(--muted); }
+.supportbox { max-width: 560px; }
+.hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }

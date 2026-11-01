@@ -78,7 +78,7 @@ function go(hash) { if (location.hash === hash) render(); else location.hash = h
 function renderNav() {
   const here = (location.hash.slice(1) || "/").split("?")[0];
   const items = store.get("token")
-    ? [...(role === "owner" ? [["/analytics", t("Analytics")], ["/admin", t("Admin panel")], ["/status", t("Server status")]] : []), ...(role === "owner" || site?.referralsPublic ? [["/referrals", t("Referral program")]] : site?.inviteRewardDays > 0 ? [["/invite", t("Invite a friend")]] : []), ["/account", t("My account")]]
+    ? [...(role === "owner" ? [["/analytics", t("Analytics")], ["/admin", t("Admin panel")], ["/status", t("Server status")]] : []), ...(role === "owner" || site?.referralsPublic ? [["/referrals", t("Referral program")]] : site?.inviteRewardDays > 0 ? [["/invite", t("Invite a friend")]] : []), ["/account", t("My account")], ["/support", t("Support")]]
     : [];
   const link = ([p, l]) => `<a class="item ${p === here ? "on" : ""}" href="#${p}">${l}</a>`;
   const langs = `<span class="langs">${LANGS.map(([c, name]) => `<button type="button" class="${c === lang ? "on" : ""}" data-lang="${c}" title="${name}" lang="${c}">${c.toUpperCase()}</button>`).join("")}</span>`;
@@ -91,7 +91,7 @@ function renderNav() {
   for (const b of nav.querySelectorAll("[data-lang]")) b.onclick = () => setLang(b.dataset.lang);
   const mb = document.getElementById("menubtn");
   if (mb) mb.onclick = () => { const open = menu.classList.toggle("open"); mb.setAttribute("aria-expanded", String(open)); };
-  foot.innerHTML = `<span>© Boop</span><nav>${site?.telegramBotUrl ? `<a href="${h(site.telegramBotUrl)}">Telegram</a>` : ""}<a href="#/">${t("Pricing")}</a>${store.get("token") ? `<a href="#/account">${t("My account")}</a>` : `<a href="#/signin">${t("Sign in")}</a>`}</nav>`;
+  foot.innerHTML = `<span>© Boop</span><nav>${site?.telegramBotUrl ? `<a href="${h(site.telegramBotUrl)}">Telegram</a>` : ""}<a href="#/">${t("Pricing")}</a>${store.get("token") ? `<a href="#/account">${t("My account")}</a>` : `<a href="#/signin">${t("Sign in")}</a>`}<a href="#/support">${t("Contact support")}</a><a href="/privacy" target="_blank" rel="noopener">${t("Privacy policy")}</a><a href="/terms" target="_blank" rel="noopener">${t("Terms of use")}</a></nav>`;
 }
 
 /**
@@ -190,7 +190,8 @@ function signin() {
   if (store.get("token")) return go("#/account");
   const bot = site?.telegramBotUrl;
   // The bot sends a one-time sign-in link (start=login); the Login Widget is added by telegram.js when it is on.
-  const viaTelegram = bot ? `<div class="alt"><a class="btn secondary" href="${h(bot)}?start=login" target="_blank" rel="noreferrer">${t("Sign in with Telegram")}</a></div><div class="alt" id="tg-widget"></div>` : "";
+  const viaTelegram = bot ? `<div class="alt"><a class="btn secondary" href="${h(bot)}?start=login" target="_blank" rel="noreferrer">${t("Sign in with Telegram")}</a></div><div class="alt" id="tg-widget"></div>
+    <p class="muted small center legal-note">${t("By continuing you accept the {terms}terms of use{end} and the {privacy}privacy policy{end}", { terms: `<a href="/terms" target="_blank" rel="noopener">`, privacy: `<a href="/privacy" target="_blank" rel="noopener">`, end: "</a>" })}</p>` : "";
   if (site?.emailSignIn === false) {
     view.innerHTML = `
     <div class="card signbox">
@@ -206,7 +207,9 @@ function signin() {
     <h1>${t("Sign in")}</h1>
     ${site?.testCodes ? `<p><span class="badge test">${t("Test mode, sign-in codes are shown on screen")}</span></p>` : ""}
     <form id="f1"><label for="email">${t("Email")}</label><input id="email" type="email" autocomplete="email" required placeholder="you@example.com">
-      <button class="btn" type="submit">${t("Email me a code")}</button></form>
+      <label class="check"><input type="checkbox" id="acc-terms" required> <span>${t("I accept the {a}terms of use{end}", { a: `<a href="/terms" target="_blank" rel="noopener">`, end: "</a>" })}</span></label>
+      <label class="check"><input type="checkbox" id="acc-privacy" required> <span>${t("I agree to the {a}privacy policy{end}", { a: `<a href="/privacy" target="_blank" rel="noopener">`, end: "</a>" })}</span></label>
+      <button class="btn" type="submit" id="f1btn" disabled>${t("Email me a code")}</button></form>
     <form id="f2" hidden><p id="sent" class="muted"></p><label for="code">${t("Code")}</label>
       <input id="code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required placeholder="000000">
       <button class="btn" type="submit">${t("Sign in")}</button>
@@ -216,8 +219,12 @@ function signin() {
   </div>`;
   const f1 = document.getElementById("f1"), f2 = document.getElementById("f2"), err = document.getElementById("err");
   let email = "";
+  const accTerms = document.getElementById("acc-terms"), accPrivacy = document.getElementById("acc-privacy");
+  const accepted = () => accTerms.checked && accPrivacy.checked;
+  accTerms.onchange = accPrivacy.onchange = () => { document.getElementById("f1btn").disabled = !accepted(); };
   f1.onsubmit = async (e) => {
     e.preventDefault(); err.textContent = "";
+    if (!accepted()) { err.textContent = t("Accept the terms of use and the privacy policy to continue"); return; }
     email = document.getElementById("email").value.trim();
     try {
       const r = await api("/auth/email/start", { method: "POST", body: { email, referralCode: new URLSearchParams(location.search).get("ref") || store.get("ref") } });
@@ -1762,6 +1769,7 @@ async function render() {
     if (path === "/account") return await account(params);
     if (path === "/referrals") return await referrals(params);
     if (path === "/invite" && typeof invitePage === "function") return await invitePage(params);
+    if (path === "/support" && typeof supportPage === "function") return await supportPage(params);
     if (path === "/status") return await status(params);
     if (path === "/analytics") return await analytics(params);
     await home();

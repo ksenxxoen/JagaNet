@@ -63,6 +63,8 @@ data class Config(
     val vlessBalancer: Boolean = false,
     /** SUPPORT_URL: the `support-url` header of VLESS subscriptions; default the Telegram bot, else the website. */
     val supportUrl: String? = null,
+    /** SUPPORT_EMAIL: where the website's support form sends messages; default OWNER_EMAIL. */
+    val supportEmail: String? = null,
     /** "Invite a friend" rewards (issue #40): REFERRAL_* variables, then the admin panel. */
     val referralRewards: RewardRules = RewardRules(),
 ) {
@@ -104,6 +106,7 @@ data class Config(
                 referralsPublic = env["REFERRALS_PUBLIC"] == "1",
                 vlessBalancer = env["VLESS_BALANCER"] == "1",
                 supportUrl = env["SUPPORT_URL"]?.takeIf { it.isNotBlank() },
+                supportEmail = env["SUPPORT_EMAIL"]?.trim()?.takeIf { it.isNotBlank() },
                 referralRewards = RewardRules(
                     days = num("REFERRAL_REWARD_DAYS", 14).toInt().coerceIn(0, 3650),
                     condition = RewardRules.condition(env["REFERRAL_REWARD_CONDITION"]),

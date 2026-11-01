@@ -42,11 +42,12 @@ class EmailSender(private val smtp: Smtp) {
         },
     )
 
-    suspend fun send(to: List<String>, subject: String, text: String) = withContext(Dispatchers.IO) {
+    suspend fun send(to: List<String>, subject: String, text: String, replyTo: String? = null) = withContext(Dispatchers.IO) {
         if (to.isEmpty()) return@withContext
         val msg = MimeMessage(session).apply {
             setFrom(fromAddress(smtp.from))
             to.forEach { addRecipient(Message.RecipientType.TO, InternetAddress(it)) }
+            replyTo?.let { setReplyTo(arrayOf(InternetAddress(it, true))) }
             setSubject(subject, "UTF-8")
             setText(text, "UTF-8")
         }
