@@ -73,6 +73,7 @@ internal val monitorStrings: List<S> = listOf(
     S("VPN nodes", "VPN-ноды", "VPN-Knoten"),
     S("Block lists", "Списки блокировок", "Sperrlisten"),
     S("On the Roskomnadzor block list: {nodes}", "В реестре блокировок Роскомнадзора: {nodes}", "Auf der Sperrliste von Roskomnadzor: {nodes}"),
+    S("In a registry subnet, the address itself is not listed: {nodes}", "Адрес входит в подсеть реестра, сам адрес в списке не найден: {nodes}", "Adresse liegt in einem Registry-Subnetz, die Adresse selbst ist nicht gelistet: {nodes}"),
     S("In ranges throttled in Russia ({providers}): {nodes}", "В диапазонах, которые замедляют в России ({providers}): {nodes}", "In Bereichen, die in Russland gedrosselt werden ({providers}): {nodes}"),
     S("{n} VPN addresses checked, none on the lists", "Проверено адресов VPN: {n}, ни одного в списках", "{n} VPN-Adressen geprüft, keine auf den Listen"),
 )

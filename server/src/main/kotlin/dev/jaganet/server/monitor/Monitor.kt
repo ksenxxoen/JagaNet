@@ -239,10 +239,15 @@ class Monitor(
             )
             if (addressesChecked > 0) {
                 fun who(list: List<Pair<String, dev.jaganet.server.services.BlocklistHit>>) = list.joinToString(", ") { (n, h) -> "$n (${h.ip})" }
-                val rkn = listed.filter { it.second.rknSubnets.isNotEmpty() }
+                val rkn = listed.filter { it.second.rknExact.isNotEmpty() }
+                val subnetOnly = listed.filter { it.second.rknSubnetOnly }
                 add(
                     when {
                         rkn.isNotEmpty() -> HealthCheck("blocklist", CheckLevel.CRITICAL, "On the Roskomnadzor block list: {nodes}", mapOf("nodes" to who(rkn)))
+                        subnetOnly.isNotEmpty() -> HealthCheck(
+                            "blocklist", CheckLevel.WARNING, "In a registry subnet, the address itself is not listed: {nodes}",
+                            mapOf("nodes" to subnetOnly.joinToString(", ") { (n, h) -> "$n (${h.ip} in ${h.rknSubnets.joinToString(" ")})" }),
+                        )
                         listed.isNotEmpty() -> HealthCheck(
                             "blocklist", CheckLevel.WARNING, "In ranges throttled in Russia ({providers}): {nodes}",
                             mapOf("nodes" to who(listed), "providers" to listed.flatMap { it.second.providers }.distinct().joinToString(", ")),
@@ -287,7 +292,7 @@ class Monitor(
             val current = open[c.key]
             when {
                 isBad && current == null && (bad[c.key] ?: 0) >= rule.openAfter -> openAlert(c, now)
-                isBad && current != null && current.level == CheckLevel.WARNING && c.level == CheckLevel.CRITICAL -> openAlert(c, now, worse = current)
+                isBad && current != null && current.level != c.level && (c.level == CheckLevel.CRITICAL || current.level == CheckLevel.CRITICAL) -> openAlert(c, now, worse = current)
                 isBad && current != null && current.level == CheckLevel.CRITICAL && remindDue(current, now) -> remind(current, c, now)
                 !isBad && current != null && (good[c.key] ?: 0) >= rule.closeAfter -> resolve(current, c, now)
             }
@@ -301,6 +306,18 @@ class Monitor(
     private suspend fun openAlerts(): List<MonitorAlert> = ctx.db.run { sql ->
         sql.query("SELECT * FROM monitor_alerts WHERE resolved_at IS NULL").map { it.toAlert() }
     }.also { list -> memoryAlerts.clear(); list.forEach { memoryAlerts[it.key] = it } }
+        .also { loadNotified() }
+
+    /** After a restart the last notification times come from the database, so open problems are not announced again. */
+    private suspend fun loadNotified() {
+        if (notifiedLoaded) return
+        runCatching {
+            ctx.db.run { sql -> sql.query("SELECT key, last_notified_at FROM monitor_alerts WHERE resolved_at IS NULL") }
+                .forEach { r -> r.instantOrNull("last_notified_at")?.let { lastNotified.putIfAbsent(r.str("key"), it) } }
+            notifiedLoaded = true
+        }
+    }
+    @Volatile private var notifiedLoaded = false
 
     private suspend fun openAlert(c: HealthCheck, now: Instant, worse: MonitorAlert? = null) {
         val alert = runCatching {
@@ -322,7 +339,7 @@ class Monitor(
     }
 
     private fun remindDue(a: MonitorAlert, now: Instant) =
-        (lastNotified[a.key] ?: Instant.parse(a.openedAt)).let { Duration.between(it, now) >= Duration.ofHours(6) }
+        (lastNotified[a.key] ?: Instant.parse(a.openedAt)).let { Duration.between(it, now) >= Duration.ofHours(cfg.alertRemindHours) }
 
     private suspend fun remind(a: MonitorAlert, c: HealthCheck, now: Instant) {
         lastNotified[a.key] = now
