@@ -47,7 +47,12 @@ async function launch({ env = {}, data } = {}) {
   const t = {
     page, data, proc,
     stop: async () => { proc.kill("SIGTERM"); await ctx.close(); },
-    click: (sel) => page.evaluate((s) => document.querySelector(s).click(), sel),
+    // The connect button ignores clicks while its last call is still answering (busyToggle): a click
+    // right after the state changed could be dropped, so it first waits for the button to be free.
+    click: async (sel) => {
+      if (sel === "#boop") await page.waitForFunction(() => !document.getElementById("boop").disabled, null, { timeout: 5000 }).catch(() => {});
+      return page.evaluate((s) => document.querySelector(s).click(), sel);
+    },
     text: (id) => page.evaluate((id) => document.getElementById(id).textContent, id),
     hidden: (id) => page.evaluate((id) => document.getElementById(id).hidden, id),
     state: () => page.evaluate(() => S),
@@ -96,7 +101,9 @@ try {
   await w.until("sign-in screen", async () => (await screen(w)) === "signin");
   await w.type("email", "demo@example.com"); await w.submit("f-email");
   await w.until("code form", async () => !(await w.hidden("f-code")));
-  await w.type("code", "000000"); await w.submit("f-code");
+  // Six digits submit by themselves (app.js). A second, explicit submit used to race the first: the
+  // first answer clears the field, the second then says «Введите шесть цифр.» instead (the old flake).
+  await w.type("code", "000000");
   await w.until("wrong code is explained under the field", async () => !(await w.hidden("err-code")) && (await w.text("err-code")).includes("Неверный код"));
   check("a wrong code keeps the sign-in screen", (await screen(w)) === "signin");
   await w.stop();
@@ -181,6 +188,8 @@ try {
   await a.until("the list shows the new name", async () => (await a.state()).keys.some((k) => k.name === "Рабочий ноутбук"));
   check("a rename does not drop the connection", (await a.conn()) === "on");
   await a.page.keyboard.press("Escape");
+  // Let the keys sheet finish closing first: a sheet opened during another's close could be lost.
+  await a.until("keys sheet closed", async () => (await a.hidden("keys")) && !(await a.page.evaluate(() => document.querySelector(".sheet.closing"))));
 
   /* ---------- 3. strict mode setting survives a restart ---------- */
   await a.click("#open-settings");
