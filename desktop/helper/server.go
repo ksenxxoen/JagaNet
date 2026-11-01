@@ -26,6 +26,18 @@ type Server struct {
 	Version   string
 	Logf      func(string, ...any)
 
+	// KeepOnClose leaves the tunnel up when the connection that brought it up
+	// closes (the Windows service: the window may quit or crash, the VPN stays
+	// until it is told "down"). Without it the tunnel goes with the connection.
+	KeepOnClose bool
+	// Persist remembers the config last brought up so Restore can bring it up
+	// again after the service restarts or the machine reboots. Optional.
+	Persist Persister
+	// Log returns the tail of the log for OpLog; Update runs OpUpdate and returns
+	// the installed version. Both optional; an operation without its hook is refused.
+	Log    func() string
+	Update func() (string, error)
+
 	op    sync.Mutex // one change to the tunnel at a time; guards owner
 	owner *session
 }
@@ -94,6 +106,9 @@ func (s *Server) closed(me *session) {
 		return
 	}
 	s.owner = nil
+	if s.KeepOnClose {
+		return
+	}
 	if s.Tunnel.Up() {
 		s.logf("helper: the window went away, tunnel down")
 		s.Tunnel.Down()
@@ -116,12 +131,22 @@ func (s *Server) do(me *session, req Request) Response {
 			s.logf("helper: up: %v", err)
 			return Response{Error: err.Error()}
 		}
+		if s.Persist != nil {
+			if err := s.Persist.Save(req.Config); err != nil {
+				s.logf("helper: remember config: %v", err)
+			}
+		}
 		return Response{OK: true, Up: true}
 	case OpDown:
 		s.op.Lock()
 		defer s.op.Unlock()
 		s.owner = nil
 		s.Tunnel.Down()
+		if s.Persist != nil {
+			if err := s.Persist.Clear(); err != nil {
+				s.logf("helper: forget config: %v", err)
+			}
+		}
 		return Response{OK: true}
 	case OpStatus:
 		st := s.Tunnel.Stats()
@@ -130,6 +155,21 @@ func (s *Server) do(me *session, req Request) Response {
 			r.Handshake = st.Handshake.UnixNano()
 		}
 		return r
+	case OpLog:
+		if s.Log == nil {
+			return Response{Error: "no log"}
+		}
+		return Response{OK: true, Log: s.Log()}
+	case OpUpdate:
+		if s.Update == nil {
+			return Response{Error: "no update"}
+		}
+		v, err := s.Update()
+		if err != nil {
+			s.logf("helper: update: %v", err)
+			return Response{Error: err.Error()}
+		}
+		return Response{OK: true, Updated: v}
 	case OpPing:
 		a, err := netip.ParseAddr(req.Host)
 		if err != nil || !a.Is4() {
@@ -147,4 +187,31 @@ func (s *Server) do(me *session, req Request) Response {
 		return Response{OK: true, RTT: int64(d)}
 	}
 	return Response{Error: "unknown operation"}
+}
+
+// Restore brings the remembered config up again (service start). A config that
+// no longer checks out or does not come up is forgotten, so a broken one is not
+// retried on every start.
+func (s *Server) Restore() error {
+	if s.Persist == nil {
+		return nil
+	}
+	w, err := s.Persist.Load()
+	if err != nil || w == nil {
+		return err
+	}
+	cfg, err := w.Tunnel()
+	if err != nil {
+		_ = s.Persist.Clear()
+		return err
+	}
+	s.op.Lock()
+	defer s.op.Unlock()
+	if err := s.Tunnel.Apply(cfg); err != nil {
+		s.Tunnel.Down()
+		_ = s.Persist.Clear()
+		return err
+	}
+	s.logf("helper: the tunnel from before the restart is up again")
+	return nil
 }

@@ -6,12 +6,22 @@
 package helper
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"time"
 
 	"github.com/ksenxxoen/JagaNet/desktop/vpn"
+	"github.com/ksenxxoen/JagaNet/desktop/vpn/xray"
 )
+
+// PipeName is the named pipe BoopVPN, the Windows service, listens on.
+const PipeName = `\\.\pipe\BoopVPN`
+
+// PipeSDDL is the pipe's access list: SYSTEM and administrators in full, the
+// interactively signed-in user may read and write; network logons are denied
+// first and nobody else (Everyone, anonymous, services) is named.
+const PipeSDDL = "D:P(D;;GA;;;NU)(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)"
 
 // DefaultSocket is where boop-helper listens (systemd's RuntimeDirectory=boop).
 const DefaultSocket = "/run/boop/helper.sock"
@@ -29,7 +39,12 @@ const (
 	OpDown   = "down"   // take the tunnel down
 	OpStatus = "status" // up? counters, last handshake
 	OpPing   = "ping"   // one ICMP echo around the tunnel
+	OpLog    = "log"    // the tail of the service's log (no secrets are logged)
+	OpUpdate = "update" // the service updates itself from the panel's manifest
 )
+
+// Ops is every operation the helper answers; anything else is refused.
+var Ops = []string{OpHello, OpUp, OpDown, OpStatus, OpPing, OpLog, OpUpdate}
 
 // maxLine bounds one message (a config is a few kilobytes).
 const maxLine = 256 << 10
@@ -52,6 +67,9 @@ type Response struct {
 	Handshake int64 `json:"handshake,omitempty"`
 	// RTT is a ping's round trip in nanoseconds.
 	RTT int64 `json:"rtt,omitempty"`
+	// Log is the log's tail (OpLog); Updated the version installed (OpUpdate).
+	Log     string `json:"log,omitempty"`
+	Updated string `json:"updated,omitempty"`
 }
 
 // Config is vpn.Config on the wire.
@@ -62,6 +80,14 @@ type Config struct {
 	DNS      []string `json:"dns,omitempty"`
 	MTU      int      `json:"mtu,omitempty"`
 	Endpoint string   `json:"endpoint,omitempty"`
+	// Vless carries a VLESS+Reality node instead of AmneziaWG (UAPI is then unused).
+	Vless *VlessConfig `json:"vless,omitempty"`
+}
+
+// VlessConfig is vpn.Vless on the wire.
+type VlessConfig struct {
+	Params xray.Params `json:"params"`
+	Addrs  []string    `json:"addrs"`
 }
 
 // Wire turns the tunnel's config into the message.
@@ -75,6 +101,13 @@ func Wire(c *vpn.Config) *Config {
 	}
 	for _, d := range c.DNS {
 		w.DNS = append(w.DNS, d.String())
+	}
+	if c.Vless != nil {
+		v := &VlessConfig{Params: c.Vless.Params}
+		for _, a := range c.Vless.Addrs {
+			v.Addrs = append(v.Addrs, a.String())
+		}
+		w.Vless = v
 	}
 	return w
 }
@@ -105,6 +138,34 @@ func (w *Config) Tunnel() (*vpn.Config, error) {
 			return nil, fmt.Errorf("dns: %w", err)
 		}
 		c.DNS = append(c.DNS, a)
+	}
+	if w.Vless != nil {
+		if w.UAPI != "" {
+			return nil, fmt.Errorf("vless config with uapi")
+		}
+		raw, err := json.Marshal(w.Vless.Params)
+		if err != nil {
+			return nil, fmt.Errorf("vless: %w", err)
+		}
+		params, err := xray.ParseParams(raw) // the same checks as the panel's own parameters
+		if err != nil {
+			return nil, err
+		}
+		v := &vpn.Vless{Params: params}
+		if len(w.Vless.Addrs) > 16 {
+			return nil, fmt.Errorf("vless: too many addresses")
+		}
+		for _, s := range w.Vless.Addrs {
+			a, err := netip.ParseAddr(s)
+			if err != nil {
+				return nil, fmt.Errorf("vless address: %w", err)
+			}
+			v.Addrs = append(v.Addrs, a)
+		}
+		if len(v.Addrs) == 0 {
+			return nil, fmt.Errorf("vless: no addresses")
+		}
+		c.Vless = v
 	}
 	if err := vpn.CheckConfig(c); err != nil {
 		return nil, err

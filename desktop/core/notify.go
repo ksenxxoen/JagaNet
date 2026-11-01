@@ -17,7 +17,18 @@ const (
 	accountBlockedText = "Аккаунт заблокирован. Напишите в поддержку."
 )
 
+// ServiceError is a problem with the Windows service that holds the tunnel
+// (not installed, the administrator prompt declined, install failed). Msg is
+// shown to the person as it is: what happened and that «Повторить» tries again.
+type ServiceError struct{ Msg string }
+
+func (e *ServiceError) Error() string { return e.Msg }
+
 func (a *App) humanize(err error) error {
+	var se *ServiceError
+	if errors.As(err, &se) {
+		return errors.New(se.Msg)
+	}
 	if errors.Is(err, ErrOffline) {
 		return errors.New(offline)
 	}

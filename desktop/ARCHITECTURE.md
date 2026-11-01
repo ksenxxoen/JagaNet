@@ -19,6 +19,52 @@ Windows version in `clipboard_windows.go`), `main_linux.go` (built with `-tags b
 bridge it serves are `web.go`, shared with the Linux browser fallback). All
 call `App.Call` / `App.Invoke`; none knows a command by name.
 
+## Windows: service and window (Boop 1.4.0)
+
+The window runs as an ordinary user (manifest `asInvoker`, no UAC). The tunnel
+lives in the `BoopVPN` Windows service (LocalSystem, automatic start, restart on
+failure) that runs the same `Boop.exe` with `--service`.
+
+```
+ Boop.exe (window, user)                       Boop.exe --service (BoopVPN, SYSTEM)
+ core.App ─▶ winsvc.Tunnel ─▶ helper.Client ══ \\.\pipe\BoopVPN ══▶ helper.Server ─▶ vpn.Tunnel
+   token, servers, sync, tray                    AmneziaWG/wintun · VLESS/xray · routes · DNS · WFP kill switch
+```
+
+* **Who does what.** The service owns everything that needs rights: the adapter,
+  AmneziaWG, Xray, routes, DNS, the kill switch (unchanged, only moved). The window
+  keeps sign-in, the token, server choice and panel sync, and sends the service a
+  ready config. The window quitting or crashing leaves the VPN up (`Server.KeepOnClose`);
+  «Отключить» and the tray's quit send `down`.
+* **After a restart.** The service remembers the last config it brought up in
+  `%ProgramData%\Boop\last.json` (SYSTEM and administrators only) and brings it up again
+  at start (`Server.Restore`); `down` forgets it. A config that does not come up is dropped.
+* **IPC.** One JSON object per line, the protocol of `helper/` (shared with Linux). Only
+  typed operations: `hello`, `up` (a checked config, AmneziaWG or VLESS), `down`, `status`,
+  `ping` (IPv4 only), `log`, `update`. Anything else is refused. The pipe's ACL is
+  `helper.PipeSDDL`: network logons denied, SYSTEM, administrators and the interactive
+  user allowed, nobody else. No path or command from the window is ever run.
+* **Where the program lives.** `%ProgramFiles%\Boop\Boop.exe` (+ `wintun.dll`), a
+  directory only SYSTEM and administrators can write, set at install. The service's
+  data is in `%ProgramData%\Boop` (administrators only).
+* **Install and migration.** On start the window asks the service (`hello`). Missing, or
+  older than the window: one UAC prompt runs `Boop.exe --install-service` (`winsvc.Install`:
+  secure the directories, copy the program, register and start the service, delete the
+  old scheduled task). Then the window starts again from the installed copy. Declined or
+  failed: the window says so in its own words and «Повторить» asks again (automatic retries
+  do not raise the prompt again). `--uninstall-service` (UAC) stops and deletes the service
+  (its adapter and WFP rules go with the process) and removes the files and data.
+* **Autostart.** The old scheduled task with the highest rights is replaced by the per-user
+  Run key (`--tray`, no rights): `winsvc.MigrateAutostart` keeps the person's choice.
+* **Updates.** The window downloads and checks the update as before, then sends `update`.
+  The service fetches the manifest from the panel itself (nothing from the window is
+  trusted), checks SHA-256 (and the signature when a key is set), swaps the installed
+  program and restarts through the SCM; the window starts the new copy. The order
+  "sign, then hash" of the release is untouched.
+* **Window's own sockets.** The tunnel's routes are the service's, so the window follows
+  the best physical default route itself while the service's tunnel is up
+  (`vpn.FollowTunnel`); the firewall lets the program out by its path, the same file.
+
 ## Before (Boop 1.1.0)
 
 * `core/app.go` (~1000 lines) and `core/session.go` (~700 lines) held one `App`

@@ -30,6 +30,10 @@ type App struct {
 	OnNotify func(string)
 	// ApplyUpdate replaces this process with a staged exe. Nil outside Windows.
 	ApplyUpdate func(staged string) error
+	// OnUserAttempt, when set, is called as a connection attempt starts from the
+	// person (connect, retry). The Windows host lets the service installer ask
+	// for the administrator prompt again only then, not on every automatic retry.
+	OnUserAttempt func()
 	// UpdateDir is where a downloaded exe is staged. Empty skips installing.
 	UpdateDir string
 	// UpdateLink: the app does not install updates itself, "update" opens the

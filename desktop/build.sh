@@ -7,7 +7,7 @@
 # Signing is optional and off by default: set BOOP_SIGN (see SIGNING.md).
 set -euo pipefail
 cd "$(dirname "$0")"
-VERSION="${1:-1.3.1}"
+VERSION="${1:-1.4.0}"
 API="${2:-}"
 APIX=""
 if [ -n "$API" ]; then
@@ -29,7 +29,7 @@ if [ ! -f build/wintun.dll ]; then
   rm -rf "$tmp"
 fi
 
-# Icon, manifest (asks for administrator rights: the tunnel needs them) and version info.
+# Icon, manifest (asInvoker: the window needs no rights, the tunnel is the service's) and version info.
 v4="$VERSION"; while [ "$(tr -cd . <<<"$v4" | wc -c)" -lt 3 ]; do v4="$v4.0"; done
 go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --out rsrc \
   --arch amd64 --file-version "$v4" --product-version "$v4"
