@@ -211,7 +211,7 @@ function tariffPlan(r, best) {
   return planCard({
     name: x.name, best, price, per, note,
     badge: x.badge || (best ? t("Best value") : r.save ? t("Save {p}%", { p: r.save }) : ""),
-    lines: [devicesLine(x.deviceLimit), h(dataText(x.monthlyDataLimitBytes)), t("Every server location"), t("Protection against VPN blocking"), t("Works in other VPN apps too")],
+    lines: [devicesLine(x.deviceLimit), h(dataText(x.monthlyDataLimitBytes)), t("Every server location"), t("Low ping for online games"), t("Works in other VPN apps too")],
     button: buyBtn(x.id, best ? "" : "secondary", t("Get this plan")),
   });
 }
@@ -239,7 +239,7 @@ function heroVisual() {
       <div class="phone-in">
         <div class="ph-top"><span class="ph-logo"><img src="/favicon.svg" alt="">Boop</span><span class="ph-pill">${t("Protected")}</span></div>
         <div class="ph-ring"><span class="pulse"></span><span class="pulse p2"></span><div class="ph-btn">${icon("shield")}</div></div>
-        <div class="ph-state"><b>${t("Protected")}</b><span>${t("Traffic is encrypted and masked")}</span></div>
+        <div class="ph-state"><b>${t("Protected")}</b><span>${t("All traffic is encrypted")}</span></div>
         <div class="ph-row">${icon("globe")}<div><b>${t("Auto, best server")}</b><span>${t("Lowest ping is chosen for you")}</span></div></div>
         <div class="ph-graph">${bars.map((v, i) => `<i style="height:${v}%;animation-delay:${i * 90}ms"></i>`).join("")}</div>
       </div>
@@ -274,7 +274,7 @@ async function home() {
     [t("Turn on the VPN"), t("Add the key to the app in one tap and connect.")],
   ];
   const faq = [
-    [t("How is Boop different from a regular VPN?"), t("Boop masks the VPN connection, so it is hard to recognise and block. It keeps working on networks where ordinary VPNs are cut off.")],
+    [t("How is Boop different from a regular VPN?"), t("Boop is built for speed. It uses modern protocols, has servers in several countries and picks the server with the lowest ping for you, so it suits online games, video calls and streaming.")],
     [t("Is there a free plan?"), h(t("Yes. The free plan works in the Boop app with {data} and {devices}, no payment needed.", {
       data: free.monthlyDataLimitBytes ? t("{n} GB a month", { n: Math.round(free.monthlyDataLimitBytes / 1e9) }) : t("Unlimited data").toLowerCase(),
       devices: tp(free.deviceLimit, "{n} device|{n} devices") }))],
@@ -290,9 +290,9 @@ async function home() {
     <div class="glow g1"></div><div class="glow g2"></div><div class="gridlines"></div>
     <div class="shell hero-in">
       <div class="hero-copy">
-        <span class="eyebrow pill"><i></i>${t("Works where other VPNs are blocked")}</span>
+        <span class="eyebrow pill"><i></i>${t("Great for online games and streaming")}</span>
         <h1>${t("High speed. Low ping.")} <span class="grad">${t("Your data stays safe.")}</span></h1>
-        <p class="lead">${t("Boop encrypts all your traffic, masks the VPN from blocking and keeps no browsing history. Setting up takes a couple of minutes on a phone or a computer.")}</p>
+        <p class="lead">${t("Boop encrypts all your traffic, keeps the ping low for online games and keeps no browsing history. Setting up takes a couple of minutes on a phone or a computer.")}</p>
         <div class="cta">
           <a class="btn large" href="#pricing">${t("Choose your plan")}${icon("arrow")}</a>
           <a class="btn ghost-light large" href="#download">${icon("download")}${t("Download the app")}</a>
@@ -313,12 +313,12 @@ async function home() {
   <section class="sec" id="features"><div class="shell">
     ${sectionHead(t("Why Boop"), t("Speed, ping and protection without compromise"), t("We built Boop around the three things that matter most in a VPN."))}
     <div class="pillars">
-      ${pillar("bolt", t("High speed"), t("Boop runs on AmneziaWG and VLESS Reality, modern protocols that use the channel carefully. Video, downloads and calls run smoothly."),
-        [t("AmneziaWG is built on the fast WireGuard"), unlimitedPro ? t("Unlimited traffic on Pro") : "", t("Good for HD video and large downloads")])}
+      ${pillar("bolt", t("High speed"), t("Boop runs on modern fast protocols that use the channel carefully. Video, downloads and calls run smoothly."),
+        [t("Modern protocols with minimal overhead"), unlimitedPro ? t("Unlimited traffic on Pro") : "", t("Good for HD video and large downloads")])}
       ${pillar("ping", t("Low ping"), t("The closer the server, the faster the response. Pick a country by its ping or let Boop choose."),
         [t("Servers in several countries"), t("The ping to every location is shown in the app"), t("The subscription picks the best server by itself")])}
-      ${pillar("shield", t("Data security"), t("All traffic goes through an encrypted tunnel, and masking keeps the VPN from being recognised and blocked."),
-        [t("Modern encryption of all traffic"), t("Masking against DPI blocking"), t("We don't keep browsing history"), t("Sign in with a one-time code, no password")])}
+      ${pillar("shield", t("Data security"), t("All traffic goes through an encrypted tunnel, so your data stays private on any network, even on public Wi-Fi."),
+        [t("Modern encryption of all traffic"), t("Protection on public Wi-Fi"), t("We don't keep browsing history"), t("Sign in with a one-time code, no password")])}
     </div>
     <div class="bento n${extras.length}">${extras.map(([ic, title, text]) => `<article class="tile reveal"><div class="tile-ic">${icon(ic)}</div><h3>${title}</h3><p>${text}</p></article>`).join("")}</div>
   </div></section>

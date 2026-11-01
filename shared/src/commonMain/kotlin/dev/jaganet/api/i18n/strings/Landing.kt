@@ -18,17 +18,13 @@ internal val landingStrings: List<S> = listOf(
     S("We don't keep browsing history", "Не храним историю посещений", "Wir speichern keinen Browserverlauf"),
 
     // Hero
-    S("Works where other VPNs are blocked", "Работает там, где другие VPN блокируют", "Funktioniert dort, wo andere VPNs gesperrt sind"),
+    S("Great for online games and streaming", "Подходит для онлайн-игр и стриминга", "Ideal für Online-Spiele und Streaming"),
     S("High speed. Low ping.", "Высокая скорость. Низкий пинг.", "Hohe Geschwindigkeit. Niedriger Ping."),
     S("Your data stays safe.", "Ваши данные под защитой.", "Deine Daten bleiben geschützt."),
-    S(
-        "Boop encrypts all your traffic, masks the VPN from blocking and keeps no browsing history. Setting up takes a couple of minutes on a phone or a computer.",
-        "Boop шифрует весь трафик, маскирует VPN от блокировок и не хранит историю посещений. Настройка займёт пару минут на телефоне или компьютере.",
-        "Boop verschlüsselt deinen gesamten Datenverkehr, tarnt das VPN vor Sperren und speichert keinen Browserverlauf. Die Einrichtung dauert ein paar Minuten am Handy oder Computer.",
-    ),
+    S("Boop encrypts all your traffic, keeps the ping low for online games and keeps no browsing history. Setting up takes a couple of minutes on a phone or a computer.", "Boop шифрует весь трафик, держит низкий пинг для онлайн-игр и не хранит историю посещений. Настройка займёт пару минут на телефоне или компьютере.", "Boop verschlüsselt deinen gesamten Datenverkehr, hält den Ping für Online-Spiele niedrig und speichert keinen Browserverlauf. Die Einrichtung dauert ein paar Minuten am Handy oder Computer."),
     S("Free plan, no payment needed", "Бесплатный тариф без оплаты", "Kostenloser Tarif ohne Zahlung"),
     S("For phones and computers", "Для телефона и компьютера", "Für Handy und Computer"),
-    S("Traffic is encrypted and masked", "Трафик зашифрован и замаскирован", "Datenverkehr verschlüsselt und getarnt"),
+    S("All traffic is encrypted", "Весь трафик зашифрован", "Gesamter Datenverkehr verschlüsselt"),
     S("Auto, best server", "Авто, лучший сервер", "Auto, bester Server"),
     S("Lowest ping is chosen for you", "Сервер с самым низким пингом", "Der Server mit dem niedrigsten Ping"),
     S("Low ping", "Низкий пинг", "Niedriger Ping"),
@@ -42,12 +38,8 @@ internal val landingStrings: List<S> = listOf(
         "Мы построили Boop вокруг трёх вещей, которые важнее всего в VPN.",
         "Wir haben Boop um die drei Dinge gebaut, die bei einem VPN am meisten zählen.",
     ),
-    S(
-        "Boop runs on AmneziaWG and VLESS Reality, modern protocols that use the channel carefully. Video, downloads and calls run smoothly.",
-        "Boop работает на AmneziaWG и VLESS Reality, современных протоколах, которые бережно расходуют канал. Видео, загрузки и звонки идут плавно.",
-        "Boop läuft mit AmneziaWG und VLESS Reality, modernen Protokollen, die die Leitung sparsam nutzen. Videos, Downloads und Anrufe laufen flüssig.",
-    ),
-    S("AmneziaWG is built on the fast WireGuard", "AmneziaWG основан на быстром WireGuard", "AmneziaWG basiert auf dem schnellen WireGuard"),
+    S("Boop runs on modern fast protocols that use the channel carefully. Video, downloads and calls run smoothly.", "Boop работает на современных быстрых протоколах, которые бережно расходуют канал. Видео, загрузки и звонки идут плавно.", "Boop läuft mit modernen schnellen Protokollen, die die Leitung sparsam nutzen. Videos, Downloads und Anrufe laufen flüssig."),
+    S("Modern protocols with minimal overhead", "Современные протоколы с минимальными задержками", "Moderne Protokolle mit minimaler Verzögerung"),
     S("Unlimited traffic on Pro", "Безлимитный трафик на Pro", "Unbegrenztes Datenvolumen mit Pro"),
     S("Good for HD video and large downloads", "Подходит для видео в HD и больших загрузок", "Gut für HD-Videos und große Downloads"),
     S(
@@ -58,13 +50,9 @@ internal val landingStrings: List<S> = listOf(
     S("Servers in several countries", "Серверы в нескольких странах", "Server in mehreren Ländern"),
     S("The ping to every location is shown in the app", "Пинг до каждой локации виден в приложении", "Der Ping zu jedem Standort steht in der App"),
     S("The subscription picks the best server by itself", "Подписка сама выбирает лучший сервер", "Das Abo wählt den besten Server selbst"),
-    S(
-        "All traffic goes through an encrypted tunnel, and masking keeps the VPN from being recognised and blocked.",
-        "Весь трафик идёт через зашифрованный туннель, а маскировка не даёт распознать и заблокировать VPN.",
-        "Der gesamte Datenverkehr läuft durch einen verschlüsselten Tunnel, und die Tarnung verhindert, dass das VPN erkannt und gesperrt wird.",
-    ),
+    S("All traffic goes through an encrypted tunnel, so your data stays private on any network, even on public Wi-Fi.", "Весь трафик идёт через зашифрованный туннель, поэтому ваши данные в безопасности в любой сети, даже в общественном Wi-Fi.", "Der gesamte Datenverkehr läuft durch einen verschlüsselten Tunnel, deshalb bleiben deine Daten in jedem Netz geschützt, auch im öffentlichen WLAN."),
     S("Modern encryption of all traffic", "Современное шифрование всего трафика", "Moderne Verschlüsselung des gesamten Datenverkehrs"),
-    S("Masking against DPI blocking", "Маскировка от DPI-блокировок", "Tarnung gegen DPI-Sperren"),
+    S("Protection on public Wi-Fi", "Защита в общественных Wi-Fi", "Schutz in öffentlichen WLANs"),
     S("Sign in with a one-time code, no password", "Вход по одноразовому коду, без пароля", "Anmeldung mit Einmalcode, ohne Passwort"),
 
     // More reasons
@@ -116,7 +104,7 @@ internal val landingStrings: List<S> = listOf(
     S("Best value", "Выгоднее всего", "Bester Preis"),
     S("Up to {n} device|Up to {n} devices", "До {n} устройства|До {n} устройств|До {n} устройств", "Bis zu {n} Gerät|Bis zu {n} Geräte"),
     S("Every server location", "Все локации серверов", "Alle Serverstandorte"),
-    S("Protection against VPN blocking", "Защита от блокировок VPN", "Schutz vor VPN-Sperren"),
+    S("Low ping for online games", "Низкий пинг для онлайн-игр", "Niedriger Ping für Online-Spiele"),
     S("Get this plan", "Оформить", "Tarif wählen"),
     S("forever", "навсегда", "für immer"),
     S("No payment needed", "Оплата не нужна", "Keine Zahlung nötig"),
@@ -137,11 +125,7 @@ internal val landingStrings: List<S> = listOf(
     // FAQ
     S("Frequently asked questions", "Частые вопросы", "Häufige Fragen"),
     S("How is Boop different from a regular VPN?", "Чем Boop отличается от обычного VPN?", "Was unterscheidet Boop von einem normalen VPN?"),
-    S(
-        "Boop masks the VPN connection, so it is hard to recognise and block. It keeps working on networks where ordinary VPNs are cut off.",
-        "Boop маскирует VPN-соединение, поэтому его сложно распознать и заблокировать. Он продолжает работать в сетях, где обычные VPN отключают.",
-        "Boop tarnt die VPN-Verbindung, sodass sie schwer zu erkennen und zu sperren ist. Es funktioniert auch in Netzen, in denen normale VPNs abgeschaltet werden.",
-    ),
+    S("Boop is built for speed. It uses modern protocols, has servers in several countries and picks the server with the lowest ping for you, so it suits online games, video calls and streaming.", "Boop сделан для скорости. Он работает на современных протоколах, у него серверы в нескольких странах, и он сам выбирает сервер с самым низким пингом, поэтому хорошо подходит для онлайн-игр, видеозвонков и стриминга.", "Boop ist auf Tempo ausgelegt. Es nutzt moderne Protokolle, hat Server in mehreren Ländern und wählt selbst den Server mit dem niedrigsten Ping, deshalb passt es gut zu Online-Spielen, Videoanrufen und Streaming."),
     S("Is there a free plan?", "Есть ли бесплатный тариф?", "Gibt es einen kostenlosen Tarif?"),
     S(
         "Yes. The free plan works in the Boop app with {data} and {devices}, no payment needed.",

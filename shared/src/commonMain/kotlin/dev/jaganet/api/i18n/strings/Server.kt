@@ -43,7 +43,7 @@ internal val serverStrings: List<S> = listOf(
     S("Order not found", "Заказ не найден", "Bestellung nicht gefunden"),
     S("Key not found", "Ключ не найден", "Schlüssel nicht gefunden"),
     S("No VPN server is available", "Нет доступных VPN-серверов", "Kein VPN-Server verfügbar"),
-    S("Keys for other apps need AmneziaWG or WireGuard", "Ключи для других приложений работают только с AmneziaWG или WireGuard", "Schlüssel für andere Apps brauchen AmneziaWG oder WireGuard"),
+    S("Keys for other apps aren't available for this server", "Для этого сервера ключи для других приложений недоступны", "Für diesen Server gibt es keine Schlüssel für andere Apps"),
     S("No config file for {protocol}", "Для {protocol} нет файла настроек", "Für {protocol} gibt es keine Konfigurationsdatei"),
     S("This key doesn't exist or was deleted", "Такого ключа нет или он удалён", "Diesen Schlüssel gibt es nicht oder er wurde gelöscht"),
     S("The Android app isn't uploaded yet", "Приложение для Android ещё не загружено", "Die Android-App ist noch nicht hochgeladen"),
