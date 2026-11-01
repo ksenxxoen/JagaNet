@@ -32,6 +32,19 @@ the bot. App values live in `composeApp/.../theme/Theme.kt`, web values in
 - **Icons:** 24-grid stroke icons (`ui/Icons.kt`). No emoji anywhere, the bot included.
 - Inter is © The Inter Project Authors, SIL Open Font License 1.1 (`docs/licenses/Inter-OFL.txt`).
 
+### Website (2026 redesign)
+
+The website no longer follows Pajamas: it is a marketing site first. Its tokens live on `:root` in
+`server/src/main/resources/web/style.css` with a light and a dark theme (`prefers-color-scheme`); the
+header comment there is the reference. In short: the Boop pink (`#ff4f79`) running into violet
+(`#7b61ff`) as the one signature gradient (main button, icon tiles, the recommended plan, one word of
+the headline), calm neutrals elsewhere, Inter 400 to 800 with heavy tight headlines, 10 px corners on
+controls and 16 to 24 px on cards, soft shadows, a dark hero and closing band in both themes, short
+motion that stops with `prefers-reduced-motion`. The landing page (`home()` in `app.js`): hero with
+the three pillars (high speed, low ping, data security) and a drawn app, the pillars in detail, how it
+works in three steps, pricing (price per month and saving against the monthly plan computed from the
+tariffs), apps, FAQ, closing call to action, footer with the legal pages and support.
+
 ### Symmetry rules
 
 What separates this from generated-looking design is that everything lines up:

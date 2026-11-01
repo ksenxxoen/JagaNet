@@ -46,8 +46,8 @@ internal val homeStrings: List<S> = listOf(
     S("Until {date}", "До {date}", "Bis {date}"),
 
     // Protocols
-    S("WireGuard speed, disguised so networks that block VPNs can’t spot it.", "Скорость WireGuard и маскировка от сетей, которые блокируют VPN.", "WireGuard-Tempo, getarnt vor Netzen, die VPNs blockieren."),
-    S("Plain WireGuard. Slightly lighter, but easy for censors to detect.", "Обычный WireGuard. Чуть легче, но цензорам легко его распознать.", "Normales WireGuard. Etwas schlanker, aber für Zensoren leicht zu erkennen."),
+    S("Fast and stable, a good fit for online games.", "Быстрый и стабильный, хорошо подходит для онлайн-игр.", "Schnell und stabil, gut für Online-Spiele."),
+    S("Plain WireGuard, slightly lighter.", "Обычный WireGuard, чуть легче.", "Normales WireGuard, etwas schlanker."),
     S("Example of a custom protocol plugged into Boop.", "Пример своего протокола, подключённого к Boop.", "Beispiel für ein eigenes Protokoll in Boop."),
     S("Custom protocol", "Свой протокол", "Eigenes Protokoll"),
 

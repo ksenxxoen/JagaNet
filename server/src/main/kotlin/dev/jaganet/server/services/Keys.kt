@@ -52,7 +52,7 @@ class Keys(private val ctx: Ctx, private val tunnels: Tunnels) {
     suspend fun create(userId: String): AccessKey {
         val protocol = tunnels.defaultProtocol() ?: throw AppError(503, ErrorCode.SERVER_FULL, "No VPN server is available")
         if (protocol != Protocols.AMNEZIAWG && protocol != Protocols.WIREGUARD) {
-            throw AppError(400, ErrorCode.UNSUPPORTED_PROTOCOL, "Keys for other apps need AmneziaWG or WireGuard")
+            throw AppError(400, ErrorCode.UNSUPPORTED_PROTOCOL, "Keys for other apps aren't available for this server")
         }
         val (privateKey, publicKey) = newKeyPair()
         val deviceId = ctx.db.run { sql ->
