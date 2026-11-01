@@ -72,13 +72,18 @@ func TestSilentTunnelWithoutInternetIsOffline(t *testing.T) {
 // A tunnel that came up while the probe ran has nothing to report.
 func TestProbeAfterHandshakeSaysNothing(t *testing.T) {
 	a, runs, ctx := probeApp(t, ok, ok)
+	// The handshake arrives only after applyStep returned: otherwise markOn can
+	// run before applyStep sets the "problem" phase and the test races itself.
+	stepDone := make(chan struct{})
 	a.mu.Lock()
 	a.Prober.Web = func(context.Context) error {
+		<-stepDone
 		a.markOn()
 		return nil
 	}
 	a.mu.Unlock()
 	a.applyStep(ctx, gaveUp(ProbNoHandshake))
+	close(stepDone)
 	waitFor(t, "probe ran", func() bool { return runs.Load() == 1 })
 	time.Sleep(100 * time.Millisecond)
 	s := a.snapshot()
