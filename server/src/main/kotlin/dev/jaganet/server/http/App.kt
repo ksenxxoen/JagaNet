@@ -125,6 +125,8 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
         botEnabled = ctx.cfg.telegramBotToken != null,
         blocklists = blocklists,
     )
+    /** The owner's status page in one answer (GET /admin/servers/overview). */
+    val serversOverview = dev.jaganet.server.services.ServersOverview(ctx, nodes, monitor)
 }
 
 private val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")

@@ -22,7 +22,11 @@ data class BlocklistHit(
     val rknSubnets: List<String> = emptyList(),
     /** Hosting / CDN providers whose ranges (throttled in Russia) contain it. */
     val providers: List<String> = emptyList(),
+    /** Subset of [rknSubnets] that makes it an alarm: the address itself, or a subnet no wider than the configured limit. */
+    val rknExact: List<String> = emptyList(),
 ) {
+    /** Registry match only through a wider subnet: a warning, not a block. */
+    val rknSubnetOnly get() = rknSubnets.isNotEmpty() && rknExact.isEmpty()
     val listed get() = rknSubnets.isNotEmpty() || providers.isNotEmpty()
 }
 
@@ -42,7 +46,7 @@ class Blocklists(
     private val ctx: Ctx,
     private val fetch: suspend (String) -> String = ::httpGet,
 ) {
-    private class Net(val v6: Boolean, val base: BigInteger, val mask: BigInteger, val text: String) {
+    private class Net(val v6: Boolean, val base: BigInteger, val mask: BigInteger, val text: String, val bits: Int) {
         fun contains(v6: Boolean, ip: BigInteger) = v6 == this.v6 && ip.and(mask) == base
     }
 
@@ -81,9 +85,12 @@ class Blocklists(
     /** Lists containing [ip] (an address, not a name). */
     fun check(ip: String): BlocklistHit {
         val (v6, n) = toBig(ip) ?: return BlocklistHit(ip)
+        val warnPrefix = ctx.cfg.monitor.rknSubnetWarnPrefix
+        val matched = rkn.filter { it.contains(v6, n) }
         return BlocklistHit(
             ip,
-            rknSubnets = rkn.filter { it.contains(v6, n) }.map { it.text }.distinct(),
+            rknSubnets = matched.map { it.text }.distinct(),
+            rknExact = matched.filter { if (it.v6) it.bits == 128 else it.bits >= warnPrefix }.map { it.text }.distinct(),
             providers = cdn.filter { it.first.contains(v6, n) }.map { it.second }.distinct().sorted(),
         )
     }
@@ -110,7 +117,7 @@ class Blocklists(
             val bits = bitsText?.toIntOrNull() ?: width
             if (bits !in 0..width) return null
             val mask = BigInteger.ONE.shiftLeft(width).subtract(BigInteger.ONE).xor(BigInteger.ONE.shiftLeft(width - bits).subtract(BigInteger.ONE))
-            return Net(v6, n.and(mask), mask, cidr)
+            return Net(v6, n.and(mask), mask, cidr, bits)
         }
 
         private val http by lazy { HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).followRedirects(HttpClient.Redirect.NORMAL).build() }

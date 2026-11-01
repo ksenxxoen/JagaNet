@@ -152,6 +152,13 @@ class Seed(private val ctx: Ctx) {
                 }
             }
         }
+        // The status page's extra nodes and their week of health (SIM_SCENARIO, VLESS_BALANCER), sim only.
+        SimNodes.seed(ctx, sql)
+        for (i in 0 until 60) {
+            val server = SimNodes.devicesFor(i) ?: break
+            val u = user(sql, "load$i@example.com", Duration.ofDays(5L + i))
+            device(sql, u, "Phone", "android", tunnel = true, server = server, lastSeen = ago(Duration.ofMinutes(30)))
+        }
     }
 
     private fun user(sql: Sql, email: String, age: Duration = Duration.ofDays(60), referredBy: String? = null): String = sql.one(
