@@ -294,3 +294,46 @@ func TestInstallRepairsBrokenInstall(t *testing.T) {
 		t.Fatalf("state %v", f.state)
 	}
 }
+
+// The setup program sets and clears the user's Run key through the same
+// command the client itself writes.
+func TestSetAutostart(t *testing.T) {
+	exe := `C:\Program Files\Boop\Boop.exe`
+	a := &fakeAuto{}
+	if err := SetAutostart(a, exe, true); err != nil || !a.key || a.cmd != `"`+exe+`" --tray` {
+		t.Fatalf("%+v %v", a, err)
+	}
+	if err := SetAutostart(a, exe, false); err != nil || a.key {
+		t.Fatalf("%+v %v", a, err)
+	}
+	b := &fakeAuto{failSet: true}
+	if err := SetAutostart(b, exe, true); err == nil {
+		t.Fatal("a failed write must be reported")
+	}
+}
+
+// The setup program's uninstaller removes the files itself: RemoveService takes
+// the service and the old task and touches no file or directory.
+func TestRemoveServiceLeavesFiles(t *testing.T) {
+	f := newFake()
+	f.state = Running
+	f.task = true
+	if err := RemoveService(f); err != nil {
+		t.Fatal(err)
+	}
+	if f.state != NotInstalled || f.task {
+		t.Fatalf("state %v task %v", f.state, f.task)
+	}
+	for _, c := range f.calls {
+		if strings.HasPrefix(c, "rm ") || strings.HasPrefix(c, "rmdir ") {
+			t.Fatalf("RemoveService touched a file: %q", f.calls)
+		}
+	}
+	// A service that will not delete is reported.
+	g := newFake()
+	g.state = Stopped
+	g.failOn = "delete"
+	if err := RemoveService(g); err == nil {
+		t.Fatal("a failed delete must be reported")
+	}
+}

@@ -224,3 +224,110 @@ jobs:
             C:\ProgramData\Boop\*.log
           retention-days: 7
           if-no-files-found: ignore
+
+  # Issue #64: Boop-Setup-<version>.exe (Inno Setup) around the same Boop.exe the
+  # build job made. Silent install -> service Running -> silent uninstall ->
+  # service and files gone. Unsigned here (no secrets in CI).
+  windows-installer:
+    name: Boop-Setup.exe on Windows (build + e2e)
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: Boop.exe-${{ github.event.pull_request.head.sha || github.sha }}
+          path: desktop/dist
+
+      - name: Inno Setup
+        run: |
+          if (-not (Get-Command ISCC.exe -ErrorAction SilentlyContinue) -and
+              -not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+          }
+
+      - name: build the setup program
+        run: ./desktop/installer/build.ps1
+
+      - name: install, upgrade, uninstall (silent)
+        run: |
+          $setup = (Get-ChildItem desktop/dist/Boop-Setup-*.exe | Select-Object -First 1).FullName
+          Write-Host "setup: $setup"
+          $dir = Join-Path $env:ProgramFiles 'Boop'
+          $data = Join-Path $env:ProgramData 'Boop'
+          function Dump {
+            foreach ($f in @("$data\install.log", "$data\service.log")) {
+              if (Test-Path $f) { Write-Host "--- $f"; Get-Content $f -Tail 60 }
+            }
+            Get-ChildItem $env:TEMP -Filter 'Setup Log*' -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "--- $($_.FullName)"; Get-Content $_.FullName -Tail 60 }
+          }
+          function Check($ok, $what) {
+            if (-not $ok) { Dump; throw "FAILED: $what" }
+            Write-Host "ok: $what"
+          }
+          function Setup($argv) {
+            (Start-Process -FilePath $setup -ArgumentList $argv -Wait -PassThru).ExitCode
+          }
+          $silent = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG'
+
+          Check ((Setup "$silent /TASKS=autostart") -eq 0) 'install exits 0'
+          Check ((Get-Service BoopVPN).Status -eq 'Running') 'service BoopVPN is Running'
+          Check (Test-Path "$dir\Boop.exe") 'Boop.exe in Program Files'
+          Check (Test-Path "$dir\wintun.dll") 'wintun.dll in Program Files'
+          Check (Test-Path "$dir\unins000.exe") 'uninstaller present'
+          Check ([System.IO.Directory]::GetFiles('\\.\pipe\') -contains '\\.\pipe\BoopVPN') 'pipe BoopVPN exists'
+          Check (Test-Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Boop VPN.lnk") 'Start menu shortcut'
+          $acl = (Get-Acl $dir).Access | Where-Object { $_.IdentityReference -match 'Users$' }
+          Check (($acl | Where-Object { $_.FileSystemRights -match 'Write|Modify|FullControl' }).Count -eq 0) 'Users cannot write Program Files\Boop'
+          $run = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -ErrorAction SilentlyContinue).BoopVPN
+          Write-Host "Run key: $run"   # informational: the runner has no interactive shell for runasoriginaluser
+
+          # Over an existing install (the service is running).
+          Check ((Setup "$silent /TASKS=autostart") -eq 0) 'install over the existing one exits 0'
+          Check ((Get-Service BoopVPN).Status -eq 'Running') 'service Running after upgrade'
+
+          # Uninstall, data kept by default.
+          New-Item -ItemType Directory -Force "$data" | Out-Null
+          Set-Content "$data\keep.txt" 'x'
+          $unins = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait -PassThru
+          Check ($unins.ExitCode -eq 0) 'uninstall exits 0'
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Get-Service BoopVPN -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
+          while ((Test-Path "$dir\Boop.exe") -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
+          Check ($null -eq (Get-Service BoopVPN -ErrorAction SilentlyContinue)) 'service removed'
+          Check (-not (Test-Path "$dir\Boop.exe")) 'Boop.exe removed'
+          Check (-not (Test-Path "$dir\wintun.dll")) 'wintun.dll removed'
+          Check (Test-Path "$data\keep.txt") 'data kept without /PURGEDATA'
+
+          # Again, now with /PURGEDATA.
+          Check ((Setup $silent) -eq 0) 'second install exits 0'
+          $unins = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /PURGEDATA' -Wait -PassThru
+          Check ($unins.ExitCode -eq 0) 'uninstall /PURGEDATA exits 0'
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Test-Path $data) -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
+          Check (-not (Test-Path $data)) 'ProgramData\Boop removed with /PURGEDATA'
+          Check ($null -eq (Get-Service BoopVPN -ErrorAction SilentlyContinue)) 'service removed again'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Boop-Setup-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            desktop/dist/Boop-Setup-*.exe
+            desktop/dist/Boop-Setup-*.exe.sha256
+          retention-days: 7
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: installer-logs
+          path: |
+            C:\ProgramData\Boop\*.log
+          retention-days: 7
+          if-no-files-found: ignore

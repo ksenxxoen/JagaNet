@@ -131,6 +131,12 @@ rm -rf "$t"
 Без `BOOP_SIGN_CAFILE` (или с `BOOP_SIGN_VERIFY=warn`) `build.sh` с таким сертификатом
 в режиме `strict` остановится — так и задумано.
 
+## Установщик
+
+Установщик `Boop-Setup-<версия>.exe` (`installer/`, см. [installer/README.md](installer/README.md)) подписывается
+тем же `BOOP_SIGN` при `pwsh installer/build.ps1`: сам установщик и деинсталлятор (`SignTool` в Inno). `Boop.exe`
+внутри подписывается раньше, в `./build.sh`. Хэш установщика (`.sha256`) считается после подписи.
+
 ## SmartScreen
 
 * Неподписанный файл: «Windows защитила ваш компьютер» и издатель «Неизвестный»

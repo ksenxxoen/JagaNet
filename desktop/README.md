@@ -11,6 +11,8 @@
 | Обновления | скачивает и ставит сам | только сообщает о версии и открывает ссылку на .deb |
 | Подпись | [SIGNING.md](SIGNING.md) | нет (пакет ставится локально через apt) |
 
+Установщик для Windows (`Boop-Setup-<версия>.exe`, Inno Setup): [installer/README.md](installer/README.md).
+
 Разработка без Windows и без туннеля: `go run .` — окно в браузере на `127.0.0.1:5199` с поддельным
 туннелем (`main_other.go`); проверки UI — `node scripts/ui-checks.mjs`, `node scripts/e2e.mjs`.
 
