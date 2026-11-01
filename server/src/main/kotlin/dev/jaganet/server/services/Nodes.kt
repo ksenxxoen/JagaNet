@@ -404,7 +404,7 @@ class Nodes(private val ctx: Ctx) {
                 ?.let { XrayBalancer.Exit(e.str("id"), it) }
         }
         if (exits.isEmpty()) throw badRequest("No active exit nodes: mark at least one VLESS node as an exit")
-        XrayBalancer.fragment(entry.transports.map { it.tag }, s.str("cascade_uuid"), exits)
+        XrayBalancer.fragment(entry.transports.map { it.tag }, s.str("cascade_uuid"), exits, ctx.cfg.entryBlockQuic)
     }
 
     /** The VPN address devices get: the host name when set, else the machine's address. */

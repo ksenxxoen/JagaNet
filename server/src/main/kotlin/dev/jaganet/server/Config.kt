@@ -61,6 +61,10 @@ data class Config(
     val referralsPublic: Boolean = false,
     /** VLESS_BALANCER=1: cascade entries balance over exit nodes (issue #41) and lead the subscription as "Auto". */
     val vlessBalancer: Boolean = false,
+    /** What VLESS subscriptions tell the clients besides the links: DNS, the QUIC block, Xray JSON (VLESS_SUB_*, issue #59). */
+    val vlessSub: dev.jaganet.server.services.SubscriptionOptions = dev.jaganet.server.services.SubscriptionOptions(),
+    /** VLESS_ENTRY_BLOCK_QUIC=0 leaves the UDP 443 block out of a cascade entry's balancer fragment (issue #59). */
+    val entryBlockQuic: Boolean = true,
     /** SUPPORT_URL: the `support-url` header of VLESS subscriptions; default the Telegram bot, else the website. */
     val supportUrl: String? = null,
     /** SUPPORT_EMAIL: where the website's support form sends messages; default OWNER_EMAIL. */
@@ -105,6 +109,8 @@ data class Config(
                 signupProDays = num("SIGNUP_PRO_DAYS", 0).toInt().coerceAtLeast(0),
                 referralsPublic = env["REFERRALS_PUBLIC"] == "1",
                 vlessBalancer = env["VLESS_BALANCER"] == "1",
+                vlessSub = dev.jaganet.server.services.SubscriptionOptions.load(env),
+                entryBlockQuic = env["VLESS_ENTRY_BLOCK_QUIC"]?.trim() != "0",
                 supportUrl = env["SUPPORT_URL"]?.takeIf { it.isNotBlank() },
                 supportEmail = env["SUPPORT_EMAIL"]?.trim()?.takeIf { it.isNotBlank() },
                 referralRewards = RewardRules(

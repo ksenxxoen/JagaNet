@@ -155,13 +155,24 @@ process behind the Wintun adapter (desktop/ARCHITECTURE.md, "VLESS+Reality").
   else `country_name`, else the country in Russian ("🇫🇮 Финляндия"); the backup transport is
   "🇫🇮 Финляндия (запасной)" (a third one "(запасной 2)"; `?lang=de|en` translates the suffix);
   equal names get " 2". Never a protocol name. With one VLESS node the links are those of issue #33
-  but for the backup's name. Formats (`VlessSubscription`): `?format=singbox|clash|base64` wins,
-  else the `User-Agent`: sing-box apps (`SFA/`, `SFI/`, `SFM/`, `SFT/`, `sing-box`) get a sing-box
-  1.12+ profile, Clash Meta clients (`clash`, `mihomo`: Clash Meta for Android, Clash Verge, FlClash)
-  a mihomo profile; both have a selector "Boop VPN" with "Авто (лучший)" (`urltest` over every
-  location, gstatic generate_204, 3 minutes, tolerance 50 ms) and each location, Vision links only
-  (sing-box has no XHTTP, older mihomo refuses it). Everyone else (Happ, v2RayTun, v2rayNG,
-  Hiddify, which makes its own auto group from links and reads XHTTP) gets the base64 list.
+  but for the backup's name. Formats (`VlessSubscription`): `?format=json|singbox|clash|base64`
+  wins, else the `User-Agent`: Happ (`Happ/` 1.63.1 and newer) and v2RayTun (`v2raytun`) get an
+  array of full Xray configs (`XrayConfigs`, issue #59): "Авто (лучший)" first (every Vision link
+  behind a `leastPing` balancer with the `observatory`), then one config per link of the base64
+  list, same order and names; sing-box apps (`SFA/`, `SFI/`, `SFM/`, `SFT/`, `sing-box`) get a
+  sing-box 1.12+ profile, Clash Meta clients (`clash`, `mihomo`: Clash Meta for Android, Clash
+  Verge, FlClash) a mihomo profile; both have a selector "Boop VPN" with "Авто (лучший)" (`urltest`
+  over every location, gstatic generate_204, 3 minutes, tolerance 50 ms) and each location, Vision
+  links only (sing-box has no XHTTP, older mihomo refuses it). Everyone else (v2rayNG, Hiddify,
+  which makes its own auto group from links and reads XHTTP) gets the base64 list.
+  DNS and QUIC (issue #59, `SubscriptionOptions`): the Xray configs, sing-box and mihomo profiles
+  resolve through the tunnel with DNS over HTTPS (`VLESS_SUB_DNS`, default
+  `https://1.1.1.1/dns-query,https://8.8.8.8/dns-query`; Xray also takes the apps' port 53 queries
+  into its DNS; mihomo `redir-host` with `respect-rules`; no fake DNS anywhere) and drop UDP 443
+  so apps fall back to TCP (`VLESS_SUB_BLOCK_QUIC`). With `VLESS_SUB_XRAY_JSON=0` Happ and
+  v2RayTun get the base64 list with a `routing` header instead: Happ a routing profile
+  (`happ://routing/onadd/…`, remote DNS, `FakeDNS: false`; it cannot express ports), v2RayTun an
+  Xray routing object (UDP 443 to `block`; it has no DNS header).
   Headers: `profile-title` (base64 "Boop VPN"), `profile-update-interval: 12`,
   `subscription-userinfo: upload=…; download=…; total=…; expire=…` (this month's bytes of all the
   user's devices, the monthly limit or 0, the end of access or 0), `support-url` (`SUPPORT_URL`,
@@ -173,7 +184,9 @@ process behind the Wintun adapter (desktop/ARCHITECTURE.md, "VLESS+Reality").
   (`cascade_role`) gets its own Xray user `cascade_uuid`, which the agents of every active *exit*
   add like any user. `GET /v1/admin/nodes/{id}/balancer` gives the entry's Xray fragment
   (`XrayBalancer`): one VLESS+Reality outbound per exit (public parameters only), a `leastPing`
-  balancer over them, the rule from the entry's inbounds and the `observatory`; the owner adds it
+  balancer over them, the rule from the entry's inbounds and the `observatory`, and before that
+  rule the users' UDP 443 to a blackhole `boop-block` (`VLESS_ENTRY_BLOCK_QUIC`, on by default,
+  issue #59); the owner adds it
   to the entry's config (docs/SERVER.md, "Cascade"). In subscriptions the entry comes first as
   "⚡ Авто" (its display name if set). Off (the default), the marks change nothing for users.
 
