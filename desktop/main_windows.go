@@ -6,6 +6,7 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"log"
 	"os"
 	"os/exec"
@@ -18,6 +19,7 @@ import (
 	"github.com/jchv/go-webview2"
 	"github.com/ksenxxoen/JagaNet/desktop/core"
 	"github.com/ksenxxoen/JagaNet/desktop/vpn"
+	"github.com/ksenxxoen/JagaNet/desktop/winsvc"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
@@ -45,6 +47,10 @@ func main() {
 			log.Printf("panic: %v\n%s", r, debug.Stack())
 		}
 	}()
+	// The one program is also the service and its installer (service_windows.go).
+	if runServiceMode(os.Args[1:]) {
+		return
+	}
 	// One window at a time. After an update the new process waits out the old one.
 	if !acquireInstance() {
 		t, _ := windows.UTF16PtrFromString(title)
@@ -74,30 +80,40 @@ func main() {
 		}
 	})
 
-	if err := placeWintun(); err != nil {
-		log.Printf("wintun: %v", err)
-	}
-
 	core.Protect = dpapi(true)
 	core.Unprotect = dpapi(false)
 	core.SocketControl = vpn.SocketControl
 	core.NetworkKind = vpn.NetworkKind
 	core.OSVersion = windowsVersion
 
-	tun, _ := vpn.New()
-	exeDir := "."
-	if exe, err := os.Executable(); err == nil {
-		exeDir = filepath.Dir(exe)
+	// The tunnel is the service's (LocalSystem); this process has no rights and
+	// talks to it through a named pipe. Missing or older than this window: one
+	// UAC prompt installs it (winsvc.Tunnel).
+	tun := winsvc.NewTunnel(winsvc.DialPipe, version, installService)
+	defer tun.Close()
+	vpn.FollowTunnel(upCache(tun))
+	// Older versions started an elevated window with a scheduled task; the plain
+	// Run key replaces it, the person's choice stays.
+	if err := winsvc.MigrateAutostart(winsvc.User{}, autostartExe()); err != nil {
+		log.Printf("autostart: %v", err)
+	}
+	refreshAutostart()
+	if err := tun.Ensure(); err != nil {
+		// Not fatal: the window opens and says so when connecting; «Повторить» asks again.
+		log.Printf("service: %v", err)
+	} else if relaunchInstalled() {
+		return
 	}
 	// The panel's addresses come only from the build (no environment override on
 	// Windows, as before): the main one, then the spares (issue #37).
 	bases, site := apiBases("")
 	app := &core.App{
-		API: core.NewAPI(bases, nil), Store: core.LoadStore(dir), Tunnel: tun, Ping: vpn.Ping,
-		Version: version, Site: site, OpenURL: openURL, UpdateDir: exeDir,
+		API: core.NewAPI(bases, nil), Store: core.LoadStore(dir), Tunnel: tun, Ping: tun.Ping,
+		Version: version, Site: site, OpenURL: openURL, UpdateDir: dir,
 		Autostart: setAutostart, AutostartOn: autostartOn, LogPath: logPath,
 	}
-	app.ApplyUpdate = func(staged string) error { return applyUpdate(app, staged) }
+	app.ApplyUpdate = func(staged string) error { return applyUpdate(app, tun, staged) }
+	app.OnUserAttempt = tun.AllowPrompt
 
 	dpi := uint(96)
 	if r, _, _ := getDpiForSys.Call(); r != 0 {
@@ -203,17 +219,33 @@ func acquireInstance() bool {
 	return false
 }
 
-// applyUpdate swaps in a verified exe and starts it. Windows allows renaming
-// the running executable; the new process waits for this one to leave.
-func applyUpdate(app *core.App, staged string) error {
+// applyUpdate hands the update to the service, which fetches and checks it
+// itself and replaces the installed program (the window may not write there),
+// then starts the new window from it. staged (the window's own download, in the
+// user's folder) is only the proof the update works; the service trusts nothing
+// from here.
+func applyUpdate(app *core.App, tun *winsvc.Tunnel, staged string) error {
 	app.Disconnect()
-	exe, err := os.Executable()
+	v, err := tun.Client.Update()
 	if err != nil {
 		return err
 	}
-	if err := core.SwapBinary(exe, staged); err != nil {
-		return err
+	if v == "" {
+		return errors.New("the service did not take the update")
 	}
+	_ = os.Remove(staged)
+	// The service restarts into the new program; wait until it answers.
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		if h, err := tun.Client.Hello(); err == nil && h.Version == v {
+			break
+		}
+		if time.Now().After(deadline) {
+			return errors.New("the service did not come back after the update")
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	exe := winsvc.InstalledExe(winsvc.Real{})
 	args := append([]string{}, os.Args[1:]...)
 	if !slices.Contains(args, "--updated") {
 		args = append(args, "--updated")
@@ -225,19 +257,6 @@ func applyUpdate(app *core.App, staged string) error {
 	log.Printf("update: starting %s", exe)
 	os.Exit(0)
 	return nil
-}
-
-// placeWintun puts wintun.dll next to the program, where the tunnel looks for it.
-func placeWintun() error {
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	p := filepath.Join(filepath.Dir(exe), "wintun.dll")
-	if old, err := os.ReadFile(p); err == nil && bytes.Equal(old, wintunDLL) {
-		return nil
-	}
-	return os.WriteFile(p, wintunDLL, 0o644)
 }
 
 func dpapi(seal bool) func([]byte) ([]byte, error) {

@@ -55,6 +55,9 @@ func (a *App) connect() {
 	}
 	ctx := a.beginLocked()
 	a.mu.Unlock()
+	if a.OnUserAttempt != nil {
+		a.OnUserAttempt()
+	}
 	a.emit()
 	Go("run", func() { a.run(ctx) })
 }
@@ -98,6 +101,9 @@ func (a *App) retry() {
 	}
 	ctx := a.beginLocked()
 	a.mu.Unlock()
+	if a.OnUserAttempt != nil {
+		a.OnUserAttempt()
+	}
 	log.Printf("vpn: retry")
 	a.emit()
 	Go("run", func() { a.run(ctx) })

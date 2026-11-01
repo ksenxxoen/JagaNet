@@ -3,6 +3,7 @@ module github.com/ksenxxoen/JagaNet/desktop
 go 1.27.3
 
 require (
+	github.com/Microsoft/go-winio v0.6.2
 	github.com/amnezia-vpn/amneziawg-go/v3 v3.1.20260828
 	github.com/amnezia-vpn/amneziawg-windows/v3 v3.1.20260814
 	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
