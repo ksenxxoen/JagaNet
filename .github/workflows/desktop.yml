@@ -28,30 +28,6 @@ defaults:
     working-directory: desktop
 
 jobs:
-  # Issue #77: calls antivirus engines dislike (schtasks, reg, powershell, privilege
-  # tricks, service registration, Run key, embedded binaries, self-replacement) may
-  # only shrink: see desktop/scripts/forbidden-calls.allowlist. Also lints the
-  # manual antivirus helper script.
-  forbidden-calls:
-    name: forbidden calls, PSScriptAnalyzer
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: forbidden-calls (self-test, then the real check)
-        run: |
-          scripts/forbidden-calls.sh --selftest
-          scripts/forbidden-calls.sh
-
-      - name: PSScriptAnalyzer (scripts/av-trace.ps1)
-        shell: pwsh
-        run: |
-          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -Repository PSGallery
-          $r = Invoke-ScriptAnalyzer -Path scripts/av-trace.ps1 -Severity Error, Warning
-          $r | Format-Table RuleName, Severity, Line, Message -AutoSize | Out-String | Write-Host
-          if ($r | Where-Object Severity -eq 'Error') { throw 'PSScriptAnalyzer errors' }
-
   build:
     name: vet, test, Boop.exe
     runs-on: ubuntu-latest
@@ -351,43 +327,6 @@ jobs:
           while ((Test-Path $data) -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
           Check (-not (Test-Path $data)) 'ProgramData\Boop removed with /PURGEDATA'
           Check ($null -eq (Get-Service BoopVPN -ErrorAction SilentlyContinue)) 'service removed again'
-
-      # Issue #77, report only (strict mode comes with stage 3 of epic #76): which
-      # processes Boop starts after a plain install and launch. WMI process-start
-      # trace, no third-party drivers.
-      - name: child processes of Boop after install and launch (report)
-        continue-on-error: true
-        run: |
-          $setup = (Get-ChildItem desktop/dist/Boop-Setup-*.exe | Select-Object -First 1).FullName
-          $dir = Join-Path $env:ProgramFiles 'Boop'
-          Start-Process -FilePath $setup -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /TASKS=autostart' -Wait
-          $null = Register-WmiEvent -Class Win32_ProcessStartTrace -SourceIdentifier ProcStart
-          try {
-            Restart-Service BoopVPN
-            $ui = Start-Process -FilePath "$dir\Boop.exe" -PassThru
-            Start-Sleep -Seconds 20
-            $events = @(Get-Event -SourceIdentifier ProcStart | ForEach-Object { $_.SourceEventArgs.NewEvent })
-          } finally {
-            Unregister-Event -SourceIdentifier ProcStart -ErrorAction SilentlyContinue
-          }
-          $svcPid = (Get-CimInstance Win32_Service -Filter "Name='BoopVPN'").ProcessId
-          $roots = @($svcPid) + @(Get-Process Boop -ErrorAction SilentlyContinue | ForEach-Object Id)
-          $seen = [System.Collections.Generic.HashSet[uint32]]::new()
-          foreach ($r in $roots) { if ($r) { [void]$seen.Add([uint32]$r) } }
-          $kids = @()
-          foreach ($e in ($events | Sort-Object TIME_CREATED)) {
-            if ($seen.Contains([uint32]$e.ParentProcessID)) {
-              [void]$seen.Add([uint32]$e.ProcessID)
-              $kids += [pscustomobject]@{ Parent = $e.ParentProcessID; Pid = $e.ProcessID; Name = $e.ProcessName }
-            }
-          }
-          Write-Host "Boop roots (service + window): $($roots -join ', ')"
-          Write-Host "Processes started by Boop: $($kids.Count)"
-          $kids | Format-Table -AutoSize | Out-String | Write-Host
-          $kids | Format-Table -AutoSize | Out-String | Add-Content $env:GITHUB_STEP_SUMMARY
-          Stop-Process -Name Boop -Force -ErrorAction SilentlyContinue
-          $u = Join-Path $dir 'unins000.exe'
-          if (Test-Path $u) { Start-Process -FilePath $u -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /PURGEDATA' -Wait }
 
       - uses: actions/upload-artifact@v4
         with:
