@@ -130,3 +130,18 @@ internal fun loadLinuxManifest(dir: File?, publicUrl: String, distro: String?): 
         notes = parsed.notes?.trim()?.takeIf { it.isNotEmpty() },
     )
 }
+
+/** Store pages of the apps that import a subscription link (the /k/{token} page, issue #88). */
+object AppStores {
+    val androidApps = listOf(
+        "Happ" to "https://play.google.com/store/apps/details?id=com.happproxy",
+        "v2RayTun" to "https://play.google.com/store/apps/details?id=com.v2raytun.android",
+        "Hiddify" to "https://play.google.com/store/apps/details?id=app.hiddify.com",
+    )
+    val iosApps = listOf(
+        "Happ" to "https://apps.apple.com/us/app/happ-proxy-utility/id6504287215",
+        "Happ Plus" to "https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973",
+        "v2RayTun" to "https://apps.apple.com/us/app/v2raytun/id6476628951",
+        "Hiddify" to "https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532",
+    )
+}

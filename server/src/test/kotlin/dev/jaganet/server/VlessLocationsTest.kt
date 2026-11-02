@@ -151,9 +151,10 @@ class VlessLocationsTest {
         // Old apps (no supportedProtocols) never see them.
         assertTrue(u.api.servers().servers.none { Protocols.VLESS in it.protocols })
 
-        // The key page shows every location; the website's key has all links.
+        // The key page shows the subscription only (issue #88), the website's key has all links.
         val page = b.createClient {}.get("/k/$token").bodyAsText()
-        assertTrue("🇫🇮 Финляндия (запасной)" in page && "🇳🇱 Амстердам" in page, page)
+        assertTrue("/k/$token/vless/sub.png" in page && "vless://" !in page, page)
+        assertEquals(200, b.createClient {}.get("/k/$token/vless/0.png").status.value)
         assertEquals(links, u.api.keys(listOf("vless")).vless!!.links)
         assertEquals("🇳🇱 Амстердам", u.api.keys(listOf("vless")).vless!!.name)
         // ?lang=de names the backups in German (the country names are the owner's, in Russian).
