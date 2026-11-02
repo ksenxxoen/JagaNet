@@ -2,6 +2,7 @@ package helper
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net"
 	"net/netip"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ksenxxoen/JagaNet/desktop/vpn"
+	"github.com/ksenxxoen/JagaNet/desktop/vpn/split"
 )
 
 // fakeTunnel records what the helper asked of it.
@@ -260,6 +262,45 @@ func TestWireRoundTrip(t *testing.T) {
 	for _, w := range []*Config{nil, {Address: "x"}, {Address: "10.0.0.2/32", DNS: []string{"dns.example"}}, {Address: "10.0.0.2/32", Endpoint: "nohost"}} {
 		if _, err := w.Tunnel(); err == nil {
 			t.Errorf("%+v accepted", w)
+		}
+	}
+}
+
+// The split-tunnel settings cross the pipe with the config, are checked on the
+// way in, and an empty one is not sent at all.
+func TestWireSplit(t *testing.T) {
+	base := &vpn.Config{UAPI: "private_key=aa\n", Address: netip.MustParsePrefix("10.8.0.2/32"), MTU: 1280}
+	if w := Wire(base); w.Split != nil {
+		t.Fatalf("no settings, yet %+v", w.Split)
+	}
+	base.Split = &split.Settings{}
+	if w := Wire(base); w.Split != nil {
+		t.Fatalf("empty settings sent: %+v", w.Split)
+	}
+	base.Split = &split.Settings{LAN: true, RU: true, Custom: []string{"192.168.9.0/24"}, Domains: []string{"sber.ru"}, Resolved: []string{"1.2.3.4/32"}}
+	b, err := json.Marshal(Wire(base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var w Config
+	if err := json.Unmarshal(b, &w); err != nil {
+		t.Fatal(err)
+	}
+	c, err := w.Tunnel()
+	if err != nil || !c.Split.Equal(base.Split) {
+		t.Fatalf("round trip: %+v %v", c.Split, err)
+	}
+	// Settings are copied, not shared.
+	c.Split.Custom[0] = "10.0.0.0/8"
+	if base.Split.Custom[0] != "192.168.9.0/24" {
+		t.Error("shared slice")
+	}
+	// A bad set is refused.
+	for _, bad := range []*split.Settings{{Custom: []string{"nonsense"}}, {Domains: []string{"1.2.3.4"}}, {Custom: []string{"0.0.0.0/0"}}} {
+		w := Wire(&vpn.Config{UAPI: "private_key=aa\n", Address: netip.MustParsePrefix("10.8.0.2/32")})
+		w.Split = bad
+		if _, err := w.Tunnel(); err == nil {
+			t.Errorf("%+v accepted", bad)
 		}
 	}
 }

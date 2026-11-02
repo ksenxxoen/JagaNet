@@ -58,7 +58,7 @@
 ```
 ./build.sh                       # на Linux/macOS/WSL: dist/Boop.exe
 pwsh installer/build.ps1         # dist/Boop-Setup-<версия>.exe и .sha256
-pwsh installer/build.ps1 -Version 1.4.2 -Exe dist/Boop.exe -OutDir dist
+pwsh installer/build.ps1 -Version 1.4.3 -Exe dist/Boop.exe -OutDir dist
 ```
 
 `build.ps1` скачивает bootstrapper WebView2 в `build/` (проверяет подпись Microsoft) и упаковывает его.
@@ -66,7 +66,7 @@ pwsh installer/build.ps1 -Version 1.4.2 -Exe dist/Boop.exe -OutDir dist
 
 В CI (`.github/workflows/desktop.yml`, джоб `windows-installer`) установщик собирается из того же
 `Boop.exe`, что собрал джоб `build`, и выкладывается артефактом `Boop-Setup-<sha>` (внутри
-`Boop-Setup-1.4.2.exe`). Там же e2e: `/VERYSILENT` → служба Running → повторная установка → тихое
+`Boop-Setup-1.4.3.exe`). Там же e2e: `/VERYSILENT` → служба Running → повторная установка → тихое
 удаление → служба и файлы удалены → то же с `/PURGEDATA`.
 
 ## Подпись

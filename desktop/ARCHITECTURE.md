@@ -303,3 +303,11 @@ Linux runners only, no secrets:
 * job `ui`: `node scripts/ui-checks.mjs` and `node scripts/e2e.mjs` against Playwright's
   Chromium (version pinned in the workflow); on failure the app logs are the artifact
   `e2e-logs`.
+
+## «Не через VPN» (split tunnel, 1.4.3)
+
+Настройки лежат в `state.json` (`split`), окно шлёт их командой `setSplit`. Приложение кладёт их в
+`vpn.Config.Split`, они едут в службу вместе с конфигом (`helper.Config.Split`) и сохраняются вместе
+с ним для восстановления. Чистая логика — `vpn/split` (диапазоны, вычитание CIDR, разбор ввода) и
+`vpn/splitplan.go` (маршруты, разрешения kill switch, `AllowedIPs`); Windows применяет их в
+`vpn/windows.go`, `vpn/firewall/split_windows.go` и `vpn/xray` (`Direct`). Список РФ — `vpn/split/ru_ipv4.txt`.

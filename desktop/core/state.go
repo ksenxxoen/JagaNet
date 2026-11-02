@@ -65,6 +65,7 @@ type UIState struct {
 	// Failed: the app gave up on this connection and waits for «Повторить» (retry).
 	Failed     bool      `json:"failed,omitempty"`
 	StrictKill bool      `json:"strictKill,omitempty"`
+	Split      SplitUI   `json:"split"`
 	Update     *UpdateUI `json:"update,omitempty"`
 	// Notice is the owner's note to show in the banner (nodestatus.go).
 	Notice string `json:"notice,omitempty"`
@@ -92,7 +93,7 @@ func (a *App) state() UIState {
 		Current: a.current, Ping: a.curPing, Countries: []Country{},
 		WebLogin: a.webLogin != nil,
 		Keys:     []KeyUI{}, Key: a.Store.KeyID,
-		Problem: a.problem, Released: a.released, Failed: a.failed && a.conn != "off", StrictKill: a.Store.StrictKill,
+		Problem: a.problem, Released: a.released, Failed: a.failed && a.conn != "off", StrictKill: a.Store.StrictKill, Split: a.splitUI(),
 		Notice: a.noticeNow(), Platform: a.Platform,
 	}
 	if a.available != nil {
