@@ -51,6 +51,7 @@ curl -fsSL https://raw.githubusercontent.com/ksenxxoen/JagaNet/claude/adoring-br
 | `TELEGRAM_PROXY` | none | HTTP proxy for the Bot API, `host:port`. |
 | `TELEGRAM_MINIAPP` | off | `1` turns on the mini app (below). |
 | `TELEGRAM_MINIAPP_URL` | `$PUBLIC_URL/tg/app` | Where the mini app opens (https only). |
+| `TELEGRAM_COMMUNITY_URL` | empty | The project's Telegram group or channel (`https://t.me/...` or `https://telegram.me/...`; anything else is ignored with a warning in the log). When set: a «Наша группа в Telegram» button in the bot menu, `/help` and the support message, the `/community` command, a card in the mini app's Support tab and a row in its Profile, and a link in the website's footer and on `#/support`. Empty: none of these. It is also in `GET /v1/site` as `communityUrl`. |
 
 If Telegram can't be reached the bot retries with growing pauses (5 s up to 2 min); every call has
 a short timeout, payments and the website never wait for Telegram, and the status page shows

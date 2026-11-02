@@ -622,8 +622,9 @@
   /* ---------------- support ---------------- */
 
   async function support() {
-    const [me, info] = await Promise.all([get("me"), get("support").catch(() => ({ available: false }))]);
+    const [me, info, site] = await Promise.all([get("me"), get("support").catch(() => ({ available: false })), get("site").catch(() => ({}))]);
     const email = me.user.email.endsWith("@telegram.invalid") ? "" : me.user.email;
+    const community = site.communityUrl;
     view.innerHTML = `
       ${head(t("Support"), t("Write to us, we answer every message"))}
       <section class="card feature">
@@ -632,6 +633,12 @@
         <p class="muted">${t("Describe the problem in one message, you can attach a screenshot. We answer in the chat.")}</p>
         <button class="btn wide" type="button" id="tobot" ${BOT ? "" : "disabled"}>${t("Write in the bot")}</button>
       </section>
+      ${community ? `<section class="card feature">
+        <div class="feature-ic">${icon("send")}</div>
+        <h3>${t("Our Telegram group")}</h3>
+        <p class="muted">${t("Chat with other Boop users and follow the news in our Telegram group.")}</p>
+        <button class="btn wide secondary" type="button" id="community">${t("Our Telegram group")}</button>
+      </section>` : ""}
       ${info.available ? section(t("Or by e-mail"), `<form class="card form" id="sform">
           <label class="label" for="semail">${t("E-mail")}</label><input id="semail" type="email" required maxlength="254" autocomplete="email" value="${h(email)}">
           <label class="label" for="ssubj">${t("Subject")}</label><input id="ssubj" required maxlength="150">
@@ -643,6 +650,8 @@
       openTelegram(`https://t.me/${BOT}?start=support`);
       if (tg && tg.close) setTimeout(() => { try { tg.close(); } catch {} }, 300);
     });
+    const cm = $("#community");
+    if (cm) cm.addEventListener("click", () => { haptic.tap(); openTelegram(community); });
     const f = $("#sform");
     if (f) f.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -658,7 +667,7 @@
   /* ---------------- profile ---------------- */
 
   async function profile() {
-    const [me, p] = await Promise.all([get("me"), get("profile")]);
+    const [me, p, site] = await Promise.all([get("me"), get("profile"), get("site").catch(() => ({}))]);
     const refs = p.invites ? await get("refs").catch(() => null) : null;
     const u = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) || {};
     const name = [u.first_name, u.last_name].filter(Boolean).join(" ") || (p.username ? "@" + p.username : t("Telegram account"));
@@ -690,6 +699,9 @@
           <span class="switch"><input type="checkbox" id="notify" ${p.notify ? "checked" : ""} ${p.linked ? "" : "disabled"}><i></i></span></label>
       </div>`)}
       ${ref}
+      ${site.communityUrl ? section(t("Community"), `<div class="list">
+        ${row({ ic: "send", tone: "blue", title: t("Our Telegram group"), sub: t("News and chat with other users"), trail: chevron, tag: "button", attrs: 'type="button" id="community"' })}
+      </div>`) : ""}
       ${section(t("Website"), `<div class="list">
         ${row({ ic: "globe", tone: "pink", title: t("Sign in on the website"), sub: t("A one-time link, works for 10 minutes"), trail: chevron, tag: "button", attrs: 'type="button" id="weblogin"' })}
       </div>`)}
@@ -717,6 +729,8 @@
       $("#refcopy").addEventListener("click", () => copy(link));
       $("#refshare").addEventListener("click", () => openTelegram("https://t.me/share/url?url=" + encodeURIComponent(link) + "&text=" + encodeURIComponent(t("Boop VPN is fast and secure. It encrypts all your traffic."))));
     }
+    const cm = $("#community");
+    if (cm) cm.addEventListener("click", () => { haptic.tap(); openTelegram(site.communityUrl); });
     $("#weblogin").addEventListener("click", async (e) => {
       const b = e.currentTarget; b.disabled = true;
       try { const r = await api("/telegram/login-link", { method: "POST" }); openLink(r.url); } catch (x) { toast(x.message); }

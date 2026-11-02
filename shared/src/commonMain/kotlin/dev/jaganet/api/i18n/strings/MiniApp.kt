@@ -5,6 +5,8 @@ import dev.jaganet.api.i18n.S
 /** The Telegram mini app (issue #87): its screens, its sign-in and the bot's "Open Boop" buttons. */
 internal val miniAppStrings: List<S> = listOf(
     // Tabs and screens
+    S("Community", "Сообщество", "Community"),
+    S("News and chat with other users", "Новости и общение с другими пользователями", "Neuigkeiten und Austausch mit anderen Nutzern"),
     S("Home", "Главная", "Start"),
     S("Profile", "Профиль", "Profil"),
     S("Hi, {name}", "Привет, {name}", "Hallo, {name}"),

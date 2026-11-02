@@ -35,6 +35,7 @@ import kotlinx.serialization.json.putJsonObject
 import java.time.Duration
 import java.time.Instant
 import kotlin.test.Test
+import dev.jaganet.server.telegram.TelegramConfig
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -468,5 +469,62 @@ class TelegramBotTest {
         bot.prepare()
         val commands = tg.sent("setMyCommands").first()["commands"]!!.jsonArray.map { it.jsonObject["command"]!!.jsonPrimitive.content }
         assertTrue(commands.containsAll(listOf("start", "help", "keys", "pay", "support")), commands.toString())
+    }
+
+    /* ---- the community link (issue #91) ---- */
+
+    private val community = "https://t.me/example"
+
+    @Test fun `with TELEGRAM_COMMUNITY_URL the bot shows the group`() = harness(mapOf("TELEGRAM_COMMUNITY_URL" to community, "TELEGRAM_SUPPORT_CHAT_ID" to "-1001")) {
+        val tg = NumberedTelegram()
+        val bot = bot(tg)
+        val group = "👥 Наша группа в Telegram" to community
+        bot.handle(tgMessage(31, "/start"))
+        assertTrue(group in tg.sent("sendMessage").last().buttons(), tg.sent("sendMessage").last().buttons().toString())
+        bot.handle(tgCallback(31, "menu"))
+        assertTrue(group in tg.sent("sendMessage").last().buttons())
+        bot.handle(tgMessage(31, "/help"))
+        assertTrue("/community" in tg.texts(31).last() && community in tg.texts(31).last(), tg.texts(31).last())
+        assertTrue(group in tg.sent("sendMessage").last().buttons())
+        bot.handle(tgMessage(31, "/community"))
+        assertTrue(group in tg.sent("sendMessage").last().buttons())
+        bot.handle(tgCallback(31, "support"))
+        val b = tg.sent("sendMessage").last().buttons()
+        assertTrue(group in b && "menu" in b.map { it.second }, b.toString())
+        bot.prepare()
+        for (call in tg.sent("setMyCommands")) {
+            assertTrue("community" in call["commands"]!!.jsonArray.map { it.jsonObject["command"]!!.jsonPrimitive.content })
+        }
+    }
+
+    @Test fun `without the community link there is no button and no command`() = harness {
+        val tg = NumberedTelegram()
+        val bot = bot(tg)
+        bot.handle(tgMessage(32, "/start"))
+        assertTrue(tg.sent("sendMessage").last().buttons().none { "t.me/example" in it.second || "группа" in it.first })
+        bot.handle(tgMessage(32, "/help"))
+        assertFalse("/community" in tg.texts(32).last())
+        bot.handle(tgMessage(32, "/community"))
+        assertTrue(tg.sent("sendMessage").last().buttons().none { "группа" in it.first })
+        bot.prepare()
+        for (call in tg.sent("setMyCommands")) {
+            assertFalse("community" in call["commands"]!!.jsonArray.map { it.jsonObject["command"]!!.jsonPrimitive.content })
+        }
+    }
+
+    @Test fun `only telegram links are accepted as the community`() {
+        assertEquals(community, TelegramConfig.load(mapOf("TELEGRAM_COMMUNITY_URL" to "  $community ")).communityUrl)
+        assertEquals("https://telegram.me/example", TelegramConfig.load(mapOf("TELEGRAM_COMMUNITY_URL" to "https://telegram.me/example")).communityUrl)
+        for (bad in listOf("", "  ", "http://t.me/example", "https://example.com/x", "t.me/example", "javascript:alert(1)")) {
+            assertNull(TelegramConfig.load(mapOf("TELEGRAM_COMMUNITY_URL" to bad)).communityUrl, bad)
+        }
+        assertNull(TelegramConfig.load(emptyMap()).communityUrl)
+    }
+
+    @Test fun `GET site carries communityUrl or null`() {
+        harness(mapOf("TELEGRAM_COMMUNITY_URL" to community)) {
+            assertEquals(community, client().site().communityUrl)
+        }
+        harness { assertNull(client().site().communityUrl) }
     }
 }

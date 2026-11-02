@@ -822,6 +822,8 @@ data class SiteInfo(
     val referralsPublic: Boolean = false,
     /** "Invite a friend": days an inviter gets per friend; 0 = the invite program is off (issue #40). */
     val inviteRewardDays: Int = 0,
+    /** The project's Telegram group or channel (TELEGRAM_COMMUNITY_URL); null = not set (issue #91). */
+    val communityUrl: String? = null,
 )
 
 /* ---------- server monitoring (owner only) ---------- */

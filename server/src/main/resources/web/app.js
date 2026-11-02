@@ -141,7 +141,7 @@ function renderFooter() {
     ${col(t("Account"), [signedIn ? `<a href="#/account">${t("My account")}</a>` : `<a href="#/signin">${t("Sign in")}</a>`,
       signedIn && site?.inviteRewardDays > 0 ? `<a href="#/invite">${t("Invite a friend")}</a>` : "",
       tg ? `<a href="${h(tg)}" rel="noreferrer">${t("Telegram bot")}</a>` : ""])}
-    ${col(t("Help"), [`<a href="#/support">${t("Contact support")}</a>`, `<a href="/privacy" target="_blank" rel="noopener">${t("Privacy policy")}</a>`, `<a href="/terms" target="_blank" rel="noopener">${t("Terms of use")}</a>`])}
+    ${col(t("Help"), [`<a href="#/support">${t("Contact support")}</a>`, site?.communityUrl ? `<a href="${h(site.communityUrl)}" target="_blank" rel="noopener">${t("Our Telegram group")}</a>` : "", `<a href="/privacy" target="_blank" rel="noopener">${t("Privacy policy")}</a>`, `<a href="/terms" target="_blank" rel="noopener">${t("Terms of use")}</a>`])}
   </div>
   <div class="foot-bottom"><span>© ${new Date().getFullYear()} Boop VPN</span><span>${t("We don't keep browsing history")}</span></div>`;
 }

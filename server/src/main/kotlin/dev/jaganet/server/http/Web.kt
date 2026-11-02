@@ -58,6 +58,7 @@ fun Route.salesApi(s: Services) {
                 testCodes = s.ctx.live.showSignInCodes,
                 referralsPublic = s.ctx.cfg.referralsPublic,
                 inviteRewardDays = s.ctx.live.referralRewards.days,
+                communityUrl = s.ctx.cfg.telegram.communityUrl,
             ),
         )
     }

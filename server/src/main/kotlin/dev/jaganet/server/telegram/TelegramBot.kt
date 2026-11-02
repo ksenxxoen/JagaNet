@@ -90,7 +90,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
             api.call("setMyCommands", buildJsonObject {
                 if (lang != Lang.DEFAULT) put("language_code", lang.code)
                 putJsonArray("commands") {
-                    for ((c, d) in COMMANDS) addJsonObject { put("command", c); put("description", I18n.tr(lang, d)) }
+                    for ((c, d) in commands()) addJsonObject { put("command", c); put("description", I18n.tr(lang, d)) }
                 }
             })
         }
@@ -108,6 +108,16 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
             })
         }.onFailure { log.warn("telegram: setChatMenuButton failed: ${it.message}") }
     }
+
+    /** The command menu: the usual commands, and /community only while the community link is set. */
+    private fun commands(): List<Pair<String, String>> =
+        if (communityUrl() != null) COMMANDS + ("community" to "Our Telegram group") else COMMANDS
+
+    private fun communityUrl(): String? = ctx.cfg.telegram.communityUrl
+
+    /** "👥 Our Telegram group" as a row of its own, or nothing while the link is not set. */
+    private fun communityRow(u: Who): List<List<Btn>> =
+        communityUrl()?.let { listOf(listOf(Btn("👥 " + u.t("Our Telegram group"), url = it))) } ?: emptyList()
 
     /** The mini app's address, at [screen] (#/pay, #/devices…); null while the mini app is off. */
     fun miniAppUrl(screen: String? = null): String? =
@@ -174,6 +184,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
             "/pay", "/buy" -> payAction(who)
             "/devices" -> devicesAction(who)
             "/support" -> supportAction(who)
+            "/community" -> if (communityUrl() != null) communityAction(who) else menu(who)
             "/status" -> statusAction(who)
             "/app" -> appAction(who)
             "/login" -> loginAction(who)
@@ -241,6 +252,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         add(listOf(Btn("💳 " + (if (active) u.t("Extend") else u.t("Buy a subscription")), "pay"), Btn("📱 " + u.t("Devices"), "devices")))
         add(listOf(Btn("🔔 " + u.t("Notifications"), "notify"), Btn("💬 " + u.t("Support"), "support")))
         add(listOf(Btn("🌐 " + u.t("Sign in on the website"), "login"), Btn("❓ " + u.t("Help"), "help")))
+        addAll(communityRow(u))
         val lang = Btn(u.t("Language") + " " + u.lang.nativeName, "language")
         // "Invite a friend" for everyone while rewards are on; else the referral program is for admins only (unless REFERRALS_PUBLIC=1).
         add(if (invitesFor(u.userId)) listOf(Btn("🎁 " + u.t("Invite friends"), "invite"), lang) else listOf(lang))
@@ -271,11 +283,16 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
             appendLine("/devices  " + u.t("Devices"))
             appendLine("/support  " + u.t("Write to support"))
             appendLine("/login  " + u.t("Sign in on the website"))
+            communityUrl()?.let { appendLine("/community  " + u.t("Our Telegram group")) }
             appendLine()
             append(u.t("How to connect is in My keys. Questions? Write to support, we answer here."))
+            communityUrl()?.let { appendLine(); appendLine(); append(u.t("Our Telegram group") + ": " + it) }
         },
-        backButtons(u),
+        communityRow(u) + backButtons(u),
     )
+
+    private suspend fun communityAction(u: Who) =
+        send(u, "👥 " + u.t("Chat with other Boop users and follow the news in our Telegram group."), communityRow(u) + backButtons(u))
 
     private suspend fun languageAction(u: Who) =
         send(u, u.t("Choose a language"), listOf(Lang.entries.map { Btn(it.nativeName + (if (it == u.lang) " (" + u.t("current") + ")" else ""), "lang:${it.code}") }))
@@ -564,7 +581,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
     private suspend fun supportAction(u: Who) {
         if (supportChat() == null) return send(u, u.t("Support chat isn't set up yet. Please try later."), backButtons(u))
         supportMode[u.tgId] = ctx.now().plus(SUPPORT_WINDOW)
-        send(u, "💬 " + u.t("Write your question in one message. You can attach a screenshot. We answer here."), listOf(listOf(Btn(u.t("Cancel"), "menu"))))
+        send(u, "💬 " + u.t("Write your question in one message. You can attach a screenshot. We answer here."), communityRow(u).let { c -> if (c.isEmpty()) listOf(listOf(Btn(u.t("Cancel"), "menu"))) else listOf(listOf(Btn(u.t("Cancel"), "menu"), c[0][0])) })
     }
 
     /** The user's message to the support chat: a header with who it is, then the message itself. */
