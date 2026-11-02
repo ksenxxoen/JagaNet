@@ -608,7 +608,7 @@ jobs:
           Write-Host 'ok: service running'
 
           # The Tauri window runs from a folder of its own; its host is the installed Go exe.
-          $run = Join-Path $env:RUNNER_TEMP 'tauri-run'
+          $run = Join-Path $PWD 'tauri-run'
           New-Item -ItemType Directory -Force $run | Out-Null
           Copy-Item desktop/tauri/target/release/Boop.exe "$run\Boop.exe"
           $log = Join-Path $run 'shell.log'
@@ -637,7 +637,7 @@ jobs:
 
       - name: portable Tauri copy registers nothing
         run: |
-          $run = Join-Path $env:RUNNER_TEMP 'tauri-run'
+          $run = Join-Path $PWD 'tauri-run'
           if (Test-Path 'HKCU:\Software\Classes\AppUserModelId\Boop.VPN') { Write-Host 'note: toast keys come from the installer (installed copy)' }
           $before = (Get-ChildItem $run | ForEach-Object Name | Sort-Object) -join ','
           Write-Host "files next to the shell: $before"
@@ -666,6 +666,6 @@ jobs:
           name: tauri-logs
           path: |
             C:\ProgramData\Boop\*.log
-            ${{ runner.temp }}\tauri-run\*.log
+            tauri-run\*.log
           retention-days: 7
           if-no-files-found: ignore

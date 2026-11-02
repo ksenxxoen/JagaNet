@@ -129,7 +129,12 @@ fn on_host_event(app: &AppHandle, ev: Value) {
                 smoke_log(&format!("state conn={}", st.get("conn").and_then(Value::as_str).unwrap_or("?")));
                 if std::env::var_os("BOOP_SHELL_EXIT_AFTER_STATE").is_some() {
                     let app = app.clone();
-                    std::thread::spawn(move || quit(&app));
+                    // Later, not now: the state can arrive while the app is still being set up
+                    // (the host not managed yet, the event loop not running), and a quit then does nothing.
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_secs(3));
+                        quit(&app);
+                    });
                 }
             }
             update_tray(app, st.get("conn").and_then(Value::as_str).unwrap_or("off"));
