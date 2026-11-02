@@ -171,12 +171,29 @@ fn update_tray(app: &AppHandle, conn: &str) {
 }
 
 fn quit(app: &AppHandle) {
+    smoke_log("quit: start");
     if let Some(h) = app.try_state::<Host>() {
-        h.client.quit();
+        // The host is asked to stop, but never waited for long: «Выход» must always exit.
+        let (tx, rx) = std::sync::mpsc::channel();
+        let c = h.client.clone();
+        std::thread::spawn(move || {
+            c.quit();
+            let _ = tx.send(());
+        });
+        let answered = rx.recv_timeout(Duration::from_secs(3)).is_ok();
+        smoke_log(&format!("quit: host answered={answered}"));
         if let Some(mut c) = h.child.lock().unwrap().take() {
             let _ = c.kill();
         }
+    } else {
+        smoke_log("quit: no host registered");
     }
+    // If the event loop does not stop by itself, the process does.
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_secs(3));
+        smoke_log("quit: forced exit");
+        std::process::exit(0);
+    });
     app.exit(0);
 }
 
