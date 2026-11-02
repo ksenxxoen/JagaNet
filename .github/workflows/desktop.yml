@@ -154,7 +154,7 @@ jobs:
       # 1.5.1 (the C-3 setup program, Go window), to update over (C-4b).
       - uses: actions/checkout@v4
         with:
-          ref: 9a2a528
+          ref: 9a2a528b9d97273bd73c9954594c0f751d2d03f4
           path: baseline151
 
       - name: Boop.exe and BoopService.exe 1.5.1 (baseline for the upgrade tests)
@@ -332,7 +332,7 @@ jobs:
       # The 1.5.1 setup program (Go window), built from its own commit, to update over.
       - uses: actions/checkout@v4
         with:
-          ref: 9a2a528
+          ref: 9a2a528b9d97273bd73c9954594c0f751d2d03f4
           path: baseline151
 
       - uses: actions/download-artifact@v4
