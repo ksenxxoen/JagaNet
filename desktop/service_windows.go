@@ -3,7 +3,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -19,33 +18,18 @@ import (
 	"github.com/ksenxxoen/JagaNet/desktop/winsvc"
 )
 
-// Exit codes of BoopService.exe --install-service. They stay away from 2, which
-// the Go runtime uses for a panic or a fatal error: a "code 2" says nothing.
+// Exit codes of the window's helper modes (--service-check, --toast-register). They
+// stay away from 2, which the Go runtime uses for a panic or a fatal error.
 const (
-	exitOK       = 0
-	exitFailed   = 10
-	exitNotAdmin = 3
+	exitOK     = 0
+	exitFailed = 10
 )
 
-// Other flags of the window.
-const (
-	flagResult = "--result" // <file>: where the elevated installer writes why it failed
-)
-
-// runServiceMode handles the flags that are not the window: the user-level
-// autostart (run by the setup program) and the toast helpers. The service and its
-// installer are BoopService.exe's (cmd/boop-service); this program does not link
-// them. It reports whether one of the flags was given; the caller then returns.
+// runServiceMode handles the flags that are not the window: the service check and
+// the toast helpers. The service itself is BoopService.exe (cmd/boop-service) and
+// is installed by the setup program only. It reports whether one of the flags
+// was given; the caller then returns.
 func runServiceMode(args []string) bool {
-	switch {
-	case slices.Contains(args, winsvc.FlagAutostartOn), slices.Contains(args, winsvc.FlagAutostartOff):
-		// Run by the setup program as the ordinary user: only the Run key.
-		on := slices.Contains(args, winsvc.FlagAutostartOn)
-		if err := winsvc.SetAutostart(winsvc.User{}, autostartExe(), on); err != nil {
-			os.Exit(exitFailed)
-		}
-		os.Exit(exitOK)
-	}
 	if slices.Contains(args, flagServiceCheck) {
 		os.Exit(serviceCheck())
 	}
@@ -70,8 +54,7 @@ func serviceCheck() int {
 	return exitOK
 }
 
-// serviceExe is BoopService.exe, which sits next to this program (the installed
-// copy, or the folder the window was started from).
+// serviceExe is BoopService.exe next to this program.
 func serviceExe() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -84,34 +67,30 @@ func serviceExe() (string, error) {
 	return p, nil
 }
 
-// installService is the window's side: one UAC prompt runs BoopService.exe --install-service. The
-// error is in the person's words, with the real reason when the installer left one.
-func installService() error {
-	exe, err := serviceExe()
-	if err != nil {
-		return &core.ServiceError{Msg: "Не найден файл службы BoopService.exe рядом с Boop.exe. Переустановите Boop VPN."}
-	}
-	result := filepath.Join(os.Getenv("LOCALAPPDATA"), "Boop", "install-result.txt")
-	_ = os.MkdirAll(filepath.Dir(result), 0o700)
-	_ = os.Remove(result)
-	code, err := winsvc.RunElevated(exe, winsvc.FlagInstall+` `+flagResult+` "`+result+`"`)
-	switch {
-	case errors.Is(err, winsvc.ErrCancelled):
-		return &core.ServiceError{Msg: "Нужно разрешить установку службы Boop VPN в окне Windows. Нажмите «Повторить»."}
-	case err != nil:
-		return &core.ServiceError{Msg: "Не удалось запустить установку службы Boop VPN: " + err.Error() + ". Нажмите «Повторить»."}
-	case code == exitNotAdmin:
-		return &core.ServiceError{Msg: "Для установки службы Boop VPN нужны права администратора. Нажмите «Повторить»."}
-	case code != exitOK:
-		why := fmt.Sprintf("код выхода %d", code)
-		if b, err := os.ReadFile(result); err == nil && len(b) > 0 {
-			why = string(b)
-		}
-		log.Printf("service install failed: %s", why)
-		return &core.ServiceError{Msg: "Не удалось установить службу Boop VPN: " + why + ". Нажмите «Повторить»."}
-	}
-	return nil
+// installedCopy reports whether this program is the window the setup program
+// put in %ProgramFiles%\Boop. Any other copy (from "Downloads", say) is
+// portable: it registers nothing, writes nothing next to itself and, without a
+// service, only says where to get the installer.
+func installedCopy() bool {
+	exe, err := os.Executable()
+	return err == nil && winsvc.InstalledCopy(exe, winsvc.InstallDir())
 }
+
+// noService is the window's answer when the service is missing: it never installs
+// it (only the setup program does), it points to the installer. The text says
+// whether this copy is portable. The download link is the one the window already
+// uses for the manifest's exe (the panel's /download/windows, main address).
+func noService(site string) error {
+	portable := !installedCopy()
+	if portable && userAttempts.Load() {
+		openURL(site + "/download/windows")
+	}
+	return &core.ServiceError{Msg: winsvc.NoServiceMessage(portable)}
+}
+
+// userAttempts is false while the window starts: the installer's page opens
+// only when the person asks for the VPN, never out of nowhere at sign-in.
+var userAttempts atomic.Bool
 
 // relaunchInstalled starts the window again from the installed copy when this
 // one runs from somewhere else (the first start after the install): that copy
@@ -124,7 +103,7 @@ func relaunchInstalled() bool {
 	if err != nil {
 		return false
 	}
-	inst := winsvc.InstalledWindow(winsvc.Real{})
+	inst := winsvc.InstalledWindowExe()
 	if !fileExists(inst) || strings.EqualFold(filepath.Clean(exe), filepath.Clean(inst)) {
 		return false
 	}

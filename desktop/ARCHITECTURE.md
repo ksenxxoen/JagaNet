@@ -47,15 +47,16 @@ failure) that ran the same `Boop.exe` with `--service` (since 1.5.0: `BoopServic
 * **Where the program lives.** `%ProgramFiles%\Boop\Boop.exe` (+ `wintun.dll`), a
   directory only SYSTEM and administrators can write, set at install. The service's
   data is in `%ProgramData%\Boop` (administrators only).
-* **Install and migration.** On start the window asks the service (`hello`). Missing, or
-  older than the window: one UAC prompt runs `Boop.exe --install-service` (`winsvc.Install`:
-  secure the directories, copy the program, register and start the service, delete the
-  old scheduled task). Then the window starts again from the installed copy. Declined or
-  failed: the window says so in its own words and «Повторить» asks again (automatic retries
-  do not raise the prompt again). `--uninstall-service` (UAC) stops and deletes the service
-  (its adapter and WFP rules go with the process) and removes the files and data.
-* **Autostart.** The old scheduled task with the highest rights is replaced by the per-user
-  Run key (`--tray`, no rights): `winsvc.MigrateAutostart` keeps the person's choice.
+* **Install and migration (1.5.1: the setup program only).** `installer/boop.iss` does all of it:
+  rights on the program directory (`Permissions:`), `wintun.dll` as a file, registering or
+  re-pointing and starting `BoopVPN` (`sc.exe`, inside the setup), the user's autostart
+  value, and removing the old scheduled task. Neither the window nor `BoopService.exe` has a flag for any of
+  it. A missing service is a message (the window opens the installer's download page when the person asks
+  for the VPN); a portable copy (not in `%ProgramFiles%\Boop`) registers and writes nothing.
+  The uninstaller (`unins000.exe`) stops and deletes the service and the files.
+* **Autostart.** The per-user Run key (`"Boop.exe" --tray`, no rights). The setup writes the first value;
+  the window's switch writes it directly through the registry API (`winsvc.User`), the only such place, and
+  only for the installed copy (`winsvc.InstalledCopy`). No `schtasks`, `reg.exe` or `powershell`.
 * **Updates.** The window downloads and checks the update as before, then sends `update`.
   The service fetches the manifest from the panel itself (nothing from the window is
   trusted), checks SHA-256 (and the signature when a key is set), swaps the installed
@@ -86,13 +87,13 @@ Up to 1.4.x one `Boop.exe` was both the window and (`--service`) the service. Si
 * **Proof.** `scripts/check-deps.sh` (job `build`): the packages and the built files of `Boop.exe`
   contain neither `github.com/xtls/`, `amnezia-vpn/`, `amneziawg` nor gVisor; `BoopService.exe` has
   the engine and neither WebView2 nor `toast`.
-* **Flags.** `BoopService.exe`: `--service`, `--install-service`, `--uninstall-service`,
-  `--remove-service`, `--result <file>`, `--version`. `Boop.exe`: `--tray`, `--autostart-on/off`,
-  `--toast-*`, `--service-check` (hello over the pipe; used by CI), `boop:<action>`. Gone: `--service`,
-  `--embedded` (the window running the tunnel itself with administrator rights), `--self-update`.
-* **Install.** One UAC prompt runs `BoopService.exe --install-service` (found next to the window).
-  `winsvc.Install` copies `BoopService.exe` and, if it sits next to it, `Boop.exe` into
-  `%ProgramFiles%\Boop`, re-points `BoopVPN` at `BoopService.exe --service` and starts it. Over
+* **Flags.** `BoopService.exe`: `--service`, `--version` (since 1.5.1 it does not install itself).
+  `Boop.exe`: `--tray`, `--toast-*`, `--service-check` (hello over the pipe; used by CI), `boop:<action>`.
+  Gone: `--service`, `--embedded` (the window running the tunnel itself with administrator rights),
+  `--self-update`, and with 1.5.1 `--install-service`, `--uninstall-service`, `--remove-service`,
+  `--result`, `--autostart-on/off`.
+* **Install.** The setup program (see above) copies `Boop.exe`, `BoopService.exe` and `wintun.dll` into
+  `%ProgramFiles%\Boop`, registers `BoopVPN` at `BoopService.exe --service` and starts it. Over
   a 1.4.x install the service is the same `BoopVPN`; the old `Boop.exe` there is replaced by the new window.
 * **Versions.** `winsvc.Need` no longer reinstalls a service just for being older: the window keeps
   working with any service that speaks `helper.MinProtocol..helper.Protocol` (`helper/PROTOCOL.md`).

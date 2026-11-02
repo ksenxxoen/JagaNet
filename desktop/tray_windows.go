@@ -301,33 +301,18 @@ func setAutoCached(on bool) {
 	autoMu.Unlock()
 }
 
+// setAutostart is the one place the window writes the Run key, directly through
+// the registry API (no helper process, no scheduled task, no rights), and only for the
+// installed copy: a portable one has nothing to start with Windows.
 func setAutostart(on bool) error {
-	u := winsvc.User{}
-	if !on {
-		_ = u.ClearRunKey()
-		_ = u.DeleteTask() // an old one, if it is still there
-		setAutoCached(false)
-		return nil
+	if !installedCopy() {
+		return errors.New("автозапуск доступен только в установленной копии Boop VPN")
 	}
-	exe := autostartExe()
-	if exe == "" {
-		return errors.New("no program path")
-	}
-	if err := u.SetRunKey(winsvc.RunCommand(exe)); err != nil {
+	if err := winsvc.SetAutostart(winsvc.User{}, winsvc.InstalledWindowExe(), on); err != nil {
 		return err
 	}
-	setAutoCached(true)
+	setAutoCached(on)
 	return nil
-}
-
-// autostartExe is the program the Run key starts: the installed copy when there
-// is one (it is the one the updater keeps current), otherwise this one.
-func autostartExe() string {
-	if p := winsvc.InstalledExe(winsvc.Real{}); fileExists(p) {
-		return p
-	}
-	exe, _ := os.Executable()
-	return exe
 }
 
 func fileExists(p string) bool {

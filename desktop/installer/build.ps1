@@ -1,7 +1,7 @@
 <#
 Builds dist\Boop-Setup-<version>.exe from dist\Boop.exe (the window) and
 dist\BoopService.exe (the service) with Inno Setup 6.3+.
-  pwsh installer\build.ps1 [-Version 1.5.0] [-Exe dist\Boop.exe] [-Service dist\BoopService.exe] [-OutDir dist]
+  pwsh installer\build.ps1 [-Version 1.5.1] [-Exe dist\Boop.exe] [-Service dist\BoopService.exe] [-OutDir dist]
 
 Both exes come from ./build.sh (they are already signed there when BOOP_SIGN is
 set). If BOOP_SIGN is set here too, the setup program and its uninstaller are
@@ -54,7 +54,16 @@ if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Micros
   throw "WebView2 bootstrapper is not signed by Microsoft ($($sig.Status))"
 }
 
-$defs = @("/DAppVersion=$Version", "/DSourceExe=$Exe", "/DWebView2Setup=$wv", "/DOutDir=$OutDir")
+# Wintun's own signed wintun.dll (build.sh fetches it into build\): the setup program installs it as it is.
+$wintun = Join-Path $desktop 'build\wintun.dll'
+if (-not (Test-Path $wintun)) { throw "no $wintun: run ./build.sh first" }
+if ($env:BOOP_SIGN) {
+  # Everything inside the setup program must be signed before it is packed.
+  foreach ($f in @($Exe, $Service, $wintun) | Where-Object { $_ }) {
+    if ((Get-AuthenticodeSignature $f).Status -eq 'NotSigned') { throw "BOOP_SIGN is set, but $f is not signed" }
+  }
+}
+$defs = @("/DAppVersion=$Version", "/DSourceExe=$Exe", "/DWintunDll=$wintun", "/DWebView2Setup=$wv", "/DOutDir=$OutDir")
 if ($Service) { $defs += "/DSourceService=$Service" }
 if ($env:BOOP_SIGN) {
   $sign = 'pwsh -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $here 'sign-file.ps1') + '" "$f"'

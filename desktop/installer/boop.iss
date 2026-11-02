@@ -1,23 +1,27 @@
 ; Boop VPN for Windows: the setup program (Inno Setup 6.3+).
 ;
-; It puts Boop.exe (the window) and BoopService.exe (the service) in
-; %ProgramFiles%\Boop (the path winsvc.InstallDir uses) and lets BoopService.exe
-; register the service (`BoopService.exe --install-service`), so the service, the
-; directory rights and the old-task cleanup are the same code as when the window
-; installs the service. Over a 1.4.x install (one Boop.exe that was also the
-; service) it replaces Boop.exe and re-points the service at BoopService.exe.
-; See installer/README.md.
+; Since 1.5.1 this script does ALL the system work; neither Boop.exe nor
+; BoopService.exe installs, registers or removes anything (they have no flags for
+; it). It puts Boop.exe (the window), BoopService.exe (the service) and Wintun's
+; own signed wintun.dll in %ProgramFiles%\Boop, sets the rights on the directory
+; (Permissions in the Dirs section), registers or re-points, configures and starts
+; the service BoopVPN (sc.exe, run by the Pascal code inside the setup only),
+; writes the user's autostart value and removes what 1.3.x/1.4.x left behind (the
+; scheduled task). See installer/README.md.
 ;
-; ISCC /DAppVersion=1.5.0 /DSourceExe=..\dist\Boop.exe /DSourceService=..\dist\BoopService.exe [/DWebView2Setup=...] [/DSignCmd=1] boop.iss
+; ISCC /DAppVersion=1.5.1 /DSourceExe=..\dist\Boop.exe /DSourceService=..\dist\BoopService.exe [/DWintunDll=...] [/DWebView2Setup=...] [/DSignCmd=1] boop.iss
 
 #ifndef AppVersion
-  #define AppVersion "1.5.0"
+  #define AppVersion "1.5.1"
 #endif
 #ifndef SourceExe
   #define SourceExe "..\dist\Boop.exe"
 #endif
 #ifndef SourceService
   #define SourceService "..\dist\BoopService.exe"
+#endif
+#ifndef WintunDll
+  #define WintunDll "..\build\wintun.dll"
 #endif
 #ifndef OutDir
   #define OutDir "..\dist"
@@ -68,10 +72,16 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "autostart"; Description: "Запускать Boop при входе в Windows"; GroupDescription: "Дополнительно:"
 Name: "desktopicon"; Description: "Ярлык на рабочем столе"; GroupDescription: "Дополнительно:"; Flags: unchecked
 
+[Dirs]
+; The program directory: SYSTEM and administrators in full, ordinary users read
+; and run only. No owner change; what %ProgramFiles% already gives is kept.
+Name: "{app}"; Permissions: system-full admins-full users-readexec
+
 [Files]
-; wintun.dll is embedded in BoopService.exe and written next to it by --install-service.
 Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "Boop.exe"; Flags: ignoreversion
 Source: "{#SourceService}"; DestDir: "{app}"; DestName: "BoopService.exe"; Flags: ignoreversion
+; Wintun's own file, with its own signature (never unpacked by program code).
+Source: "{#WintunDll}"; DestDir: "{app}"; DestName: "wintun.dll"; Flags: ignoreversion
 #ifdef WebView2Setup
 Source: "{#WebView2Setup}"; DestDir: "{tmp}"; DestName: "MicrosoftEdgeWebview2Setup.exe"; Flags: deleteafterinstall; Check: not WebView2Installed
 #endif
@@ -82,30 +92,36 @@ Name: "{autoprograms}\Boop VPN"; Filename: "{app}\Boop.exe"; AppUserModelID: "Bo
 Name: "{autodesktop}\Boop VPN"; Filename: "{app}\Boop.exe"; Tasks: desktopicon
 
 [Run]
-; The service itself is installed from [Code] (ssPostInstall), before these.
+; The service itself is set up by the Pascal code (ssPostInstall), before these.
 Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Установка Microsoft Edge WebView2..."; Flags: skipifdoesntexist waituntilterminated; Check: not WebView2Installed
-; The user's own Run key: these two run as the user who started the setup, not
-; as the elevated process (whose HKCU may be somebody else's).
-Filename: "{app}\Boop.exe"; Parameters: "--autostart-on"; Flags: runasoriginaluser runhidden waituntilterminated; Tasks: autostart
-Filename: "{app}\Boop.exe"; Parameters: "--autostart-off"; Flags: runasoriginaluser runhidden waituntilterminated; Tasks: not autostart
-; Toasts: the name, icon and boop: handler in the user's HKCU (Boop.exe also does it at every start).
+; Toasts: the name, icon and boop: handler in the user's HKCU (Boop.exe also does it at every start of the installed copy).
 Filename: "{app}\Boop.exe"; Parameters: "--toast-register"; Flags: runasoriginaluser runhidden waituntilterminated
 Filename: "{app}\Boop.exe"; Description: "Запустить Boop VPN"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [Registry]
-; Toast keys: removed by the uninstaller itself (no helper process, so a failure here can't break the uninstall).
+; Autostart of the installed copy: HKCU Run, the same value the window writes when
+; the person flips the switch (winsvc.RunKeyName), started to the tray. HKCU
+; because it is per user and the window needs no rights to change it. (When a
+; different administrator elevates the setup, HKCU is theirs: the window's switch fixes it.)
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "BoopVPN"; ValueData: """{app}\Boop.exe"" --tray"; Flags: uninsdeletevalue; Tasks: autostart
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "BoopVPN"; Flags: deletevalue; Tasks: not autostart
+; Toast keys: removed by the uninstaller itself.
 Root: HKCU; Subkey: "Software\Classes\AppUserModelId\Boop.VPN"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\boop"; Flags: uninsdeletekey
 
 [Code]
 const
   ServiceName = 'BoopVPN';
+  ServiceKey = 'SYSTEM\CurrentControlSet\Services\BoopVPN';
+  RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+  OldTaskName = 'Boop VPN';
   WebView2Key = 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
 
 procedure ExitProcess(ExitCode: Cardinal); external 'ExitProcess@kernel32.dll stdcall';
 
 var
   PurgeData: Boolean;
+  HadAutostart: Boolean;
 
 function HasParam(const Name: String): Boolean;
 var
@@ -132,23 +148,52 @@ begin
          or (RegQueryStringValue(HKCU, WebView2Key, 'pv', V) and IsRealVersion(V));
 end;
 
-{ UTF-8 bytes (what BoopService.exe writes to the result file) to a string. }
-function MultiByteToWideChar(CodePage: Cardinal; Flags: Cardinal; const MultiByte: AnsiString;
-  MultiByteLen: Integer; WideChar: String; WideCharLen: Integer): Integer;
-  external 'MultiByteToWideChar@kernel32.dll stdcall';
-
-function Utf8ToText(const B: AnsiString): String;
-var
-  N: Integer;
+function ServiceExists(): Boolean;
 begin
-  Result := '';
-  if B = '' then
-    Exit;
-  N := MultiByteToWideChar(65001, 0, B, Length(B), Result, 0);
-  if N <= 0 then
-    Exit;
-  SetLength(Result, N);
-  MultiByteToWideChar(65001, 0, B, Length(B), Result, N);
+  Result := RegKeyExists(HKLM, ServiceKey);
+end;
+
+{ Runs a system tool hidden and waits; false when it could not start. }
+function RunSys(const Exe, Params: String; var Code: Integer): Boolean;
+begin
+  Result := Exec(ExpandConstant('{sys}\') + Exe, Params, '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Log(Exe + ' ' + Params + ' -> ' + IntToStr(Code));
+end;
+
+{ The scheduled task that 1.3.x/1.4.x used to start the elevated window. }
+function OldTaskExists(): Boolean;
+var
+  Code: Integer;
+begin
+  Result := RunSys('schtasks.exe', '/Query /TN "' + OldTaskName + '"', Code) and (Code = 0);
+end;
+
+procedure RemoveOldTask();
+var
+  Code: Integer;
+begin
+  if OldTaskExists() then
+    RunSys('schtasks.exe', '/Delete /TN "' + OldTaskName + '" /F', Code);
+end;
+
+{ The person's autostart before this setup: the Run value, or the old task. }
+function InitializeSetup(): Boolean;
+begin
+  Result := True;
+  HadAutostart := RegValueExists(HKCU, RunKey, 'BoopVPN') or OldTaskExists();
+end;
+
+{ Over an existing install the checkbox starts as the person had it (1.4.x: the
+  Run value or the old task); /TASKS on the command line still wins. }
+procedure InitializeWizard();
+begin
+  if (ExpandConstant('{param:TASKS|}') = '') and ServiceExists() then
+  begin
+    if HadAutostart then
+      WizardSelectTasks('autostart')
+    else
+      WizardSelectTasks('!autostart');
+  end;
 end;
 
 { Stop the service so its program can be replaced (net stop waits for it). The
@@ -159,42 +204,75 @@ var
   Code: Integer;
 begin
   Result := '';
-  Exec(ExpandConstant('{sys}\net.exe'), 'stop ' + ServiceName, '', SW_HIDE, ewWaitUntilTerminated, Code);
+  if ServiceExists() then
+    RunSys('net.exe', 'stop ' + ServiceName, Code);
 end;
 
-procedure InstallService();
+function ScOk(const Params: String): Boolean;
 var
   Code: Integer;
-  ResultFile, Raw, Why, Msg: String;
-  RawA: AnsiString;
 begin
-  ResultFile := ExpandConstant('{tmp}\boop-install-result.txt');
-  DeleteFile(ResultFile);
-  if not Exec(ExpandConstant('{app}\BoopService.exe'), '--install-service --result "' + ResultFile + '"',
-              '', SW_HIDE, ewWaitUntilTerminated, Code) then
-    Code := -1;
-  if Code = 0 then
+  Result := RunSys('sc.exe', Params, Code) and (Code = 0);
+end;
+
+{ Registers the service (or re-points an existing one: 1.4.x had Boop.exe --service)
+  as LocalSystem, automatic start, restart after a failure, and starts it. }
+function SetUpService(var Why: String): Boolean;
+var
+  Bin: String;
+begin
+  Result := False;
+  Bin := '"' + ExpandConstant('{app}\BoopService.exe') + '" --service';
+  if ServiceExists() then
   begin
-    Log('service installed');
-    Exit;
+    if not ScOk('config ' + ServiceName + ' binPath= "' + Bin + '" start= auto obj= LocalSystem DisplayName= "Boop VPN"') then
+    begin Why := 'sc config'; Exit; end;
+  end
+  else
+  begin
+    if not ScOk('create ' + ServiceName + ' binPath= "' + Bin + '" start= auto obj= LocalSystem DisplayName= "Boop VPN"') then
+    begin Why := 'sc create'; Exit; end;
   end;
-  Why := 'код выхода ' + IntToStr(Code);
-  if LoadStringFromFile(ResultFile, RawA) and (RawA <> '') then
-    Why := Utf8ToText(RawA);
-  Log('service install failed: ' + Why);
-  Msg := 'Файлы Boop VPN установлены, но службу установить не удалось.' + #13#10#13#10 + Why + #13#10#13#10 +
-         'Журнал: ' + ExpandConstant('{commonappdata}\Boop\install.log') + #13#10 +
-         'Boop при запуске попробует установить службу ещё раз (или запустится в резервном режиме).';
-  SuppressibleMsgBox(Msg, mbError, MB_OK, IDOK);
-  { An unattended install must fail loudly. }
-  if WizardSilent then
-    ExitProcess(10);
+  ScOk('description ' + ServiceName + ' "Holds Boop VPN''s tunnel so the window runs without administrator rights."');
+  if not ScOk('failure ' + ServiceName + ' reset= 3600 actions= restart/1000/restart/5000/restart/30000') then
+  begin Why := 'sc failure'; Exit; end;
+  ScOk('failureflag ' + ServiceName + ' 1');
+  if not ScOk('start ' + ServiceName) then
+  begin Why := 'sc start'; Exit; end;
+  Result := True;
+end;
+
+{ %ProgramData%\Boop (the service's log and remembered config): SYSTEM and
+  administrators only, no inheritance (ProgramData gives ordinary users create rights). }
+procedure SecureDataDir();
+var
+  Dir: String;
+  Code: Integer;
+begin
+  Dir := ExpandConstant('{commonappdata}\Boop');
+  ForceDirectories(Dir);
+  RunSys('icacls.exe', '"' + Dir + '" /inheritance:r /grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F', Code);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Why, Msg: String;
 begin
   if CurStep = ssPostInstall then
-    InstallService();
+  begin
+    SecureDataDir();
+    RemoveOldTask();
+    if not SetUpService(Why) then
+    begin
+      Log('service setup failed: ' + Why);
+      Msg := 'Файлы Boop VPN установлены, но службу настроить не удалось (' + Why + ').' + #13#10 +
+             'Запустите установщик ещё раз от имени администратора. Подробности в журнале установки.';
+      SuppressibleMsgBox(Msg, mbError, MB_OK, IDOK);
+      { An unattended install must fail loudly. }
+      if WizardSilent then
+        ExitProcess(10);
+    end;
+  end;
 end;
 
 function InitializeUninstall(): Boolean;
@@ -214,12 +292,17 @@ begin
   if CurUninstallStep = usUninstall then
   begin
     { The service goes first (its tunnel, the adapter and the firewall rules go
-      with its process), then any open window; the files are Inno's to delete. }
-    if not Exec(ExpandConstant('{app}\BoopService.exe'), '--remove-service', '', SW_HIDE, ewWaitUntilTerminated, Code)
-       or (Code <> 0) then
-      Log('remove-service failed, code ' + IntToStr(Code));
-    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM Boop.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
-    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM BoopService.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
+      with its process), then any open window, the old task and the autostart
+      value; the files are Inno's to delete. }
+    if ServiceExists() then
+    begin
+      RunSys('net.exe', 'stop ' + ServiceName, Code);
+      RunSys('sc.exe', 'delete ' + ServiceName, Code);
+    end;
+    RunSys('taskkill.exe', '/F /T /IM Boop.exe', Code);
+    RunSys('taskkill.exe', '/F /T /IM BoopService.exe', Code);
+    RemoveOldTask();
+    RegDeleteValue(HKCU, RunKey, 'BoopVPN');
   end;
   if (CurUninstallStep = usPostUninstall) and PurgeData then
   begin
@@ -230,7 +313,6 @@ end;
 
 [UninstallDelete]
 ; What the client or the service leaves next to the program.
-Type: files; Name: "{app}\wintun.dll"
 Type: files; Name: "{app}\Boop.exe.old"
 Type: files; Name: "{app}\Boop.exe.new"
 Type: files; Name: "{app}\BoopService.exe.old"
