@@ -25,6 +25,12 @@ type baseObjects struct {
 
 var wfpSession uintptr
 
+// wfpBase and splitIDs are Boop additions for the split tunnel's permits (split_windows.go).
+var (
+	wfpBase  *baseObjects
+	splitIDs []uint64
+)
+
 func createWfpSession() (uintptr, error) {
 	sessionDisplayData, err := createWtFwpmDisplayData0("WireGuard", "WireGuard dynamic session")
 	if err != nil {
@@ -116,6 +122,7 @@ func EnableFirewall(luid uint64, doNotRestrict bool, restrictToDNSServers []net.
 		if err != nil {
 			return wrapErr(err)
 		}
+		wfpBase = baseObjects
 
 		err = permitWireGuardService(session, baseObjects, 15)
 		if err != nil {
@@ -187,4 +194,5 @@ func DisableFirewall() {
 		fwpmEngineClose0(wfpSession)
 		wfpSession = 0
 	}
+	wfpBase, splitIDs = nil, nil
 }

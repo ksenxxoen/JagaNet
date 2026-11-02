@@ -21,6 +21,7 @@ import (
 	xlog "github.com/xtls/xray-core/common/log"
 	xnet "github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/net/cnc"
+	"github.com/xtls/xray-core/common/session"
 	"github.com/xtls/xray-core/core"
 	"github.com/xtls/xray-core/features/routing"
 	"github.com/xtls/xray-core/transport/internet"
@@ -35,6 +36,8 @@ type Options struct {
 	Probe netip.AddrPort       // zero: DefaultProbe
 	Logf  func(string, ...any) // nil: log.Printf
 	Tick  time.Duration        // zero: one second
+	// Direct is what goes around the node (split tunnel); nil: all through it.
+	Direct *Direct
 }
 
 // Engine keeps one Xray instance for the variant in use and moves to the next
@@ -43,13 +46,14 @@ type Options struct {
 type Engine struct {
 	opt Options
 
-	mu    sync.Mutex
-	p     Params
-	addrs []netip.Addr // the node's address for each variant
-	inst  *core.Instance
-	cur   int
-	sw    Switcher
-	gen   int // bumped on every new instance
+	mu     sync.Mutex
+	p      Params
+	direct *Direct
+	addrs  []netip.Addr // the node's address for each variant
+	inst   *core.Instance
+	cur    int
+	sw     Switcher
+	gen    int // bumped on every new instance
 
 	rx, tx atomic.Uint64
 	alive  atomic.Int64 // UnixNano of the last sign of life
@@ -83,11 +87,11 @@ func NewEngine(p Params, addrs []netip.Addr, o Options) (*Engine, error) {
 		o.Tick = time.Second
 	}
 	for i, v := range p.Variants {
-		if _, err := Build(p.UUID, v, addrs[i]); err != nil {
+		if _, err := BuildDirect(p.UUID, v, addrs[i], o.Direct); err != nil {
 			return nil, err
 		}
 	}
-	return &Engine{opt: o, p: p, addrs: slices.Clone(addrs), probes: make(chan probeResult, 4),
+	return &Engine{opt: o, p: p, direct: o.Direct, addrs: slices.Clone(addrs), probes: make(chan probeResult, 4),
 		updates: make(chan struct{}, 1), stop: make(chan struct{}), done: make(chan struct{})}, nil
 }
 
@@ -109,7 +113,7 @@ func (e *Engine) Start() error {
 
 // use starts variant i and drops the instance before it. Called with mu held.
 func (e *Engine) use(i int) error {
-	cfg, err := Build(e.p.UUID, e.p.Variants[i], e.addrs[i])
+	cfg, err := BuildDirect(e.p.UUID, e.p.Variants[i], e.addrs[i], e.direct)
 	if err != nil {
 		return err
 	}
@@ -160,6 +164,27 @@ func (e *Engine) Update(p Params, addrs []netip.Addr) error {
 	return nil
 }
 
+// SetDirect changes what goes around the node. If it differs, the engine
+// starts a new Xray instance for the variant in use; connections open on the
+// old one are closed (the apps reconnect). The TUN side does not notice.
+func (e *Engine) SetDirect(d *Direct) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closed {
+		return errors.New("xray: closed")
+	}
+	if e.direct.Equal(d) {
+		return nil
+	}
+	old := e.direct
+	e.direct = d
+	if err := e.use(e.cur); err != nil {
+		e.direct = old
+		return err
+	}
+	return nil
+}
+
 // Variant is the variant in use.
 func (e *Engine) Variant() Variant {
 	e.mu.Lock()
@@ -199,7 +224,7 @@ func (e *Engine) Close() {
 // a UDP connection carries whole datagrams to and from dst.
 func (e *Engine) Dial(ctx context.Context, network string, dst netip.AddrPort) (net.Conn, error) {
 	e.mu.Lock()
-	inst := e.inst
+	inst, sniff := e.inst, e.direct.Sniffs()
 	e.mu.Unlock()
 	if inst == nil {
 		return nil, errors.New("xray: not running")
@@ -215,6 +240,14 @@ func (e *Engine) Dial(ctx context.Context, network string, dst netip.AddrPort) (
 	ctx = context.WithValue(ctx, core.XrayKey(1), inst)
 	if core.FromContext(ctx) != inst {
 		return nil, errors.New("xray: context")
+	}
+	if sniff {
+		// Look at the first bytes for a name (TLS's SNI, HTTP's Host) so the
+		// router can match the typed-in domains. RouteOnly: the connection still
+		// goes to the address the app asked for; nothing is resolved or rewritten.
+		ctx = session.ContextWithContent(ctx, &session.Content{SniffingRequest: session.SniffingRequest{
+			Enabled: true, RouteOnly: true, OverrideDestinationForProtocol: []string{"http", "tls", "quic"},
+		}})
 	}
 	disp, ok := inst.GetFeature(routing.DispatcherType()).(routing.Dispatcher)
 	if !ok {

@@ -43,6 +43,7 @@ var (
 	procFwpmEngineClose0          = modfwpuclnt.NewProc("FwpmEngineClose0")
 	procFwpmEngineOpen0           = modfwpuclnt.NewProc("FwpmEngineOpen0")
 	procFwpmFilterAdd0            = modfwpuclnt.NewProc("FwpmFilterAdd0")
+	procFwpmFilterDeleteById0     = modfwpuclnt.NewProc("FwpmFilterDeleteById0")
 	procFwpmFreeMemory0           = modfwpuclnt.NewProc("FwpmFreeMemory0")
 	procFwpmGetAppIdFromFileName0 = modfwpuclnt.NewProc("FwpmGetAppIdFromFileName0")
 	procFwpmProviderAdd0          = modfwpuclnt.NewProc("FwpmProviderAdd0")
@@ -70,6 +71,17 @@ func fwpmEngineOpen0(serverName *uint16, authnService wtRpcCAuthN, authIdentity 
 
 func fwpmFilterAdd0(engineHandle uintptr, filter *wtFwpmFilter0, sd uintptr, id *uint64) (err error) {
 	r1, _, e1 := syscall.Syscall6(procFwpmFilterAdd0.Addr(), 4, uintptr(engineHandle), uintptr(unsafe.Pointer(filter)), uintptr(sd), uintptr(unsafe.Pointer(id)), 0, 0)
+	if r1 != 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+// Boop addition: FwpmFilterDeleteById0(engine, UINT64 id). The id travels as two
+// words: on 64-bit the callee reads the first and ignores the extra argument,
+// on 32-bit it reads both.
+func fwpmFilterDeleteById0(engineHandle uintptr, id uint64) (err error) {
+	r1, _, e1 := syscall.Syscall(procFwpmFilterDeleteById0.Addr(), 3, uintptr(engineHandle), uintptr(id), uintptr(id>>32))
 	if r1 != 0 {
 		err = errnoErr(e1)
 	}

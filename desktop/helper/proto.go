@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ksenxxoen/JagaNet/desktop/vpn"
+	"github.com/ksenxxoen/JagaNet/desktop/vpn/split"
 	"github.com/ksenxxoen/JagaNet/desktop/vpn/xray"
 )
 
@@ -82,6 +83,9 @@ type Config struct {
 	Endpoint string   `json:"endpoint,omitempty"`
 	// Vless carries a VLESS+Reality node instead of AmneziaWG (UAPI is then unused).
 	Vless *VlessConfig `json:"vless,omitempty"`
+	// Split is what goes around the tunnel (the settings «Не через VPN»); absent
+	// or empty means everything goes in, as before.
+	Split *split.Settings `json:"split,omitempty"`
 }
 
 // VlessConfig is vpn.Vless on the wire.
@@ -101,6 +105,9 @@ func Wire(c *vpn.Config) *Config {
 	}
 	for _, d := range c.DNS {
 		w.DNS = append(w.DNS, d.String())
+	}
+	if !c.Split.Empty() {
+		w.Split = c.Split.Clone()
 	}
 	if c.Vless != nil {
 		v := &VlessConfig{Params: c.Vless.Params}
@@ -166,6 +173,12 @@ func (w *Config) Tunnel() (*vpn.Config, error) {
 			return nil, fmt.Errorf("vless: no addresses")
 		}
 		c.Vless = v
+	}
+	if !w.Split.Empty() {
+		if err := w.Split.Check(); err != nil {
+			return nil, err
+		}
+		c.Split = w.Split.Clone()
 	}
 	if err := vpn.CheckConfig(c); err != nil {
 		return nil, err

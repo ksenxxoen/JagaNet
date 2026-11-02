@@ -181,3 +181,58 @@ func TestBuildRefuses(t *testing.T) {
 		t.Error("unknown fingerprint accepted")
 	}
 }
+
+func TestBuildDirect(t *testing.T) {
+	p, err := ParseParams([]byte(panelParams))
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := netip.MustParseAddr("203.0.113.70")
+
+	// Nothing to send around: the config is the same as always (one outbound, no router).
+	plain, err := Build(p.UUID, p.Variants[0], addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []*Direct{nil, {}, {Prefixes: nil, Domains: []string{}}} {
+		c, err := BuildDirect(p.UUID, p.Variants[0], addr, d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(c.Outbound) != 1 || len(c.App) != len(plain.App) || c.Outbound[0].Tag != OutboundTag {
+			t.Fatalf("empty Direct changed the config: %d outbounds, %d apps", len(c.Outbound), len(c.App))
+		}
+	}
+
+	d := &Direct{
+		Prefixes: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/16"), netip.MustParsePrefix("fe80::/10")},
+		Domains:  []string{"sber.ru"},
+	}
+	c, err := BuildDirect(p.UUID, p.Variants[0], addr, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The node stays the first outbound (the default); the direct one follows.
+	if len(c.Outbound) != 2 || c.Outbound[0].Tag != OutboundTag || c.Outbound[1].Tag != DirectTag {
+		t.Fatalf("outbounds %+v", c.Outbound)
+	}
+	if len(c.App) != len(plain.App)+1 {
+		t.Fatalf("no router in the config: %d apps", len(c.App))
+	}
+	rc := d.routing()
+	if len(rc.Rule) != 1 || rc.Rule[0].GetTag() != DirectTag || len(rc.Rule[0].Ip) != 2 || len(rc.Rule[0].Domain) != 1 {
+		t.Fatalf("routing %+v", rc)
+	}
+	if rc.DomainStrategy != 0 {
+		t.Fatalf("a rule must not resolve names: strategy %v", rc.DomainStrategy)
+	}
+	if _, err := core.New(c); err != nil {
+		t.Fatalf("Xray refuses the config: %v", err)
+	}
+	if !d.Sniffs() || (&Direct{Prefixes: d.Prefixes}).Sniffs() {
+		t.Fatal("Sniffs")
+	}
+	if !d.Equal(&Direct{Prefixes: d.Prefixes, Domains: []string{"sber.ru"}}) || d.Equal(&Direct{}) || !(*Direct)(nil).Equal(&Direct{}) {
+		t.Fatal("Equal")
+	}
+}

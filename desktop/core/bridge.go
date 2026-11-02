@@ -100,6 +100,8 @@ var commands = map[string]handler{
 	"setStrictKill":  flag((*App).cmdSetStrictKill),
 	"setAutoConnect": flag((*App).cmdSetAutoConnect),
 	"setAutostart":   flag((*App).cmdSetAutostart),
+	// «Не через VPN»: the local network, Russian sites and the person's own exceptions
+	"setSplit": object((*App).cmdSetSplit),
 	// the site and updates
 	"extend": none(func(a *App, _ context.Context) (any, error) {
 		if a.OpenURL != nil {

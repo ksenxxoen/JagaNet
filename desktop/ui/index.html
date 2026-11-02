@@ -137,6 +137,20 @@
         <label class="setting-row switch-row"><span class="setting-text"><span>Подключаться при запуске</span><small>VPN включается сам, как только запускается Boop.</small></span><input type="checkbox" class="switch" id="s-auto"><i></i></label>
         <label class="setting-row switch-row"><span class="setting-text"><span>Не возвращать интернет, пока нет VPN</span><small>Если VPN не подключился или пропал, интернет остаётся закрытым, чтобы ваш настоящий адрес не попал в сеть.</small></span><input type="checkbox" class="switch" id="s-strict"><i></i></label>
       </div>
+      <section class="group split" id="s-split" aria-labelledby="s-split-title">
+        <div class="setting-row split-head"><span class="setting-text"><span id="s-split-title">Не через VPN</span><small>Эти адреса идут напрямую, минуя туннель. DNS-запросы по-прежнему идут через VPN.</small></span></div>
+        <label class="setting-row switch-row"><span class="setting-text"><span>Локальная сеть</span><small>Принтеры, NAS и роутер: 192.168.x.x, 10.x.x.x, 172.16–31.x.x и соседние устройства.</small></span><input type="checkbox" class="switch" id="s-split-lan"><i></i></label>
+        <label class="setting-row switch-row"><span class="setting-text"><span>Российские сайты</span><small id="s-split-ru-sub">Адреса России идут напрямую: банки и госуслуги видят ваш обычный IP.</small></span><input type="checkbox" class="switch" id="s-split-ru"><i></i></label>
+        <form class="split-form" id="f-split" novalidate>
+          <div class="field">
+            <label for="s-split-entries">Свои исключения</label>
+            <textarea class="input input-area" id="s-split-entries" rows="3" maxlength="8000" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="192.168.5.0/24&#10;203.0.113.7&#10;example.ru"></textarea>
+          </div>
+          <p class="split-note">По одному в строке: IP-адрес, подсеть (CIDR) или домен. Для AmneziaWG домены превращаются в адреса в момент подключения; для VLESS работают по имени сайта.</p>
+          <p class="form-error" id="err-split" role="alert" hidden></p>
+          <button class="btn btn-primary" type="submit" id="s-split-save">Сохранить</button>
+        </form>
+      </section>
       <div class="group" id="s-update-group" hidden>
         <button class="setting-row is-link" id="s-update"><span class="setting-text"><span id="s-update-title">Обновить</span><small id="s-update-sub"></small></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
       </div>

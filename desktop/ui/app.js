@@ -19,6 +19,8 @@ const TXT = {
   // Same words as blockedText / strictClosed in core/notify.go (the tray says the same).
   blocked: "Похоже, ваша сеть блокирует VPN. Попробуйте Wi\u2011Fi или другую страну.",
   strictClosed: "Интернет закрыт, пока VPN не подключится.",
+  splitRu: "Адреса России идут напрямую: банки и госуслуги видят ваш обычный IP.",
+  splitRuDate: "Список от %s.",
   plan: "Тариф закончился. Продлите его, чтобы включить VPN.",
   keyRemoved: "Ключ удалён",
   signedOut: "Сессия закончилась, войдите снова",
@@ -237,6 +239,7 @@ function render(next) {
   $("s-plan-badge").hidden = !planExpired();
   $("s-auto").checked = !!S.autoConnect;
   $("s-strict").checked = !!S.strictKill;
+  renderSplit();
   $("s-start-row").hidden = S.autostart == null;
   if (S.platform === "linux") {
     $("s-start-title").textContent = TXT.startLinux;
@@ -819,6 +822,40 @@ $("s-key").onclick = () => { closeSheet("settings", true); openSheet("keys"); };
 $("s-extend").onclick = () => call("extend").catch(() => {});
 $("s-auto").onchange = (e) => call("setAutoConnect", e.target.checked).catch(() => {});
 $("s-strict").onchange = (e) => call("setStrictKill", e.target.checked).catch(() => {});
+
+/* «Не через VPN»: the switches act at once; the list of own exceptions is saved with its button. */
+function renderSplit() {
+  const sp = S.split || {};
+  // Linux: the root helper's tunnel does not split traffic.
+  $("s-split").hidden = S.platform === "linux";
+  $("s-split-lan").checked = !!sp.lan;
+  $("s-split-ru").checked = !!sp.ru;
+  $("s-split-ru-sub").textContent = TXT.splitRu + (sp.ruDate ? " " + TXT.splitRuDate.replace("%s", sp.ruDate) : "");
+  const area = $("s-split-entries");
+  // The person's unsaved edit is not overwritten by a state push.
+  if (document.activeElement !== area && !area.dataset.dirty) area.value = sp.entries || "";
+}
+function sendSplit(entries) {
+  return call("setSplit", { lan: $("s-split-lan").checked, ru: $("s-split-ru").checked, entries });
+}
+for (const id of ["s-split-lan", "s-split-ru"]) {
+  $(id).onchange = () => {
+    sendSplit((S.split && S.split.entries) || "").then(() => formError("err-split", "")).catch((e) => {
+      // Refused (say, everything excluded): put the switch back to what is stored.
+      formError("err-split", String((e && e.message) || e).replace(/^Error: /, ""));
+      renderSplit();
+    });
+  };
+}
+$("s-split-entries").addEventListener("input", () => { $("s-split-entries").dataset.dirty = "1"; formError("err-split", "", $("s-split-entries")); });
+$("f-split").onsubmit = (e) => {
+  e.preventDefault();
+  const area = $("s-split-entries");
+  busy($("f-split"), "err-split", area, async () => {
+    await sendSplit(area.value);
+    delete area.dataset.dirty;
+  });
+};
 $("s-update").onclick = () => call("update").catch(() => {});
 $("update-banner").onclick = () => call("update").catch(() => {});
 $("plan-extend").onclick = () => call("extend").catch(() => {});

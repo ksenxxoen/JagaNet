@@ -1,6 +1,6 @@
 <#
 Builds dist\Boop-Setup-<version>.exe from dist\Boop.exe with Inno Setup 6.3+.
-  pwsh installer\build.ps1 [-Version 1.4.2] [-Exe dist\Boop.exe] [-OutDir dist]
+  pwsh installer\build.ps1 [-Version 1.4.3] [-Exe dist\Boop.exe] [-OutDir dist]
 
 Boop.exe comes from ./build.sh (it is already signed there when BOOP_SIGN is
 set). If BOOP_SIGN is set here too, the setup program and its uninstaller are

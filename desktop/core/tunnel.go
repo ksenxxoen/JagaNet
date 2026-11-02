@@ -497,6 +497,7 @@ func (a *App) commit(ctx context.Context, st TunnelState, key string, ep netip.A
 	if a.Tunnel == nil {
 		return errors.New("no tunnel")
 	}
+	a.withSplit(ctx, cfg)
 	if err := a.Tunnel.Apply(cfg); err != nil {
 		return err
 	}

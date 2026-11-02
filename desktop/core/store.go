@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/ksenxxoen/JagaNet/desktop/vpn/split"
 )
 
 // Store is what the app remembers between starts. Secrets are sealed with
@@ -25,6 +27,9 @@ type Store struct {
 	// Keep the kill switch up even when a connection cannot be made.
 	// Off by default: after a short wait the internet is given back.
 	StrictKill bool `json:"strictKill,omitempty"`
+	// What goes around the tunnel («Не через VPN», split.go). Nil in an install
+	// that never set it: the default (the local network only).
+	Split *split.Settings `json:"split,omitempty"`
 	// Where the window was left (see window.go).
 	Win *WindowPlacement `json:"window,omitempty"`
 	// The local day (YYYY-MM-DD) the plan warning was last shown in the tray,
@@ -68,6 +73,11 @@ func LoadStore(dir string) *Store {
 	b, err := os.ReadFile(s.path)
 	if err != nil || json.Unmarshal(b, s) != nil {
 		return s
+	}
+	if s.Split.Check() != nil {
+		s.Split = nil // damaged or from the future: the default
+	} else if s.Split != nil {
+		s.Split.Resolved = nil // made at connect time, never kept
 	}
 	if raw, err := base64.StdEncoding.DecodeString(s.Sealed); err == nil {
 		if plain, err := Unprotect(raw); err == nil {

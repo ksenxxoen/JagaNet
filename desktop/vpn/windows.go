@@ -84,11 +84,18 @@ func (w *winTunnel) Apply(c *Config) error {
 		if err := w.vl.Update(c.Vless.Params, c.Vless.Addrs); err != nil {
 			return err
 		}
+		if err := w.applySplit(c); err != nil {
+			return err
+		}
 		w.cur = c
 		return nil
 	}
 	// In place: same adapter, same routes, only what changed.
-	if err := w.dev.IpcSet(c.UAPI); err != nil {
+	uapi, err := configUAPI(c)
+	if err != nil {
+		return err
+	}
+	if err := w.dev.IpcSet(uapi); err != nil {
 		return err
 	}
 	if c.Address != w.cur.Address {
@@ -104,6 +111,13 @@ func (w *winTunnel) Apply(c *Config) error {
 		if err := firewall.EnableFirewall(uint64(w.luid), false, ips(c.DNS)); err != nil {
 			log.Printf("vpn: firewall: %v", err)
 		}
+		// The new firewall has no permits yet: put them back whatever changed.
+		if err := w.permitSplit(c); err != nil {
+			return err
+		}
+	}
+	if err := w.applySplit(c); err != nil {
+		return err
 	}
 	if c.MTU != w.cur.MTU && c.MTU > 0 {
 		if ipif, err := w.luid.IPInterface(windows.AF_INET); err == nil {
@@ -134,10 +148,17 @@ func (w *winTunnel) up(c *Config) error {
 	if err := firewall.EnableFirewall(uint64(w.luid), false, ips(c.DNS)); err != nil {
 		log.Printf("vpn: firewall: %v", err)
 	}
+	if err := w.permitSplit(c); err != nil {
+		return err
+	}
+	uapi, err := configUAPI(c)
+	if err != nil {
+		return err
+	}
 
 	bind := conn.NewDefaultBind()
 	w.dev = device.NewDevice(t, bind, &device.Logger{Verbosef: device.DiscardLogf, Errorf: log.Printf})
-	if err := w.dev.IpcSet(c.UAPI); err != nil {
+	if err := w.dev.IpcSet(uapi); err != nil {
 		return fmt.Errorf("settings: %w", err)
 	}
 	if err := w.dev.Up(); err != nil {
@@ -161,8 +182,7 @@ func (w *winTunnel) up(c *Config) error {
 	if err := w.luid.SetIPAddressesForFamily(windows.AF_INET, []net.IPNet{ipnet(c.Address)}); err != nil {
 		return err
 	}
-	route := &winipcfg.RouteData{Destination: net.IPNet{IP: net.IPv4zero.To4(), Mask: net.CIDRMask(0, 32)}, NextHop: net.IPv4zero.To4()}
-	if err := w.luid.SetRoutesForFamily(windows.AF_INET, []*winipcfg.RouteData{route}); err != nil {
+	if err := w.setRoutes(c); err != nil {
 		return err
 	}
 	ipif, err := w.luid.IPInterface(windows.AF_INET)
@@ -203,6 +223,9 @@ func (w *winTunnel) upVless(c *Config) error {
 	if err := firewall.EnableFirewall(uint64(w.luid), false, ips(c.DNS)); err != nil {
 		log.Printf("vpn: firewall: %v", err)
 	}
+	if err := w.permitSplit(c); err != nil {
+		return err
+	}
 	// Find the physical network before the default route moves to the adapter;
 	// SocketControl binds Xray's sockets to it from then on.
 	for _, fam := range []winipcfg.AddressFamily{windows.AF_INET, windows.AF_INET6} {
@@ -217,7 +240,7 @@ func (w *winTunnel) upVless(c *Config) error {
 		w.cbs = append(w.cbs, cbs...)
 	}
 
-	eng, err := xray.NewEngine(c.Vless.Params, c.Vless.Addrs, xray.Options{Logf: log.Printf})
+	eng, err := xray.NewEngine(c.Vless.Params, c.Vless.Addrs, xray.Options{Logf: log.Printf, Direct: Direct(c)})
 	if err != nil {
 		return err
 	}
@@ -234,8 +257,7 @@ func (w *winTunnel) upVless(c *Config) error {
 	if err := w.luid.SetIPAddressesForFamily(windows.AF_INET, []net.IPNet{ipnet(c.Address)}); err != nil {
 		return err
 	}
-	route := &winipcfg.RouteData{Destination: net.IPNet{IP: net.IPv4zero.To4(), Mask: net.CIDRMask(0, 32)}, NextHop: net.IPv4zero.To4()}
-	if err := w.luid.SetRoutesForFamily(windows.AF_INET, []*winipcfg.RouteData{route}); err != nil {
+	if err := w.setRoutes(c); err != nil {
 		return err
 	}
 	ipif, err := w.luid.IPInterface(windows.AF_INET)
@@ -253,6 +275,68 @@ func (w *winTunnel) upVless(c *Config) error {
 		return fmt.Errorf("dns: %w", err)
 	}
 	return nil
+}
+
+// configUAPI is the AmneziaWG config to give the device: the panel's, with the
+// excluded ranges taken out of the peer's AllowedIPs. Nothing else is touched.
+func configUAPI(c *Config) (string, error) {
+	if c.Split.Empty() {
+		return c.UAPI, nil
+	}
+	return SplitUAPI(c.UAPI, c.Excluded())
+}
+
+// setRoutes gives the adapter its IPv4 routes: the default one, or for
+// AmneziaWG the default minus the excluded ranges.
+func (w *winTunnel) setRoutes(c *Config) error {
+	routes, err := TunnelRoutes(c)
+	if err != nil {
+		return err
+	}
+	data := make([]*winipcfg.RouteData, 0, len(routes))
+	for _, p := range routes {
+		a := p.Addr().As4()
+		data = append(data, &winipcfg.RouteData{
+			Destination: net.IPNet{IP: a[:], Mask: net.CIDRMask(p.Bits(), 32)},
+			NextHop:     net.IPv4zero.To4(),
+		})
+	}
+	if !c.Split.Empty() {
+		log.Printf("vpn: split tunnel: lan=%v ru=%v custom=%d domains=%d resolved=%d, %d routes", c.Split.LAN, c.Split.RU,
+			len(c.Split.Custom), len(c.Split.Domains), len(c.Split.Resolved), len(data))
+	}
+	return w.luid.SetRoutesForFamily(windows.AF_INET, data)
+}
+
+// permitSplit tells the kill switch which destinations may leave outside the
+// tunnel. Without exclusions there are none, as before.
+func (w *winTunnel) permitSplit(c *Config) error {
+	ps := PermitPrefixes(c)
+	if len(ps) == 0 && c.Split.Empty() {
+		return nil
+	}
+	if err := firewall.PermitRemote(ps); err != nil {
+		// The firewall stays up and blocks more, not less: the exceptions do not work until the next connect.
+		log.Printf("vpn: split tunnel permits: %v", err)
+	}
+	return nil
+}
+
+// applySplit moves a running tunnel to a changed split-tunnel setting in place:
+// routes (AmneziaWG) or Xray's routing (VLESS), and the kill switch's permits
+// in one transaction, so the kill switch is never lifted meanwhile.
+func (w *winTunnel) applySplit(c *Config) error {
+	if c.Split.Equal(w.cur.Split) {
+		return nil
+	}
+	if c.Vless != nil {
+		if err := w.vl.SetDirect(Direct(c)); err != nil {
+			return err
+		}
+	} else if err := w.setRoutes(c); err != nil {
+		return err
+	}
+	return w.permitSplit(c)
 }
 
 // noBind is for monitorDefaultRoutes when there is no WireGuard socket to bind:

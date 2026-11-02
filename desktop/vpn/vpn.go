@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/ksenxxoen/JagaNet/desktop/vpn/split"
 	"github.com/ksenxxoen/JagaNet/desktop/vpn/xray"
 )
 
@@ -24,6 +25,9 @@ type Config struct {
 	MTU      int
 	Endpoint netip.AddrPort
 	Vless    *Vless
+	// Split is what goes around the tunnel (settings «Не через VPN»). Nil or
+	// empty: everything goes in, exactly as before the feature.
+	Split *split.Settings
 }
 
 // Vless is a VLESS+Reality node: the panel's parameters and, for each of its
