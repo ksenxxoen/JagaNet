@@ -85,11 +85,11 @@ fun tgCallback(chat: Long, data: String) = buildJsonObject {
     }
 }
 
-/** Every inline button of the last message: text to callback data or URL. */
+/** Every inline button of the last message: text to callback data, URL or mini app URL. */
 fun JsonObject.buttons(): List<Pair<String, String>> =
     (this["reply_markup"]?.jsonObject?.get("inline_keyboard")?.jsonArray ?: emptyList()).flatMap { it.jsonArray }.map { b ->
         val o = b.jsonObject
-        o["text"]!!.jsonPrimitive.content to (o["callback_data"] ?: o["url"])!!.jsonPrimitive.content
+        o["text"]!!.jsonPrimitive.content to (o["callback_data"] ?: o["url"] ?: o["web_app"]?.jsonObject?.get("url"))!!.jsonPrimitive.content
     }
 
 class TelegramBotTest {

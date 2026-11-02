@@ -30,7 +30,11 @@ private const val MATCH_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 private val UUID_RE = Regex("^[0-9a-fA-F-]{36}$")
 
-data class Principal(val user: User, val deviceId: String, val tokenHash: String)
+/** [service]: the session's device is a service device (`devices.service`, V25), e.g. the Telegram mini app's, not a device of the user. */
+data class Principal(val user: User, val deviceId: String, val tokenHash: String, val service: String? = null)
+
+/** `devices.service` of the Telegram mini app's device (V25). */
+const val SERVICE_TG_MINIAPP = "tg_miniapp"
 
 fun Row.toUser() = User(str("id"), str("email"), if (str("role") == "owner") Role.OWNER else Role.USER, instant("created_at").toString())
 
@@ -137,22 +141,45 @@ class AuthService(private val ctx: Ctx) {
         return SessionRes(token, user.toUser(), deviceId)
     }
 
+    /**
+     * A session on the user's service device [service] (V25), ending after [ttl]. The device is made
+     * once and reused, so signing in again and again (the Telegram mini app does it on every open)
+     * adds no devices. It has no tunnel, so it never counts toward the device limit, and device lists
+     * leave it out. The device's sessions that have already ended are cleaned up here.
+     */
+    fun createServiceSession(sql: Sql, user: Row, service: String, name: String, ttl: Duration): SessionRes {
+        val userId = user.str("id")
+        val now = ctx.now()
+        val deviceId = sql.one("SELECT id FROM devices WHERE user_id=?::uuid AND service=? AND removed_at IS NULL", userId, service)?.str("id")
+            ?: sql.one(
+                """INSERT INTO devices (user_id, name, platform, last_seen_at, service) VALUES (?::uuid,?,'other',?,?)
+                   ON CONFLICT (user_id, service) WHERE service IS NOT NULL AND removed_at IS NULL DO UPDATE SET last_seen_at=EXCLUDED.last_seen_at
+                   RETURNING id""",
+                userId, name, now, service,
+            )!!.str("id")
+        sql.exec("DELETE FROM sessions WHERE device_id=?::uuid AND expires_at <= ?", deviceId, now)
+        val token = Crypto.newToken()
+        sql.exec("INSERT INTO sessions (token_hash, user_id, device_id, expires_at) VALUES (?,?::uuid,?::uuid,?)", hash(token), userId, deviceId, now.plus(ttl))
+        return SessionRes(token, user.toUser(), deviceId)
+    }
+
     suspend fun authenticate(header: String?): Principal {
         val token = header?.takeIf { it.startsWith("Bearer ") }?.removePrefix("Bearer ") ?: throw unauthorized()
         val th = hash(token)
         return ctx.db.run { sql ->
             val row = sql.one(
-                """SELECT u.*, s.device_id FROM sessions s
+                """SELECT u.*, s.device_id, d.service AS device_service FROM sessions s
                      JOIN users u ON u.id = s.user_id
                      JOIN devices d ON d.id = s.device_id
-                    WHERE s.token_hash=? AND s.revoked_at IS NULL AND d.removed_at IS NULL""",
-                th,
+                    WHERE s.token_hash=? AND s.revoked_at IS NULL AND d.removed_at IS NULL
+                      AND (s.expires_at IS NULL OR s.expires_at > ?)""",
+                th, ctx.now(),
             ) ?: throw unauthorized()
             // Blocked by the admin (issue #39): the session stays, every request is refused until unblocked.
             if (row["blocked_at"] != null) throw AppError(403, ErrorCode.FORBIDDEN, "This account is blocked")
             sql.exec("UPDATE sessions SET last_used_at=? WHERE token_hash=?", ctx.now(), th)
             sql.exec("UPDATE devices SET last_seen_at=? WHERE id=?::uuid", ctx.now(), row.str("device_id"))
-            Principal(row.toUser(), row.str("device_id"), th)
+            Principal(row.toUser(), row.str("device_id"), th, row.strOrNull("device_service"))
         }
     }
 
