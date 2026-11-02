@@ -8,7 +8,7 @@
 # Signing is optional and off by default: set BOOP_SIGN (see SIGNING.md).
 set -euo pipefail
 cd "$(dirname "$0")"
-VERSION="${1:-1.5.1}"
+VERSION="${1:-1.5.3}"
 API="${2:-}"
 APIX=""
 if [ -n "$API" ]; then
@@ -41,12 +41,16 @@ go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/service/winres.json -
 
 # go build keeps an existing exe with the same build ID even if it was signed
 # since, so start clean; the .sha256 files are only written by a signed build.
-rm -f dist/Boop.exe dist/Boop.exe.sha256 dist/BoopService.exe dist/BoopService.exe.sha256
+rm -f dist/Boop.exe dist/Boop.exe.sha256 dist/BoopHost.exe dist/BoopHost.exe.sha256 dist/BoopService.exe dist/BoopService.exe.sha256
 # Boop.exe: window and tray only. It links neither Xray-core nor AmneziaWG
 # (scripts/check-deps.sh proves it); the tunnel is BoopService.exe's.
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
   -ldflags "-s -w -H windowsgui -X main.version=$VERSION $APIX" \
   -o dist/Boop.exe .
+# BoopHost.exe (since 1.5.3): the same Go program, which the installed Tauri
+# Boop.exe starts with --host (core.App, system toasts, autostart value; no
+# window of its own). The setup program installs it next to the Tauri shell.
+cp dist/Boop.exe dist/BoopHost.exe
 # BoopService.exe: console subsystem, no window.
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
   -ldflags "-s -w -X main.version=$VERSION" \
@@ -129,5 +133,8 @@ sign_exe() {
 if [ -n "${BOOP_SIGN:-}" ]; then
   sign_exe Boop.exe
   sign_exe BoopService.exe
+  # The host is the signed Boop.exe under its other name (same bytes, same signature).
+  cp dist/Boop.exe dist/BoopHost.exe
+  (cd dist && sha256sum BoopHost.exe | tee BoopHost.exe.sha256)
 fi
-ls -l dist/Boop.exe dist/BoopService.exe
+ls -l dist/Boop.exe dist/BoopHost.exe dist/BoopService.exe

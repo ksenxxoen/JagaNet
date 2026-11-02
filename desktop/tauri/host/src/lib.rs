@@ -156,5 +156,35 @@ pub fn icon_kind(conn: &str) -> &'static str {
     }
 }
 
+/// Where the window was last (physical pixels, top-left corner); `window.json` in `%LOCALAPPDATA%\Boop`.
+/// Only the installed copy remembers it; a portable copy writes nothing to the disk.
+pub fn format_pos(x: i32, y: i32) -> String {
+    json!({"x": x, "y": y}).to_string()
+}
+
+pub fn parse_pos(text: &str) -> Option<(i32, i32)> {
+    let v: Value = serde_json::from_str(text).ok()?;
+    let x = i32::try_from(v.get("x")?.as_i64()?).ok()?;
+    let y = i32::try_from(v.get("y")?.as_i64()?).ok()?;
+    Some((x, y))
+}
+
+/// A remembered position is used only when the window's top-left part still lies on a screen
+/// (a monitor was unplugged, the resolution changed): `monitors` are (x, y, width, height).
+pub fn pos_visible(pos: (i32, i32), monitors: &[(i32, i32, u32, u32)]) -> bool {
+    const MARGIN: i64 = 80;
+    monitors.iter().any(|&(mx, my, mw, mh)| {
+        let (x, y) = (pos.0 as i64, pos.1 as i64);
+        let (mx, my, mw, mh) = (mx as i64, my as i64, mw as i64, mh as i64);
+        x >= mx - MARGIN / 2 && y >= my && x + MARGIN <= mx + mw && y + MARGIN <= my + mh
+    })
+}
+
+/// Whether `exe` is the Boop.exe the setup program put in `<program_files>\Boop` (any case, either slash).
+pub fn is_installed_copy(exe: &str, program_files: &str) -> bool {
+    let norm = |p: &str| p.replace('\\', "/").trim_end_matches('/').to_lowercase();
+    !program_files.is_empty() && norm(exe) == format!("{}/boop/boop.exe", norm(program_files))
+}
+
 #[cfg(all(test, unix))]
 mod tests;

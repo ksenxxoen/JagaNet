@@ -65,7 +65,10 @@ func TestInstalledCopy(t *testing.T) {
 	if !InstalledCopy(`c:\program files\boop\BOOP.exe`, dir) {
 		t.Fatal("the installed window (any case) is the installed copy")
 	}
-	for _, p := range []string{`C:\Users\u\Downloads\Boop.exe`, `C:\Program Files\Boop\BoopService.exe`, `C:\Program Files\Boop2\Boop.exe`} {
+	if !InstalledCopy(`C:\Program Files\Boop\BoopHost.exe`, dir) {
+		t.Fatal("the installed host is the installed copy")
+	}
+	for _, p := range []string{`C:\Users\u\Downloads\Boop.exe`, `C:\Users\u\Downloads\BoopHost.exe`, `C:\Program Files\Boop\BoopService.exe`, `C:\Program Files\Boop2\Boop.exe`} {
 		if InstalledCopy(p, dir) {
 			t.Fatalf("%s is not the installed window", p)
 		}

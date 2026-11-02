@@ -102,7 +102,7 @@ jobs:
       - name: SHA-256
         run: |
           summary=""
-          for f in Boop.exe BoopService.exe; do
+          for f in Boop.exe BoopHost.exe BoopService.exe; do
             sum="$(sha256sum "dist/$f" | cut -d' ' -f1)"
             echo "$f SHA-256: $sum"
             summary+="* $f: SHA-256 \`$sum\`, $(stat -c %s "dist/$f") bytes"$'\n'
@@ -119,6 +119,7 @@ jobs:
           name: Boop.exe-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             desktop/dist/Boop.exe
+            desktop/dist/BoopHost.exe
             desktop/dist/BoopService.exe
           retention-days: 7
           if-no-files-found: error
@@ -147,6 +148,26 @@ jobs:
         with:
           name: Boop-1.4.4-${{ github.event.pull_request.head.sha || github.sha }}
           path: baseline/desktop/dist/Boop.exe
+          retention-days: 7
+          if-no-files-found: error
+
+      # 1.5.1 (the C-3 setup program, Go window), to update over (C-4b).
+      - uses: actions/checkout@v4
+        with:
+          ref: 9a2a528b9d97273bd73c9954594c0f751d2d03f4
+          path: baseline151
+
+      - name: Boop.exe and BoopService.exe 1.5.1 (baseline for the upgrade tests)
+        working-directory: baseline151/desktop
+        run: ./build.sh 1.5.1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Boop-1.5.1-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            baseline151/desktop/dist/Boop.exe
+            baseline151/desktop/dist/BoopService.exe
+            baseline151/desktop/build/wintun.dll
           retention-days: 7
           if-no-files-found: error
 
@@ -267,7 +288,7 @@ jobs:
   # service and files gone. Unsigned here (no secrets in CI).
   windows-installer:
     name: Boop-Setup.exe on Windows (build + e2e)
-    needs: build
+    needs: [build, windows-tauri]
     runs-on: windows-latest
     timeout-minutes: 20
     defaults:
@@ -287,6 +308,12 @@ jobs:
           name: wintun-${{ github.event.pull_request.head.sha || github.sha }}
           path: desktop/build
 
+      # The Tauri window (Boop.exe) built and checked by windows-tauri.
+      - uses: actions/download-artifact@v4
+        with:
+          name: Boop-tauri-${{ github.event.pull_request.head.sha || github.sha }}
+          path: desktop/tauri/target/release
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: desktop/go.mod
@@ -299,8 +326,27 @@ jobs:
             choco install innosetup --no-progress -y
           }
 
-      - name: build the setup program
+      - name: build the setup program (Tauri window + Go host + service)
         run: ./desktop/installer/build.ps1
+
+      # The 1.5.1 setup program (Go window), built from its own commit, to update over.
+      - uses: actions/checkout@v4
+        with:
+          ref: 9a2a528b9d97273bd73c9954594c0f751d2d03f4
+          path: baseline151
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: Boop-1.5.1-${{ github.event.pull_request.head.sha || github.sha }}
+          path: baseline151/desktop/_dl
+
+      - name: build the 1.5.1 setup program
+        run: |
+          New-Item -ItemType Directory -Force baseline151/desktop/dist, baseline151/desktop/build | Out-Null
+          Copy-Item (Get-ChildItem baseline151/desktop/_dl -Recurse -Filter Boop.exe).FullName baseline151/desktop/dist/
+          Copy-Item (Get-ChildItem baseline151/desktop/_dl -Recurse -Filter BoopService.exe).FullName baseline151/desktop/dist/
+          Copy-Item (Get-ChildItem baseline151/desktop/_dl -Recurse -Filter wintun.dll).FullName baseline151/desktop/build/
+          ./baseline151/desktop/installer/build.ps1
 
       # The 1.4.4 setup program (one Boop.exe, which is also the service), built
       # from the commit before the split, to update over.
@@ -366,14 +412,39 @@ jobs:
           Check ((Binary) -match 'BoopService\.exe"? --service') 'the service now runs BoopService.exe'
           Check (Test-Path "$dir\Boop.exe") 'Boop.exe (window) in Program Files'
           Check (Test-Path "$dir\wintun.dll") 'wintun.dll in Program Files'
-          $r = ServiceCheck "$dir\Boop.exe"
-          Check ($r.Code -eq 0 -and $r.Text -match 'protocol 1\.\.2') 'window <-> updated service: protocol 1..2'
+          Check (Test-Path "$dir\BoopHost.exe") 'BoopHost.exe in Program Files'
+          $r = ServiceCheck "$dir\BoopHost.exe"
+          Check ($r.Code -eq 0 -and $r.Text -match 'protocol 1\.\.2') 'host <-> updated service: protocol 1..2'
 
           $unins = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /PURGEDATA' -Wait -PassThru
           Check ($unins.ExitCode -eq 0) 'uninstall exits 0'
           $deadline = (Get-Date).AddSeconds(60)
           while ((Get-Service BoopVPN -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
           Check ($null -eq (Get-Service BoopVPN -ErrorAction SilentlyContinue)) 'service removed'
+
+          # Update over 1.5.1 (Go window): settings stay, the service keeps working, the window is Tauri now.
+          $old151 = (Get-ChildItem baseline151/desktop/dist/Boop-Setup-1.5.1.exe).FullName
+          Check ((Setup $old151 $silent) -eq 0) '1.5.1 installs'
+          Check ((Get-Service BoopVPN).Status -eq 'Running') '1.5.1 service Running'
+          Check (-not (Test-Path "$dir\BoopHost.exe")) '1.5.1 has no BoopHost.exe'
+          $sizeGo = (Get-Item "$dir\Boop.exe").Length
+          $mine = Join-Path $env:LOCALAPPDATA 'Boop'
+          New-Item -ItemType Directory -Force $mine | Out-Null
+          Set-Content "$mine\keep-settings.txt" 'x'
+          Set-Content "$env:ProgramData\Boop\keep-data.txt" 'x'
+          Check ((Setup $new $silent) -eq 0) 'the new setup installs over 1.5.1'
+          Check ((Get-Service BoopVPN).Status -eq 'Running') 'service Running after the update over 1.5.1'
+          Check ((Binary) -match 'BoopService\.exe"? --service') 'the service still runs BoopService.exe'
+          Check (Test-Path "$dir\BoopHost.exe") 'BoopHost.exe installed over 1.5.1'
+          $sizeTauri = (Get-Item "$dir\Boop.exe").Length
+          Write-Host "Boop.exe: Go window $sizeGo bytes -> Tauri $sizeTauri bytes"
+          Check ($sizeTauri -lt 12MB -and $sizeTauri -ne $sizeGo) 'Boop.exe is now the Tauri window'
+          Check (Test-Path "$mine\keep-settings.txt") 'the user settings stay'
+          Check (Test-Path "$env:ProgramData\Boop\keep-data.txt") 'the service data stays'
+          $r = ServiceCheck "$dir\BoopHost.exe"
+          Check ($r.Code -eq 0) 'host <-> service after the update over 1.5.1'
+          $unins = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /PURGEDATA' -Wait -PassThru
+          Check ($unins.ExitCode -eq 0) 'uninstall exits 0 (after 1.5.1)'
           exit 0 # schtasks /Query above fails on purpose
 
       - name: install, upgrade, uninstall (silent)
@@ -400,6 +471,7 @@ jobs:
           Check ((Setup "$silent /TASKS=autostart") -eq 0) 'install exits 0'
           Check ((Get-Service BoopVPN).Status -eq 'Running') 'service BoopVPN is Running'
           Check (Test-Path "$dir\Boop.exe") 'Boop.exe in Program Files'
+          Check (Test-Path "$dir\BoopHost.exe") 'BoopHost.exe in Program Files'
           Check (Test-Path "$dir\BoopService.exe") 'BoopService.exe in Program Files'
           Check (Test-Path "$dir\wintun.dll") 'wintun.dll in Program Files'
           Check (Test-Path "$dir\unins000.exe") 'uninstaller present'
@@ -424,6 +496,7 @@ jobs:
           while ((Test-Path "$dir\Boop.exe") -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
           Check ($null -eq (Get-Service BoopVPN -ErrorAction SilentlyContinue)) 'service removed'
           Check (-not (Test-Path "$dir\Boop.exe")) 'Boop.exe removed'
+          Check (-not (Test-Path "$dir\BoopHost.exe")) 'BoopHost.exe removed'
           Check (-not (Test-Path "$dir\BoopService.exe")) 'BoopService.exe removed'
           Check (-not (Test-Path "$dir\wintun.dll")) 'wintun.dll removed'
           Check (Test-Path "$data\keep.txt") 'data kept without /PURGEDATA'
@@ -594,28 +667,27 @@ jobs:
             choco install innosetup --no-progress -y
           }
 
-      - name: build the setup program (still the Go window)
+      - name: build the setup program (Tauri window + Go host + service)
         run: ./desktop/installer/build.ps1
 
-      - name: smoke - the Tauri window with the installed service
+      - name: smoke - the installed Tauri window, its host and the service
         run: |
           $setup = (Get-ChildItem desktop/dist/Boop-Setup-*.exe | Select-Object -First 1).FullName
           $dir = Join-Path $env:ProgramFiles 'Boop'
-          $p = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG' -Wait -PassThru
+          $p = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG /TASKS=autostart' -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "setup exited $($p.ExitCode)" }
           $svc = Get-Service BoopVPN
           if ($svc.Status -ne 'Running') { throw "service is $($svc.Status)" }
-          Write-Host 'ok: service running'
+          foreach ($f in 'Boop.exe', 'BoopHost.exe', 'BoopService.exe', 'wintun.dll') {
+            if (-not (Test-Path "$dir\$f")) { throw "$f is not in $dir" }
+          }
+          Write-Host 'ok: service running, Boop.exe + BoopHost.exe + BoopService.exe installed'
 
-          # The Tauri window runs from a folder of its own; its host is the installed Go exe.
-          $run = Join-Path $PWD 'tauri-run'
-          New-Item -ItemType Directory -Force $run | Out-Null
-          Copy-Item desktop/tauri/target/release/Boop.exe "$run\Boop.exe"
-          $log = Join-Path $run 'shell.log'
-          $env:BOOP_HOST_EXE = Join-Path $dir 'Boop.exe'
+          # The installed window finds its host next to itself (no BOOP_HOST_EXE).
+          $log = Join-Path $PWD 'shell.log'
           $env:BOOP_SHELL_LOG = $log
           $env:BOOP_SHELL_EXIT_AFTER_STATE = '1'
-          $shell = Start-Process -FilePath "$run\Boop.exe" -PassThru
+          $shell = Start-Process -FilePath "$dir\Boop.exe" -PassThru
           if (-not $shell.WaitForExit(180000)) {
             $shell.Kill()
             $why = 'the shell did not get a state and close within 180 s'
@@ -629,21 +701,100 @@ jobs:
           $text = Get-Content $log -Raw
           if ($text -notmatch 'hello ok') { throw 'the shell did not reach the host over the pipe' }
           if ($text -notmatch 'state conn=') { throw 'the shell got no state from the host' }
-          $hostText = Get-Content $hostLog -Raw
-          if ($hostText -match 'service: ') { throw 'the host could not reach the service' }
+          if ((Get-Content $hostLog -Raw) -match 'service: ') { throw 'the host could not reach the service' }
           Start-Sleep -Seconds 3
-          if (Get-Process -Name Boop -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq "$dir\Boop.exe" }) { throw 'the host is still running after the shell closed' }
+          if (Get-Process -Name BoopHost -ErrorAction SilentlyContinue) { throw 'the host is still running after the shell closed' }
           Write-Host 'ok: window started, host reached over the pipe, first state received, closed cleanly'
+          Remove-Item Env:BOOP_SHELL_EXIT_AFTER_STATE
+
+      - name: chain - hidden --tray start, boop:open into the running window
+        run: |
+          $dir = Join-Path $env:ProgramFiles 'Boop'
+          $log = Join-Path $PWD 'tray.log'
+          $env:BOOP_SHELL_LOG = $log
+          $shell = Start-Process -FilePath "$dir\Boop.exe" -ArgumentList '--tray' -PassThru
+          $deadline = (Get-Date).AddSeconds(120)
+          while (-not ((Test-Path $log) -and ((Get-Content $log -Raw) -match 'hello ok')) -and (Get-Date) -lt $deadline) { Start-Sleep 1 }
+          if (-not ((Test-Path $log) -and ((Get-Content $log -Raw) -match 'hello ok'))) { throw 'the --tray shell did not reach the host' }
+          $deadline = (Get-Date).AddSeconds(30)
+          while (-not ((Get-Content $log -Raw) -match 'window visible=') -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          Start-Sleep -Seconds 2
+          $shell.Refresh()
+          if ($shell.HasExited) { throw '--tray: the shell exited' }
+          $txt = Get-Content $log -Raw
+          if ($txt -notmatch 'window visible=false') { throw '--tray: the shell did not report a hidden window (window visible=false)' }
+          if ($txt -match 'window visible=true|window shown') { throw '--tray: a window is visible, it must start hidden (tray only)' }
+          Write-Host 'ok: --tray starts hidden'
+
+          # A toast button starts `Boop.exe boop:<action>`: it must reach the running shell
+          # through single-instance (the second process exits) and show the window.
+          $second = Start-Process -FilePath "$dir\Boop.exe" -ArgumentList 'boop:open' -PassThru
+          if (-not $second.WaitForExit(60000)) { $second.Kill(); throw 'the boop:open launch did not hand over and exit' }
+          $deadline = (Get-Date).AddSeconds(30)
+          do { Start-Sleep -Milliseconds 500 } while (-not ((Get-Content $log -Raw) -match 'window shown visible=true') -and (Get-Date) -lt $deadline)
+          if ((Get-Content $log -Raw) -notmatch 'window shown visible=true') { throw 'boop:open did not show the window of the running shell' }
+          Write-Host 'ok: boop:open went through single-instance and showed the window'
+          $act = Start-Process -FilePath "$dir\Boop.exe" -ArgumentList 'boop:reconnect' -PassThru
+          if (-not $act.WaitForExit(60000)) { $act.Kill(); throw 'the boop:reconnect launch did not exit' }
+          Start-Sleep -Seconds 2
+          if ($shell.HasExited) { throw 'the shell died on boop:reconnect' }
+          if (-not (Get-Process -Name BoopHost -ErrorAction SilentlyContinue)) { throw 'the host is gone after boop:reconnect' }
+          Write-Host 'ok: boop:reconnect delivered, shell and host alive'
+          Write-Host '--- tray.log'; Get-Content $log
+          Stop-Process -Name Boop, BoopHost -Force -ErrorAction SilentlyContinue
+          Remove-Item Env:BOOP_SHELL_LOG
+
+      - name: chain - the autostart switch writes the Run value the installer and 1.4.x/1.5.x understand
+        run: |
+          $dir = Join-Path $env:ProgramFiles 'Boop'
+          $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          $helper = Join-Path $PWD 'desktop/scripts/host-pipe.ps1'
+          Stop-Process -Name Boop, BoopHost -Force -ErrorAction SilentlyContinue
+          # The installed host alone, on a pipe of its own (the shell would take the connection).
+          $h = Start-Process -FilePath "$dir\BoopHost.exe" -ArgumentList '--host', '--pipe', '\\.\pipe\BoopApp-e2e-autostart' -PassThru
+          function Call($json) { (& pwsh -NoProfile -File $helper -Pipe 'BoopApp-e2e-autostart' -Request $json) }
+          try {
+            $hello = Call '{"id":1,"method":"hello"}'
+            Write-Host "hello: $hello"
+            $r = Call '{"id":2,"method":"call","name":"setAutostart","arg":true}'
+            Write-Host "setAutostart true: $r"
+            $v = (Get-ItemProperty $runKey -ErrorAction SilentlyContinue).BoopVPN
+            Write-Host "Run value: $v"
+            if ($v -ne "`"$dir\Boop.exe`" --tray") { throw "the Run value is not the installed Boop.exe --tray: $v" }
+            $r = Call '{"id":3,"method":"call","name":"setAutostart","arg":false}'
+            Write-Host "setAutostart false: $r"
+            if ((Get-ItemProperty $runKey -ErrorAction SilentlyContinue).BoopVPN) { throw 'the Run value is still there after switching autostart off' }
+            Write-Host 'ok: the switch writes and removes the Run value'
+            $null = Call '{"id":4,"method":"quit"}'
+          } finally {
+            if (-not $h.HasExited) { Stop-Process -Id $h.Id -Force -ErrorAction SilentlyContinue }
+          }
 
       - name: portable Tauri copy registers nothing
         run: |
+          $dir = Join-Path $env:ProgramFiles 'Boop'
+          $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          $runBefore = (Get-ItemProperty $runKey -ErrorAction SilentlyContinue).BoopVPN
+          $posFile = Join-Path $env:LOCALAPPDATA 'Boop\window.json'
+          Remove-Item $posFile -ErrorAction SilentlyContinue
+          # A copy of the shell and the host outside Program Files.
           $run = Join-Path $PWD 'tauri-run'
-          if (Test-Path 'HKCU:\Software\Classes\AppUserModelId\Boop.VPN') { Write-Host 'note: toast keys come from the installer (installed copy)' }
-          $before = (Get-ChildItem $run | ForEach-Object Name | Sort-Object) -join ','
-          Write-Host "files next to the shell: $before"
-          $extra = Get-ChildItem $run | Where-Object { $_.Name -notin @('Boop.exe', 'shell.log') }
-          if ($extra) { throw "the shell wrote files next to itself: $($extra.Name -join ', ')" }
-          Write-Host 'ok: nothing written next to the shell'
+          New-Item -ItemType Directory -Force $run | Out-Null
+          Copy-Item "$dir\Boop.exe", "$dir\BoopHost.exe" $run
+          $log = Join-Path $run 'shell.log'
+          $env:BOOP_SHELL_LOG = $log
+          $env:BOOP_SHELL_EXIT_AFTER_STATE = '1'
+          $shell = Start-Process -FilePath "$run\Boop.exe" -PassThru
+          if (-not $shell.WaitForExit(180000)) { $shell.Kill(); throw 'the portable shell did not close' }
+          if ($shell.ExitCode -ne 0) { throw "the portable shell exited with $($shell.ExitCode)" }
+          $text = Get-Content $log -Raw
+          if ($text -notmatch 'hello ok') { throw 'the portable shell did not reach its host' }
+          $extra = Get-ChildItem $run | Where-Object { $_.Name -notin @('Boop.exe', 'BoopHost.exe', 'shell.log') }
+          if ($extra) { throw "the portable copy wrote files next to itself: $($extra.Name -join ', ')" }
+          if ((Get-ItemProperty $runKey -ErrorAction SilentlyContinue).BoopVPN -ne $runBefore) { throw 'the portable copy changed the autostart value' }
+          if (Test-Path $posFile) { throw 'the portable copy remembered the window position' }
+          Write-Host 'ok: the portable copy registered and wrote nothing'
+          Remove-Item Env:BOOP_SHELL_LOG, Env:BOOP_SHELL_EXIT_AFTER_STATE
 
       - name: uninstall
         if: always()
@@ -667,5 +818,7 @@ jobs:
           path: |
             C:\ProgramData\Boop\*.log
             tauri-run\*.log
+            shell.log
+            tray.log
           retention-days: 7
           if-no-files-found: ignore

@@ -26,6 +26,9 @@ const ServiceName = "BoopVPN"
 const (
 	BinaryName = "BoopService.exe"
 	WindowName = "Boop.exe"
+	// HostName is the Go host (core.App, system toasts, the autostart value) that
+	// the Tauri window starts with --host (since 1.5.3 it is installed next to it).
+	HostName = "BoopHost.exe"
 )
 
 // FlagService is the only mode of BoopService.exe besides --version: run as the
@@ -37,11 +40,11 @@ const FlagService = "--service"
 func InstalledExe(dir string) string    { return filepath.Join(dir, BinaryName) }
 func InstalledWindow(dir string) string { return filepath.Join(dir, WindowName) }
 
-// InstalledCopy reports whether exe is the window of the installed copy in dir
-// (the one the setup program put there). Any other Boop.exe is a portable copy:
+// InstalledCopy reports whether exe is the window (or, since 1.5.3, its Go host)
+// of the installed copy in dir (the ones the setup program put there). Any other Boop.exe is a portable copy:
 // it registers nothing and writes nothing next to itself.
 func InstalledCopy(exe, dir string) bool {
-	return samePath(exe, InstalledWindow(dir))
+	return samePath(exe, InstalledWindow(dir)) || samePath(exe, filepath.Join(dir, HostName))
 }
 
 // Need says whether the window must (re)install the service before it can

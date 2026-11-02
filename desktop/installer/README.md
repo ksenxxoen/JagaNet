@@ -87,3 +87,13 @@ pwsh installer/build.ps1 -Version 1.5.1 -Exe dist/Boop.exe -Service dist/BoopSer
 
 `Boop-Setup-<версия>.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART [/TASKS="autostart,desktopicon"]`
 `unins000.exe /VERYSILENT [/PURGEDATA]`
+
+## С 1.5.3: что внутри
+
+`Boop.exe` — Tauri-окно (`cargo build --release -p boop-shell` в `tauri/`), `BoopHost.exe` — Go-хост (`build.sh`), `BoopService.exe` и
+`wintun.dll`. `pwsh installer/build.ps1 -Exe tauri/target/release/Boop.exe -HostExe dist/BoopHost.exe -Service dist/BoopService.exe`
+(это значения по умолчанию). При `BOOP_SIGN` Tauri-`Boop.exe` подписывается в `build.ps1`, Go-файлы — в `build.sh`.
+
+Заметка (переходный период): в CI `dist/Boop.exe` и `dist/BoopHost.exe` — одна и та же Go-сборка (одинаковый SHA-256), это задумано:
+`BoopHost.exe` — копия Go-программы под именем хоста. Установщик берёт `Boop.exe` из `tauri/target/release/` (`-Exe`), а не из `dist/`;
+из `dist/` в него попадают только `BoopHost.exe`, `BoopService.exe` и `wintun.dll`.
