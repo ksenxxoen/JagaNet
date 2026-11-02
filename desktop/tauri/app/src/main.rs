@@ -1,12 +1,13 @@
 // The Tauri 2 shell of Boop VPN for Windows (stage C-4 of #76): window, tray, single instance.
 // core.App (sign-in, token, settings, keys, tunnel control) is the Go process `BoopHost.exe --host`
 // started below; this program only draws ui/ and carries its commands and pushes over the user's
-// pipe (desktop/tauri/host). It writes nothing to the registry or the disk, runs no command line
+// pipe (desktop/tauri/host). It writes nothing to the registry, and to the disk only the window's
+// position (window.json in %LOCALAPPDATA%\Boop, installed copy only), runs no command line
 // tool and has no updater: the setup program installs and updates (boop.iss), autostart is the
 // host's single HKCU Run write (winsvc.SetAutostart) behind the window's switch.
 #![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
 
-use boop_host::{icon_kind, parse_action, HostClient};
+use boop_host::{format_pos, icon_kind, is_installed_copy, parse_action, parse_pos, pos_visible, HostClient};
 use serde_json::Value;
 use std::path::PathBuf;
 use std::process::{Child, Command};
@@ -46,6 +47,47 @@ fn show_window(app: &AppHandle) {
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
+    }
+}
+
+/// The file that remembers the window's position: only the installed copy (`%ProgramFiles%\\Boop\\Boop.exe`)
+/// has one; a portable copy never touches the disk.
+fn pos_file() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let pf = std::env::var("ProgramFiles").ok()?;
+    if !is_installed_copy(&exe.to_string_lossy(), &pf) {
+        return None;
+    }
+    let dir = PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("Boop");
+    Some(dir.join("window.json"))
+}
+
+fn save_pos(app: &AppHandle) {
+    let (Some(file), Some(w)) = (pos_file(), app.get_webview_window("main")) else { return };
+    // A minimized window reports a far-away corner; it is not a place to come back to.
+    if w.is_minimized().unwrap_or(false) {
+        return;
+    }
+    if let Ok(p) = w.outer_position() {
+        if let Some(dir) = file.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(file, format_pos(p.x, p.y));
+    }
+}
+
+fn restore_pos(app: &AppHandle) {
+    let (Some(file), Some(w)) = (pos_file(), app.get_webview_window("main")) else { return };
+    let Some(pos) = std::fs::read_to_string(file).ok().and_then(|t| parse_pos(&t)) else { return };
+    let screens: Vec<(i32, i32, u32, u32)> = w
+        .available_monitors()
+        .unwrap_or_default()
+        .iter()
+        .map(|m| (m.position().x, m.position().y, m.size().width, m.size().height))
+        .collect();
+    if pos_visible(pos, &screens) {
+        let _ = w.set_position(tauri::PhysicalPosition::new(pos.0, pos.1));
+        smoke_log(&format!("window position restored: {},{}", pos.0, pos.1));
     }
 }
 
@@ -172,6 +214,7 @@ fn update_tray(app: &AppHandle, conn: &str) {
 
 fn quit(app: &AppHandle) {
     smoke_log("quit: start");
+    save_pos(app);
     if let Some(h) = app.try_state::<Host>() {
         // The host is asked to stop, but never waited for long: «Выход» must always exit.
         let (tx, rx) = std::sync::mpsc::channel();
@@ -279,6 +322,7 @@ fn main() {
                     on_host_event(&handle, serde_json::json!({"event": "state", "state": st}));
                 }
             }
+            restore_pos(&handle);
             if !tray_only {
                 show_window(&handle);
             }
@@ -288,6 +332,7 @@ fn main() {
         .on_window_event(|w, ev| {
             // The close button hides to the tray, as the Go window did; «Выход» in the tray ends it.
             if let WindowEvent::CloseRequested { api, .. } = ev {
+                save_pos(w.app_handle());
                 api.prevent_close();
                 let _ = w.hide();
             }

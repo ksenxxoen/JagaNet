@@ -109,3 +109,29 @@ fn tray_icons_follow_the_connection() {
     assert_eq!(icon_kind("off"), "off");
     assert_eq!(icon_kind("whatever"), "off");
 }
+
+#[test]
+fn window_position_roundtrip_and_sanity() {
+    assert_eq!(parse_pos(&format_pos(-12, 340)), Some((-12, 340)));
+    assert_eq!(parse_pos("{}"), None);
+    assert_eq!(parse_pos("not json"), None);
+    assert_eq!(parse_pos(r#"{"x":1e20,"y":0}"#), None);
+    let screens = [(0, 0, 1920, 1080), (1920, 0, 1280, 1024)];
+    assert!(pos_visible((100, 100), &screens));
+    assert!(pos_visible((2000, 50), &screens));
+    // A monitor that is gone, or a corner that is off every screen.
+    assert!(!pos_visible((3500, 100), &screens));
+    assert!(!pos_visible((100, 2000), &screens));
+    assert!(!pos_visible((100, 100), &[]));
+}
+
+#[test]
+fn only_the_installed_boop_exe_is_installed() {
+    let pf = r"C:\Program Files";
+    assert!(is_installed_copy(r"c:\program files\Boop\BOOP.exe", pf));
+    assert!(is_installed_copy("C:/Program Files/Boop/Boop.exe", r"C:\Program Files\"));
+    assert!(!is_installed_copy(r"C:\Users\u\Downloads\Boop.exe", pf));
+    assert!(!is_installed_copy(r"C:\Program Files\Boop\BoopHost.exe", pf));
+    assert!(!is_installed_copy(r"C:\Program Files\Boop.exe", pf));
+    assert!(!is_installed_copy(r"C:\Program Files\Boop\Boop.exe", ""));
+}

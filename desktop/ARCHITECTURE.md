@@ -416,3 +416,11 @@ Linux runners only, no secrets:
   кнопка dismiss. Выбор протокола, а не COM-активатора: ничего не надо держать зарегистрированным,
   кроме ключей пользователя.
 - Не удалось показать (`ErrDisabled`, ошибка WinRT) → balloon. `Boop.exe --toast-selftest` — проверка в CI.
+
+## Установщик ставит Tauri-окно (1.5.3, #97)
+
+С 1.5.3 в `%ProgramFiles%\Boop` лежат: `Boop.exe` — **Tauri-оболочка** (окно, трей, single-instance), `BoopHost.exe` — Go-хост
+(`--host`: `core.App`, WinRT-тосты, запись Run-значения), `BoopService.exe` (служба `BoopVPN`), `wintun.dll`. Оболочка сама
+стартует `BoopHost.exe` рядом с собой; к службе ходит только хост. Ярлык (AUMID `Boop.VPN`), протокол `boop:` и Run-значение
+`"…\Boop.exe" --tray` указывают на оболочку; `winsvc.InstalledCopy` признаёт установленными оба exe. Go-окно
+(`main_windows.go` и др.) в установщик не входит и будет удалено в C-6. Подробности — `docs/CHANGELOG-1.5.3.md`.

@@ -2,20 +2,26 @@
 ;
 ; Since 1.5.1 this script does ALL the system work; neither Boop.exe nor
 ; BoopService.exe installs, registers or removes anything (they have no flags for
-; it). It puts Boop.exe (the window), BoopService.exe (the service) and Wintun's
+; it). Since 1.5.3 Boop.exe is the Tauri window and tray (desktop/tauri), and the
+; Go host it starts (BoopHost.exe: core.App, system toasts, autostart value)
+; sits next to it; the Go window is not installed. It puts Boop.exe,
+; BoopHost.exe, BoopService.exe (the service) and Wintun's
 ; own signed wintun.dll in %ProgramFiles%\Boop, sets the rights on the directory
 ; (Permissions in the Dirs section), registers or re-points, configures and starts
 ; the service BoopVPN (sc.exe, run by the Pascal code inside the setup only),
 ; writes the user's autostart value and removes what 1.3.x/1.4.x left behind (the
 ; scheduled task). See installer/README.md.
 ;
-; ISCC /DAppVersion=1.5.1 /DSourceExe=..\dist\Boop.exe /DSourceService=..\dist\BoopService.exe [/DWintunDll=...] [/DWebView2Setup=...] [/DSignCmd=1] boop.iss
+; ISCC /DAppVersion=1.5.3 /DSourceExe=..\tauri\target\release\Boop.exe /DSourceHost=..\dist\BoopHost.exe /DSourceService=..\dist\BoopService.exe [/DWintunDll=...] [/DWebView2Setup=...] [/DSignCmd=1] boop.iss
 
 #ifndef AppVersion
-  #define AppVersion "1.5.1"
+  #define AppVersion "1.5.3"
 #endif
 #ifndef SourceExe
-  #define SourceExe "..\dist\Boop.exe"
+  #define SourceExe "..\tauri\target\release\Boop.exe"
+#endif
+#ifndef SourceHost
+  #define SourceHost "..\dist\BoopHost.exe"
 #endif
 #ifndef SourceService
   #define SourceService "..\dist\BoopService.exe"
@@ -79,6 +85,7 @@ Name: "{app}"; Permissions: system-full admins-full users-readexec
 
 [Files]
 Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "Boop.exe"; Flags: ignoreversion
+Source: "{#SourceHost}"; DestDir: "{app}"; DestName: "BoopHost.exe"; Flags: ignoreversion
 Source: "{#SourceService}"; DestDir: "{app}"; DestName: "BoopService.exe"; Flags: ignoreversion
 ; Wintun's own file, with its own signature (never unpacked by program code).
 Source: "{#WintunDll}"; DestDir: "{app}"; DestName: "wintun.dll"; Flags: ignoreversion
@@ -94,8 +101,8 @@ Name: "{autodesktop}\Boop VPN"; Filename: "{app}\Boop.exe"; Tasks: desktopicon
 [Run]
 ; The service itself is set up by the Pascal code (ssPostInstall), before these.
 Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Установка Microsoft Edge WebView2..."; Flags: skipifdoesntexist waituntilterminated; Check: not WebView2Installed
-; Toasts: the name, icon and boop: handler in the user's HKCU (Boop.exe also does it at every start of the installed copy).
-Filename: "{app}\Boop.exe"; Parameters: "--toast-register"; Flags: runasoriginaluser runhidden waituntilterminated
+; Toasts: the name, icon and boop: handler in the user's HKCU (the host also does it at every start of the installed copy).
+Filename: "{app}\BoopHost.exe"; Parameters: "--toast-register"; Flags: runasoriginaluser runhidden waituntilterminated
 Filename: "{app}\Boop.exe"; Description: "Запустить Boop VPN"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [Registry]
@@ -301,6 +308,7 @@ begin
       RunSys('sc.exe', 'delete ' + ServiceName, Code);
     end;
     RunSys('taskkill.exe', '/F /T /IM Boop.exe', Code);
+    RunSys('taskkill.exe', '/F /T /IM BoopHost.exe', Code);
     RunSys('taskkill.exe', '/F /T /IM BoopService.exe', Code);
     RemoveOldTask();
     RegDeleteValue(HKCU, RunKey, 'BoopVPN');
@@ -316,6 +324,8 @@ end;
 ; What the client or the service leaves next to the program.
 Type: files; Name: "{app}\Boop.exe.old"
 Type: files; Name: "{app}\Boop.exe.new"
+Type: files; Name: "{app}\BoopHost.exe.old"
+Type: files; Name: "{app}\BoopHost.exe.new"
 Type: files; Name: "{app}\BoopService.exe.old"
 Type: files; Name: "{app}\BoopService.exe.new"
 Type: dirifempty; Name: "{app}"
