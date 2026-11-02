@@ -216,6 +216,18 @@ jobs:
           Check ($null -eq (Get-Service BoopVPN -ErrorAction SilentlyContinue)) 'service removed'
           Check (-not (Test-Path "$dir\Boop.exe")) 'Boop.exe removed'
 
+      # Issue #72: the toast keys and the WinRT calls must not fail (nobody clicks here).
+      - name: toast registration and notification (no interaction)
+        run: |
+          $exe = Join-Path $PWD 'dist\Boop.exe'
+          $p = Start-Process -FilePath $exe -ArgumentList '--toast-selftest' -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            $log = Join-Path $env:LOCALAPPDATA 'Boop\toast-selftest.log'
+            if (Test-Path $log) { Get-Content $log -Tail 40 }
+            throw "toast selftest exited $($p.ExitCode)"
+          }
+          Write-Host 'ok: toast selftest'
+
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

@@ -28,6 +28,9 @@ type App struct {
 	OnToast func(string)
 	// OnNotify is a system notification (the window may be hidden in the tray).
 	OnNotify func(string)
+	// OnNotice, when set, takes the notifications instead of OnNotify, with
+	// their kind (Windows toasts with buttons).
+	OnNotice func(Notice)
 	// ApplyUpdate replaces this process with a staged exe. Nil outside Windows.
 	ApplyUpdate func(staged string) error
 	// OnUserAttempt, when set, is called as a connection attempt starts from the

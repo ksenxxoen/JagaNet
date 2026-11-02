@@ -311,3 +311,18 @@ Linux runners only, no secrets:
 с ним для восстановления. Чистая логика — `vpn/split` (диапазоны, вычитание CIDR, разбор ввода) и
 `vpn/splitplan.go` (маршруты, разрешения kill switch, `AllowedIPs`); Windows применяет их в
 `vpn/windows.go`, `vpn/firewall/split_windows.go` и `vpn/xray` (`Direct`). Список РФ — `vpn/split/ru_ipv4.txt`.
+
+## Toast-уведомления (1.4.4, issue #72)
+
+- `core`: `App.OnNotice(Notice{Kind, Text})` (виды: `info`, `down`, `plan`, `update`); без него — прежний
+  `OnNotify(text)`. `App.Act(action)` выполняет кнопку через существующие пути окна.
+- `toast` (без CGO, без PowerShell): XML тоста и кнопки (`toast.go`, тесты на Linux), вызовы WinRT
+  вручную через `syscall` + `combase.dll` (`winrt_windows.go`): `ToastNotificationManager` →
+  `CreateToastNotifierWithId("Boop.VPN")` → `XmlDocument.LoadXml` → `Show`. Ключи HKCU — `register_windows.go`.
+- Активация: тело и кнопки — `activationType="protocol"` с `boop:<action>`. Система запускает
+  `Boop.exe "boop:<action>"` (обработчик протокола в HKCU); второй процесс не стартует окно, а передаёт
+  действие уже запущенному окну через `WM_COPYDATA` (`toast_windows.go`) и выходит. Окно не запущено —
+  стартует и выполняет действие после `Init`. Принимаются только известные действия. «Позже» — системная
+  кнопка dismiss. Выбор протокола, а не COM-активатора: ничего не надо держать зарегистрированным,
+  кроме ключей пользователя.
+- Не удалось показать (`ErrDisabled`, ошибка WinRT) → balloon. `Boop.exe --toast-selftest` — проверка в CI.

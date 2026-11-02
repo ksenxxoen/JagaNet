@@ -221,6 +221,11 @@ func (t *tray) wndproc(hwnd, msg, wp, lp uintptr) uintptr {
 			t.menu()
 		}
 		return 0
+	case msg == wmCopyData:
+		if act, ok := actionFromCopyData(lp); ok {
+			t.runAction(act)
+			return 1
+		}
 	case t.created != 0 && uint32(msg) == t.created:
 		t.notify(nimAdd, "")
 	}

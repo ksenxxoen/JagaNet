@@ -20,6 +20,7 @@ import (
 
 	"github.com/jchv/go-webview2"
 	"github.com/ksenxxoen/JagaNet/desktop/core"
+	"github.com/ksenxxoen/JagaNet/desktop/toast"
 	"github.com/ksenxxoen/JagaNet/desktop/vpn"
 	"github.com/ksenxxoen/JagaNet/desktop/winsvc"
 	"golang.org/x/sys/windows"
@@ -54,7 +55,13 @@ func main() {
 		return
 	}
 	// One window at a time. After an update the new process waits out the old one.
+	// A notification button starts `Boop.exe boop:<action>` (toast_windows.go).
+	pending, hasAction := activationAction(os.Args[1:])
 	if !acquireInstance() {
+		// The window that runs gets the action; it shows itself when it needs to.
+		if hasAction && forwardAction(pending) {
+			return
+		}
 		t, _ := windows.UTF16PtrFromString(title)
 		if h, _, _ := findWindow.Call(0, uintptr(unsafe.Pointer(t))); h != 0 {
 			showWindow.Call(h, 9 /* SW_RESTORE */)
@@ -206,10 +213,23 @@ func main() {
 			return errClipboardBusy
 		}
 	}
-	app.OnNotify = func(msg string) {
-		w.Dispatch(func() { t.balloon(msg) })
+	// Toasts with buttons; the old balloon when a toast cannot be shown.
+	if err := registerToast(autostartExe()); err != nil {
+		log.Printf("toast: register: %v", err)
+	}
+	notifier := &toast.Notifier{
+		Show:    func(xml string) error { return toast.Show(toast.AUMID, xml) },
+		Balloon: func(msg string) { w.Dispatch(func() { t.balloon(msg) }) },
+		Logf:    log.Printf,
+	}
+	app.OnNotice = func(n core.Notice) {
+		core.Go("toast", func() { notifier.Notify(n) })
 	}
 	app.Init()
+	if hasAction && pending != core.ActLater {
+		// The window was not running: start it and do what the button asked.
+		core.Go("notification action", func() { w.Dispatch(func() { t.runAction(pending) }) })
+	}
 	if embedded {
 		core.Go("fallback notice", func() {
 			time.Sleep(2 * time.Second)

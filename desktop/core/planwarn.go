@@ -96,11 +96,8 @@ func (a *App) warnPlan(now time.Time) {
 	}
 	a.Store.PlanWarned[level] = day
 	_ = a.Store.Save()
-	fn := a.OnNotify
 	a.mu.Unlock()
-	if fn != nil {
-		fn(planPhrase(level, days))
-	}
+	a.sendNotice(NoticePlan, planPhrase(level, days))
 }
 
 // loadPlan asks the panel for the account and its plan.
