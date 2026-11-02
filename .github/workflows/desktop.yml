@@ -344,7 +344,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'building the e2e test failed' }
           } finally { Pop-Location }
           try {
-            & "$env:RUNNER_TEMP\svc-e2e.test.exe" -test.run '^TestServiceConnect$' -test.v -test.timeout 5m
+            $targs = @('-test.run=^TestServiceConnect$', '-test.v', '-test.timeout=5m')
+            & "$env:RUNNER_TEMP\svc-e2e.test.exe" @targs
             $code = $LASTEXITCODE
           } finally {
             # Whatever happened, the tunnel must not outlive the step.
