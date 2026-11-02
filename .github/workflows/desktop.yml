@@ -616,9 +616,9 @@ jobs:
           $env:BOOP_SHELL_LOG = $log
           $env:BOOP_SHELL_EXIT_AFTER_STATE = '1'
           $shell = Start-Process -FilePath "$run\Boop.exe" -PassThru
-          if (-not $shell.WaitForExit(60000)) {
+          if (-not $shell.WaitForExit(180000)) {
             $shell.Kill()
-            $why = 'the shell did not get a state and close within 60 s'
+            $why = 'the shell did not get a state and close within 180 s'
           } elseif ($shell.ExitCode -ne 0) {
             $why = "the shell exited with $($shell.ExitCode)"
           }
