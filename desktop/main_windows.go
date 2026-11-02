@@ -41,7 +41,19 @@ func main() {
 			log.Printf("panic: %v\n%s", r, debug.Stack())
 		}
 	}()
-	// The one program is also the service and its installer (service_windows.go).
+	// A 1.4.x service record starts `Boop.exe --service`: no window, a clear error.
+	_, svcErr := serviceExe()
+	if legacy, msg := legacyServiceStart(os.Args[1:], svcErr == nil); legacy {
+		// SYSTEM has no %LOCALAPPDATA% of its own worth reading: log to ProgramData.
+		d := filepath.Join(os.Getenv("ProgramData"), "Boop")
+		_ = os.MkdirAll(d, 0o755)
+		if lw, err := core.NewRotatingWriter(filepath.Join(d, "service-legacy.log"), 1<<18); err == nil {
+			log.SetFlags(log.LstdFlags)
+			log.SetOutput(lw)
+		}
+		log.Print(msg)
+		os.Exit(exitLegacyService)
+	}
 	if runServiceMode(os.Args[1:]) {
 		return
 	}
