@@ -716,10 +716,14 @@ jobs:
           $deadline = (Get-Date).AddSeconds(120)
           while (-not ((Test-Path $log) -and ((Get-Content $log -Raw) -match 'hello ok')) -and (Get-Date) -lt $deadline) { Start-Sleep 1 }
           if (-not ((Test-Path $log) -and ((Get-Content $log -Raw) -match 'hello ok'))) { throw 'the --tray shell did not reach the host' }
-          Start-Sleep -Seconds 5
+          $deadline = (Get-Date).AddSeconds(30)
+          while (-not ((Get-Content $log -Raw) -match 'window visible=') -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+          Start-Sleep -Seconds 2
           $shell.Refresh()
           if ($shell.HasExited) { throw '--tray: the shell exited' }
-          if ($shell.MainWindowHandle -ne 0) { throw '--tray: a window is visible, it must start hidden (tray only)' }
+          $txt = Get-Content $log -Raw
+          if ($txt -notmatch 'window visible=false') { throw '--tray: the shell did not report a hidden window (window visible=false)' }
+          if ($txt -match 'window visible=true|window shown') { throw '--tray: a window is visible, it must start hidden (tray only)' }
           Write-Host 'ok: --tray starts hidden'
 
           # A toast button starts `Boop.exe boop:<action>`: it must reach the running shell
@@ -727,8 +731,8 @@ jobs:
           $second = Start-Process -FilePath "$dir\Boop.exe" -ArgumentList 'boop:open' -PassThru
           if (-not $second.WaitForExit(60000)) { $second.Kill(); throw 'the boop:open launch did not hand over and exit' }
           $deadline = (Get-Date).AddSeconds(30)
-          do { Start-Sleep -Milliseconds 500; $shell.Refresh() } while ($shell.MainWindowHandle -eq 0 -and (Get-Date) -lt $deadline)
-          if ($shell.MainWindowHandle -eq 0) { throw 'boop:open did not show the window of the running shell' }
+          do { Start-Sleep -Milliseconds 500 } while (-not ((Get-Content $log -Raw) -match 'window shown visible=true') -and (Get-Date) -lt $deadline)
+          if ((Get-Content $log -Raw) -notmatch 'window shown visible=true') { throw 'boop:open did not show the window of the running shell' }
           Write-Host 'ok: boop:open went through single-instance and showed the window'
           $act = Start-Process -FilePath "$dir\Boop.exe" -ArgumentList 'boop:reconnect' -PassThru
           if (-not $act.WaitForExit(60000)) { $act.Kill(); throw 'the boop:reconnect launch did not exit' }

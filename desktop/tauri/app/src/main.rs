@@ -47,6 +47,7 @@ fn show_window(app: &AppHandle) {
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
+        smoke_log(&format!("window shown visible={}", w.is_visible().unwrap_or(false)));
     }
 }
 
@@ -326,6 +327,15 @@ fn main() {
             if !tray_only {
                 show_window(&handle);
             }
+            // What the user sees, for the CI check (a hidden Tauri/WebView2 window can still own an HWND,
+            // so the process's MainWindowHandle says nothing about visibility).
+            let probe = handle.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(2));
+                if let Some(w) = probe.get_webview_window("main") {
+                    smoke_log(&format!("window visible={}", w.is_visible().unwrap_or(false)));
+                }
+            });
             handle_args(&handle, &args);
             Ok(())
         })
