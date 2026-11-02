@@ -72,7 +72,7 @@ func registerToast(exe string) error {
 func runToastMode(args []string) bool {
 	switch {
 	case slices.Contains(args, flagToastRegister):
-		if err := registerToast(winsvc.InstalledExe(winsvc.Real{})); err != nil {
+		if err := registerToast(winsvc.InstalledWindowExe()); err != nil {
 			os.Exit(exitFailed)
 		}
 		os.Exit(exitOK)

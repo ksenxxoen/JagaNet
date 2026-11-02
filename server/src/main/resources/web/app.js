@@ -552,6 +552,7 @@ async function account(params) {
   ${downloads()}
   <div class="card section"><div class="card-h"><h3>${t("Sign in to the Boop app")}</h3><div id="pair"><button class="btn secondary" id="paircode">${t("Show a code")}</button></div></div></div>
   <div id="tg-card"></div>
+  ${site?.communityUrl ? `<div class="card section"><div class="card-h"><h3>${t("Our Telegram group")}</h3><a class="btn secondary" href="${h(site.communityUrl)}" target="_blank" rel="noopener">${t("Open")}</a></div><p class="muted">${t("Chat with other Boop users and follow the news in our Telegram group.")}</p></div>` : ""}
 
   ${pays.payments.length ? `<div class="h2row"><h2>${t("Payments")}</h2></div><div class="card tablewrap"><table class="data"><thead><tr><th>${t("Plan")}</th><th>${t("Period")}</th><th>${t("Channel")}</th></tr></thead><tbody>
     ${pays.payments.map((x) => `<tr><td>${x.productId === "referral" ? t("Invite reward") : h(x.tariffName || "Pro")}</td><td>${t("{from} to {to}", { from: date(x.startedAt), to: date(x.expiresAt) })}</td><td>${h(sourceName[x.source] || x.source)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
@@ -583,19 +584,16 @@ async function account(params) {
   };
 }
 
-/** The VLESS key every user with access has, outside the device limit: links to copy, QR, subscription. */
+/** The VLESS key every user with access has, outside the device limit: the QR and the one button copy the subscription link. */
 function vlessCard(v) {
-  const withLang = (u) => u + (u.includes("?") ? "&" : "?") + "lang=" + lang;
   return `<div class="card keycard">
-    ${v.active ? `<img class="qr" src="${h(v.qrUrl)}" alt="${t("QR code of your VPN key")}" loading="lazy">` : ""}
+    ${v.active ? `<img class="qr" src="${h(v.subscriptionUrl)}/sub.png" alt="${t("QR code of your VPN key")}" loading="lazy">` : ""}
     <div>
       <h3>${h(v.name)} <span class="badge stable">${t("Stable connection")}</span></h3>
       <p class="muted">${t("Not counted in the device limit")}</p>
       ${v.active ? "" : `<p class="notice bad">${t("This key is off until access is renewed")}</p>`}
       <div class="keyactions">
-        ${v.links.length ? `<button class="btn" data-vcopy="${h(v.links[0])}">${t("Copy key")}</button>` : ""}
-        ${v.links.length ? `<button class="btn secondary" data-vcopy="${h(v.subscriptionUrl)}">${t("Subscription link")}</button>` : ""}
-        <a class="btn secondary" href="${h(withLang(v.pageUrl))}" target="_blank" rel="noreferrer">${t("Open key link")}</a>
+        ${v.active && v.links.length ? `<button class="btn" data-vcopy="${h(v.subscriptionUrl)}">${t("Copy subscription link")}</button>` : ""}
       </div>
     </div></div>`;
 }

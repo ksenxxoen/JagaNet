@@ -19,6 +19,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import dev.jaganet.api.i18n.Lang
 import dev.jaganet.server.notFound
+import dev.jaganet.server.services.AppStores
 import dev.jaganet.server.services.Channel
 import dev.jaganet.server.services.KeyConfig
 import dev.jaganet.server.services.Keys
@@ -151,7 +152,13 @@ fun Route.website(s: Services) {
         val token = call.parameters["token"]!!
         if (s.vlessKeys.isOwnToken(token)) {
             val v = call.vless(call.pageLang())
-            return@get call.respondText(Pages(call.pageLang()).vlessKey(v, s.ctx.cfg.publicUrl), ContentType.Text.Html)
+            val apps = VlessApps(
+                android = listOfNotNull(s.site.androidAppUrl()?.let { "Boop for Android" to it }),
+                ios = listOfNotNull(s.site.iosAppUrl()?.let { "Boop for iPhone" to it }),
+                windows = s.site.desktopExe() != null,
+                windowsVersion = s.site.desktopManifest()?.version,
+            )
+            return@get call.respondText(Pages(call.pageLang()).vlessKey(v, s.ctx.cfg.publicUrl, apps), ContentType.Text.Html)
         }
         val k = call.key()
         val other = s.vlessKeys.userByToken(token)?.let { s.vlessKeys.links(it) }
@@ -246,8 +253,16 @@ fun keyName(name: String, lang: Lang): String =
 
 fun esc(v: String) = v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;")
 
+/** What the key page links to besides the stores: our own apps and the Windows installer. */
+internal data class VlessApps(
+    val android: List<Pair<String, String>> = emptyList(),
+    val ios: List<Pair<String, String>> = emptyList(),
+    val windows: Boolean = false,
+    val windowsVersion: String? = null,
+)
+
 /** Pages rendered by the server, in one language. */
-private class Pages(val lang: Lang) {
+internal class Pages(val lang: Lang) {
     fun t(en: String, vararg args: Pair<String, Any?>) = esc(I18n.tr(lang, en, *args))
 
     private fun page(title: String, body: String) = """<!doctype html>
@@ -260,36 +275,48 @@ private class Pages(val lang: Lang) {
 <nav class="nav"><span class="langs">${Lang.entries.joinToString("") { l -> """<a class="${if (l == lang) "on" else ""}" href="?lang=${l.code}" hreflang="${l.code}">${l.code.uppercase()}</a>""" }}</span></nav></div></header>
 <main class="narrow">$body</main></body></html>"""
 
-    /** The VLESS key's page: its links with copy buttons and QR codes, and the subscription. */
-    fun vlessKey(v: VlessLinks, publicUrl: String): String {
+    /**
+     * The VLESS key's page (issue #88): the subscription only, no single keys. The QR and the one
+     * button are the subscription link; below, "add to app" links and the apps for Android, iOS and PC.
+     * The single keys stay served at /k/{token}/vless/{n}.png for old links.
+     */
+    fun vlessKey(v: VlessLinks, publicUrl: String, apps: VlessApps = VlessApps()): String {
         val base = "/k/" + esc(v.token)
-        val sub = esc("${publicUrl.trimEnd('/')}/k/${v.token}/vless")
+        val subRaw = "${publicUrl.trimEnd('/')}/k/${v.token}/vless"
+        val sub = esc(subRaw)
         val body = if (v.links.isEmpty()) {
             """<div class="card"><p class="notice bad">${t("This key is off until access is renewed")}</p></div>"""
         } else {
-            // Every location and its backups (issue #41), each under its own name.
-            val names = v.locations.flatMap { l -> l.named(lang).map { it.second } }
-            val extra = v.links.drop(1).mapIndexed { i, l ->
-                """<div class="card section"><h3>${names.getOrNull(i + 1)?.let(::esc) ?: t("Backup key")}</h3>
-  <div class="formrow two"><input class="mono" id="vk${i + 1}" readonly value="${esc(l)}"><button class="btn secondary" data-copy="vk${i + 1}" type="button">${t("Copy key")}</button></div></div>"""
-            }.joinToString("")
             """<div class="card keycard">
-  <img class="qr" src="$base/vless/0.png" alt="${t("QR code of your VPN key")}" width="280" height="280">
-  <div class="keyactions"><input class="mono" id="vk0" readonly value="${esc(v.links[0])}"><button class="btn" data-copy="vk0" type="button">${t("Copy key")}</button></div>
-</div>
-$extra
-<div class="card section"><h3>${t("Subscription link")}</h3>
-  <p class="muted">${t("For Happ, v2RayTun, Hiddify and v2rayNG")}</p>
-  <div class="formrow two"><input class="mono" id="vsub" readonly value="$sub"><button class="btn" data-copy="vsub" type="button">${t("Copy link")}</button></div>
-  <img class="qr" src="$base/vless/sub.png" alt="${t("QR code of your VPN key")}" width="200" height="200">
+  <img class="qr" src="$base/vless/sub.png" alt="${t("QR code of your VPN key")}" width="280" height="280">
+  <div>
+    <div class="formrow two"><input class="mono" id="vsub" readonly value="$sub"></div>
+    <div class="keyactions"><button class="btn" data-copy="vsub" type="button">${t("Copy subscription link")}</button></div>
+    <div class="keyactions">
+      <a class="btn secondary" href="happ://add/$sub">${t("Add to app")}: Happ</a>
+      <a class="btn secondary" href="v2raytun://import/$sub">${t("Add to app")}: v2RayTun</a>
+    </div>
+  </div>
 </div>"""
         }
+        fun links(list: List<Pair<String, String>>) = list.joinToString("") { (n, u) ->
+            """<li><a href="${esc(u)}" rel="noreferrer">${if (n.startsWith("Boop for")) t(n) else esc(n)}</a></li>"""
+        }
+        val android = links(apps.android + AppStores.androidApps)
+        val ios = links(apps.ios + AppStores.iosApps)
+        val pc = if (apps.windows) {
+            """<li><a href="/download/windows">${t("Download Boop for Windows")}</a>${apps.windowsVersion?.let { " <span class=\"muted\">${t("version {version}", "version" to it)}</span>" } ?: ""}</li>"""
+        } else ""
         return page(t("Your VPN key"), """
 <div class="head"><div><h1>${t("Your VPN key")}</h1><p class="muted">${esc(v.name)}</p></div></div>
 $body
 <h2>${t("How to connect")}</h2>
 <ol class="steps">
-  <li><b>${t("Install an app")}</b><ul><li>Happ</li><li>v2RayTun</li><li>Hiddify</li><li>v2rayNG</li></ul></li>
+  <li><b>${t("Install an app")}</b>
+    <p class="muted">${t("Android")}</p><ul>$android</ul>
+    <p class="muted">${t("iOS")}</p><ul>$ios</ul>
+    ${if (pc.isNotEmpty()) """<p class="muted">${t("Computer")}</p><ul>$pc</ul>""" else ""}
+  </li>
   <li><b>${t("Add the key")}</b></li>
   <li><b>${t("Turn on the VPN")}</b></li>
 </ol>

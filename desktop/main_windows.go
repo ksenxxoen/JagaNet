@@ -99,10 +99,12 @@ func main() {
 	core.OSVersion = windowsVersion
 
 	// The tunnel is the service's (BoopService.exe, LocalSystem); this process has
-	// no rights and talks to it through a named pipe. Missing: one UAC prompt runs
-	// BoopService.exe --install-service (winsvc.Tunnel). A service of 1.4.x is kept
+	// no rights and talks to it through a named pipe. The service is installed
+	// by the setup program only: missing, the window says so and (portable copy)
+	// opens the installer's download page. A service of 1.4.x is kept
 	// while it speaks a protocol this window knows (helper.MinProtocol).
-	svcTun := winsvc.NewTunnel(winsvc.DialPipe, version, installService)
+	bases, site := apiBases("")
+	svcTun := winsvc.NewTunnel(winsvc.DialPipe, version, func() error { return noService(site) })
 	defer svcTun.Close()
 	vpn.FollowTunnel(upCache(svcTun))
 	var tunnel vpn.Tunnel = svcTun
@@ -121,15 +123,8 @@ func main() {
 			}
 		}
 	}
-	// Older versions started an elevated window with a scheduled task; the plain
-	// Run key replaces it once the service works (until then the task stays).
-	if err := winsvc.MigrateAutostart(winsvc.User{}, autostartExe(), serviceOK); err != nil {
-		log.Printf("autostart: %v", err)
-	}
+	_ = serviceOK
 	refreshAutostart()
-	// The panel's addresses come only from the build (no environment override on
-	// Windows, as before): the main one, then the spares (issue #37).
-	bases, site := apiBases("")
 	app := &core.App{
 		API: core.NewAPI(bases, nil), Store: core.LoadStore(dir), Tunnel: tunnel, Ping: ping,
 		Version: version, Site: site, OpenURL: openURL, UpdateDir: dir,
@@ -199,9 +194,12 @@ func main() {
 		}
 	}
 	// Toasts with buttons; the old balloon when a toast cannot be shown.
-	if err := registerToast(autostartExe()); err != nil {
-		log.Printf("toast: register: %v", err)
+	if installedCopy() { // a portable copy writes nothing to the registry
+		if err := registerToast(winsvc.InstalledWindowExe()); err != nil {
+			log.Printf("toast: register: %v", err)
+		}
 	}
+	userAttempts.Store(true)
 	notifier := &toast.Notifier{
 		Show:    func(xml string) error { return toast.Show(toast.AUMID, xml) },
 		Balloon: func(msg string) { w.Dispatch(func() { t.balloon(msg) }) },
