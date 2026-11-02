@@ -86,6 +86,45 @@ try {
     check("open list keeps its scroll on a state push", (await page.evaluate(() => document.getElementById("place-list").scrollTop)) === 300);
   });
 
+  // ---- «Не через VPN» (P2-5) ----
+  await attempt("split settings", async () => {
+    const sent = [];
+    await page.route("**/rpc/setSplit", (r) => {
+      sent.push(JSON.parse(r.request().postData() || "null"));
+      const bad = sent.at(-1).entries.includes("bad");
+      r.fulfill(bad ? { status: 400, body: '{"error":"bad: не IP-адрес, не подсеть и не домен"}', contentType: "application/json" }
+                    : { status: 200, body: "null", contentType: "application/json" });
+    });
+    const val = (id) => page.evaluate((id) => document.getElementById(id).value, id);
+    const on = (id) => page.evaluate((id) => document.getElementById(id).checked, id);
+    const hit = (id) => page.evaluate((id) => document.getElementById(id).click(), id);
+    await show({ ...main, split: { lan: true, ru: false, entries: "192.168.5.0/24\nsber.ru", ruDate: "2026-11-02" } });
+    await click("#open-settings");
+    await page.waitForTimeout(300);
+    check("split block is shown", !(await hidden("s-split")));
+    check("split: local network on, Russian sites off", (await on("s-split-lan")) && !(await on("s-split-ru")));
+    check("split: own exceptions listed", (await val("s-split-entries")) === "192.168.5.0/24\nsber.ru");
+    check("split: the Russian list's date is shown", (await page.evaluate(() => document.getElementById("s-split-ru-sub").textContent)).includes("2026-11-02"));
+    await hit("s-split-ru");
+    await page.waitForTimeout(150);
+    check("split: a switch is sent with the saved list", sent.length === 1 && sent[0].lan === true && sent[0].ru === true && sent[0].entries === "192.168.5.0/24\nsber.ru");
+    await page.evaluate(() => { const a = document.getElementById("s-split-entries"); a.value = "10.1.0.0/16\nexample.ru"; a.dispatchEvent(new Event("input", { bubbles: true })); });
+    await show({ ...main, split: { lan: true, ru: true, entries: "192.168.5.0/24\nsber.ru", ruDate: "2026-11-02" } });
+    check("split: a state push keeps the unsaved edit", (await val("s-split-entries")) === "10.1.0.0/16\nexample.ru");
+    await page.evaluate(() => document.getElementById("f-split").requestSubmit());
+    await page.waitForTimeout(150);
+    check("split: save sends the typed list", sent.length === 2 && sent[1].entries === "10.1.0.0/16\nexample.ru" && sent[1].ru === true);
+    await page.evaluate(() => { const a = document.getElementById("s-split-entries"); a.value = "bad entry"; a.dispatchEvent(new Event("input", { bubbles: true })); });
+    await page.evaluate(() => document.getElementById("f-split").requestSubmit());
+    await page.waitForTimeout(150);
+    check("split: a refused list is explained under the field", !(await hidden("err-split")) && (await page.evaluate(() => document.getElementById("err-split").textContent)).includes("не IP-адрес"));
+    await show({ ...main, platform: "linux", split: { lan: true, ru: false, entries: "" } });
+    check("split: hidden on Linux", await hidden("s-split"));
+    await show({ ...main });
+    await page.evaluate(() => document.querySelector("#settings [data-close]").click());
+    await page.waitForTimeout(300);
+  });
+
   await attempt("problem action", async () => {
     // The button under the status acts on the problem it shows.
     const action = () => page.evaluate(() => document.getElementById("detail-btn").dataset.action);

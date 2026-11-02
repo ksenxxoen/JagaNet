@@ -16,7 +16,7 @@ import (
 // ui/app.js is written against these names; changing one means changing both.
 var wantCommands = []string{
 	"cancelWebLogin", "closeNotice", "copyReport", "copyText", "extend", "invite", "openWebLogin", "ready", "redeemPairing", "refreshKeys", "refreshPings",
-	"renameKey", "reportProblem", "retry", "setAutoConnect", "setAutostart", "setCountry", "setKey", "setStrictKill",
+	"renameKey", "reportProblem", "retry", "setAutoConnect", "setAutostart", "setCountry", "setKey", "setSplit", "setStrictKill",
 	"signOut", "startEmail", "startWebLogin", "support", "toggle", "update", "verifyEmail",
 }
 
@@ -83,7 +83,7 @@ func TestUIStateWireNames(t *testing.T) {
 		"autoConnect", "autostart", "best", "conn", "countries", "countries.code", "countries.down", "countries.full", "countries.name", "countries.ping", "countries.status",
 		"country", "current", "email", "failed", "key", "keys", "keys.country", "keys.id", "keys.inUse", "keys.name",
 		"notice", "ping", "plan", "plan.daysLeft", "plan.expiresAt", "plan.name", "plan.pro", "plan.warn", "platform", "problem", "released", "screen",
-		"since", "strictKill", "update", "update.link", "update.mandatory", "update.notes", "update.stage", "update.version", "version", "webLogin",
+		"since", "split", "split.entries", "split.lan", "split.ru", "split.ruDate", "strictKill", "update", "update.link", "update.mandatory", "update.notes", "update.stage", "update.version", "version", "webLogin",
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("UIState wire names changed (app.js reads them):\n got %v\nwant %v", got, want)

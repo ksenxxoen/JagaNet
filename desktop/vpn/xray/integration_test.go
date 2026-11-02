@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"io"
 	"net"
 	"net/netip"
@@ -180,4 +181,100 @@ func TestEngineUpdate(t *testing.T) {
 	}
 	defer c.Close()
 	pump(t, c, 256<<10)
+}
+
+// Addresses in Direct leave around the node, everything else goes through it
+// (the test node answers every flow with its echo); changing Direct while the
+// engine runs applies to new connections.
+func TestEngineDirect(t *testing.T) {
+	node := startNode(t)
+	// A server of our own that is not the node's echo: it says who it is.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { l.Close() })
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			_, _ = c.Write([]byte("DIRECT"))
+			c.Close()
+		}
+	}()
+	target := netip.MustParseAddrPort(l.Addr().String())
+
+	p := forTraffic(node.params)
+	e := startEngine(t, p, loopback(len(p.Variants)))
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	viaNode := func() {
+		t.Helper()
+		c, err := e.Dial(ctx, "tcp", target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+		pump(t, c, 1000) // the node's echo, not our banner
+	}
+	viaNode()
+
+	if err := e.SetDirect(&Direct{Prefixes: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")}}); err != nil {
+		t.Fatal(err)
+	}
+	c, err := e.Dial(ctx, "tcp", target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]byte, 6)
+	_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
+	if _, err := io.ReadFull(c, got); err != nil || string(got) != "DIRECT" {
+		t.Fatalf("direct: %q, %v", got, err)
+	}
+	c.Close()
+
+	// An address outside the list still goes through the node.
+	o, err := e.Dial(ctx, "tcp", netip.MustParseAddrPort("198.51.100.7:80"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pump(t, o, 1000)
+	o.Close()
+
+	if err := e.SetDirect(nil); err != nil {
+		t.Fatal(err)
+	}
+	viaNode()
+}
+
+// A typed-in domain goes around the node when the connection names it (TLS's
+// SNI), to the address the app asked for; any other name goes through the node.
+func TestEngineDirectDomain(t *testing.T) {
+	node := startNode(t)
+	dest := netip.MustParseAddrPort(startDest(t)) // a real TLS server; the node's echo is not one
+	p := forTraffic(node.params)
+	e := startEngine(t, p, loopback(len(p.Variants)))
+	if err := e.SetDirect(&Direct{Domains: []string{"sber.ru"}}); err != nil {
+		t.Fatal(err)
+	}
+	handshake := func(name string) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		c, err := e.Dial(ctx, "tcp", dest)
+		if err != nil {
+			return err
+		}
+		defer c.Close()
+		tc := tls.Client(c, &tls.Config{ServerName: name, InsecureSkipVerify: true, MinVersion: tls.VersionTLS13})
+		return tc.HandshakeContext(ctx)
+	}
+	if err := handshake("online.sber.ru"); err != nil {
+		t.Fatalf("a subdomain of a direct domain: %v", err)
+	}
+	if err := handshake("example.com"); err == nil {
+		t.Fatal("another name must go through the node (its echo is no TLS server)")
+	}
 }
