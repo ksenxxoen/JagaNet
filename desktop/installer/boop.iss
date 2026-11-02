@@ -85,6 +85,11 @@ Filename: "{app}\Boop.exe"; Parameters: "--autostart-off"; Flags: runasoriginalu
 Filename: "{app}\Boop.exe"; Parameters: "--toast-register"; Flags: runasoriginaluser runhidden waituntilterminated
 Filename: "{app}\Boop.exe"; Description: "Запустить Boop VPN"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
+[Registry]
+; Toast keys: removed by the uninstaller itself (no helper process, so a failure here can't break the uninstall).
+Root: HKCU; Subkey: "Software\Classes\AppUserModelId\Boop.VPN"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\boop"; Flags: uninsdeletekey
+
 [Code]
 const
   ServiceName = 'BoopVPN';
@@ -206,8 +211,6 @@ begin
     if not Exec(ExpandConstant('{app}\Boop.exe'), '--remove-service', '', SW_HIDE, ewWaitUntilTerminated, Code)
        or (Code <> 0) then
       Log('remove-service failed, code ' + IntToStr(Code));
-    { The toast keys are the user's (HKCU), not the elevated uninstaller's. }
-    ExecAsOriginalUser(ExpandConstant('{app}\Boop.exe'), '--toast-unregister', '', SW_HIDE, ewWaitUntilTerminated, Code);
     Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM Boop.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
   end;
   if (CurUninstallStep = usPostUninstall) and PurgeData then

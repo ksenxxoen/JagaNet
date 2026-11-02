@@ -15,5 +15,5 @@
 - AppUserModelID `Boop.VPN`: ярлык «Пуск» из установщика, а без установщика клиент сам пишет
   `HKCU\Software\Classes\AppUserModelId\Boop.VPN` (имя, иконка) — без прав администратора.
 - Установщик: `AppUserModelID` у ярлыка, регистрация ключей от имени пользователя
-  (`Boop.exe --toast-register`), удаление при деинсталляции (`--toast-unregister`).
+  (`Boop.exe --toast-register`), удаление при деинсталляции средствами Inno (`[Registry]`, `uninsdeletekey`; флаг `--toast-unregister` — для ручной очистки).
 - Версия по умолчанию в `build.sh` исправлена с 1.4.1 на 1.4.4.

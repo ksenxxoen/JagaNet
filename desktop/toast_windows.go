@@ -23,7 +23,7 @@ import (
 
 const (
 	flagToastRegister   = "--toast-register"   // the setup program, as the user: AppUserModelID + boop: handler
-	flagToastUnregister = "--toast-unregister" // the uninstaller, as the user
+	flagToastUnregister = "--toast-unregister" // manual cleanup (the uninstaller removes the keys itself via [Registry])
 	flagToastSelfTest   = "--toast-selftest"   // CI: register, build and show one toast
 )
 

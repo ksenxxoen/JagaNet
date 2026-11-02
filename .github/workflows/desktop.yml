@@ -316,6 +316,8 @@ jobs:
           Check (-not (Test-Path "$dir\Boop.exe")) 'Boop.exe removed'
           Check (-not (Test-Path "$dir\wintun.dll")) 'wintun.dll removed'
           Check (Test-Path "$data\keep.txt") 'data kept without /PURGEDATA'
+          Check (-not (Test-Path 'HKCU:\Software\Classes\AppUserModelId\Boop.VPN')) 'toast AUMID key removed'
+          Check (-not (Test-Path 'HKCU:\Software\Classes\boop')) 'boop: protocol key removed'
 
           # Again, now with /PURGEDATA.
           Check ((Setup $silent) -eq 0) 'second install exits 0'
