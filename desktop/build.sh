@@ -8,7 +8,7 @@
 # Signing is optional and off by default: set BOOP_SIGN (see SIGNING.md).
 set -euo pipefail
 cd "$(dirname "$0")"
-VERSION="${1:-1.5.0}"
+VERSION="${1:-1.5.1}"
 API="${2:-}"
 APIX=""
 if [ -n "$API" ]; then
@@ -36,8 +36,8 @@ go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --out rsr
   --arch amd64 --file-version "$v4" --product-version "$v4"
 go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/service/winres.json --out cmd/boop-service/rsrc \
   --arch amd64 --file-version "$v4" --product-version "$v4"
-# The service embeds wintun.dll (go:embed cannot reach outside its directory).
-cp build/wintun.dll cmd/boop-service/wintun.dll
+# build/wintun.dll (Wintun's own signed file) is not embedded in anything: the
+# setup program puts it next to BoopService.exe (installer/boop.iss).
 
 # go build keeps an existing exe with the same build ID even if it was signed
 # since, so start clean; the .sha256 files are only written by a signed build.

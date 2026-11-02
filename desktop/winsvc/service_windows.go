@@ -26,8 +26,6 @@ type ServiceOptions struct {
 	// APIBase is the panel's address list (as core.NewAPI takes it): the service
 	// fetches the update manifest itself, so it never trusts a path or URL from the UI.
 	APIBase string
-	// Wintun is wintun.dll's bytes, put next to the program.
-	Wintun []byte
 	// NewTunnel makes the tunnel (the Windows engine, vpn/engine) and Ping measures
 	// a node around it. They are passed in so this package, which the window
 	// also uses, does not link the engine (Xray-core, AmneziaWG).
@@ -69,9 +67,6 @@ func (h *handler) Execute(_ []string, req <-chan svc.ChangeRequest, status chan<
 	exe, _ := os.Executable()
 	_ = os.Remove(exe + ".old")
 	_ = os.Remove(exe + ".new")
-	if err := placeWintun(exe, h.o.Wintun); err != nil {
-		log.Printf("wintun: %v", err)
-	}
 	core.SocketControl = vpn.SocketControl
 
 	tun, err := h.o.NewTunnel()
@@ -165,17 +160,6 @@ func SelfUpdate(o ServiceOptions) (string, error) {
 // ErrUpdateByInstaller: a 1.5.x service does not replace itself from the
 // manifest; the setup program does it.
 var ErrUpdateByInstaller = errors.New("the service is updated by the setup program")
-
-func placeWintun(exe string, dll []byte) error {
-	if len(dll) == 0 {
-		return nil
-	}
-	p := filepath.Join(filepath.Dir(exe), "wintun.dll")
-	if old, err := os.ReadFile(p); err == nil && string(old) == string(dll) {
-		return nil
-	}
-	return os.WriteFile(p, dll, 0o644)
-}
 
 // tail is the last n bytes of a file, from a line start.
 func tail(path string, n int64) string {
