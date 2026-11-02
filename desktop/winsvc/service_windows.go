@@ -5,7 +5,6 @@ package winsvc
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -29,6 +28,11 @@ type ServiceOptions struct {
 	APIBase string
 	// Wintun is wintun.dll's bytes, put next to the program.
 	Wintun []byte
+	// NewTunnel makes the tunnel (the Windows engine, vpn/engine) and Ping measures
+	// a node around it. They are passed in so this package, which the window
+	// also uses, does not link the engine (Xray-core, AmneziaWG).
+	NewTunnel func() (vpn.Tunnel, error)
+	Ping      func(ctx context.Context, ip string) (time.Duration, error)
 }
 
 // DialPipe connects to the service's pipe; the UI's helper.Client dials with it.
@@ -70,7 +74,7 @@ func (h *handler) Execute(_ []string, req <-chan svc.ChangeRequest, status chan<
 	}
 	core.SocketControl = vpn.SocketControl
 
-	tun, err := vpn.New()
+	tun, err := h.o.NewTunnel()
 	if err != nil {
 		log.Printf("tunnel: %v", err)
 		return true, 1
@@ -89,7 +93,7 @@ func (h *handler) Execute(_ []string, req <-chan svc.ChangeRequest, status chan<
 	exit := make(chan uint32, 1)
 	srv := &helper.Server{
 		Tunnel:      tun,
-		Ping:        vpn.Ping,
+		Ping:        h.o.Ping,
 		Version:     h.o.Version,
 		Logf:        log.Printf,
 		KeepOnClose: true,
@@ -151,37 +155,16 @@ func SelfUpdate(o ServiceOptions) (string, error) {
 	if o.Version == "" || o.Version == "dev" {
 		return "", errors.New("a dev build does not update")
 	}
-	api := core.NewAPI(o.APIBase, nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
-	defer cancel()
-	m, err := api.DesktopManifest(ctx)
-	if err != nil {
-		return "", fmt.Errorf("manifest: %w", err)
-	}
-	if err := m.Validate(api.Base); err != nil {
-		return "", fmt.Errorf("manifest: %w", err)
-	}
-	if !core.Newer(m.Version, o.Version) {
-		return "", nil
-	}
-	data, err := api.Download(ctx, m.URL, 64<<20)
-	if err != nil {
-		return "", fmt.Errorf("download: %w", err)
-	}
-	exe, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	staged := exe + ".new"
-	if err := core.StageFile(staged, data, m, core.UpdatePublicKey); err != nil {
-		return "", err
-	}
-	if err := core.SwapBinary(exe, staged); err != nil {
-		return "", err
-	}
-	log.Printf("update: installed %s", m.Version)
-	return m.Version, nil
+	// The update manifest names one file, Boop.exe of the 1.4.x line, which is
+	// no longer this program. Swapping it in would replace the service by the
+	// window. Until the manifest carries the installer (stage C-5 of epic #76) a
+	// service is updated by the setup program only.
+	return "", ErrUpdateByInstaller
 }
+
+// ErrUpdateByInstaller: a 1.5.x service does not replace itself from the
+// manifest; the setup program does it.
+var ErrUpdateByInstaller = errors.New("the service is updated by the setup program")
 
 func placeWintun(exe string, dll []byte) error {
 	if len(dll) == 0 {

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/ksenxxoen/JagaNet/desktop/vpn/split"
-	"github.com/ksenxxoen/JagaNet/desktop/vpn/xray"
+	"github.com/ksenxxoen/JagaNet/desktop/vpn/xray/params"
 )
 
 // Config is everything the tunnel needs. For AmneziaWG, UAPI carries the keys,
@@ -33,7 +33,7 @@ type Config struct {
 // Vless is a VLESS+Reality node: the panel's parameters and, for each of its
 // variants, the node's address already resolved (outside the tunnel).
 type Vless struct {
-	Params xray.Params
+	Params params.Params
 	Addrs  []netip.Addr
 }
 

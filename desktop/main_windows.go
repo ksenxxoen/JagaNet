@@ -4,11 +4,7 @@ package main
 
 import (
 	"bytes"
-	"context"
-	_ "embed"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -26,11 +22,6 @@ import (
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
-
-// wintun.dll from wintun.net, fetched by build.sh.
-//
-//go:embed build/wintun.dll
-var wintunDLL []byte
 
 const title = "Boop VPN"
 
@@ -50,7 +41,19 @@ func main() {
 			log.Printf("panic: %v\n%s", r, debug.Stack())
 		}
 	}()
-	// The one program is also the service and its installer (service_windows.go).
+	// A 1.4.x service record starts `Boop.exe --service`: no window, a clear error.
+	_, svcErr := serviceExe()
+	if legacy, msg := legacyServiceStart(os.Args[1:], svcErr == nil); legacy {
+		// SYSTEM has no %LOCALAPPDATA% of its own worth reading: log to ProgramData.
+		d := filepath.Join(os.Getenv("ProgramData"), "Boop")
+		_ = os.MkdirAll(d, 0o755)
+		if lw, err := core.NewRotatingWriter(filepath.Join(d, "service-legacy.log"), 1<<18); err == nil {
+			log.SetFlags(log.LstdFlags)
+			log.SetOutput(lw)
+		}
+		log.Print(msg)
+		os.Exit(exitLegacyService)
+	}
 	if runServiceMode(os.Args[1:]) {
 		return
 	}
@@ -95,42 +98,26 @@ func main() {
 	core.NetworkKind = vpn.NetworkKind
 	core.OSVersion = windowsVersion
 
-	// The tunnel is the service's (LocalSystem); this process has no rights and
-	// talks to it through a named pipe. Missing or older than this window: one
-	// UAC prompt installs it (winsvc.Tunnel). If that fails, the window starts
-	// again with rights and runs the tunnel itself (--embedded, as 1.3.x did).
-	embedded := slices.Contains(os.Args[1:], flagEmbedded) && winsvc.IsAdmin()
-	var tunnel vpn.Tunnel
-	var ping func(context.Context, string) (time.Duration, error)
-	var svcTun *winsvc.Tunnel
+	// The tunnel is the service's (BoopService.exe, LocalSystem); this process has
+	// no rights and talks to it through a named pipe. Missing: one UAC prompt runs
+	// BoopService.exe --install-service (winsvc.Tunnel). A service of 1.4.x is kept
+	// while it speaks a protocol this window knows (helper.MinProtocol).
+	svcTun := winsvc.NewTunnel(winsvc.DialPipe, version, installService)
+	defer svcTun.Close()
+	vpn.FollowTunnel(upCache(svcTun))
+	var tunnel vpn.Tunnel = svcTun
+	ping := svcTun.Ping
 	serviceOK := false
-	if embedded {
-		log.Printf("fallback mode: the tunnel runs inside this window (no service)")
-		if err := placeWintun(); err != nil {
-			log.Printf("wintun: %v", err)
-		}
-		t, err := vpn.New()
-		if err != nil {
-			log.Printf("tunnel: %v", err)
-		}
-		tunnel, ping = t, vpn.Ping
-	} else {
-		svcTun = winsvc.NewTunnel(winsvc.DialPipe, version, installService)
-		svcTun.Fallback = startEmbedded
-		defer svcTun.Close()
-		vpn.FollowTunnel(upCache(svcTun))
-		tunnel, ping = svcTun, svcTun.Ping
-		// Started with Windows (--tray): a UAC prompt out of nowhere at sign-in
-		// is worse than waiting; the first connect asks.
-		if svcTun.Ready() || !slices.Contains(os.Args[1:], "--tray") {
-			if err := svcTun.Ensure(); err != nil {
-				// Not fatal: the window opens and says so when connecting; «Повторить» asks again.
-				log.Printf("service: %v", err)
-			} else {
-				serviceOK = true
-				if relaunchInstalled() {
-					return
-				}
+	// Started with Windows (--tray): a UAC prompt out of nowhere at sign-in
+	// is worse than waiting; the first connect asks.
+	if svcTun.Ready() || !slices.Contains(os.Args[1:], "--tray") {
+		if err := svcTun.Ensure(); err != nil {
+			// Not fatal: the window opens and says so when connecting; «Повторить» asks again.
+			log.Printf("service: %v", err)
+		} else {
+			serviceOK = true
+			if relaunchInstalled() {
+				return
 			}
 		}
 	}
@@ -148,10 +135,8 @@ func main() {
 		Version: version, Site: site, OpenURL: openURL, UpdateDir: dir,
 		Autostart: setAutostart, AutostartOn: autostartOn, LogPath: logPath,
 	}
-	app.ApplyUpdate = func(staged string) error { return applyUpdate(app, svcTun, staged) }
-	if svcTun != nil {
-		app.OnUserAttempt = svcTun.AllowPrompt
-	}
+	app.ApplyUpdate = func(staged string) error { return applyUpdate(app, staged) }
+	app.OnUserAttempt = svcTun.AllowPrompt
 
 	dpi := uint(96)
 	if r, _, _ := getDpiForSys.Call(); r != 0 {
@@ -230,14 +215,6 @@ func main() {
 		// The window was not running: start it and do what the button asked.
 		core.Go("notification action", func() { w.Dispatch(func() { t.runAction(pending) }) })
 	}
-	if embedded {
-		core.Go("fallback notice", func() {
-			time.Sleep(2 * time.Second)
-			if app.OnToast != nil {
-				app.OnToast("Служба Boop VPN не установлена: работает резервный режим (окно с правами администратора).")
-			}
-		})
-	}
 	// Also on a panic in this goroutine (the recover above runs after it): the
 	// adapter and kill switch go with the process, but the panel is told.
 	defer app.Disconnect()
@@ -278,58 +255,21 @@ func acquireInstance() bool {
 	return false
 }
 
-// applyUpdate hands the update to the service, which fetches and checks it
-// itself and replaces the installed program (the window may not write there),
-// then starts the new window from it. staged (the window's own download, in the
-// user's folder) is only the proof the update works; the service trusts nothing
-// from here. Without a service (it never installed, or does not answer) the
-// program replaces itself, as 1.3.x did.
-func applyUpdate(app *core.App, tun *winsvc.Tunnel, staged string) error {
+// applyUpdate swaps this window's own file for the staged download and starts
+// it. The service is not part of it: since 1.5.0 it is a separate program
+// (BoopService.exe) that the setup program updates, and it refuses to replace
+// itself from the update manifest (winsvc.ErrUpdateByInstaller). Where the
+// window's folder is not writable (Program Files) the swap fails and the
+// person is sent to the setup program.
+func applyUpdate(app *core.App, staged string) error {
 	app.Disconnect()
-	if tun != nil {
-		v, err := tun.Client.Update()
-		if err == nil && v != "" {
-			return finishServiceUpdate(tun, staged, v)
-		}
-		log.Printf("update: the service did not take it (%v, %q); updating without it", err, v)
-	}
-	return applyWithoutService(staged)
-}
-
-func finishServiceUpdate(tun *winsvc.Tunnel, staged, v string) error {
-	_ = os.Remove(staged)
-	// The service restarts into the new program; wait until it answers.
-	deadline := time.Now().Add(60 * time.Second)
-	for {
-		if h, err := tun.Client.Hello(); err == nil && h.Version == v {
-			break
-		}
-		if time.Now().After(deadline) {
-			return errors.New("the service did not come back after the update")
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	return restartInto(winsvc.InstalledExe(winsvc.Real{}))
-}
-
-// applyWithoutService swaps this program's own file for the staged one; where
-// the folder is not writable (Program Files) one UAC prompt runs an elevated
-// copy that fetches and checks the update itself.
-func applyWithoutService(staged string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
 	if err := core.SwapBinary(exe, staged); err != nil {
-		log.Printf("update: swap: %v; asking for rights", err)
-		code, err := winsvc.RunElevated(exe, flagSelfUpdate)
-		switch {
-		case err != nil:
-			return err
-		case code != exitOK:
-			return fmt.Errorf("elevated update ended with code %d", code)
-		}
-		_ = os.Remove(staged)
+		log.Printf("update: swap: %v", err)
+		return &core.ServiceError{Msg: "Не удалось заменить Boop.exe. Скачайте и запустите новый установщик Boop VPN."}
 	}
 	return restartInto(exe)
 }
@@ -346,20 +286,6 @@ func restartInto(exe string) error {
 	log.Printf("update: starting %s", exe)
 	os.Exit(0)
 	return nil
-}
-
-// placeWintun puts wintun.dll next to the program, where an in-process tunnel
-// (fallback mode) looks for it.
-func placeWintun() error {
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	p := filepath.Join(filepath.Dir(exe), "wintun.dll")
-	if old, err := os.ReadFile(p); err == nil && bytes.Equal(old, wintunDLL) {
-		return nil
-	}
-	return os.WriteFile(p, wintunDLL, 0o644)
 }
 
 func dpapi(seal bool) func([]byte) ([]byte, error) {

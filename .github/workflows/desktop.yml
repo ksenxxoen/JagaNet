@@ -54,6 +54,11 @@ jobs:
       - name: go vet (windows)
         run: GOOS=windows GOARCH=amd64 go vet ./...
 
+      # Issue #78: Boop.exe is the window only; the engine (Xray-core, AmneziaWG) is
+      # BoopService.exe's. Checked on the package graphs and on the built files.
+      - name: Boop.exe has no engine, BoopService.exe has no window
+        run: scripts/check-deps.sh dist
+
       # Issue #53: the embedded Xray-core must not be older than the nodes' (the one
       # constant to change is NodeCoreVersion in vpn/xray/version.go).
       - name: xray-core not older than the nodes
@@ -96,20 +101,43 @@ jobs:
 
       - name: SHA-256
         run: |
-          sum="$(sha256sum dist/Boop.exe | cut -d' ' -f1)"
-          echo "Boop.exe SHA-256: $sum"
+          summary=""
+          for f in Boop.exe BoopService.exe; do
+            sum="$(sha256sum "dist/$f" | cut -d' ' -f1)"
+            echo "$f SHA-256: $sum"
+            summary+="* $f: SHA-256 \`$sum\`, $(stat -c %s "dist/$f") bytes"$'\n'
+          done
           {
-            echo "### Boop.exe (unsigned, 0.0.0-ci+${HEAD_SHA::7})"
+            echo "### Boop.exe and BoopService.exe (unsigned, 0.0.0-ci+${HEAD_SHA::7})"
             echo
-            echo "SHA-256: \`$sum\`"
-            echo
-            echo "Size: $(stat -c %s dist/Boop.exe) bytes. Download: artifact \`Boop.exe-${HEAD_SHA}\` on this run's page (kept 7 days)."
+            printf '%s\n' "$summary"
+            echo "Download: artifact \`Boop.exe-${HEAD_SHA}\` on this run's page (both files, kept 7 days)."
           } >>"$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
           name: Boop.exe-${{ github.event.pull_request.head.sha || github.sha }}
-          path: desktop/dist/Boop.exe
+          path: |
+            desktop/dist/Boop.exe
+            desktop/dist/BoopService.exe
+          retention-days: 7
+          if-no-files-found: error
+
+      # The 1.4.x line (one Boop.exe that is also the service), built from the
+      # commit before the split, for the upgrade tests on Windows below.
+      - uses: actions/checkout@v4
+        with:
+          ref: c66363b29f11aafffab1d7d6e7e468821a176924
+          path: baseline
+
+      - name: Boop.exe 1.4.4 (baseline for the upgrade tests)
+        working-directory: baseline/desktop
+        run: ./build.sh 1.4.4
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Boop-1.4.4-${{ github.event.pull_request.head.sha || github.sha }}
+          path: baseline/desktop/dist/Boop.exe
           retention-days: 7
           if-no-files-found: error
 
@@ -172,17 +200,32 @@ jobs:
         shell: pwsh
         working-directory: .
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
       - uses: actions/download-artifact@v4
         with:
           name: Boop.exe-${{ github.event.pull_request.head.sha || github.sha }}
           path: dist
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: Boop-1.4.4-${{ github.event.pull_request.head.sha || github.sha }}
+          path: dist-1.4.4
+
+      # BoopService.exe is the service and its installer; Boop.exe (the window) sits
+      # next to it and is copied to Program Files with it.
       - name: install, upgrade, uninstall
         run: |
-          $exe = Join-Path $PWD 'dist\Boop.exe'
+          $svcExe = Join-Path $PWD 'dist\BoopService.exe'
+          $win = Join-Path $PWD 'dist\Boop.exe'
           $dir = Join-Path $env:ProgramFiles 'Boop'
           $data = Join-Path $env:ProgramData 'Boop'
-          function Run($flag) {
+          function Run($exe, $flag) {
             $p = Start-Process -FilePath $exe -ArgumentList $flag -Wait -PassThru
             return $p.ExitCode
           }
@@ -195,26 +238,125 @@ jobs:
             if (-not $ok) { Dump; throw "FAILED: $what" }
             Write-Host "ok: $what"
           }
+          function Binary { (Get-CimInstance Win32_Service -Filter "Name='BoopVPN'").PathName }
+          # Boop.exe is a GUI-subsystem program: its output only reaches a redirected handle.
+          function ServiceCheck($exe) {
+            $o = Join-Path $env:TEMP 'service-check.txt'
+            Remove-Item $o -ErrorAction SilentlyContinue
+            $p = Start-Process -FilePath $exe -ArgumentList '--service-check' -Wait -PassThru -RedirectStandardOutput $o
+            $text = if (Test-Path $o) { (Get-Content $o -Raw) } else { '' }
+            Write-Host "service-check: exit $($p.ExitCode): $text"
+            return [pscustomobject]@{ Code = $p.ExitCode; Text = "$text" }
+          }
 
-          Check ((Run '--install-service') -eq 0) 'install exits 0'
+          Check ((Run $svcExe '--install-service') -eq 0) 'install exits 0'
           $svc = Get-Service BoopVPN
           Check ($svc.Status -eq 'Running') 'service BoopVPN is Running'
-          Check (Test-Path "$dir\Boop.exe") 'Boop.exe in Program Files'
+          Check (Test-Path "$dir\BoopService.exe") 'BoopService.exe in Program Files'
+          Check (Test-Path "$dir\Boop.exe") 'Boop.exe (window) in Program Files'
           Check (Test-Path "$dir\wintun.dll") 'wintun.dll in Program Files'
+          Check ((Binary) -match 'BoopService\.exe"? --service') 'the service runs BoopService.exe --service'
           Check ([System.IO.Directory]::GetFiles('\\.\pipe\') -contains '\\.\pipe\BoopVPN') 'pipe BoopVPN exists'
+          # The window speaks to the service over the pipe.
+          Check ((ServiceCheck $win).Code -eq 0) 'window <-> service hello over the pipe'
 
           # Ordinary users may read and run, not write.
           $acl = (Get-Acl $dir).Access | Where-Object { $_.IdentityReference -match 'Users$' }
           Check (($acl | Where-Object { $_.FileSystemRights -match 'Write|Modify|FullControl' }).Count -eq 0) 'Users cannot write Program Files\Boop'
 
           # Upgrade over a running service.
-          Check ((Run '--install-service') -eq 0) 'second install (upgrade) exits 0'
+          Check ((Run $svcExe '--install-service') -eq 0) 'second install (upgrade) exits 0'
           Check ((Get-Service BoopVPN).Status -eq 'Running') 'service Running after upgrade'
 
-          Check ((Run '--uninstall-service') -eq 0) 'uninstall exits 0'
+          Check ((Run $svcExe '--uninstall-service') -eq 0) 'uninstall exits 0'
           Start-Sleep -Seconds 2
           Check ($null -eq (Get-Service BoopVPN -ErrorAction SilentlyContinue)) 'service removed'
+          Check (-not (Test-Path "$dir\BoopService.exe")) 'BoopService.exe removed'
           Check (-not (Test-Path "$dir\Boop.exe")) 'Boop.exe removed'
+
+      # Update over 1.4.x: the old Boop.exe is both window and service
+      # (`Boop.exe --service`). The new window must work with that service
+      # (protocol 1) until BoopService.exe replaces it, and the replacement must
+      # re-point the same BoopVPN service.
+      - name: update over 1.4.4
+        run: |
+          $old = Join-Path $PWD 'dist-1.4.4\Boop.exe'
+          $svcExe = Join-Path $PWD 'dist\BoopService.exe'
+          $win = Join-Path $PWD 'dist\Boop.exe'
+          $dir = Join-Path $env:ProgramFiles 'Boop'
+          $data = Join-Path $env:ProgramData 'Boop'
+          function Dump {
+            foreach ($f in @("$data\install.log", "$data\service.log")) {
+              if (Test-Path $f) { Write-Host "--- $f"; Get-Content $f -Tail 60 }
+            }
+          }
+          function Check($ok, $what) {
+            if (-not $ok) { Dump; throw "FAILED: $what" }
+            Write-Host "ok: $what"
+          }
+          function Run($exe, $flag) { (Start-Process -FilePath $exe -ArgumentList $flag -Wait -PassThru).ExitCode }
+          function Binary { (Get-CimInstance Win32_Service -Filter "Name='BoopVPN'").PathName }
+          # Boop.exe is a GUI-subsystem program: its output only reaches a redirected handle.
+          function ServiceCheck($exe) {
+            $o = Join-Path $env:TEMP 'service-check.txt'
+            Remove-Item $o -ErrorAction SilentlyContinue
+            $p = Start-Process -FilePath $exe -ArgumentList '--service-check' -Wait -PassThru -RedirectStandardOutput $o
+            $text = if (Test-Path $o) { (Get-Content $o -Raw) } else { '' }
+            Write-Host "service-check: exit $($p.ExitCode): $text"
+            return [pscustomobject]@{ Code = $p.ExitCode; Text = "$text" }
+          }
+
+          # 1.4.4 installs itself as the service.
+          Check ((Run $old '--install-service') -eq 0) '1.4.4 installs its service'
+          Check ((Get-Service BoopVPN).Status -eq 'Running') '1.4.4 service Running'
+          Check ((Binary) -match 'Boop\.exe"? --service') 'the 1.4.4 service runs Boop.exe --service'
+          # The new window (protocol 1..2) against the old service (protocol 1).
+          $r = ServiceCheck $win
+          Check ($r.Code -eq 0) 'new window <-> 1.4.4 service: hello answered'
+          Check ($r.Text -match 'service 1\.4\.4') 'it is the 1.4.4 service that answered'
+
+          # BoopService.exe takes the BoopVPN service over and brings the window.
+          Check ((Run $svcExe '--install-service') -eq 0) 'BoopService.exe replaces the 1.4.4 service'
+          Check ((Get-Service BoopVPN).Status -eq 'Running') 'service Running after the update'
+          Check ((Binary) -match 'BoopService\.exe"? --service') 'the service now runs BoopService.exe'
+          Check (Test-Path "$dir\Boop.exe") 'the window is in Program Files'
+          $r = ServiceCheck "$dir\Boop.exe"
+          Check ($r.Code -eq 0 -and $r.Text -match 'protocol 1\.\.2') 'new window <-> new service: protocol 1..2'
+
+          Check ((Run $svcExe '--uninstall-service') -eq 0) 'uninstall exits 0'
+
+      # Issue #78: connect through the service. The test (vpn/xray/service_e2e_windows_test.go)
+      # is the window: a fake panel hands out a VLESS node (Xray-core in the test
+      # process, on loopback), the test sends `up` over the pipe, checks `status`, carries
+      # bytes through the tunnel, sends `down`, and checks that the adapter, routes and WFP
+      # filters are gone. The runner's own traffic rides the tunnel meanwhile, so it is short.
+      - name: connect through the service (fake panel, local Xray node)
+        timeout-minutes: 8
+        env:
+          BOOP_E2E_SERVICE: "1"
+        run: |
+          $svcExe = Join-Path $PWD 'dist\BoopService.exe'
+          $p = Start-Process -FilePath $svcExe -ArgumentList '--install-service' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "install exited $($p.ExitCode)" }
+          Push-Location desktop
+          try {
+            go test -c -o "$env:RUNNER_TEMP\svc-e2e.test.exe" ./vpn/xray/
+            if ($LASTEXITCODE -ne 0) { throw 'building the e2e test failed' }
+          } finally { Pop-Location }
+          try {
+            $targs = @('-test.run=^TestServiceConnect$', '-test.v', '-test.timeout=5m')
+            & "$env:RUNNER_TEMP\svc-e2e.test.exe" @targs
+            $code = $LASTEXITCODE
+          } finally {
+            # Whatever happened, the tunnel must not outlive the step.
+            Start-Process -FilePath $svcExe -ArgumentList '--uninstall-service' -Wait | Out-Null
+          }
+          if ($code -ne 0) {
+            foreach ($f in @("$env:ProgramData\Boop\service.log")) {
+              if (Test-Path $f) { Write-Host "--- $f"; Get-Content $f -Tail 80 }
+            }
+            throw "connect through the service failed ($code)"
+          }
 
       # Issue #72: the toast keys and the WinRT calls must not fail (nobody clicks here).
       - name: toast registration and notification (no interaction)
@@ -267,6 +409,67 @@ jobs:
       - name: build the setup program
         run: ./desktop/installer/build.ps1
 
+      # The 1.4.4 setup program (one Boop.exe, which is also the service), built
+      # from the commit before the split, to update over.
+      - uses: actions/checkout@v4
+        with:
+          ref: c66363b29f11aafffab1d7d6e7e468821a176924
+          path: baseline
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: Boop-1.4.4-${{ github.event.pull_request.head.sha || github.sha }}
+          path: baseline/desktop/dist
+
+      - name: build the 1.4.4 setup program
+        run: ./baseline/desktop/installer/build.ps1
+
+      - name: update over 1.4.4 (silent)
+        run: |
+          $old = (Get-ChildItem baseline/desktop/dist/Boop-Setup-1.4.4.exe).FullName
+          $new = (Get-ChildItem desktop/dist/Boop-Setup-*.exe | Select-Object -First 1).FullName
+          $dir = Join-Path $env:ProgramFiles 'Boop'
+          $data = Join-Path $env:ProgramData 'Boop'
+          function Dump {
+            foreach ($f in @("$data\install.log", "$data\service.log")) {
+              if (Test-Path $f) { Write-Host "--- $f"; Get-Content $f -Tail 60 }
+            }
+          }
+          function Check($ok, $what) {
+            if (-not $ok) { Dump; throw "FAILED: $what" }
+            Write-Host "ok: $what"
+          }
+          function Setup($exe, $argv) { (Start-Process -FilePath $exe -ArgumentList $argv -Wait -PassThru).ExitCode }
+          function Binary { (Get-CimInstance Win32_Service -Filter "Name='BoopVPN'").PathName }
+          function ServiceCheck($exe) {
+            $o = Join-Path $env:TEMP 'service-check.txt'
+            Remove-Item $o -ErrorAction SilentlyContinue
+            $p = Start-Process -FilePath $exe -ArgumentList '--service-check' -Wait -PassThru -RedirectStandardOutput $o
+            $text = if (Test-Path $o) { (Get-Content $o -Raw) } else { '' }
+            Write-Host "service-check: exit $($p.ExitCode): $text"
+            return [pscustomobject]@{ Code = $p.ExitCode; Text = "$text" }
+          }
+          $silent = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTBoop-1.4.4-${{ github.event.pull_request.head.sha || github.sha }} /SP- /LOG'
+
+          Check ((Setup $old $silent) -eq 0) '1.4.4 installs'
+          Check ((Get-Service BoopVPN).Status -eq 'Running') '1.4.4 service Running'
+          Check ((Binary) -match 'Boop\.exe"? --service') 'the 1.4.4 service runs Boop.exe --service'
+          Check (-not (Test-Path "$dir\BoopService.exe")) '1.4.4 has no BoopService.exe'
+
+          Check ((Setup $new $silent) -eq 0) 'the new setup installs over 1.4.4'
+          Check ((Get-Service BoopVPN).Status -eq 'Running') 'service Running after the update'
+          Check ((Binary) -match 'BoopService\.exe"? --service') 'the service now runs BoopService.exe'
+          Check (Test-Path "$dir\Boop.exe") 'Boop.exe (window) in Program Files'
+          Check (Test-Path "$dir\wintun.dll") 'wintun.dll in Program Files'
+          $r = ServiceCheck "$dir\Boop.exe"
+          Check ($r.Code -eq 0 -and $r.Text -match 'protocol 1\.\.2') 'window <-> updated service: protocol 1..2'
+
+          $unins = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTBoop-1.4.4-${{ github.event.pull_request.head.sha || github.sha }} /PURGEDATA' -Wait -PassThru
+          Check ($unins.ExitCode -eq 0) 'uninstall exits 0'
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Get-Service BoopVPN -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
+          Check ($null -eq (Get-Service BoopVPN -ErrorAction SilentlyContinue)) 'service removed'
+
       - name: install, upgrade, uninstall (silent)
         run: |
           $setup = (Get-ChildItem desktop/dist/Boop-Setup-*.exe | Select-Object -First 1).FullName
@@ -291,6 +494,7 @@ jobs:
           Check ((Setup "$silent /TASKS=autostart") -eq 0) 'install exits 0'
           Check ((Get-Service BoopVPN).Status -eq 'Running') 'service BoopVPN is Running'
           Check (Test-Path "$dir\Boop.exe") 'Boop.exe in Program Files'
+          Check (Test-Path "$dir\BoopService.exe") 'BoopService.exe in Program Files'
           Check (Test-Path "$dir\wintun.dll") 'wintun.dll in Program Files'
           Check (Test-Path "$dir\unins000.exe") 'uninstaller present'
           Check ([System.IO.Directory]::GetFiles('\\.\pipe\') -contains '\\.\pipe\BoopVPN') 'pipe BoopVPN exists'
@@ -314,6 +518,7 @@ jobs:
           while ((Test-Path "$dir\Boop.exe") -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
           Check ($null -eq (Get-Service BoopVPN -ErrorAction SilentlyContinue)) 'service removed'
           Check (-not (Test-Path "$dir\Boop.exe")) 'Boop.exe removed'
+          Check (-not (Test-Path "$dir\BoopService.exe")) 'BoopService.exe removed'
           Check (-not (Test-Path "$dir\wintun.dll")) 'wintun.dll removed'
           Check (Test-Path "$data\keep.txt") 'data kept without /PURGEDATA'
           Check (-not (Test-Path 'HKCU:\Software\Classes\AppUserModelId\Boop.VPN')) 'toast AUMID key removed'

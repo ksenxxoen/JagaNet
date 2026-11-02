@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"sync"
@@ -89,7 +90,7 @@ func (s *Server) handle(c net.Conn) {
 		if err := json.Unmarshal(sc.Bytes(), &req); err != nil {
 			res = Response{Error: "bad request"}
 		} else {
-			res = s.do(me, req)
+			res = s.answer(me, req)
 		}
 		_ = c.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		if err := enc.Encode(res); err != nil {
@@ -115,10 +116,28 @@ func (s *Server) closed(me *session) {
 	}
 }
 
+// answer checks the request's protocol, then does it. Every answer carries the
+// service's protocol range, so the window learns it from any call.
+func (s *Server) answer(me *session, req Request) Response {
+	proto := req.Proto
+	if proto == 0 {
+		proto = 1 // Boop 1.4.x sent none
+	}
+	var res Response
+	if proto < MinProtocol || proto > Protocol {
+		s.logf("helper: refused protocol %d (speaks %d..%d)", proto, MinProtocol, Protocol)
+		res = Response{Code: CodeProto, Error: fmt.Sprintf("protocol %d is not supported (this service speaks %d..%d)", proto, MinProtocol, Protocol)}
+	} else {
+		res = s.do(me, req)
+	}
+	res.Protocol, res.MinProtocol = Protocol, MinProtocol
+	return res
+}
+
 func (s *Server) do(me *session, req Request) Response {
 	switch req.Op {
 	case OpHello:
-		return Response{OK: true, Version: s.Version, Protocol: Protocol}
+		return Response{OK: true, Version: s.Version}
 	case OpUp:
 		cfg, err := req.Config.Tunnel()
 		if err != nil {

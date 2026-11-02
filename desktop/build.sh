@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds dist/Boop.exe for Windows (amd64) from any system with Go.
+# Builds dist/Boop.exe (the window) and dist/BoopService.exe (the service) for
+# Windows (amd64) from any system with Go.
 #   ./build.sh [version] [api]
 # api: the panel's addresses in order, separated by commas (main one first, then
 # the spares, issue #37). Left out: the list in ui.go (apiBase), which is what a
@@ -7,7 +8,7 @@
 # Signing is optional and off by default: set BOOP_SIGN (see SIGNING.md).
 set -euo pipefail
 cd "$(dirname "$0")"
-VERSION="${1:-1.4.4}"
+VERSION="${1:-1.5.0}"
 API="${2:-}"
 APIX=""
 if [ -n "$API" ]; then
@@ -33,17 +34,29 @@ fi
 v4="$VERSION"; while [ "$(tr -cd . <<<"$v4" | wc -c)" -lt 3 ]; do v4="$v4.0"; done
 go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --out rsrc \
   --arch amd64 --file-version "$v4" --product-version "$v4"
+go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/service/winres.json --out cmd/boop-service/rsrc \
+  --arch amd64 --file-version "$v4" --product-version "$v4"
+# The service embeds wintun.dll (go:embed cannot reach outside its directory).
+cp build/wintun.dll cmd/boop-service/wintun.dll
 
 # go build keeps an existing exe with the same build ID even if it was signed
-# since, so start clean; the .sha256 is only written by a signed build.
-rm -f dist/Boop.exe dist/Boop.exe.sha256
+# since, so start clean; the .sha256 files are only written by a signed build.
+rm -f dist/Boop.exe dist/Boop.exe.sha256 dist/BoopService.exe dist/BoopService.exe.sha256
+# Boop.exe: window and tray only. It links neither Xray-core nor AmneziaWG
+# (scripts/check-deps.sh proves it); the tunnel is BoopService.exe's.
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
   -ldflags "-s -w -H windowsgui -X main.version=$VERSION $APIX" \
   -o dist/Boop.exe .
+# BoopService.exe: console subsystem, no window.
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
+  -ldflags "-s -w -X main.version=$VERSION" \
+  -o dist/BoopService.exe ./cmd/boop-service
 
 # Optional Authenticode signature with an RFC 3161 timestamp. Nothing happens
 # unless BOOP_SIGN is set. Keys and passwords come only from the environment.
-if [ -n "${BOOP_SIGN:-}" ]; then
+# sign_exe <name> signs dist/<name> (Boop.exe, then BoopService.exe).
+sign_exe() {
+  local name="$1"
   TSA="${BOOP_SIGN_TSA:-}"
   signtmp="$(mktemp -d)"; chmod 700 "$signtmp"
   trap 'rm -rf "$signtmp"' EXIT
@@ -61,7 +74,7 @@ if [ -n "${BOOP_SIGN:-}" ]; then
       ts=(); [ "${TSA:=https://timestamp.acs.microsoft.com}" = none ] || ts=(-ts "$TSA")
       osslsigncode sign -pkcs12 "$pfx" -readpass "$signtmp/pass" -h sha256 \
         -n "${BOOP_SIGN_NAME:-Boop}" -i "${BOOP_SIGN_URL:-$SITE}" ${ts[@]+"${ts[@]}"} \
-        -in dist/Boop.exe -out "$signtmp/Boop.exe"
+        -in "dist/$name" -out "$signtmp/$name"
       ;;
     azure)
       # Azure Trusted Signing through jsign (Java, runs on Linux/macOS/Windows).
@@ -76,17 +89,17 @@ if [ -n "${BOOP_SIGN:-}" ]; then
       fi
       export BOOP_AZURE_TOKEN
       ts=(); [ "${TSA:=http://timestamp.acs.microsoft.com}" = none ] || ts=(--tsaurl "$TSA" --tsmode RFC3161)
-      cp dist/Boop.exe "$signtmp/Boop.exe"
+      cp "dist/$name" "$signtmp/$name"
       "$JSIGN" --storetype TRUSTEDSIGNING --keystore "$BOOP_AZURE_ENDPOINT" \
         --storepass env:BOOP_AZURE_TOKEN --alias "$BOOP_AZURE_ACCOUNT/$BOOP_AZURE_PROFILE" \
         --alg SHA-256 --name "${BOOP_SIGN_NAME:-Boop}" --url "${BOOP_SIGN_URL:-$SITE}" \
-        ${ts[@]+"${ts[@]}"} "$signtmp/Boop.exe"
+        ${ts[@]+"${ts[@]}"} "$signtmp/$name"
       ;;
     *) echo "sign: unknown BOOP_SIGN=$BOOP_SIGN (osslsigncode or azure)" >&2; exit 1 ;;
   esac
   [ "$TSA" != none ] || echo "sign: WARNING: no timestamp, the signature dies with the certificate" >&2
 
-  # Check the result before it replaces dist/Boop.exe. strict fails the build,
+  # Check the result before it replaces "dist/$name". strict fails the build,
   # warn only reports (e.g. a test certificate or a root OpenSSL does not know).
   case "${BOOP_SIGN_VERIFY:-strict}" in
     off) ;;
@@ -96,7 +109,7 @@ if [ -n "${BOOP_SIGN:-}" ]; then
         [ "${BOOP_SIGN_VERIFY:-strict}" = warn ] || exit 1
       else
         ca=(); [ -z "${BOOP_SIGN_CAFILE:-}" ] || ca=(-CAfile "$BOOP_SIGN_CAFILE")
-        if osslsigncode verify ${ca[@]+"${ca[@]}"} -in "$signtmp/Boop.exe" >"$signtmp/verify.log" 2>&1; then
+        if osslsigncode verify ${ca[@]+"${ca[@]}"} -in "$signtmp/$name" >"$signtmp/verify.log" 2>&1; then
           echo "sign: signature verified"
         else
           grep -E 'Error:|verification:|Failed' "$signtmp/verify.log" >&2 || true
@@ -107,9 +120,14 @@ if [ -n "${BOOP_SIGN:-}" ]; then
       ;;
     *) echo "sign: BOOP_SIGN_VERIFY must be strict, warn or off" >&2; exit 1 ;;
   esac
-  chmod 755 "$signtmp/Boop.exe"
-  mv "$signtmp/Boop.exe" dist/Boop.exe
+  chmod 755 "$signtmp/$name"
+  mv "$signtmp/$name" "dist/$name"
   # The update manifest takes the hash of this, the signed file (SIGNING.md).
-  (cd dist && sha256sum Boop.exe | tee Boop.exe.sha256)
+  (cd dist && sha256sum "$name" | tee "$name.sha256")
+  rm -rf "$signtmp"
+}
+if [ -n "${BOOP_SIGN:-}" ]; then
+  sign_exe Boop.exe
+  sign_exe BoopService.exe
 fi
-ls -l dist/Boop.exe
+ls -l dist/Boop.exe dist/BoopService.exe

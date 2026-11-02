@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ksenxxoen/JagaNet/desktop/vpn"
@@ -27,7 +28,49 @@ type Client struct {
 	mu   sync.Mutex
 	conn net.Conn
 	rd   *bufio.Reader
+
+	// proto is what the far end speaks at most, learned from its answers; 0
+	// until the first one. Requests carry min(Protocol, proto).
+	proto atomic.Int32
 }
+
+// Errors the window shows as they are.
+var (
+	// ErrServiceOld: the service speaks only protocols older than this window's
+	// oldest (it needs the installer's update).
+	ErrServiceOld = errors.New("служба Boop VPN устарела, обновите службу (переустановите Boop VPN)")
+	// ErrWindowOld: the service no longer speaks this window's protocol.
+	ErrWindowOld = errors.New("окно Boop VPN устарело для установленной службы, обновите Boop VPN")
+)
+
+// sendProto is the protocol to put in a request: ours, or the far end's when it is older.
+func (c *Client) sendProto() int {
+	if p := int(c.proto.Load()); p != 0 && p < Protocol {
+		return p
+	}
+	return Protocol
+}
+
+// learn notes the far end's protocol range from an answer and turns a refusal
+// by protocol into the words for the person.
+func (c *Client) learn(res Response) error {
+	if res.Protocol != 0 {
+		c.proto.Store(int32(res.Protocol))
+	}
+	if res.Code == CodeProto {
+		if res.Protocol != 0 && res.Protocol < MinProtocol {
+			return ErrServiceOld
+		}
+		return ErrWindowOld
+	}
+	if res.OK && res.Protocol != 0 && res.Protocol < MinProtocol {
+		return ErrServiceOld
+	}
+	return nil
+}
+
+// ServiceProtocol is what the service speaks at most (0: not known yet).
+func (c *Client) ServiceProtocol() int { return int(c.proto.Load()) }
 
 // ErrUnavailable is returned when the helper cannot be reached.
 var ErrUnavailable = errors.New("helper: boop-helper is not running")
@@ -72,8 +115,12 @@ func (c *Client) call(req Request, timeout time.Duration) (Response, error) {
 			}
 			c.conn, c.rd = conn, bufio.NewReaderSize(conn, 4096)
 		}
+		req.Proto = c.sendProto()
 		res, err := exchange(c.conn, c.rd, req, timeout)
 		if err == nil {
+			if lerr := c.learn(res); lerr != nil {
+				return res, lerr
+			}
 			return res, nil
 		}
 		c.conn.Close()
@@ -182,7 +229,10 @@ func (c *Client) Ping(ctx context.Context, ip string) (time.Duration, error) {
 	}
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
 	defer stop()
-	res, err := answer(exchange(conn, bufio.NewReader(conn), Request{Op: OpPing, Host: ip}, timeout))
+	res, err := answer(exchange(conn, bufio.NewReader(conn), Request{Proto: c.sendProto(), Op: OpPing, Host: ip}, timeout))
+	if err == nil {
+		err = c.learn(res)
+	}
 	if err != nil {
 		return 0, err
 	}

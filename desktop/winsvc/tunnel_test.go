@@ -1,6 +1,8 @@
 package winsvc
 
 import (
+	"bufio"
+	"encoding/json"
 	"errors"
 	"net"
 	"path/filepath"
@@ -109,22 +111,40 @@ type failTunnel struct{ *recTunnel }
 
 func (*failTunnel) Apply(*vpn.Config) error { return errors.New("adapter: nope") }
 
-func TestEnsureUpgradesOldService(t *testing.T) {
+// An older service that speaks a protocol the window still understands is kept
+// (1.4.x service, 1.5.0 window); only a service that does not answer is installed.
+func TestEnsureKeepsCompatibleService(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "s.sock")
-	listen(t, path, "1.3.1", &recTunnel{})
-	n := 0
-	tn := NewTunnel(dialer(path), "1.4.0", func() error { n++; return nil })
-	defer tn.Close()
-	if err := tn.Ensure(); err != nil || n != 1 {
-		t.Fatalf("%v %d", err, n)
+	l, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	// Same version: nothing to do.
-	path2 := filepath.Join(t.TempDir(), "s2.sock")
-	listen(t, path2, "1.4.0", &recTunnel{})
-	n = 0
-	tn2 := NewTunnel(dialer(path2), "1.4.0", func() error { n++; return nil })
+	defer l.Close()
+	go func() { // a 1.4.x service: hello answers version and protocol 1, "proto" is not known to it
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				sc := bufio.NewScanner(c)
+				for sc.Scan() {
+					_ = json.NewEncoder(c).Encode(map[string]any{"ok": true, "version": "1.4.4", "protocol": 1})
+				}
+			}()
+		}
+	}()
+	n := 0
+	tn := NewTunnel(dialer(path), "1.5.0", func() error { n++; return nil })
+	defer tn.Close()
+	if err := tn.Ensure(); err != nil || n != 0 || !tn.Ready() {
+		t.Fatalf("err %v installs %d", err, n)
+	}
+	// No service at all: installed.
+	tn2 := NewTunnel(dialer(filepath.Join(t.TempDir(), "none.sock")), "1.5.0", func() error { n++; return nil })
 	defer tn2.Close()
-	if err := tn2.Ensure(); err != nil || n != 0 {
+	if err := tn2.Ensure(); err != nil || n != 1 {
 		t.Fatalf("%v %d", err, n)
 	}
 }

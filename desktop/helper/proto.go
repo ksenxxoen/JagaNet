@@ -13,7 +13,7 @@ import (
 
 	"github.com/ksenxxoen/JagaNet/desktop/vpn"
 	"github.com/ksenxxoen/JagaNet/desktop/vpn/split"
-	"github.com/ksenxxoen/JagaNet/desktop/vpn/xray"
+	"github.com/ksenxxoen/JagaNet/desktop/vpn/xray/params"
 )
 
 // PipeName is the named pipe BoopVPN, the Windows service, listens on.
@@ -30,8 +30,18 @@ const DefaultSocket = "/run/boop/helper.sock"
 // Group is the system group whose members may use the helper.
 const Group = "boop"
 
-// Protocol is bumped when the messages change incompatibly.
-const Protocol = 1
+// Protocol is the version the window and the service speak now, MinProtocol the
+// oldest they still understand: a service answers the current and the previous
+// version (PROTOCOL.md). 1 is Boop 1.4.x, which sent no "proto" at all.
+const (
+	Protocol    = 2
+	MinProtocol = 1
+)
+
+// Codes of Response.Code, for the errors a window must tell apart.
+const (
+	CodeProto = "proto" // the request's protocol is not one this service speaks
+)
 
 // Operations.
 const (
@@ -51,19 +61,27 @@ var Ops = []string{OpHello, OpUp, OpDown, OpStatus, OpPing, OpLog, OpUpdate}
 const maxLine = 256 << 10
 
 type Request struct {
+	// Proto is the protocol the sender speaks. Absent (0) means 1: Boop 1.4.x.
+	Proto  int     `json:"proto,omitempty"`
 	Op     string  `json:"op"`
 	Config *Config `json:"config,omitempty"`
 	Host   string  `json:"host,omitempty"`
 }
 
 type Response struct {
-	OK       bool   `json:"ok"`
-	Error    string `json:"error,omitempty"`
-	Version  string `json:"version,omitempty"`
-	Protocol int    `json:"protocol,omitempty"`
-	Up       bool   `json:"up,omitempty"`
-	Rx       uint64 `json:"rx,omitempty"`
-	Tx       uint64 `json:"tx,omitempty"`
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+	// Code names an error the window acts on (Code*); empty for the rest.
+	Code    string `json:"code,omitempty"`
+	Version string `json:"version,omitempty"`
+	// Protocol is the newest protocol the service speaks (in every answer of a
+	// service that sends "proto"; 1.4.x answered it to "hello" only), MinProtocol
+	// the oldest.
+	Protocol    int    `json:"protocol,omitempty"`
+	MinProtocol int    `json:"minProtocol,omitempty"`
+	Up          bool   `json:"up,omitempty"`
+	Rx          uint64 `json:"rx,omitempty"`
+	Tx          uint64 `json:"tx,omitempty"`
 	// Handshake is the last handshake, Unix nanoseconds; 0 for none.
 	Handshake int64 `json:"handshake,omitempty"`
 	// RTT is a ping's round trip in nanoseconds.
@@ -90,8 +108,8 @@ type Config struct {
 
 // VlessConfig is vpn.Vless on the wire.
 type VlessConfig struct {
-	Params xray.Params `json:"params"`
-	Addrs  []string    `json:"addrs"`
+	Params params.Params `json:"params"`
+	Addrs  []string      `json:"addrs"`
 }
 
 // Wire turns the tunnel's config into the message.
@@ -154,11 +172,11 @@ func (w *Config) Tunnel() (*vpn.Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("vless: %w", err)
 		}
-		params, err := xray.ParseParams(raw) // the same checks as the panel's own parameters
+		p, err := params.ParseParams(raw) // the same checks as the panel's own parameters
 		if err != nil {
 			return nil, err
 		}
-		v := &vpn.Vless{Params: params}
+		v := &vpn.Vless{Params: p}
 		if len(w.Vless.Addrs) > 16 {
 			return nil, fmt.Errorf("vless: too many addresses")
 		}

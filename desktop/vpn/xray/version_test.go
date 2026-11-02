@@ -1,6 +1,10 @@
 package xray
 
-import "testing"
+import (
+	"testing"
+
+	utls "github.com/xtls/xray-core/transport/internet/tls"
+)
 
 // The embedded Xray-core is not older than the one the nodes run (issue #53):
 // bump NodeCoreVersion in version.go when the nodes move on, and this fails
@@ -39,6 +43,17 @@ func TestCompareVersions(t *testing.T) {
 	for _, bad := range []string{"", "26.x.1", "26..1", "-1.2"} {
 		if _, err := compareVersions(bad, "1.0"); err == nil {
 			t.Errorf("compareVersions(%q) took it", bad)
+		}
+	}
+}
+
+// The window (no engine) checks fingerprints with a short list; whatever it
+// lets through must be a name Xray-core knows, or the service would refuse a
+// variant the window thought usable.
+func TestFingerprintListsAgree(t *testing.T) {
+	for _, n := range []string{"chrome", "firefox", "safari", "ios", "android", "edge", "360", "qq", "hellochrome_131"} {
+		if utls.GetFingerprint(n) == nil {
+			t.Errorf("Xray-core does not know %q", n)
 		}
 	}
 }

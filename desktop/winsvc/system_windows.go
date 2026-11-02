@@ -59,6 +59,11 @@ func InstallDir() string {
 // Real is the System of this machine.
 type Real struct{}
 
+func (Real) Exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 func (Real) Exe() string {
 	e, _ := os.Executable()
 	return e

@@ -1,3 +1,4 @@
 build/
 dist/
 *.syso
+cmd/boop-service/wintun.dll

@@ -48,7 +48,7 @@ func NewTunnel(dial func(time.Duration) (net.Conn, error), version string, insta
 // without installing anything.
 func (t *Tunnel) Ready() bool {
 	h, err := t.Client.Hello()
-	need, _ := Need(h.Version, err == nil, t.Version)
+	need, _ := Need(err == nil, h.Protocol)
 	return !need
 }
 
@@ -56,7 +56,10 @@ func (t *Tunnel) Ready() bool {
 // install (upgrade) now. The error is the person's to read.
 func (t *Tunnel) Ensure() error {
 	h, err := t.Client.Hello()
-	need, why := Need(h.Version, err == nil, t.Version)
+	if errors.Is(err, helper.ErrServiceOld) || errors.Is(err, helper.ErrWindowOld) {
+		return err // reinstalling from here would not help: say what to update
+	}
+	need, why := Need(err == nil, h.Protocol)
 	if !need {
 		return nil
 	}

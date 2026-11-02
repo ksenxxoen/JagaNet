@@ -34,9 +34,6 @@ func TestSplitOffChangesNothing(t *testing.T) {
 		if p := PermitPrefixes(c); len(p) != 0 {
 			t.Errorf("%s: permits %v", name, p)
 		}
-		if Direct(c) != nil {
-			t.Errorf("%s: direct", name)
-		}
 		if got, err := SplitUAPI(c.UAPI, c.Excluded()); err != nil || got != c.UAPI {
 			t.Errorf("%s: uapi changed: %q %v", name, got, err)
 		}
@@ -123,16 +120,6 @@ func TestSplitVless(t *testing.T) {
 		if split.Contains(p, ru.Addr()) {
 			t.Fatalf("a Russian range %v is permitted around Xray", ru)
 		}
-	}
-	d := Direct(c)
-	if d == nil || !slices.Equal(d.Domains, []string{"sber.ru"}) || !split.Contains(d.Prefixes, netip.MustParseAddr("192.168.0.9")) || !split.Contains(d.Prefixes, split.RUPrefixes()[0].Addr()) {
-		t.Fatalf("direct %+v", d)
-	}
-	if Direct(&Config{Vless: &Vless{}, Split: &split.Settings{LAN: true}}) == nil {
-		t.Error("LAN only: Xray must still route it")
-	}
-	if Direct(&Config{Split: c.Split}) != nil {
-		t.Error("AmneziaWG has no Xray")
 	}
 }
 

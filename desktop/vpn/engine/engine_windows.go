@@ -1,26 +1,26 @@
 //go:build windows
 
-package vpn
+// Package engine is the Windows tunnel: the Wintun adapter with AmneziaWG or
+// VLESS (Xray-core) behind it, routes and the WFP kill switch. Only the service
+// (BoopService.exe) links it; the window talks to the service and does not.
+package engine
 
 import (
-	"errors"
 	"fmt"
 	"log"
-	"math/bits"
 	"net"
 	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/amnezia-vpn/amneziawg-go/v3/conn"
 	"github.com/amnezia-vpn/amneziawg-go/v3/device"
 	"github.com/amnezia-vpn/amneziawg-go/v3/tun"
 	"github.com/amnezia-vpn/amneziawg-windows/v3/tunnel/winipcfg"
+	"github.com/ksenxxoen/JagaNet/desktop/vpn"
 	"github.com/ksenxxoen/JagaNet/desktop/vpn/firewall"
 	"github.com/ksenxxoen/JagaNet/desktop/vpn/xray"
 	"golang.org/x/sys/windows"
@@ -39,25 +39,21 @@ type winTunnel struct {
 	nt   *tun.NativeTun
 	luid winipcfg.LUID
 	cbs  []winipcfg.ChangeCallback
-	cur  *Config
+	cur  *vpn.Config
 }
 
-// physical is the interface the default route used before the tunnel took it,
-// for sockets that must not go through the tunnel.
-var physical4, physical6 atomic.Uint32
-
-func New() (Tunnel, error) {
+func New() (vpn.Tunnel, error) {
 	// Every socket Xray opens (to the VLESS node) is bound to the physical
 	// network like AmneziaWG's, so it never loops into the adapter; the
 	// firewall lets this program's own traffic out (permitWireGuardService).
-	if err := xray.SetSocketControl(SocketControl); err != nil {
+	if err := xray.SetSocketControl(vpn.SocketControl); err != nil {
 		return nil, err
 	}
 	xray.SetLog(log.Printf)
 	return &winTunnel{}, nil
 }
 
-func (w *winTunnel) Apply(c *Config) error {
+func (w *winTunnel) Apply(c *vpn.Config) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.dev != nil || w.vl != nil {
@@ -130,7 +126,7 @@ func (w *winTunnel) Apply(c *Config) error {
 	return nil
 }
 
-func (w *winTunnel) up(c *Config) error {
+func (w *winTunnel) up(c *vpn.Config) error {
 	mtu := c.MTU
 	if mtu <= 0 {
 		mtu = 1280
@@ -207,10 +203,10 @@ func (w *winTunnel) up(c *Config) error {
 // and DNS as AmneziaWG, with Xray-core and a netstack behind it instead of the
 // WireGuard device. Only IPv4 is routed into the adapter; IPv6 has no route
 // there and the firewall drops it outside.
-func (w *winTunnel) upVless(c *Config) error {
+func (w *winTunnel) upVless(c *vpn.Config) error {
 	mtu := c.MTU
 	if mtu <= 0 {
-		mtu = VlessMTU
+		mtu = vpn.VlessMTU
 	}
 	t, err := tun.CreateTUNWithRequestedGUID(adapterName, &adapterGUID, mtu)
 	if err != nil {
@@ -240,7 +236,7 @@ func (w *winTunnel) upVless(c *Config) error {
 		w.cbs = append(w.cbs, cbs...)
 	}
 
-	eng, err := xray.NewEngine(c.Vless.Params, c.Vless.Addrs, xray.Options{Logf: log.Printf, Direct: Direct(c)})
+	eng, err := xray.NewEngine(c.Vless.Params, c.Vless.Addrs, xray.Options{Logf: log.Printf, Direct: direct(c)})
 	if err != nil {
 		return err
 	}
@@ -279,17 +275,17 @@ func (w *winTunnel) upVless(c *Config) error {
 
 // configUAPI is the AmneziaWG config to give the device: the panel's, with the
 // excluded ranges taken out of the peer's AllowedIPs. Nothing else is touched.
-func configUAPI(c *Config) (string, error) {
+func configUAPI(c *vpn.Config) (string, error) {
 	if c.Split.Empty() {
 		return c.UAPI, nil
 	}
-	return SplitUAPI(c.UAPI, c.Excluded())
+	return vpn.SplitUAPI(c.UAPI, c.Excluded())
 }
 
 // setRoutes gives the adapter its IPv4 routes: the default one, or for
 // AmneziaWG the default minus the excluded ranges.
-func (w *winTunnel) setRoutes(c *Config) error {
-	routes, err := TunnelRoutes(c)
+func (w *winTunnel) setRoutes(c *vpn.Config) error {
+	routes, err := vpn.TunnelRoutes(c)
 	if err != nil {
 		return err
 	}
@@ -310,8 +306,8 @@ func (w *winTunnel) setRoutes(c *Config) error {
 
 // permitSplit tells the kill switch which destinations may leave outside the
 // tunnel. Without exclusions there are none, as before.
-func (w *winTunnel) permitSplit(c *Config) error {
-	ps := PermitPrefixes(c)
+func (w *winTunnel) permitSplit(c *vpn.Config) error {
+	ps := vpn.PermitPrefixes(c)
 	if len(ps) == 0 && c.Split.Empty() {
 		return nil
 	}
@@ -325,12 +321,12 @@ func (w *winTunnel) permitSplit(c *Config) error {
 // applySplit moves a running tunnel to a changed split-tunnel setting in place:
 // routes (AmneziaWG) or Xray's routing (VLESS), and the kill switch's permits
 // in one transaction, so the kill switch is never lifted meanwhile.
-func (w *winTunnel) applySplit(c *Config) error {
+func (w *winTunnel) applySplit(c *vpn.Config) error {
 	if c.Split.Equal(w.cur.Split) {
 		return nil
 	}
 	if c.Vless != nil {
-		if err := w.vl.SetDirect(Direct(c)); err != nil {
+		if err := w.vl.SetDirect(direct(c)); err != nil {
 			return err
 		}
 	} else if err := w.setRoutes(c); err != nil {
@@ -371,8 +367,7 @@ func (w *winTunnel) down() {
 	}
 	w.dev, w.vl, w.ns, w.nt, w.cur = nil, nil, nil, nil, nil
 	firewall.DisableFirewall()
-	physical4.Store(0)
-	physical6.Store(0)
+	vpn.SetPhysical(0, 0)
 }
 
 func (w *winTunnel) Up() bool {
@@ -381,11 +376,11 @@ func (w *winTunnel) Up() bool {
 	return w.dev != nil || w.vl != nil
 }
 
-func (w *winTunnel) Stats() Stats {
+func (w *winTunnel) Stats() vpn.Stats {
 	w.mu.Lock()
 	dev, vl := w.dev, w.vl
 	w.mu.Unlock()
-	var s Stats
+	var s vpn.Stats
 	if vl != nil {
 		s.Rx, s.Tx, s.Handshake = vl.Stats()
 		return s
@@ -416,55 +411,6 @@ func (w *winTunnel) Stats() Stats {
 		s.Handshake = time.Unix(sec, nsec)
 	}
 	return s
-}
-
-// followUp, set in the window process (the tunnel and its routes belong to the
-// service, so physical4 stays 0 here), says whether the service's tunnel is up.
-// While it is, the window's own sockets (the panel, the probes) follow the best
-// physical default route, as they did when the tunnel lived in this process.
-var (
-	followUp  atomic.Pointer[func() bool]
-	followMu  sync.Mutex
-	followIdx uint32
-	followAt  time.Time
-)
-
-// FollowTunnel makes SocketControl work in a process that does not hold the
-// tunnel itself; up must be cheap (it is asked for every new socket).
-func FollowTunnel(up func() bool) { followUp.Store(&up) }
-
-func physicalFor4() uint32 {
-	if i := physical4.Load(); i != 0 {
-		return i
-	}
-	up := followUp.Load()
-	if up == nil || !(*up)() {
-		return 0
-	}
-	followMu.Lock()
-	defer followMu.Unlock()
-	if followIdx == 0 || time.Since(followAt) > 3*time.Second {
-		followIdx, followAt = bestDefaultRoute(), time.Now()
-	}
-	return followIdx
-}
-
-// SocketControl keeps a socket on the physical network while the tunnel holds the default route.
-func SocketControl(network, _ string, c syscall.RawConn) error {
-	var err error
-	ctl := c.Control(func(fd uintptr) {
-		if strings.HasSuffix(network, "6") {
-			if i := physical6.Load(); i != 0 {
-				err = windows.SetsockoptInt(windows.Handle(fd), windows.IPPROTO_IPV6, 31 /* IPV6_UNICAST_IF */, int(i))
-			}
-			return
-		}
-		if i := physicalFor4(); i != 0 {
-			// IP_UNICAST_IF takes the index in network byte order.
-			err = windows.SetsockoptInt(windows.Handle(fd), windows.IPPROTO_IP, 31 /* IP_UNICAST_IF */, int(bits.ReverseBytes32(i)))
-		}
-	})
-	return errors.Join(ctl, err)
 }
 
 func ipnet(p netip.Prefix) net.IPNet {
