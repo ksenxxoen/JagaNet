@@ -141,7 +141,7 @@ function renderFooter() {
     ${col(t("Account"), [signedIn ? `<a href="#/account">${t("My account")}</a>` : `<a href="#/signin">${t("Sign in")}</a>`,
       signedIn && site?.inviteRewardDays > 0 ? `<a href="#/invite">${t("Invite a friend")}</a>` : "",
       tg ? `<a href="${h(tg)}" rel="noreferrer">${t("Telegram bot")}</a>` : ""])}
-    ${col(t("Help"), [`<a href="#/support">${t("Contact support")}</a>`, `<a href="/privacy" target="_blank" rel="noopener">${t("Privacy policy")}</a>`, `<a href="/terms" target="_blank" rel="noopener">${t("Terms of use")}</a>`])}
+    ${col(t("Help"), [`<a href="#/support">${t("Contact support")}</a>`, site?.communityUrl ? `<a href="${h(site.communityUrl)}" target="_blank" rel="noopener">${t("Our Telegram group")}</a>` : "", `<a href="/privacy" target="_blank" rel="noopener">${t("Privacy policy")}</a>`, `<a href="/terms" target="_blank" rel="noopener">${t("Terms of use")}</a>`])}
   </div>
   <div class="foot-bottom"><span>© ${new Date().getFullYear()} Boop VPN</span><span>${t("We don't keep browsing history")}</span></div>`;
 }
@@ -552,6 +552,7 @@ async function account(params) {
   ${downloads()}
   <div class="card section"><div class="card-h"><h3>${t("Sign in to the Boop app")}</h3><div id="pair"><button class="btn secondary" id="paircode">${t("Show a code")}</button></div></div></div>
   <div id="tg-card"></div>
+  ${site?.communityUrl ? `<div class="card section"><div class="card-h"><h3>${t("Our Telegram group")}</h3><a class="btn secondary" href="${h(site.communityUrl)}" target="_blank" rel="noopener">${t("Open")}</a></div><p class="muted">${t("Chat with other Boop users and follow the news in our Telegram group.")}</p></div>` : ""}
 
   ${pays.payments.length ? `<div class="h2row"><h2>${t("Payments")}</h2></div><div class="card tablewrap"><table class="data"><thead><tr><th>${t("Plan")}</th><th>${t("Period")}</th><th>${t("Channel")}</th></tr></thead><tbody>
     ${pays.payments.map((x) => `<tr><td>${x.productId === "referral" ? t("Invite reward") : h(x.tariffName || "Pro")}</td><td>${t("{from} to {to}", { from: date(x.startedAt), to: date(x.expiresAt) })}</td><td>${h(sourceName[x.source] || x.source)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;

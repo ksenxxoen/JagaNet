@@ -23,6 +23,7 @@ async function supportPage() {
       <button class="btn gap-s" type="submit" id="s-send" ${info.available ? "" : "disabled"}>${t("Send")}</button>
     </form>
     <p id="s-res" class="result"></p>
+    ${site?.communityUrl ? `<p class="muted"><a href="${h(site.communityUrl)}" target="_blank" rel="noopener">${t("Our Telegram group")}</a></p>` : ""}
   </div>`;
   const f = document.getElementById("sf"), res = document.getElementById("s-res"), btn = document.getElementById("s-send");
   f.onsubmit = async (e) => {

@@ -23,6 +23,8 @@ data class TelegramConfig(
     val miniApp: Boolean = false,
     /** Where the mini app opens. Default: PUBLIC_URL + [MINIAPP_PATH]. */
     val miniAppUrl: String? = null,
+    /** The project's Telegram group or channel (issue #91): buttons in the bot, the mini app and the website. Null = none. */
+    val communityUrl: String? = null,
 ) {
     val webhook get() = mode == WEBHOOK
 
@@ -57,7 +59,16 @@ data class TelegramConfig(
                 proxy = v("TELEGRAM_PROXY"),
                 miniApp = v("TELEGRAM_MINIAPP") == "1",
                 miniAppUrl = v("TELEGRAM_MINIAPP_URL")?.trimEnd('/'),
+                communityUrl = communityUrl(v("TELEGRAM_COMMUNITY_URL")),
             )
+        }
+
+        /** Only https://t.me/... or https://telegram.me/...; anything else is ignored with a warning (never a crash). */
+        fun communityUrl(raw: String?): String? {
+            val url = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            val ok = Regex("^https://(t\\.me|telegram\\.me)/\\S+$", RegexOption.IGNORE_CASE).matches(url)
+            if (!ok) org.slf4j.LoggerFactory.getLogger("telegram").warn("TELEGRAM_COMMUNITY_URL ignored: it must be an https://t.me/... link")
+            return url.takeIf { ok }
         }
     }
 }

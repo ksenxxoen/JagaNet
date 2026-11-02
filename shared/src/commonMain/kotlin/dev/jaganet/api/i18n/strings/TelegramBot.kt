@@ -9,6 +9,8 @@ internal val telegramBotStrings: List<S> = listOf(
     S("Buy a subscription", "Купить подписку", "Abo kaufen"),
     S("Buy or extend the subscription", "Купить или продлить подписку", "Abo kaufen oder verlängern"),
     S("Support", "Поддержка", "Support"),
+    S("Our Telegram group", "Наша группа в Telegram", "Unsere Telegram-Gruppe"),
+    S("Chat with other Boop users and follow the news in our Telegram group.", "Общайтесь с другими пользователями Boop и следите за новостями в нашей группе в Telegram.", "Chatte mit anderen Boop-Nutzern und verfolge die Neuigkeiten in unserer Telegram-Gruppe."),
     S("Write to support", "Написать в поддержку", "An den Support schreiben"),
     S("Commands", "Команды", "Befehle"),
     S("Subscription active until {date}.", "Подписка активна до {date}.", "Abo aktiv bis {date}."),
