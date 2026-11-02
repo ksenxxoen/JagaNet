@@ -418,7 +418,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         sql.query(
             """SELECT d.*, t.protocol, t.address, t.last_seen_at AS tunnel_seen, t.server_id
                  FROM devices d LEFT JOIN tunnels t ON t.device_id=d.id
-                WHERE d.user_id=?::uuid AND d.removed_at IS NULL AND (d.kind = 'device' OR ?) ORDER BY d.created_at""",
+                WHERE d.user_id=?::uuid AND d.removed_at IS NULL AND d.service IS NULL AND (d.kind = 'device' OR ?) ORDER BY d.created_at""",
             p.user.id, withVless,
         ).map { r ->
             val seen = r.instantOrNull("tunnel_seen")
@@ -449,7 +449,7 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
         if (!Regex("^[0-9a-fA-F-]{36}$").matches(id)) throw notFound("Device not found")
         val rows = ctx.db.run {
             if (userId == null) it.exec("UPDATE devices SET name=? WHERE id=?::uuid AND removed_at IS NULL", n, id)
-            else it.exec("UPDATE devices SET name=? WHERE id=?::uuid AND user_id=?::uuid AND removed_at IS NULL AND kind = 'device'", n, id, userId)
+            else it.exec("UPDATE devices SET name=? WHERE id=?::uuid AND user_id=?::uuid AND removed_at IS NULL AND kind = 'device' AND service IS NULL", n, id, userId)
         }
         if (rows == 0) throw notFound("Device not found")
     }
@@ -458,7 +458,8 @@ class Tunnels(private val ctx: Ctx, private val ent: Entitlements) {
     suspend fun remove(p: Principal, id: String) = removeFor(p.user.id, id)
 
     suspend fun removeFor(userId: String, id: String) = ctx.db.tx { sql ->
-        val d = sql.one("SELECT kind FROM devices WHERE id=?::uuid AND user_id=?::uuid AND removed_at IS NULL", id, userId) ?: throw notFound("Device not found")
+        // Service devices (the mini app's, V25) aren't the user's devices: not found, like in the list.
+        val d = sql.one("SELECT kind FROM devices WHERE id=?::uuid AND user_id=?::uuid AND removed_at IS NULL AND service IS NULL", id, userId) ?: throw notFound("Device not found")
         // The VLESS key comes with access itself (VlessKeys): it is not the user's to delete.
         if (d.str("kind") != "device") throw badRequest("This key comes with your access and can't be deleted")
         revoke(sql, id)

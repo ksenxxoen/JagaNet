@@ -36,8 +36,8 @@ import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
-/** One button: opens a URL, or sends callback [data] back to the bot. */
-data class Btn(val text: String, val data: String? = null, val url: String? = null)
+/** One button: opens a URL, opens the mini app at [webApp] (issue #87), or sends callback [data] back to the bot. */
+data class Btn(val text: String, val data: String? = null, val url: String? = null, val webApp: String? = null)
 
 /** Who we are talking to: their account, chat and language. */
 class Who(val userId: String, val chat: Long, val lang: Lang, val tgId: Long = chat) {
@@ -94,7 +94,28 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
                 }
             })
         }
+        // The menu button next to the message field: the mini app when it is on, else Telegram's own (the commands).
+        runCatching {
+            val url = miniAppUrl()
+            api.call("setChatMenuButton", buildJsonObject {
+                putJsonObject("menu_button") {
+                    if (url == null) put("type", "default")
+                    else {
+                        put("type", "web_app"); put("text", I18n.tr(Lang.DEFAULT, "Open"))
+                        putJsonObject("web_app") { put("url", url) }
+                    }
+                }
+            })
+        }.onFailure { log.warn("telegram: setChatMenuButton failed: ${it.message}") }
     }
+
+    /** The mini app's address, at [screen] (#/pay, #/devices…); null while the mini app is off. */
+    fun miniAppUrl(screen: String? = null): String? =
+        ctx.cfg.telegram.miniAppUrl(ctx.cfg.publicUrl)?.let { if (screen == null) it else "$it#/$screen" }
+
+    /** "📱 Open Boop" as a row of its own, or nothing while the mini app is off. */
+    private fun openBoop(u: Who, screen: String? = null): List<List<Btn>> =
+        miniAppUrl(screen)?.let { listOf(listOf(Btn("📱 " + u.t("Open Boop"), webApp = it))) } ?: emptyList()
 
     /** The support chat: TELEGRAM_SUPPORT_CHAT_ID, else the first alert chat. */
     fun supportChat(): Long? = ctx.cfg.telegram.supportChatId ?: ctx.live.alertTelegramChats.firstOrNull()
@@ -145,6 +166,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
                 StartPayload.KEYS -> keysAction(who)
                 StartPayload.PAY -> payAction(who)
                 StartPayload.SUPPORT -> supportAction(who)
+                StartPayload.DEVICES -> devicesAction(who)
                 else -> menu(who)
             }
             "/help" -> helpAction(who)
@@ -214,6 +236,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
     }
 
     private suspend fun mainButtons(u: Who, active: Boolean): List<List<Btn>> = buildList {
+        addAll(openBoop(u))
         add(listOf(Btn("🔑 " + u.t("My keys and connection"), "keys")))
         add(listOf(Btn("💳 " + (if (active) u.t("Extend") else u.t("Buy a subscription")), "pay"), Btn("📱 " + u.t("Devices"), "devices")))
         add(listOf(Btn("🔔 " + u.t("Notifications"), "notify"), Btn("💬 " + u.t("Support"), "support")))
@@ -299,7 +322,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         try {
             when {
                 order.channel == Channel.TELEGRAM -> keysAction(u, head, key)
-                row.bool("tg_notify") -> send(u, "✅ $head", listOf(listOf(Btn("🔑 " + u.t("My keys and connection"), "keys"))))
+                row.bool("tg_notify") -> send(u, "✅ $head", openBoop(u) + listOf(listOf(Btn("🔑 " + u.t("My keys and connection"), "keys"))))
             }
         } catch (e: TelegramException) {
             if (e.chatGone) markBlocked(u.userId)
@@ -321,7 +344,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         val existing = paidKey ?: s.keys.list(u.userId).firstOrNull()
         if (existing == null && !active) {
             val text = if (v != null) u.t("Your key is off until the subscription is renewed.") else u.t("You don't have an active subscription yet. Choose a plan.")
-            return send(u, listOfNotNull(head, text).joinToString("\n\n"), buyButtons(u) + backButtons(u))
+            return send(u, listOfNotNull(head, text).joinToString("\n\n"), buyButtons(u) + openBoop(u, "pay") + backButtons(u))
         }
         val key = existing ?: try {
             s.keys.create(u.userId)
@@ -357,6 +380,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
             add(listOf(Btn("Happ", url = HAPP_URL), Btn("v2RayTun", url = V2RAYTUN_URL)))
             add(listOf(Btn("Hiddify", url = HIDDIFY_URL)))
             add(listOf(Btn(u.t("Open key page"), url = withLang(base, u.lang))))
+            addAll(openBoop(u))
             add(listOf(Btn("📱 " + u.t("Devices"), "devices"), Btn("⬅️ " + u.t("Menu"), "menu")))
         }
         send(u, text, buttons)
@@ -379,6 +403,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
             add(listOf(Btn(u.t("Open key page"), url = withLang(key.pageUrl, u.lang))))
             s.site.otherApps.forEach { (n, url) -> add(listOf(Btn(n, url = url))) }
             s.site.androidAppUrl()?.let { add(listOf(Btn(u.t("Boop for Android"), url = it))) }
+            addAll(openBoop(u))
             add(listOf(Btn("📱 " + u.t("Devices"), "devices"), Btn("⬅️ " + u.t("Menu"), "menu")))
         }
         api.call("sendPhoto", buildJsonObject { put("chat_id", u.chat); put("caption", caption); put("reply_markup", keyboard(buttons)) },
@@ -484,7 +509,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
                     val days = ((left.toHours() + 23) / 24).coerceAtLeast(1)
                     "⏳ " + u.t("Your subscription ends on {date}.", "date" to Format.date(end.toString(), u.lang)) + " " + u.tp(days, "{n} day left|{n} days left")
                 }
-                send(u, text, listOf(listOf(Btn("💳 " + u.t("Extend"), "pay")), listOf(Btn("🔕 " + u.t("Turn off notifications"), "notify:off"))))
+                send(u, text, listOf(listOf(Btn("💳 " + u.t("Extend"), "pay"))) + openBoop(u, "pay") + listOf(listOf(Btn("🔕 " + u.t("Turn off notifications"), "notify:off"))))
                 sent++
             } catch (e: TelegramException) {
                 if (e.chatGone) markBlocked(u.userId)
@@ -497,6 +522,42 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
     }
 
     private suspend fun markBlocked(userId: String) = ctx.db.run { it.exec("UPDATE users SET tg_blocked_at=? WHERE id=?::uuid", ctx.now(), userId) }
+
+    /** "A new device was connected" for [deviceId], in the background (the request that made the device never waits for Telegram). */
+    suspend fun deviceConnected(userId: String, deviceId: String) = background { notifyNewDevice(userId, deviceId) }
+
+    /**
+     * "A new device was connected" (issue #87): once per device (telegram_device_notices), only for
+     * the user's own devices with a tunnel (not the VLESS key, not the mini app's service device),
+     * only to a linked Telegram with notifications on that hasn't blocked the bot. Returns whether it was sent.
+     */
+    suspend fun notifyNewDevice(userId: String, deviceId: String): Boolean {
+        val row = ctx.db.run { sql ->
+            sql.one(
+                """SELECT u.telegram_id, u.lang, d.name FROM devices d JOIN users u ON u.id = d.user_id JOIN tunnels t ON t.device_id = d.id
+                    WHERE d.id=?::uuid AND d.user_id=?::uuid AND d.removed_at IS NULL AND d.kind = 'device' AND d.service IS NULL
+                      AND u.telegram_id IS NOT NULL AND u.tg_notify AND u.tg_blocked_at IS NULL""",
+                deviceId, userId,
+            )
+        } ?: return false
+        val fresh = ctx.db.run {
+            it.one("INSERT INTO telegram_device_notices (device_id, user_id, sent_at) VALUES (?::uuid,?::uuid,?) ON CONFLICT DO NOTHING RETURNING 1 AS one", deviceId, userId, ctx.now())
+        } != null
+        if (!fresh) return false
+        val u = Who(userId, row.long("telegram_id"), Lang.of(row.strOrNull("lang")) ?: Lang.DEFAULT)
+        val text = "📱 " + u.t("A new device was connected to your subscription, {name}.", "name" to keyName(row.str("name"), u.lang)) + "\n\n" +
+            u.t("If it wasn't you, delete it and write to support.")
+        val buttons = miniAppUrl("devices")?.let { listOf(listOf(Btn("📱 " + u.t("Open Boop"), webApp = it))) }
+            ?: listOf(listOf(Btn("📱 " + u.t("Devices"), "devices")))
+        try {
+            send(u, text, buttons)
+        } catch (e: TelegramException) {
+            if (e.chatGone) markBlocked(userId)
+            else ctx.db.run { it.exec("DELETE FROM telegram_device_notices WHERE device_id=?::uuid", deviceId) }
+            throw e
+        }
+        return true
+    }
 
     /* ---------------- support ---------------- */
 
@@ -653,12 +714,12 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
 
     private suspend fun statusAction(u: Who) {
         val pro = proUntil(u.userId)
-        if (pro == null) return send(u, u.t("No active subscription."), buyButtons(u) + backButtons(u))
+        if (pro == null) return send(u, u.t("No active subscription."), buyButtons(u) + openBoop(u, "pay") + backButtons(u))
         val (devices, limit) = devicesOf(u.userId)
         send(
             u,
             u.t("Subscription active until {date}.", "date" to Format.date(pro.toString(), u.lang)) + "\n" + u.t("Devices {used} of {limit}", "used" to devices.size, "limit" to limit),
-            listOf(listOf(Btn("🔑 " + u.t("My keys and connection"), "keys")), listOf(Btn("💳 " + u.t("Extend"), "pay"), Btn("⬅️ " + u.t("Menu"), "menu"))),
+            openBoop(u) + listOf(listOf(Btn("🔑 " + u.t("My keys and connection"), "keys")), listOf(Btn("💳 " + u.t("Extend"), "pay"), Btn("⬅️ " + u.t("Menu"), "menu"))),
         )
     }
 
@@ -704,7 +765,11 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
             buildJsonArray {
                 for (b in row) addJsonObject {
                     put("text", b.text)
-                    if (b.url != null) put("url", b.url) else put("callback_data", b.data ?: "menu")
+                    when {
+                        b.webApp != null -> putJsonObject("web_app") { put("url", b.webApp) }
+                        b.url != null -> put("url", b.url)
+                        else -> put("callback_data", b.data ?: "menu")
+                    }
                 }
             }
         }))
@@ -749,16 +814,19 @@ object StartPayload {
     const val KEYS = "keys"
     const val PAY = "pay"
     const val SUPPORT = "support"
+    const val DEVICES = "devices"
     const val REF_PREFIX = "ref_"
     private val CODE = Regex("^[A-Za-z0-9-]{3,32}$")
+    /** Screens of the bot and of the mini app (its startapp parameter): never referral codes. */
+    private val SCREENS = setOf(LOGIN, KEYS, PAY, SUPPORT, DEVICES, "home", "profile")
 
     /**
-     * The referral code in a /start payload: `ref_<code>` (issue #38), or a bare code as in links
-     * made before it. Screens (login, keys…) and link codes are not referral codes.
+     * The referral code in a /start payload (or the mini app's start_param): `ref_<code>` (issue #38),
+     * or a bare code as in links made before it. Screens (login, keys…) and link codes are not referral codes.
      */
     fun referral(payload: String): String? {
         val p = payload.trim()
-        if (p.isEmpty() || p.lowercase() in setOf(LOGIN, KEYS, PAY, SUPPORT) || p.startsWith(TelegramBot.LINK_PREFIX)) return null
+        if (p.isEmpty() || p.lowercase() in SCREENS || p.startsWith(TelegramBot.LINK_PREFIX)) return null
         val code = if (p.startsWith(REF_PREFIX, ignoreCase = true)) p.substring(REF_PREFIX.length) else p
         return code.takeIf { CODE.matches(it) }
     }

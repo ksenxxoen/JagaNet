@@ -172,7 +172,7 @@ class Control(
         }
         val dev = sql.one(
             """SELECT count(*)::int AS n, count(*) FILTER (WHERE t.last_seen_at > ?)::int AS online
-                 FROM devices d LEFT JOIN tunnels t ON t.device_id = d.id WHERE d.user_id=?::uuid AND d.removed_at IS NULL""",
+                 FROM devices d LEFT JOIN tunnels t ON t.device_id = d.id WHERE d.user_id=?::uuid AND d.removed_at IS NULL AND d.service IS NULL""",
             now.minus(ONLINE), id,
         )!!
         val ips = ips24hCount(sql, id, now)
@@ -282,7 +282,7 @@ class Control(
                   (SELECT coalesce(sum(ts.rx_bytes + ts.tx_bytes), 0)::bigint FROM traffic_samples ts WHERE ts.device_id = d.id) AS total
              FROM devices d LEFT JOIN tunnels t ON t.device_id = d.id LEFT JOIN servers s ON s.id = t.server_id
              LEFT JOIN vless_keys v ON v.device_id = d.id LEFT JOIN access_keys k ON k.device_id = d.id
-            WHERE d.user_id=?::uuid AND d.removed_at IS NULL ORDER BY d.kind, d.created_at""",
+            WHERE d.user_id=?::uuid AND d.removed_at IS NULL AND d.service IS NULL ORDER BY d.kind, d.created_at""",
         now.minus(DAY), userId,
     ).map { r ->
         val seen = r.instantOrNull("seen")

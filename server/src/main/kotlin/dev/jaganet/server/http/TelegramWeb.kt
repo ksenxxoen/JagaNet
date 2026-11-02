@@ -5,7 +5,13 @@ import dev.jaganet.api.ErrorCode
 import dev.jaganet.api.OkRes
 import dev.jaganet.api.Platform
 import dev.jaganet.api.i18n.I18n
+import dev.jaganet.api.i18n.Lang
 import dev.jaganet.server.AppError
+import dev.jaganet.server.badRequest
+import dev.jaganet.server.unauthorized
+import io.ktor.server.plugins.ratelimit.rateLimit
+import io.ktor.server.routing.put
+import kotlinx.serialization.json.booleanOrNull
 import dev.jaganet.server.telegram.TelegramAccounts
 import dev.jaganet.server.telegram.TelegramBot
 import io.ktor.server.request.receive
@@ -32,6 +38,10 @@ val Services.telegramAccounts get() = TelegramAccounts(ctx, auth, tunnels)
  *  - GET  /telegram              is Telegram linked to my account
  *  - POST /telegram/link         a one-time t.me link that links Telegram to my account
  *  - DELETE /telegram/link       unlink (e-mail accounts only)
+ * and for the Telegram mini app (issue #87):
+ *  - POST /auth/telegram/webapp  {initData} → session (12 hours)
+ *  - PUT  /telegram/notify       {notify} notifications in Telegram on or off
+ *  - POST /telegram/login-link   a one-time link that signs in on the website
  */
 fun Route.telegramWebApi(s: Services) {
     fun bot(): String? = s.bot?.username
@@ -53,9 +63,18 @@ fun Route.telegramWebApi(s: Services) {
         call.rememberClient(s, session.user.id)
         call.respond(session)
     }
+    // The mini app signs in with Telegram.WebApp.initData (issue #87). Never logged: it is a credential.
+    rateLimit(AUTH_LIMIT) {
+        post("/auth/telegram/webapp") {
+            val raw = (call.receive<JsonObject>()["initData"] as? JsonPrimitive)?.contentOrNull ?: throw unauthorized()
+            val session = s.telegramAccounts.signInWithWebApp(raw)
+            call.rememberClient(s, session.user.id)
+            call.respond(session)
+        }
+    }
     get("/telegram") {
         val p = call.principal(s)
-        val r = s.ctx.db.run { it.one("SELECT telegram_id, tg_username, tg_notify FROM users WHERE id=?::uuid", p.user.id) }
+        val r = s.ctx.db.run { it.one("SELECT telegram_id, tg_username, tg_notify, lang FROM users WHERE id=?::uuid", p.user.id) }
         val bot = bot()
         call.respond(buildJsonObject {
             put("linked", r?.longOrNull("telegram_id") != null)
@@ -63,7 +82,25 @@ fun Route.telegramWebApi(s: Services) {
             put("notify", r?.bool("tg_notify") ?: true)
             put("telegramOnly", TelegramAccounts.isPlaceholder(p.user.email))
             put("botUrl", bot?.let { "https://t.me/$it" })
+            put("bot", bot)
+            // For the mini app (issue #87): the account's language and whether "Invite a friend" is shown.
+            put("lang", (Lang.of(r?.strOrNull("lang")) ?: Lang.DEFAULT).code)
+            put("invites", s.invitesFor(p.user.role))
         })
+    }
+    // Notifications in Telegram on or off (the bot's "Notifications" button does the same).
+    put("/telegram/notify") {
+        val p = call.principal(s)
+        val on = (call.receive<JsonObject>()["notify"] as? JsonPrimitive)?.booleanOrNull ?: throw badRequest("Bad request")
+        s.ctx.db.run { it.exec("UPDATE users SET tg_notify=? WHERE id=?::uuid", on, p.user.id) }
+        call.respond(OkRes())
+    }
+    // A one-time link that signs this account in on the website, as the bot's /login (10 minutes).
+    post("/telegram/login-link") {
+        val p = call.principal(s)
+        val lang = call.apiLang()
+        val url = s.auth.createLoginLink(p.user.id, TelegramBot.LOGIN_LINK_TTL).replace("/#/", "/?lang=${lang.code}#/")
+        call.respond(buildJsonObject { put("url", url) })
     }
     post("/telegram/link") {
         val p = call.principal(s)

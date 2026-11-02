@@ -12,7 +12,12 @@ import dev.jaganet.server.services.Billing
 import dev.jaganet.server.services.Crypto
 import dev.jaganet.server.services.ReferralRewards
 import dev.jaganet.server.services.Referrals
+import dev.jaganet.server.services.SERVICE_TG_MINIAPP
 import dev.jaganet.server.services.Tunnels
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import java.net.URLDecoder
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
@@ -151,10 +156,88 @@ class TelegramAccounts(private val ctx: Ctx, private val auth: AuthService, priv
         return ctx.db.tx { sql -> auth.createSession(sql, sql.one("SELECT * FROM users WHERE id=?::uuid", acc.userId)!!, device) }
     }
 
+    /* ---------------- mini app ---------------- */
+
+    /**
+     * The mini app's sign-in (issue #87): [initData] is Telegram.WebApp.initData as the page got it,
+     * checked against the bot token ([verifyWebAppInitData]). The account is found or made as on the
+     * first message to the bot; `start_param` counts as `/start ref_<code>` when it is a referral code.
+     * The session lives [WEBAPP_SESSION_TTL] on the user's one mini app device, so opening the mini app
+     * again and again adds no devices. 503 when the bot or the mini app is off, 401 for anything wrong
+     * with the data (no details), 403 for an account blocked by the admin.
+     */
+    suspend fun signInWithWebApp(initData: String): SessionRes {
+        val token = ctx.cfg.telegramBotToken?.takeIf { ctx.cfg.telegram.miniApp }
+            ?: throw AppError(503, ErrorCode.SERVICE_UNAVAILABLE, "The Telegram mini app is off")
+        val tg = verifyWebAppInitData(initData, token, ctx.now()) ?: throw dev.jaganet.server.unauthorized()
+        val ref = webAppField(initData, "start_param")?.let(StartPayload::referral)
+        val acc = findOrCreate(tg, ref)
+        return ctx.db.tx { sql ->
+            val user = sql.one("SELECT * FROM users WHERE id=?::uuid", acc.userId)!!
+            if (user["blocked_at"] != null) throw AppError(403, ErrorCode.FORBIDDEN, "This account is blocked")
+            auth.createServiceSession(sql, user, SERVICE_TG_MINIAPP, "Telegram", WEBAPP_SESSION_TTL)
+        }
+    }
+
     companion object {
         val LINK_CODE_TTL: Duration = Duration.ofMinutes(15)
         /** How old the Login Widget's auth_date may be. */
         val WIDGET_MAX_AGE: Duration = Duration.ofHours(1)
+        /** How old the mini app's initData (its auth_date) may be. */
+        val WEBAPP_MAX_AGE: Duration = Duration.ofHours(24)
+        /** How long a mini app session lives. The page signs in again with its initData after that. */
+        val WEBAPP_SESSION_TTL: Duration = Duration.ofHours(12)
+        /** How far in the future auth_date may be (clocks differ a little). */
+        private const val CLOCK_SKEW_SECONDS = 60L
+        private val HEX64 = Regex("^[0-9a-f]{64}$")
+
+        /**
+         * The mini app's initData, checked as Telegram documents it
+         * (core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app):
+         * secret_key = HMAC-SHA256(key "WebAppData", message bot token),
+         * hash = hex(HMAC-SHA256(key secret_key, message data_check_string)), where data_check_string is
+         * every received field but `hash` as key=value with URL-decoded values, sorted by key, joined by
+         * newlines. Compared in constant time. auth_date must be at most [maxAge] old and not from the
+         * future. Returns the Telegram user from the `user` field, or null for anything wrong
+         * (no hash, a repeated field, no user…).
+         */
+        fun verifyWebAppInitData(raw: String, botToken: String, now: Instant, maxAge: Duration = WEBAPP_MAX_AGE): TgUser? {
+            if (raw.isBlank() || raw.length > 8192) return null
+            val fields = parseQuery(raw) ?: return null
+            val hash = fields["hash"]?.lowercase()?.takeIf { HEX64.matches(it) } ?: return null
+            val authDate = fields["auth_date"]?.toLongOrNull()?.let(Instant::ofEpochSecond) ?: return null
+            if (authDate.isAfter(now.plusSeconds(CLOCK_SKEW_SECONDS)) || Duration.between(authDate, now) > maxAge) return null
+            val check = fields.filterKeys { it != "hash" }.toSortedMap().entries.joinToString("\n") { "${it.key}=${it.value}" }
+            if (!MessageDigest.isEqual(webAppHash(check, botToken).toByteArray(), hash.toByteArray())) return null
+            val userJson = fields["user"] ?: return null
+            val user = runCatching { Json.parseToJsonElement(userJson) as? JsonObject }.getOrNull() ?: return null
+            fun str(k: String) = (user[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            val id = (user["id"] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toLongOrNull()?.takeIf { it > 0 } ?: return null
+            return TgUser(id, str("username"), str("first_name"))
+        }
+
+        fun webAppHash(dataCheckString: String, botToken: String): String {
+            val secret = Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec("WebAppData".toByteArray(), "HmacSHA256")) }.doFinal(botToken.toByteArray())
+            val mac = Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(secret, "HmacSHA256")) }
+            return mac.doFinal(dataCheckString.toByteArray()).joinToString("") { "%02x".format(it) }
+        }
+
+        /** One field of initData, URL-decoded; only for data that [verifyWebAppInitData] accepted. */
+        fun webAppField(raw: String, key: String): String? = parseQuery(raw)?.get(key)
+
+        /** `a=1&b=2` with URL-decoded keys and values; null when malformed or a key repeats. */
+        private fun parseQuery(raw: String): Map<String, String>? {
+            val out = LinkedHashMap<String, String>()
+            for (part in raw.split('&')) {
+                if (part.isEmpty()) continue
+                val i = part.indexOf('=')
+                if (i <= 0) return null
+                val k = runCatching { URLDecoder.decode(part.substring(0, i), Charsets.UTF_8) }.getOrNull() ?: return null
+                val v = runCatching { URLDecoder.decode(part.substring(i + 1), Charsets.UTF_8) }.getOrNull() ?: return null
+                if (out.put(k, v) != null) return null
+            }
+            return out
+        }
 
         fun placeholderEmail(tgId: Long) = "tg$tgId@telegram.invalid"
         fun isPlaceholder(email: String) = email.endsWith("@telegram.invalid")

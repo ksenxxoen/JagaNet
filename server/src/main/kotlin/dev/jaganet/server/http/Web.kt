@@ -78,7 +78,13 @@ fun Route.salesApi(s: Services) {
         } else null
         call.respond(KeysRes(s.keys.list(p.user.id).map { it.copy(name = keyName(it.name, lang)) }, vless))
     }
-    post("/keys") { call.respond(s.keys.create(call.principal(s).user.id).let { it.copy(name = keyName(it.name, call.apiLang())) }) }
+    post("/keys") {
+        val userId = call.principal(s).user.id
+        val key = s.keys.create(userId)
+        // "A new device was connected" in Telegram, once per device (issue #87).
+        s.bot?.deviceConnected(userId, key.id)
+        call.respond(key.copy(name = keyName(key.name, call.apiLang())))
+    }
     get("/keys/{id}/tunnel") { call.respond(s.keys.tunnel(call.principal(s).user.id, call.parameters["id"]!!)) }
     delete("/keys/{id}") {
         s.keys.remove(call.principal(s).user.id, call.parameters["id"]!!)
@@ -87,7 +93,13 @@ fun Route.salesApi(s: Services) {
     post("/orders") {
         val p = call.principal(s)
         val req = call.receive<CreateOrderReq>()
-        call.respond(s.payments.create(p.user.id, req.tariffId, if (req.channel == "app") Channel.APP else Channel.WEB, call.apiLang()))
+        // "telegram": the mini app (issue #87); after payment the bot sends the keys to the chat, as for orders made in the bot.
+        val channel = when (req.channel) {
+            "app" -> Channel.APP
+            "telegram" -> Channel.TELEGRAM
+            else -> Channel.WEB
+        }
+        call.respond(s.payments.create(p.user.id, req.tariffId, channel, call.apiLang()))
     }
     get("/orders/{id}") { call.respond(s.payments.getFor(call.principal(s).user.id, call.parameters["id"]!!)) }
 }

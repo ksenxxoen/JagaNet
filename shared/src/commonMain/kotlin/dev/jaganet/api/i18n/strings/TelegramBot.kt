@@ -53,6 +53,7 @@ internal val telegramBotStrings: List<S> = listOf(
     S("No devices connected yet.", "Подключённых устройств пока нет.", "Noch keine Geräte verbunden."),
     S("last seen {date}", "был в сети {date}", "zuletzt online {date}"),
     S("not connected yet", "ещё не подключалось", "noch nicht verbunden"),
+    S("key not connected yet", "ещё не подключался", "noch nicht verbunden"),
     S(
         "The subscription link from My keys is not counted. Delete a device to free a place.",
         "Ссылка-подписка из «Мои ключи» не входит в лимит. Удалите устройство, чтобы освободить место.",

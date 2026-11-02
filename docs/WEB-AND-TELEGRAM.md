@@ -49,6 +49,8 @@ curl -fsSL https://raw.githubusercontent.com/ksenxxoen/JagaNet/claude/adoring-br
 | `TELEGRAM_LOGIN_WIDGET` | off | `1` shows the Telegram Login Widget on the sign-in page (after `/setdomain`, below). |
 | `TELEGRAM_API_URL` | `https://api.telegram.org` | Another Bot API server (a local `telegram-bot-api`, or a reverse proxy abroad). |
 | `TELEGRAM_PROXY` | none | HTTP proxy for the Bot API, `host:port`. |
+| `TELEGRAM_MINIAPP` | off | `1` turns on the mini app (below). |
+| `TELEGRAM_MINIAPP_URL` | `$PUBLIC_URL/tg/app` | Where the mini app opens (https only). |
 
 If Telegram can't be reached the bot retries with growing pauses (5 s up to 2 min); every call has
 a short timeout, payments and the website never wait for Telegram, and the status page shows
@@ -97,6 +99,65 @@ Telegram over HTTPS on 443, 80, 88 or 8443: set `TELEGRAM_MODE=webhook` (and
 `TELEGRAM_WEBHOOK_URL` if the public URL differs), restart. The bot registers the webhook itself
 and checks it every minute. Back to polling: remove `TELEGRAM_MODE`, restart (the webhook is
 deleted on start).
+
+### Мини-приложение: как включить
+
+The mini app (issue #87) is the Boop account inside Telegram: the user taps «Открыть» next to the
+message field (or «📱 Открыть Boop» in the bot's messages) and gets Home (subscription, end date,
+devices X of Y, «Подключить» with the subscription link, QR code and one-tap import into Happ and
+v2RayTun), Devices and keys (rename, delete, the subscription key outside the limit), Payment (the
+same tariffs and checkout as the bot, channel `telegram`), Support and Profile (language,
+notifications, invite link, a one-time link to the website). The bot keeps sending its messages.
+
+1. Environment (`/etc/jaganet/env`), then `systemctl restart jaganet`:
+
+   | Variable | Default | What it does |
+   | --- | --- | --- |
+   | `TELEGRAM_MINIAPP` | off | `1` turns the mini app on: page `/tg/app`, sign-in, the menu button and «Открыть Boop» buttons. |
+   | `TELEGRAM_MINIAPP_URL` | `$PUBLIC_URL/tg/app` | Where it opens. Must be `https://` (Telegram refuses anything else; with a plain-http address the bot keeps its usual buttons). |
+
+   It needs `TELEGRAM_BOT_TOKEN` (without the bot, sign-in answers 503).
+2. In [@BotFather](https://t.me/BotFather): `/mybots` → the bot → *Bot Settings* → *Configure Mini App*
+   → *Enable Mini App*, and send the URL: the panel's public HTTPS domain + `/tg/app`
+   (e.g. `https://vpn.example.com/tg/app`).
+3. Menu button: the panel sets it itself on start (`setChatMenuButton`, «Открыть»), and puts back the
+   default one when `TELEGRAM_MINIAPP` is off. Only if that fails (see the log): *Bot Settings* →
+   *Menu Button* → the same URL.
+4. Optional, for a direct link `t.me/<bot>/<name>`: `/newapp` in @BotFather, same URL. Such a link
+   may carry `?startapp=pay` (or `devices`, `support`, `profile`) to open that screen, or
+   `?startapp=ref_<CODE>` to sign up with an invite.
+
+Check: open the bot, tap «Открыть» (or `/start`, then «📱 Открыть Boop»). Opened in a normal browser,
+`/tg/app` shows «Откройте Boop в Telegram» with a link to the bot and calls no API.
+
+How it works and why it is safe:
+
+- **Sign-in.** The page sends `Telegram.WebApp.initData` to `POST /v1/auth/telegram/webapp` (rate
+  limited like every sign-in). The server checks it as Telegram documents
+  (`secret = HMAC_SHA256("WebAppData", bot token)`, `hash = HMAC_SHA256(secret, data_check_string)`,
+  constant-time comparison, `auth_date` at most 24 hours old and not from the future;
+  `TelegramAccounts.verifyWebAppInitData`). The account is the one the bot uses for this Telegram user.
+  Anything wrong: 401 without details; blocked by the admin: 403; bot or mini app off: 503.
+- **Session.** 12 hours (`sessions.expires_at`, migration V25; older sessions have no end, as before),
+  then the page signs in again with its `initData`. The token lives in the page's memory only and goes
+  in `Authorization: Bearer` (no cookies, so CSRF does not apply). All sessions of the mini app share
+  one service device per user (`devices.service = 'tg_miniapp'`): it never gets a tunnel, never counts
+  toward the device limit and is not listed anywhere as a device.
+- **Page.** `server/src/main/resources/web/tg/` (`app.html`, `app.js`, `app.css`), served by
+  `http/MiniApp.kt` with `?v=<hash>` cache busting and a Content-Security-Policy that allows scripts
+  from this site and `https://telegram.org` only. It follows the chat's theme (light and dark).
+  Import into Happ and v2RayTun goes through `/tg/open#<link>` in the browser, because Telegram opens
+  only web links outside; the link stays in the URL fragment and never reaches the server.
+- **New device notice.** When a Boop app connects a new device (`POST /v1/tunnel`) or a new key is made
+  (`POST /v1/keys`), the bot writes «К вашей подписке подключено новое устройство», once per device
+  (`telegram_device_notices`), only with notifications on and the bot not blocked. Not for the
+  subscription key and not for the mini app itself.
+- **Endpoints added for it:** `PUT /v1/me/lang`, `PUT /v1/telegram/notify`, `POST /v1/telegram/login-link`,
+  `channel: "telegram"` in `POST /v1/orders`; `GET /v1/telegram` also returns `lang` and `invites`.
+- Nothing logs `initData`, session tokens, the bot token or `/k/<token>` links.
+
+Rollback: set `TELEGRAM_MINIAPP=0` and restart (the menu button goes back to the default). V25 is
+additive; the manual SQL rollback is in `V25__telegram_miniapp.sql`.
 
 ## Payments
 

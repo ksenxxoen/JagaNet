@@ -19,13 +19,29 @@ data class TelegramConfig(
     val apiUrl: String = "https://api.telegram.org",
     /** HTTP proxy for the Bot API, "host:port" or "http://host:port". */
     val proxy: String? = null,
+    /** The mini app (issue #87): page /tg/app, sign-in with initData, the bot's menu button and "Open Boop" buttons. Off by default. */
+    val miniApp: Boolean = false,
+    /** Where the mini app opens. Default: PUBLIC_URL + [MINIAPP_PATH]. */
+    val miniAppUrl: String? = null,
 ) {
     val webhook get() = mode == WEBHOOK
+
+    /**
+     * The mini app's address for the bot's buttons, or null when the mini app is off. Telegram takes
+     * only https:// for web_app buttons (anything else makes the whole message fail), so a plain-http
+     * address (a local test panel) also gives null and the bot keeps its usual buttons.
+     */
+    fun miniAppUrl(publicUrl: String): String? {
+        if (!miniApp) return null
+        val url = miniAppUrl ?: (publicUrl.trimEnd('/') + MINIAPP_PATH)
+        return url.takeIf { it.startsWith("https://") }
+    }
 
     companion object {
         const val POLLING = "polling"
         const val WEBHOOK = "webhook"
         const val WEBHOOK_PATH = "/telegram/webhook"
+        const val MINIAPP_PATH = "/tg/app"
 
         fun load(env: Map<String, String>): TelegramConfig {
             fun v(k: String) = env[k]?.trim()?.takeIf { it.isNotEmpty() }
@@ -39,6 +55,8 @@ data class TelegramConfig(
                 loginWidget = v("TELEGRAM_LOGIN_WIDGET") == "1",
                 apiUrl = v("TELEGRAM_API_URL")?.trimEnd('/') ?: "https://api.telegram.org",
                 proxy = v("TELEGRAM_PROXY"),
+                miniApp = v("TELEGRAM_MINIAPP") == "1",
+                miniAppUrl = v("TELEGRAM_MINIAPP_URL")?.trimEnd('/'),
             )
         }
     }
