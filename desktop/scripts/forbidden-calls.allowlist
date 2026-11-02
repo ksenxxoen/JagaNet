@@ -1,0 +1,17 @@
+# Known violations of scripts/forbidden-calls.sh (issue #77, epic #76).
+# file|rule|stage that removes it|why it is there today
+# Only ever shrinks: a violation not listed fails CI, and so does a line here
+# whose violation is gone. Stages are the epic's sub-issues: C-2 #78, C-3 #79,
+# C-4 #80, C-5 #81, C-6 #82.
+winsvc/system_windows.go|schtasks|C-3|hidden schtasks.exe query/delete of the old autostart task
+winsvc/system_windows.go|se-restore|C-3|SecureDir takes ownership of the install dir (weak spot 2)
+winsvc/system_windows.go|se-takeownership|C-3|same, SecureDir (weak spot 2)
+winsvc/system_windows.go|set-owner|C-3|same, SetNamedSecurityInfo with OWNER_SECURITY_INFORMATION
+winsvc/system_windows.go|service-create-delete|C-3|Real.CreateService/DeleteService (weak spot 1)
+winsvc/install.go|service-create-delete|C-3|Install/Uninstall call the service registration (weak spot 1)
+winsvc/system_windows.go|run-key|C-3|HKCU Run key written by the app (weak spot 4)
+main_windows.go|embed-binary|C-3|go:embed build/wintun.dll, unpacked next to the exe (weak spot 3)
+winsvc/system_windows.go|self-replace|C-5|.new/.old swap of the service exe (weak spot 5)
+winsvc/service_windows.go|self-replace|C-5|service stages Boop.exe.new and restarts itself (weak spot 5)
+main_windows.go|self-replace|C-5|removes the .old left by a self-update (weak spot 5)
+core/update.go|self-replace|C-5|downloads Boop.exe.new and swaps it in (weak spot 5)
