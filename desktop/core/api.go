@@ -431,6 +431,13 @@ func (a *API) DesktopManifest(ctx context.Context) (Manifest, error) {
 	}
 	m.SHA256 = strings.ToLower(strings.TrimSpace(m.SHA256))
 	m.Signature = strings.TrimSpace(m.Signature)
+	m.InstallerURL = strings.TrimSpace(m.InstallerURL)
+	if strings.HasPrefix(m.InstallerURL, "/") && !strings.HasPrefix(m.InstallerURL, "//") {
+		m.InstallerURL = a.Base + m.InstallerURL
+	}
+	m.InstallerSHA256 = strings.ToLower(strings.TrimSpace(m.InstallerSHA256))
+	m.InstallerVersion = strings.TrimSpace(m.InstallerVersion)
+	m.Kind = strings.ToLower(strings.TrimSpace(m.Kind))
 	return m, nil
 }
 

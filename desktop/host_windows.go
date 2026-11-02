@@ -79,6 +79,8 @@ func runHost(args []string) bool {
 		Version: version, Site: site, OpenURL: openURL, UpdateDir: dir,
 		Autostart: setAutostart, AutostartOn: autostartOn, LogPath: logPath,
 	}
+	app.VerifySetup = verifySetupSignature()
+	app.RunInstaller = runSetup
 	srv.App = hostCore{app}
 	app.OnUserAttempt = svcTun.AllowPrompt
 	app.OnState = func(s core.UIState) { srv.State(s) }

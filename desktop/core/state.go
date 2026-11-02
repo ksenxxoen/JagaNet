@@ -97,7 +97,7 @@ func (a *App) state() UIState {
 		Notice: a.noticeNow(), Platform: a.Platform,
 	}
 	if a.available != nil {
-		s.Update = &UpdateUI{Version: a.available.Version, Notes: a.available.Notes, Mandatory: a.available.Mandatory, Stage: a.updStage, Link: a.UpdateLink}
+		s.Update = &UpdateUI{Version: a.available.TargetVersion(), Notes: a.available.Notes, Mandatory: a.available.Mandatory, Stage: a.updStage, Link: a.UpdateLink}
 	}
 	for _, k := range a.keys {
 		ui := KeyUI{ID: k.ID, Name: k.Name}

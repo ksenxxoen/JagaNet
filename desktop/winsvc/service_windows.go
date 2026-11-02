@@ -4,13 +4,11 @@ package winsvc
 
 import (
 	"context"
-	"errors"
 	"io"
 	"log"
 	"net"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/Microsoft/go-winio"
@@ -95,17 +93,6 @@ func (h *handler) Execute(_ []string, req <-chan svc.ChangeRequest, status chan<
 		Persist:     &helper.FileStore{Path: filepath.Join(dir, "last.json")},
 		Log:         func() string { return tail(filepath.Join(dir, logName), 64<<10) },
 	}
-	var updMu sync.Mutex
-	srv.Update = func() (string, error) {
-		updMu.Lock()
-		defer updMu.Unlock()
-		v, err := SelfUpdate(h.o)
-		if err == nil && v != "" {
-			// Answer first, then leave; the SCM starts the new program.
-			go func() { time.Sleep(time.Second); exit <- restartExit }()
-		}
-		return v, err
-	}
 	core.Go("pipe", func() {
 		if err := srv.Serve(l); err != nil {
 			log.Printf("pipe: %v", err)
@@ -141,25 +128,6 @@ loop:
 	tun.Down()
 	return false, code
 }
-
-// SelfUpdate does what the UI's updater does, but in the service, which holds the
-// only copy it may replace: the manifest comes from the panel, never from the
-// caller; the program is checked by SHA-256 (and the signature when a key is
-// configured) before it replaces the installed one.
-func SelfUpdate(o ServiceOptions) (string, error) {
-	if o.Version == "" || o.Version == "dev" {
-		return "", errors.New("a dev build does not update")
-	}
-	// The update manifest names one file, Boop.exe of the 1.4.x line, which is
-	// no longer this program. Swapping it in would replace the service by the
-	// window. Until the manifest carries the installer (stage C-5 of epic #76) a
-	// service is updated by the setup program only.
-	return "", ErrUpdateByInstaller
-}
-
-// ErrUpdateByInstaller: a 1.5.x service does not replace itself from the
-// manifest; the setup program does it.
-var ErrUpdateByInstaller = errors.New("the service is updated by the setup program")
 
 // tail is the last n bytes of a file, from a line start.
 func tail(path string, n int64) string {

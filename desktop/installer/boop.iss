@@ -12,10 +12,10 @@
 ; writes the user's autostart value and removes what 1.3.x/1.4.x left behind (the
 ; scheduled task). See installer/README.md.
 ;
-; ISCC /DAppVersion=1.5.3 /DSourceExe=..\tauri\target\release\Boop.exe /DSourceHost=..\dist\BoopHost.exe /DSourceService=..\dist\BoopService.exe [/DWintunDll=...] [/DWebView2Setup=...] [/DSignCmd=1] boop.iss
+; ISCC /DAppVersion=1.5.4 /DSourceExe=..\tauri\target\release\Boop.exe /DSourceHost=..\dist\BoopHost.exe /DSourceService=..\dist\BoopService.exe [/DWintunDll=...] [/DWebView2Setup=...] [/DSignCmd=1] boop.iss
 
 #ifndef AppVersion
-  #define AppVersion "1.5.3"
+  #define AppVersion "1.5.4"
 #endif
 #ifndef SourceExe
   #define SourceExe "..\tauri\target\release\Boop.exe"
@@ -104,6 +104,8 @@ Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"
 ; Toasts: the name, icon and boop: handler in the user's HKCU (the host also does it at every start of the installed copy).
 Filename: "{app}\BoopHost.exe"; Parameters: "--toast-register"; Flags: runasoriginaluser runhidden waituntilterminated
 Filename: "{app}\Boop.exe"; Description: "Запустить Boop VPN"; Flags: nowait postinstall skipifsilent runasoriginaluser
+; Update from the running app (it starts this setup with /SILENT /BOOPRESTART=1): postinstall entries are skipped in silent mode, so start the window again here.
+Filename: "{app}\Boop.exe"; Flags: nowait runasoriginaluser; Check: RestartAfterUpdate
 
 [Registry]
 ; Autostart of the installed copy: HKCU Run, the same value the window writes when
@@ -138,6 +140,11 @@ begin
   for I := 1 to ParamCount do
     if CompareText(ParamStr(I), Name) = 0 then
       Result := True;
+end;
+
+function RestartAfterUpdate(): Boolean;
+begin
+  Result := ExpandConstant('{param:BOOPRESTART|0}') = '1';
 end;
 
 function IsRealVersion(const V: String): Boolean;

@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/url"
 	"os"
@@ -28,6 +27,29 @@ type Manifest struct {
 	Signature string `json:"signature,omitempty"`
 	Mandatory bool   `json:"mandatory"`
 	Notes     string `json:"notes,omitempty"`
+
+	// Installer fields (1.5.4+). Only added: the fields above keep their
+	// meaning for Boop 1.4.x, which ignores these. See docs/desktop-json.md.
+	InstallerURL     string `json:"installer_url,omitempty"`
+	InstallerSHA256  string `json:"installer_sha256,omitempty"`
+	InstallerVersion string `json:"installer_version,omitempty"`
+	// MinProto is the oldest service protocol the installer's service speaks
+	// (information for the window; it never blocks an update).
+	MinProto int `json:"min_proto,omitempty"`
+	// Kind says what the document describes; "" and "installer" are the same.
+	Kind string `json:"kind,omitempty"`
+}
+
+// HasInstaller reports whether the document offers a setup program.
+func (m Manifest) HasInstaller() bool { return m.InstallerURL != "" }
+
+// TargetVersion is the version the update brings: installer_version when the
+// document has one, version otherwise.
+func (m Manifest) TargetVersion() string {
+	if m.InstallerVersion != "" {
+		return m.InstallerVersion
+	}
+	return m.Version
 }
 
 // UpdatePublicKey is the ed25519 public key (32 bytes) that signs updates.
@@ -45,6 +67,10 @@ func ParseManifest(b []byte) (Manifest, error) {
 	m.URL = strings.TrimSpace(m.URL)
 	m.SHA256 = strings.ToLower(strings.TrimSpace(m.SHA256))
 	m.Signature = strings.TrimSpace(m.Signature)
+	m.InstallerURL = strings.TrimSpace(m.InstallerURL)
+	m.InstallerSHA256 = strings.ToLower(strings.TrimSpace(m.InstallerSHA256))
+	m.InstallerVersion = strings.TrimSpace(m.InstallerVersion)
+	m.Kind = strings.ToLower(strings.TrimSpace(m.Kind))
 	return m, nil
 }
 
@@ -57,9 +83,13 @@ func (m Manifest) Validate(apiBase string) error {
 	if len(m.SHA256) != 64 || !isHex(m.SHA256) {
 		return errors.New("sha256")
 	}
-	u, err := url.Parse(m.URL)
+	return checkURL(m.URL, apiBase, "url")
+}
+
+func checkURL(raw, apiBase, name string) error {
+	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" || u.Scheme == "" {
-		return errors.New("url")
+		return errors.New(name)
 	}
 	if u.Scheme == "https" {
 		return nil
@@ -68,7 +98,22 @@ func (m Manifest) Validate(apiBase string) error {
 	if u.Scheme == "http" && base != nil && base.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost") {
 		return nil
 	}
-	return errors.New("url must be https")
+	return errors.New(name + " must be https")
+}
+
+// ValidateInstaller checks the installer part of the document: a version, a
+// SHA-256 and an https URL (http only for a local dev panel).
+func (m Manifest) ValidateInstaller(apiBase string) error {
+	if m.TargetVersion() == "" {
+		return errors.New("installer_version")
+	}
+	if len(m.InstallerSHA256) != 64 || !isHex(m.InstallerSHA256) {
+		return errors.New("installer_sha256")
+	}
+	if m.Kind != "" && m.Kind != "installer" {
+		return errors.New("kind")
+	}
+	return checkURL(m.InstallerURL, apiBase, "installer_url")
 }
 
 func isHex(s string) bool {
@@ -82,10 +127,12 @@ func isHex(s string) bool {
 	return true
 }
 
-// VerifyPayload checks the exe against the manifest.
-func VerifyPayload(m Manifest, data []byte, pub ed25519.PublicKey) error {
+// VerifyInstaller checks the downloaded setup program against the document:
+// SHA-256 always, the ed25519 signature when a public key is configured.
+// Authenticode is checked separately (App.VerifySetup) on the file itself.
+func VerifyInstaller(m Manifest, data []byte, pub ed25519.PublicKey) error {
 	sum := sha256.Sum256(data)
-	if !strings.EqualFold(hex.EncodeToString(sum[:]), m.SHA256) {
+	if !strings.EqualFold(hex.EncodeToString(sum[:]), m.InstallerSHA256) {
 		return errors.New("sha256 mismatch")
 	}
 	if len(pub) == 0 {
@@ -148,40 +195,6 @@ func verParts(s string) []int {
 	return out
 }
 
-// StageFile verifies data and writes it to dst (replaced atomically).
-func StageFile(dst string, data []byte, m Manifest, pub ed25519.PublicKey) error {
-	if err := VerifyPayload(m, data, pub); err != nil {
-		return err
-	}
-	tmp := dst + ".partial"
-	if err := os.WriteFile(tmp, data, 0o755); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, dst); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
-}
-
-// SwapBinary replaces the running executable with staged.
-// On Windows a running exe can be renamed aside; the caller then starts dst.
-// rollback restores dst if the staged file could not take its place.
-func SwapBinary(dst, staged string) error {
-	old := dst + ".old"
-	_ = os.Remove(old)
-	if err := os.Rename(dst, old); err != nil {
-		return fmt.Errorf("rename current: %w", err)
-	}
-	if err := os.Rename(staged, dst); err != nil {
-		if back := os.Rename(old, dst); back != nil {
-			return fmt.Errorf("install: %w (rollback: %v)", err, back)
-		}
-		return fmt.Errorf("install: %w", err)
-	}
-	return nil
-}
-
 func (a *App) updateLoop() {
 	a.checkUpdate()
 	t := time.NewTicker(6 * time.Hour)
@@ -206,12 +219,28 @@ func (a *App) checkUpdate() {
 		log.Printf("update: %v", err)
 		return
 	}
-	if err := m.Validate(a.API.Base); err != nil {
-		log.Printf("update: manifest: %v", err)
-		return
-	}
-	if !Newer(m.Version, a.Version) {
-		return
+	if a.UpdateLink {
+		// Linux: the person downloads a package from the document's url.
+		if err := m.Validate(a.API.Base); err != nil {
+			log.Printf("update: manifest: %v", err)
+			return
+		}
+		if !Newer(m.Version, a.Version) {
+			return
+		}
+	} else {
+		if !m.HasInstaller() {
+			// A 1.4.x-format document: it names a Boop.exe this program cannot
+			// apply (it never replaces its own files). Nothing to offer.
+			return
+		}
+		if err := m.ValidateInstaller(a.API.Base); err != nil {
+			log.Printf("update: manifest: %v", err)
+			return
+		}
+		if !Newer(m.TargetVersion(), a.Version) {
+			return
+		}
 	}
 	a.mu.Lock()
 	a.available = &m
@@ -240,38 +269,71 @@ func (a *App) failUpdate(format string, err error) {
 	}
 }
 
-// installUpdate downloads and checks the exe. apply restarts into it.
+// installUpdate downloads the setup program, checks it and hands it to
+// RunInstaller. Nothing is started unless the SHA-256 (and, when the build
+// enables it, the Authenticode signature and publisher) match. apply false
+// only downloads and checks.
 func (a *App) installUpdate(m Manifest, apply bool) {
 	if a.UpdateDir == "" {
-		log.Printf("update: nowhere to stage %s", m.Version)
+		log.Printf("update: nowhere to stage %s", m.TargetVersion())
 		return
 	}
-	if err := m.Validate(a.API.Base); err != nil {
+	if err := m.ValidateInstaller(a.API.Base); err != nil {
 		a.failUpdate("update: %v", err)
 		return
 	}
-	dst := filepath.Join(a.UpdateDir, "Boop.exe.new")
-	if b, err := os.ReadFile(dst); err != nil || VerifyPayload(m, b, UpdatePublicKey) != nil {
-		a.setStage("downloading")
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-		defer cancel()
-		data, err := a.API.Download(ctx, m.URL, 64<<20)
-		if err != nil {
-			a.failUpdate("update: download: %v", err)
-			return
-		}
-		if err := StageFile(dst, data, m, UpdatePublicKey); err != nil {
-			a.failUpdate("update: %v", err)
+	if !Newer(m.TargetVersion(), a.Version) {
+		return // strictly higher versions only
+	}
+	a.setStage("downloading")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	data, err := a.API.Download(ctx, m.InstallerURL, 256<<20)
+	if err != nil {
+		a.failUpdate("update: download: %v", err)
+		return
+	}
+	if err := VerifyInstaller(m, data, UpdatePublicKey); err != nil {
+		a.failUpdate("update: %v", err)
+		return
+	}
+	dir, err := os.MkdirTemp(a.UpdateDir, "setup-")
+	if err != nil {
+		a.failUpdate("update: %v", err)
+		return
+	}
+	path := filepath.Join(dir, "Boop-Setup-"+safeName(m.TargetVersion())+".exe")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		a.failUpdate("update: %v", err)
+		return
+	}
+	// The signature is checked on the file on disk, after the hash: an
+	// installer that fails either is never started.
+	if a.VerifySetup != nil {
+		if err := a.VerifySetup(path); err != nil {
+			_ = os.RemoveAll(dir)
+			a.failUpdate("update: signature: %v", err)
 			return
 		}
 	}
-	log.Printf("update: staged %s", m.Version)
-	if !apply || a.ApplyUpdate == nil {
+	log.Printf("update: staged %s", m.TargetVersion())
+	if !apply || a.RunInstaller == nil {
 		a.setStage("")
 		return
 	}
 	a.setStage("installing")
-	if err := a.ApplyUpdate(dst); err != nil {
-		a.failUpdate("update: apply: %v", err)
+	if err := a.RunInstaller(path); err != nil {
+		a.failUpdate("update: run installer: %v", err)
 	}
+}
+
+// safeName keeps a version fit for a file name.
+func safeName(v string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r == '.', r == '-':
+			return r
+		}
+		return '_'
+	}, v)
 }
