@@ -239,6 +239,7 @@ jobs:
           if ($LASTEXITCODE -eq 0) { throw 'a scheduled task was created' }
           if (Test-Path "$env:ProgramFiles\Boop") { throw 'Program Files\Boop was created' }
           Write-Host 'ok: the portable copy registered and wrote nothing'
+          exit 0 # the last native call (schtasks /Query) is expected to fail; do not leak its code
 
       # Issue #72: the toast keys and the WinRT calls must not fail (nobody clicks here).
       - name: toast registration and notification (no interaction)
@@ -372,6 +373,7 @@ jobs:
           $deadline = (Get-Date).AddSeconds(60)
           while ((Get-Service BoopVPN -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
           Check ($null -eq (Get-Service BoopVPN -ErrorAction SilentlyContinue)) 'service removed'
+          exit 0 # schtasks /Query above fails on purpose
 
       - name: install, upgrade, uninstall (silent)
         run: |

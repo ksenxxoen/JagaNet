@@ -56,7 +56,7 @@ if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Micros
 
 # Wintun's own signed wintun.dll (build.sh fetches it into build\): the setup program installs it as it is.
 $wintun = Join-Path $desktop 'build\wintun.dll'
-if (-not (Test-Path $wintun)) { throw "no $wintun: run ./build.sh first" }
+if (-not (Test-Path $wintun)) { throw "no ${wintun}: run ./build.sh first" }
 if ($env:BOOP_SIGN) {
   # Everything inside the setup program must be signed before it is packed.
   foreach ($f in @($Exe, $Service, $wintun) | Where-Object { $_ }) {
