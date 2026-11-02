@@ -343,7 +343,7 @@ jobs:
             Write-Host "service-check: exit $($p.ExitCode): $text"
             return [pscustomobject]@{ Code = $p.ExitCode; Text = "$text" }
           }
-          $silent = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTBoop-1.4.4-${{ github.event.pull_request.head.sha || github.sha }} /SP- /LOG'
+          $silent = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG'
 
           Check ((Setup $old $silent) -eq 0) '1.4.4 installs'
           Check ((Get-Service BoopVPN).Status -eq 'Running') '1.4.4 service Running'
@@ -369,7 +369,7 @@ jobs:
           $r = ServiceCheck "$dir\Boop.exe"
           Check ($r.Code -eq 0 -and $r.Text -match 'protocol 1\.\.2') 'window <-> updated service: protocol 1..2'
 
-          $unins = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTBoop-1.4.4-${{ github.event.pull_request.head.sha || github.sha }} /PURGEDATA' -Wait -PassThru
+          $unins = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /PURGEDATA' -Wait -PassThru
           Check ($unins.ExitCode -eq 0) 'uninstall exits 0'
           $deadline = (Get-Date).AddSeconds(60)
           while ((Get-Service BoopVPN -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
@@ -488,5 +488,184 @@ jobs:
           name: installer-logs
           path: |
             C:\ProgramData\Boop\*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Stage C-4 of #76: the pipe client of the Tauri shell (desktop/tauri/host) has no GUI
+  # dependencies, so it is checked here; the window itself is built on Windows below.
+  tauri-host:
+    name: Tauri shell, pipe client (clippy, tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            desktop/tauri/target
+          key: tauri-host-${{ hashFiles('desktop/tauri/Cargo.lock') }}
+      - run: cargo clippy -p boop-host --all-targets --locked -- -D warnings
+        working-directory: desktop/tauri
+      - run: cargo test -p boop-host --locked
+        working-directory: desktop/tauri
+      - name: no command line tools in the Rust shell
+        # The shell starts its own host (BoopHost.exe / BOOP_HOST_EXE) and nothing else.
+        run: |
+          if grep -rnE '"(schtasks|reg|powershell|pwsh|cmd)(\.exe)?"|ShellExecute' desktop/tauri/app/src desktop/tauri/host/src; then
+            echo "::error::the Rust shell must not run schtasks/reg/powershell/cmd or ShellExecute"; exit 1
+          fi
+        working-directory: .
+
+  # The Tauri window on Windows: built, linted, and started next to the installed 1.5.1
+  # service. Smoke: the shell starts the Go host (`Boop.exe --host`), connects to its pipe,
+  # gets the first UI state, and closes itself and the host. The installer still installs the
+  # Go window (C-4b switches it).
+  windows-tauri:
+    name: Tauri window on Windows (build + smoke)
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: Boop.exe-${{ github.event.pull_request.head.sha || github.sha }}
+          path: desktop/dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: wintun-${{ github.event.pull_request.head.sha || github.sha }}
+          path: desktop/build
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~\.cargo\registry
+            desktop\tauri\target
+          key: tauri-win-${{ hashFiles('desktop/tauri/Cargo.lock') }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - name: Go host (hostpipe) tests
+        run: go test ./hostpipe
+        working-directory: desktop
+
+      - name: UI for the Tauri window
+        shell: bash
+        run: ./desktop/tauri/prepare-ui.sh
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        working-directory: desktop/tauri
+
+      - name: tests
+        run: cargo test --workspace --locked
+        working-directory: desktop/tauri
+
+      - name: build Boop.exe (Tauri)
+        run: cargo build --release -p boop-shell --locked
+        working-directory: desktop/tauri
+
+      - name: size and contents
+        run: |
+          $exe = Get-Item desktop/tauri/target/release/Boop.exe
+          $mb = [math]::Round($exe.Length / 1MB, 2)
+          Write-Host "Tauri Boop.exe: $mb MB"
+          if ($exe.Length -gt 12MB) { throw "Tauri Boop.exe is $mb MB (limit about 10 MB)" }
+          $bytes = [System.IO.File]::ReadAllBytes($exe.FullName)
+          $text = [System.Text.Encoding]::ASCII.GetString($bytes)
+          foreach ($bad in 'xray-core', 'amneziawg') {
+            if ($text.Contains($bad)) { throw "the Tauri window contains $bad" }
+          }
+
+      - name: Inno Setup
+        run: |
+          if (-not (Get-Command ISCC.exe -ErrorAction SilentlyContinue) -and
+              -not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+          }
+
+      - name: build the setup program (still the Go window)
+        run: ./desktop/installer/build.ps1
+
+      - name: smoke - the Tauri window with the installed service
+        run: |
+          $setup = (Get-ChildItem desktop/dist/Boop-Setup-*.exe | Select-Object -First 1).FullName
+          $dir = Join-Path $env:ProgramFiles 'Boop'
+          $p = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "setup exited $($p.ExitCode)" }
+          $svc = Get-Service BoopVPN
+          if ($svc.Status -ne 'Running') { throw "service is $($svc.Status)" }
+          Write-Host 'ok: service running'
+
+          # The Tauri window runs from a folder of its own; its host is the installed Go exe.
+          $run = Join-Path $env:RUNNER_TEMP 'tauri-run'
+          New-Item -ItemType Directory -Force $run | Out-Null
+          Copy-Item desktop/tauri/target/release/Boop.exe "$run\Boop.exe"
+          $log = Join-Path $run 'shell.log'
+          $env:BOOP_HOST_EXE = Join-Path $dir 'Boop.exe'
+          $env:BOOP_SHELL_LOG = $log
+          $env:BOOP_SHELL_EXIT_AFTER_STATE = '1'
+          $shell = Start-Process -FilePath "$run\Boop.exe" -PassThru
+          if (-not $shell.WaitForExit(60000)) {
+            $shell.Kill()
+            $why = 'the shell did not get a state and close within 60 s'
+          } elseif ($shell.ExitCode -ne 0) {
+            $why = "the shell exited with $($shell.ExitCode)"
+          }
+          $hostLog = Join-Path $env:LOCALAPPDATA 'Boop\boop-host.log'
+          Write-Host '--- shell.log'; if (Test-Path $log) { Get-Content $log }
+          Write-Host '--- boop-host.log'; if (Test-Path $hostLog) { Get-Content $hostLog -Tail 40 }
+          if ($why) { throw $why }
+          $text = Get-Content $log -Raw
+          if ($text -notmatch 'hello ok') { throw 'the shell did not reach the host over the pipe' }
+          if ($text -notmatch 'state conn=') { throw 'the shell got no state from the host' }
+          $hostText = Get-Content $hostLog -Raw
+          if ($hostText -match 'service: ') { throw 'the host could not reach the service' }
+          Start-Sleep -Seconds 3
+          if (Get-Process -Name Boop -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq "$dir\Boop.exe" }) { throw 'the host is still running after the shell closed' }
+          Write-Host 'ok: window started, host reached over the pipe, first state received, closed cleanly'
+
+      - name: portable Tauri copy registers nothing
+        run: |
+          $run = Join-Path $env:RUNNER_TEMP 'tauri-run'
+          if (Test-Path 'HKCU:\Software\Classes\AppUserModelId\Boop.VPN') { Write-Host 'note: toast keys come from the installer (installed copy)' }
+          $before = (Get-ChildItem $run | ForEach-Object Name | Sort-Object) -join ','
+          Write-Host "files next to the shell: $before"
+          $extra = Get-ChildItem $run | Where-Object { $_.Name -notin @('Boop.exe', 'shell.log') }
+          if ($extra) { throw "the shell wrote files next to itself: $($extra.Name -join ', ')" }
+          Write-Host 'ok: nothing written next to the shell'
+
+      - name: uninstall
+        if: always()
+        run: |
+          $dir = Join-Path $env:ProgramFiles 'Boop'
+          if (Test-Path "$dir\unins000.exe") {
+            Start-Process -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /PURGEDATA' -Wait | Out-Null
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Boop-tauri-${{ github.event.pull_request.head.sha || github.sha }}
+          path: desktop/tauri/target/release/Boop.exe
+          retention-days: 7
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: tauri-logs
+          path: |
+            C:\ProgramData\Boop\*.log
+            ${{ runner.temp }}\tauri-run\*.log
           retention-days: 7
           if-no-files-found: ignore

@@ -66,12 +66,21 @@ const $ = (id) => document.getElementById(id);
 
 /* ---------- bridge ---------- */
 
-// Windows: Go binds boopSend and answers through boop.reply. The dev build on other systems serves /rpc and /events.
+// Three hosts: the Go window (Windows, before the Tauri shell replaces it) binds boopSend and answers
+// through boop.reply; the Tauri shell (window.__TAURI__, desktop/tauri) forwards call() to the Go host
+// process by the commands host_call / host_state and gets state, toasts and notices as events; the dev
+// build on other systems serves /rpc and /events.
+const tauri = () => window.__TAURI__ && window.__TAURI__.core ? window.__TAURI__ : null;
 const pending = {};
 let seq = 0;
 // Background calls (opts.silent) fail quietly: a toast is for something the person asked for.
 async function call(method, arg, opts) {
   try {
+    if (tauri()) {
+      const r = await tauri().core.invoke("host_call", { name: method, arg: arg ?? null });
+      if (!r || !r.ok) throw new Error((r && r.error) || "error");
+      return r.value;
+    }
     if (window.boopSend) {
       return await new Promise((resolve, reject) => {
         const id = ++seq;
@@ -885,7 +894,12 @@ document.addEventListener("contextmenu", (e) => { if (!e.target.matches("input")
 
 /* ---------- start ---------- */
 
-if (!window.boopSend) {
+if (tauri()) {
+  // The host's pushes (hostpipe events, forwarded by the shell as boop://<event>).
+  const { listen } = tauri().event;
+  listen("boop://state", (e) => render(e.payload));
+  listen("boop://toast", (e) => render({ toast: e.payload }));
+} else if (!window.boopSend) {
   const es = new EventSource("/events");
   es.onmessage = (e) => render(JSON.parse(e.data));
 }

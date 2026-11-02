@@ -142,6 +142,19 @@ Up to 1.4.x one `Boop.exe` was both the window and (`--service`) the service. Si
 Обоснование выбора: единственная граница привилегий остаётся одна (окно/служба), секреты пользователя не
 пересекают её, а оболочка заменяема без переписывания логики.
 
+### Tauri-оболочка (C-4, 1.5.2): что реализовано
+
+* `Boop.exe --host [--pipe <имя>] [--tray]` (`host_windows.go`, пакет `hostpipe/`): `core.App` без окна и pipe
+  пользователя `\\.\pipe\BoopApp-<SID>`. Протокол — по строке JSON: `{"id","method":"call","name","arg"}` →
+  `{"id","result":<core.Reply>}`; `hello`, `state`, `act`, `quit`; события `state` / `toast` / `notice`.
+  ACL: `D:P(D;;GA;;;NU)(A;;GA;;;<SID>)(A;;GA;;;SY)`.
+* `tauri/host` (Rust, без GUI-зависимостей) — клиент этого pipe; `tauri/app` — Tauri 2: окно с `ui/`, трей,
+  single-instance (`boop:`-действия), команды `host_call` / `host_state`, события `boop://state` / `boop://toast`.
+  Оболочка запускает `BoopHost.exe --host` (`BOOP_HOST_EXE` переопределяет), ничего не пишет в реестр и на диск и не
+  запускает `schtasks`/`reg`/`powershell`/`cmd` (проверка в CI). Тосты и автозапуск остаются в Go-хосте.
+* Сборка: `tauri/prepare-ui.sh` (inline → файлы для строгой CSP), `cargo build --release -p boop-shell`
+  (`Cargo.lock` в репозитории). Установщик по-прежнему ставит Go-окно; переключение — C-4b (#97).
+
 ## Before (Boop 1.1.0)
 
 * `core/app.go` (~1000 lines) and `core/session.go` (~700 lines) held one `App`
