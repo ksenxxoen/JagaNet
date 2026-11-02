@@ -396,7 +396,7 @@
           <p class="muted center">${t("Scan it in the app from another phone")}</p>
           <label class="label" for="sublink">${t("Subscription link")}</label>
           <div class="field"><input class="mono" id="sublink" readonly value="${h(sub)}"><button class="icon-btn" type="button" id="copysub" aria-label="${t("Copy link")}">${icon("copy")}</button></div>
-          <button class="btn wide" type="button" id="copysub2">${icon("copy")}${t("Copy link")}</button>
+          <button class="btn wide" type="button" id="copysub2">${icon("copy")}${t("Copy subscription link")}</button>
         </section>
         ${section(t("Add in one tap"), `<div class="list">
           ${row({ ic: "bolt", tone: "pink", title: t("Add to {app}", { app: "Happ" }), sub: t("Opens the app with your subscription"), trail: chevron, tag: "button", attrs: `type="button" data-app="happ://add/${h(sub)}"` })}

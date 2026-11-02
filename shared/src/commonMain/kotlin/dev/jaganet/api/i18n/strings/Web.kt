@@ -165,6 +165,7 @@ internal val webStrings: List<S> = listOf(
     // The VLESS key every user gets on top of the plan's devices (issue #33).
     S("This key comes with your access and can't be deleted", "Этот ключ входит в ваш доступ, удалить его нельзя", "Dieser Schlüssel gehört zu deinem Zugang und kann nicht gelöscht werden"),
     S("This key is off until access is renewed", "Ключ не работает, пока доступ не продлён", "Der Schlüssel ist aus, bis der Zugang verlängert wird"),
+    S("Subscription link", "Ссылка-подписка", "Abo-Link"),
     S("Copy subscription link", "Скопировать ссылку на подписку", "Abo-Link kopieren"),
     S("Add to app", "Добавить в приложение", "In App hinzufügen"),
     S("Download Boop for Windows", "Скачать Boop для Windows", "Boop für Windows herunterladen"),
