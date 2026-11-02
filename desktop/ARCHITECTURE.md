@@ -23,7 +23,7 @@ call `App.Call` / `App.Invoke`; none knows a command by name.
 
 The window runs as an ordinary user (manifest `asInvoker`, no UAC). The tunnel
 lives in the `BoopVPN` Windows service (LocalSystem, automatic start, restart on
-failure) that runs the same `Boop.exe` with `--service`.
+failure) that ran the same `Boop.exe` with `--service` (since 1.5.0: `BoopService.exe`, see the next section).
 
 ```
  Boop.exe (window, user)                       Boop.exe --service (BoopVPN, SYSTEM)
@@ -64,6 +64,82 @@ failure) that runs the same `Boop.exe` with `--service`.
 * **Window's own sockets.** The tunnel's routes are the service's, so the window follows
   the best physical default route itself while the service's tunnel is up
   (`vpn.FollowTunnel`); the firewall lets the program out by its path, the same file.
+
+## Two programs: Boop.exe and BoopService.exe (Boop 1.5.0, issue #78)
+
+Up to 1.4.x one `Boop.exe` was both the window and (`--service`) the service. Since 1.5.0:
+
+```
+ Boop.exe (window, tray; user)                    BoopService.exe --service (BoopVPN, SYSTEM)
+ core.App ─▶ winsvc.Tunnel ─▶ helper.Client ══ \\.\pipe\BoopVPN ══▶ helper.Server ─▶ vpn/engine
+   no xray-core, no amneziawg                      xray-core · amneziawg-go · wintun · routes · DNS · WFP
+```
+
+* **Packages.** `vpn` keeps the types (`Config`, `Tunnel`, `Stats`), `CheckConfig`, the split-tunnel
+  planning, `SocketControl`/`FollowTunnel`/`NetworkKind` (written against `x/sys/windows`, no
+  `winipcfg`) and the Linux tunnel. The Windows engine moved to `vpn/engine` (adapter, routes,
+  firewall, Xray stack); `winsvc.ServiceOptions` takes `NewTunnel`/`Ping` as parameters so `winsvc`
+  — which the window uses for the pipe client, the install prompt and the autostart key — does not
+  link it. `vpn/xray/params` is the panel's VLESS parameters and their checks without Xray-core; package
+  `xray` aliases it and installs the exact uTLS-fingerprint check, the window uses a short list and the
+  service has the last word.
+* **Proof.** `scripts/check-deps.sh` (job `build`): the packages and the built files of `Boop.exe`
+  contain neither `github.com/xtls/`, `amnezia-vpn/`, `amneziawg` nor gVisor; `BoopService.exe` has
+  the engine and neither WebView2 nor `toast`.
+* **Flags.** `BoopService.exe`: `--service`, `--install-service`, `--uninstall-service`,
+  `--remove-service`, `--result <file>`, `--version`. `Boop.exe`: `--tray`, `--autostart-on/off`,
+  `--toast-*`, `--service-check` (hello over the pipe; used by CI), `boop:<action>`. Gone: `--service`,
+  `--embedded` (the window running the tunnel itself with administrator rights), `--self-update`.
+* **Install.** One UAC prompt runs `BoopService.exe --install-service` (found next to the window).
+  `winsvc.Install` copies `BoopService.exe` and, if it sits next to it, `Boop.exe` into
+  `%ProgramFiles%\Boop`, re-points `BoopVPN` at `BoopService.exe --service` and starts it. Over
+  a 1.4.x install the service is the same `BoopVPN`; the old `Boop.exe` there is replaced by the new window.
+* **Versions.** `winsvc.Need` no longer reinstalls a service just for being older: the window keeps
+  working with any service that speaks `helper.MinProtocol..helper.Protocol` (`helper/PROTOCOL.md`).
+* **Updates.** The manifest names one file, so a 1.5.x service refuses `update`
+  (`winsvc.ErrUpdateByInstaller`) and the setup program replaces it; the window swaps only its own file.
+  The manifest itself and its signature are untouched (stage C-5 of #76 moves updates to the installer).
+
+### ADR: граница окно/служба (где живёт `core.App`)
+
+**Контекст.** `core.App` — это вход в аккаунт, токен, настройки, выбор сервера, синхронизация с
+панелью, проверка обновлений и мост `window.boop` (`state` — полное состояние для отрисовки, `call` —
+команды, события обратно в окно). Tauri-оболочка (этап C-4) — Rust и WebView; переписывать
+эту логику на Rust нельзя (дублирование, два места для багов в чувствительном коде).
+
+**Варианты.**
+
+1. *`core.App` в службе (SYSTEM).* Отвергнут. Токен хранится в `%LOCALAPPDATA%\Boop`, зашифрованный
+   DPAPI **пользователя**: SYSTEM его не прочтёт, а перенос ключа/токена в службу — это как раз «служба
+   получает чужие секреты». Служба получила бы ещё и сетевой код панели, обновления и разбор ответов
+   сервера под SYSTEM; её поверхность выросла бы вместо того, чтобы сжаться. Pipe-протокол службы
+   останется узким: `hello`, `up`, `down`, `status`, `ping`, `log` (+ `update`, которого у 1.5.x нет).
+2. *`core.App` в Rust-оболочке.* Отвергнут (см. «Контекст»).
+3. *`core.App` в отдельном непривилегированном Go-процессе пользователя.* **Выбран.**
+
+**Решение.** Бизнес-логика остаётся в Go и выполняется в процессе **с правами пользователя**:
+`Boop.exe`. Сегодня (1.5.0) он же рисует окно (WebView2, `ui/`), а мост `window.boop` — внутрипроцессный
+(`boopSend`/`boop.update`). Граница, которую должна использовать Tauri-оболочка:
+
+* Тот же набор `state`/`call`/события выдаётся по **локальному pipe пользователя** `\\.\pipe\BoopApp-<SID>`
+  (JSON по строке, как у службы: `{"id":1,"method":"call","name":"connect","arg":{…}}` → `{"id":1,"result":…}`;
+  события `{"event":"state","state":{…}}`). Это те же `App.Invoke(method, arg)` и `OnState`/`OnToast`/`OnNotice`,
+  что вызывает мост сейчас, — ни одна команда не придумывается заново (`core/bridge.go`).
+* Pipe доступен только пользователю, запустившему процесс: SDDL `D:P(A;;GA;;;<SID пользователя>)(A;;GA;;;SY)`,
+  без `IU`/`BA`/`Everyone`; сеть отключена. Один экземпляр на пользователя (как сегодняшний mutex
+  `Local\BoopVPN`). Токен читается из `%LOCALAPPDATA%\Boop` через DPAPI этого же пользователя — повторного
+  входа нет, и он не покидает процесс (команды `state`/`call` отдают состояние для UI, не токен).
+* К службе процесс ходит по её pipe через `winsvc.Tunnel`, как сейчас; служба по-прежнему принимает только
+  типизированные операции и не получает ни путей, ни команд для запуска чужих файлов. Новых операций у
+  службы ради оболочки нет.
+* Tauri-оболочка (C-4) = окно, трей, тосты, автозапуск; запускает `Boop.exe --host` (Go-процесс без окна,
+  только `core.App` и pipe выше), показывает свой WebView с тем же `ui/` и транслирует `window.boop` в
+  этот pipe. Бизнес-логики на Rust нет.
+
+**Следствия.** В 1.5.0 реализовано разделение процессов и протокол службы (`helper/PROTOCOL.md`); pipe
+`BoopApp-<SID>` и режим `--host` **не реализованы** — это решение и контракт для C-4, код пишется там.
+Обоснование выбора: единственная граница привилегий остаётся одна (окно/служба), секреты пользователя не
+пересекают её, а оболочка заменяема без переписывания логики.
 
 ## Before (Boop 1.1.0)
 
@@ -282,7 +358,7 @@ says "при входе в систему" instead of "с Windows"), `UpdateUI.l
 `./build-linux.sh [version] [api]` builds `dist/boop_<version>~ubuntu22.04_amd64.deb` and
 `…~ubuntu24.04_amd64.deb` (README.md says why two, and how to install and publish them).
 
-`./build.sh [version] [api]` builds `dist/Boop.exe`. Authenticode signing is an
+`./build.sh [version] [api]` builds `dist/Boop.exe` (the window) and `dist/BoopService.exe` (the service). Authenticode signing is an
 optional last step switched on by `BOOP_SIGN` (`osslsigncode` with a PFX, or `azure`
 for Azure Trusted Signing); without it the build is unsigned, as before. The update
 manifest's SHA-256 (and ed25519 signature) must be taken from the signed file.

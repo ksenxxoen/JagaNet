@@ -1,8 +1,9 @@
 <#
-Builds dist\Boop-Setup-<version>.exe from dist\Boop.exe with Inno Setup 6.3+.
-  pwsh installer\build.ps1 [-Version 1.4.4] [-Exe dist\Boop.exe] [-OutDir dist]
+Builds dist\Boop-Setup-<version>.exe from dist\Boop.exe (the window) and
+dist\BoopService.exe (the service) with Inno Setup 6.3+.
+  pwsh installer\build.ps1 [-Version 1.5.0] [-Exe dist\Boop.exe] [-Service dist\BoopService.exe] [-OutDir dist]
 
-Boop.exe comes from ./build.sh (it is already signed there when BOOP_SIGN is
+Both exes come from ./build.sh (they are already signed there when BOOP_SIGN is
 set). If BOOP_SIGN is set here too, the setup program and its uninstaller are
 signed (installer\sign-file.ps1); the .sha256 is written after signing. Without
 it everything is built unsigned. The WebView2 Evergreen bootstrapper is
@@ -11,6 +12,7 @@ downloaded once into build\ and packed into the setup program.
 param(
   [string]$Version = '',
   [string]$Exe = '',
+  [string]$Service = '',
   [string]$OutDir = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -22,8 +24,11 @@ if (-not $Version) {
   $Version = $m.Matches[0].Groups[1].Value
 }
 if (-not $Exe) { $Exe = Join-Path $desktop 'dist\Boop.exe' }
+if (-not $Service) { $Service = Join-Path $desktop 'dist\BoopService.exe' }
 if (-not $OutDir) { $OutDir = Join-Path $desktop 'dist' }
 $Exe = (Resolve-Path $Exe).Path
+# 1.4.x built one Boop.exe that was also the service; its setup has no second file.
+$Service = if (Test-Path $Service) { (Resolve-Path $Service).Path } else { '' }
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 $OutDir = (Resolve-Path $OutDir).Path
 
@@ -50,6 +55,7 @@ if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Micros
 }
 
 $defs = @("/DAppVersion=$Version", "/DSourceExe=$Exe", "/DWebView2Setup=$wv", "/DOutDir=$OutDir")
+if ($Service) { $defs += "/DSourceService=$Service" }
 if ($env:BOOP_SIGN) {
   $sign = 'pwsh -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $here 'sign-file.ps1') + '" "$f"'
   $defs += @('/DSignCmd=1', "/Sboop=$sign")

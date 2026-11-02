@@ -5,7 +5,7 @@
 
 | | Windows | Ubuntu 22.04 / 24.04 |
 | --- | --- | --- |
-| Сборка | `./build.sh [версия] [api]` → `dist/Boop.exe` | `./build-linux.sh [версия] [api]` → `dist/boop_<версия>~ubuntu22.04_amd64.deb`, `…~ubuntu24.04_amd64.deb` |
+| Сборка | `./build.sh [версия] [api]` → `dist/Boop.exe` (окно) и `dist/BoopService.exe` (служба) | `./build-linux.sh [версия] [api]` → `dist/boop_<версия>~ubuntu22.04_amd64.deb`, `…~ubuntu24.04_amd64.deb` |
 | Окно | WebView2 | WebKitGTK (webview_go) |
 | Туннель | в самом приложении (администратор): AmneziaWG и VLESS | служба `boop-helper` (root), окно — от пользователя; только AmneziaWG |
 | Обновления | скачивает и ставит сам | только сообщает о версии и открывает ссылку на .deb |

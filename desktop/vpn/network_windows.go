@@ -3,8 +3,19 @@
 package vpn
 
 import (
-	"github.com/amnezia-vpn/amneziawg-windows/v3/tunnel/winipcfg"
+	"unsafe"
+
 	"golang.org/x/sys/windows"
+)
+
+// Interface types and media Windows reports that x/sys has no names for.
+const (
+	ifTypePropVirtual  = 53
+	ifTypeWwanpp       = 243
+	ifTypeWwanpp2      = 244
+	mediumWirelessLan  = 1
+	mediumWirelessWan  = 3
+	mediumNative802_11 = 9
 )
 
 // NetworkKind names the physical network the app goes out through now: the
@@ -18,54 +29,53 @@ func NetworkKind() string {
 	if index == 0 {
 		return "unknown"
 	}
-	luid, err := winipcfg.LUIDFromIndex(index)
-	if err != nil {
-		return "unknown"
-	}
-	row, err := luid.Interface()
-	if err != nil {
+	row := windows.MibIfRow2{InterfaceIndex: index}
+	if windows.GetIfEntry2Ex(0 /* MibIfEntryNormal */, &row) != nil {
 		return "unknown"
 	}
 	return kindOf(row.Type, row.PhysicalMediumType)
 }
 
-func kindOf(t winipcfg.IfType, m winipcfg.NdisPhysicalMedium) string {
+func kindOf(t, m uint32) string {
 	switch {
-	case t == winipcfg.IfTypeIEEE80211 || m == winipcfg.NdisPhysicalMediumNative802_11 || m == winipcfg.NdisPhysicalMediumWirelessLan:
+	case t == windows.IF_TYPE_IEEE80211 || m == mediumNative802_11 || m == mediumWirelessLan:
 		return "wifi"
-	case t == winipcfg.IfTypeWwanpp || t == winipcfg.IfTypeWwanpp2 || m == winipcfg.NdisPhysicalMediumWirelessWan:
+	case t == ifTypeWwanpp || t == ifTypeWwanpp2 || m == mediumWirelessWan:
 		return "mobile"
-	case t == winipcfg.IfTypeEthernetCSMACD:
+	case t == windows.IF_TYPE_ETHERNET_CSMACD:
 		return "ethernet"
 	}
 	return "unknown"
 }
 
+// bestDefaultRoute is the index of the IPv4 default route with the lowest
+// metric whose interface is up and is not a tunnel or loopback (0: none).
 func bestDefaultRoute() uint32 {
-	r, err := winipcfg.GetIPForwardTable2(windows.AF_INET)
-	if err != nil {
+	var table *windows.MibIpForwardTable2
+	if windows.GetIpForwardTable2(windows.AF_INET, &table) != nil {
 		return 0
 	}
+	defer windows.FreeMibTable(unsafe.Pointer(table))
 	lowest := ^uint32(0)
 	index := uint32(0)
-	for i := range r {
-		if r[i].DestinationPrefix.PrefixLength != 0 {
+	for _, r := range table.Rows() {
+		if r.DestinationPrefix.PrefixLength != 0 {
 			continue
 		}
-		row, err := r[i].InterfaceLUID.Interface()
-		if err != nil || row.OperStatus != winipcfg.IfOperStatusUp {
+		row := windows.MibIfRow2{InterfaceLuid: r.InterfaceLuid}
+		if windows.GetIfEntry2Ex(0, &row) != nil || row.OperStatus != windows.IfOperStatusUp {
 			continue
 		}
 		switch row.Type {
-		case winipcfg.IfTypePropVirtual, winipcfg.IfTypeTunnel, winipcfg.IfTypeSoftwareLoopback:
+		case ifTypePropVirtual, windows.IF_TYPE_TUNNEL, windows.IF_TYPE_SOFTWARE_LOOPBACK:
 			continue
 		}
-		iface, err := r[i].InterfaceLUID.IPInterface(windows.AF_INET)
-		if err != nil {
+		iface := windows.MibIpInterfaceRow{Family: windows.AF_INET, InterfaceLuid: r.InterfaceLuid}
+		if windows.GetIpInterfaceEntry(&iface) != nil {
 			continue
 		}
-		if m := r[i].Metric + iface.Metric; m < lowest {
-			lowest, index = m, r[i].InterfaceIndex
+		if m := r.Metric + iface.Metric; m < lowest {
+			lowest, index = m, r.InterfaceIndex
 		}
 	}
 	return index

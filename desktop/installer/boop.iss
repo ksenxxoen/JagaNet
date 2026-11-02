@@ -1,17 +1,23 @@
 ; Boop VPN for Windows: the setup program (Inno Setup 6.3+).
 ;
-; It puts Boop.exe in %ProgramFiles%\Boop (the path winsvc.InstallDir uses) and
-; lets Boop.exe itself register the service (`Boop.exe --install-service`), so
-; the service, the directory rights and the old-task cleanup are the same code
-; as when the window installs the service. See installer/README.md.
+; It puts Boop.exe (the window) and BoopService.exe (the service) in
+; %ProgramFiles%\Boop (the path winsvc.InstallDir uses) and lets BoopService.exe
+; register the service (`BoopService.exe --install-service`), so the service, the
+; directory rights and the old-task cleanup are the same code as when the window
+; installs the service. Over a 1.4.x install (one Boop.exe that was also the
+; service) it replaces Boop.exe and re-points the service at BoopService.exe.
+; See installer/README.md.
 ;
-; ISCC /DAppVersion=1.4.4 /DSourceExe=..\dist\Boop.exe [/DWebView2Setup=...] [/DSignCmd=1] boop.iss
+; ISCC /DAppVersion=1.5.0 /DSourceExe=..\dist\Boop.exe /DSourceService=..\dist\BoopService.exe [/DWebView2Setup=...] [/DSignCmd=1] boop.iss
 
 #ifndef AppVersion
-  #define AppVersion "1.4.4"
+  #define AppVersion "1.5.0"
 #endif
 #ifndef SourceExe
   #define SourceExe "..\dist\Boop.exe"
+#endif
+#ifndef SourceService
+  #define SourceService "..\dist\BoopService.exe"
 #endif
 #ifndef OutDir
   #define OutDir "..\dist"
@@ -63,8 +69,9 @@ Name: "autostart"; Description: "Запускать Boop при входе в Wi
 Name: "desktopicon"; Description: "Ярлык на рабочем столе"; GroupDescription: "Дополнительно:"; Flags: unchecked
 
 [Files]
-; wintun.dll is embedded in Boop.exe and written next to it by --install-service.
+; wintun.dll is embedded in BoopService.exe and written next to it by --install-service.
 Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "Boop.exe"; Flags: ignoreversion
+Source: "{#SourceService}"; DestDir: "{app}"; DestName: "BoopService.exe"; Flags: ignoreversion
 #ifdef WebView2Setup
 Source: "{#WebView2Setup}"; DestDir: "{tmp}"; DestName: "MicrosoftEdgeWebview2Setup.exe"; Flags: deleteafterinstall; Check: not WebView2Installed
 #endif
@@ -125,7 +132,7 @@ begin
          or (RegQueryStringValue(HKCU, WebView2Key, 'pv', V) and IsRealVersion(V));
 end;
 
-{ UTF-8 bytes (what Boop.exe writes to the result file) to a string. }
+{ UTF-8 bytes (what BoopService.exe writes to the result file) to a string. }
 function MultiByteToWideChar(CodePage: Cardinal; Flags: Cardinal; const MultiByte: AnsiString;
   MultiByteLen: Integer; WideChar: String; WideCharLen: Integer): Integer;
   external 'MultiByteToWideChar@kernel32.dll stdcall';
@@ -144,7 +151,7 @@ begin
   MultiByteToWideChar(65001, 0, B, Length(B), Result, N);
 end;
 
-{ Stop the service so Boop.exe can be replaced (net stop waits for it). The
+{ Stop the service so its program can be replaced (net stop waits for it). The
   config it remembers brings the tunnel back when it starts again. Windows that
   are open are closed by CloseApplications. }
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -163,7 +170,7 @@ var
 begin
   ResultFile := ExpandConstant('{tmp}\boop-install-result.txt');
   DeleteFile(ResultFile);
-  if not Exec(ExpandConstant('{app}\Boop.exe'), '--install-service --result "' + ResultFile + '"',
+  if not Exec(ExpandConstant('{app}\BoopService.exe'), '--install-service --result "' + ResultFile + '"',
               '', SW_HIDE, ewWaitUntilTerminated, Code) then
     Code := -1;
   if Code = 0 then
@@ -208,10 +215,11 @@ begin
   begin
     { The service goes first (its tunnel, the adapter and the firewall rules go
       with its process), then any open window; the files are Inno's to delete. }
-    if not Exec(ExpandConstant('{app}\Boop.exe'), '--remove-service', '', SW_HIDE, ewWaitUntilTerminated, Code)
+    if not Exec(ExpandConstant('{app}\BoopService.exe'), '--remove-service', '', SW_HIDE, ewWaitUntilTerminated, Code)
        or (Code <> 0) then
       Log('remove-service failed, code ' + IntToStr(Code));
     Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM Boop.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM BoopService.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
   end;
   if (CurUninstallStep = usPostUninstall) and PurgeData then
   begin
@@ -225,4 +233,6 @@ end;
 Type: files; Name: "{app}\wintun.dll"
 Type: files; Name: "{app}\Boop.exe.old"
 Type: files; Name: "{app}\Boop.exe.new"
+Type: files; Name: "{app}\BoopService.exe.old"
+Type: files; Name: "{app}\BoopService.exe.new"
 Type: dirifempty; Name: "{app}"

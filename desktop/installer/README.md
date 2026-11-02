@@ -2,7 +2,7 @@
 
 `Boop-Setup-<версия>.exe` ставит клиент для Windows так, как это делают обычные программы:
 `%ProgramFiles%\Boop`, ярлыки, запись в «Установленных приложениях», удаление. Версия та же, что у
-`Boop.exe` (по умолчанию из `build.sh`).
+`Boop.exe` (окно) и `BoopService.exe` (служба) (по умолчанию из `build.sh`).
 
 ## Что делает установщик
 
@@ -10,8 +10,8 @@
 `%ProgramFiles%\Boop`, что использует `winsvc.InstallDir`, его нельзя менять.
 
 1. **Остановка.** `net stop BoopVPN`; открытые окна Boop закрывает Inno (`CloseApplications`).
-2. **Файлы.** `Boop.exe` в `%ProgramFiles%\Boop`.
-3. **Служба.** Установщик запускает `Boop.exe --install-service --result <файл>`: ту же `winsvc.Install`,
+2. **Файлы.** `Boop.exe` и `BoopService.exe` в `%ProgramFiles%\Boop` (с 1.5.0 это две программы; до 1.4.x служба была тем же `Boop.exe --service`).
+3. **Служба.** Установщик запускает `BoopService.exe --install-service --result <файл>`: ту же `winsvc.Install`,
    что вызывает окно клиента (`wintun.dll`, права каталогов `SecureDir`, службу `BoopVPN`, запуск,
    удаление задачи планировщика `Boop VPN` старых версий — только после успешного старта службы).
    Код службы в скрипте не дублируется. При ошибке показывается текст из файла результата
@@ -36,14 +36,14 @@
   поднимается из запомненной конфигурации.
 * Поверх «голой» 1.3.x с задачей планировщика: задача удаляется после того, как служба заработала;
   автозапуск переносится в Run-ключ (если галочка включена).
-* Автоапдейтер клиента (`desktop.json`, подмена `Boop.exe` в `%ProgramFiles%\Boop`) работает как раньше;
+* Автоапдейтер клиента (`desktop.json`, подмена `Boop.exe` в `%ProgramFiles%\Boop`) работает для окна; службу `BoopService.exe` с 1.5.0 заменяет только установщик (манифест называет один файл; `winsvc.ErrUpdateByInstaller`, этап C-5 эпика #76);
   манифест и его формат не менялись. Файлы, которые он подменил, деинсталлятор тоже удалит.
 
 ## Удаление
 
 «Установленные приложения» → Boop VPN → Удалить (или `unins000.exe`):
 
-* `Boop.exe --remove-service`: останавливает и удаляет службу (адаптер и правила WFP уходят вместе с её
+* `BoopService.exe --remove-service`: останавливает и удаляет службу (адаптер и правила WFP уходят вместе с её
   процессом), удаляет задачу `Boop VPN` старых версий и Run-ключ. Файлы он не трогает, их удаляет
   деинсталлятор (иначе `--uninstall-service` оставил бы «удалить при перезагрузке» на работающий
   `Boop.exe`, которое могло бы задеть следующую установку);
@@ -58,7 +58,7 @@
 ```
 ./build.sh                       # на Linux/macOS/WSL: dist/Boop.exe
 pwsh installer/build.ps1         # dist/Boop-Setup-<версия>.exe и .sha256
-pwsh installer/build.ps1 -Version 1.4.4 -Exe dist/Boop.exe -OutDir dist
+pwsh installer/build.ps1 -Version 1.5.0 -Exe dist/Boop.exe -Service dist/BoopService.exe -OutDir dist
 ```
 
 `build.ps1` скачивает bootstrapper WebView2 в `build/` (проверяет подпись Microsoft) и упаковывает его.
@@ -66,7 +66,7 @@ pwsh installer/build.ps1 -Version 1.4.4 -Exe dist/Boop.exe -OutDir dist
 
 В CI (`.github/workflows/desktop.yml`, джоб `windows-installer`) установщик собирается из того же
 `Boop.exe`, что собрал джоб `build`, и выкладывается артефактом `Boop-Setup-<sha>` (внутри
-`Boop-Setup-1.4.4.exe`). Там же e2e: `/VERYSILENT` → служба Running → повторная установка → тихое
+`Boop-Setup-1.5.0.exe`). Там же e2e: `/VERYSILENT` → служба Running → повторная установка → тихое
 удаление → служба и файлы удалены → то же с `/PURGEDATA`.
 
 ## Подпись

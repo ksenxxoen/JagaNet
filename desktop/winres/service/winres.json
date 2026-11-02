@@ -1,0 +1,52 @@
+{
+  "RT_GROUP_ICON": {
+    "#1": {
+      "0000": [
+        "../icon.png",
+        "../icon-16.png",
+        "../icon-20.png",
+        "../icon-24.png",
+        "../icon-32.png",
+        "../icon-40.png",
+        "../icon-48.png",
+        "../icon-64.png"
+      ]
+    }
+  },
+  "RT_MANIFEST": {
+    "#1": {
+      "0409": {
+        "identity": {
+          "name": "Boop.VPN.Service",
+          "version": ""
+        },
+        "description": "Boop VPN service",
+        "minimum-os": "win10",
+        "execution-level": "as invoker",
+        "dpi-awareness": "unaware",
+        "long-path-aware": true
+      }
+    }
+  },
+  "RT_VERSION": {
+    "#1": {
+      "0000": {
+        "fixed": {
+          "file_version": "1.5.0.0",
+          "product_version": "1.5.0.0"
+        },
+        "info": {
+          "0409": {
+            "CompanyName": "Boop",
+            "FileDescription": "Boop VPN service",
+            "FileVersion": "1.5.0",
+            "LegalCopyright": "© Boop",
+            "OriginalFilename": "BoopService.exe",
+            "ProductName": "Boop VPN",
+            "ProductVersion": "1.5.0"
+          }
+        }
+      }
+    }
+  }
+}

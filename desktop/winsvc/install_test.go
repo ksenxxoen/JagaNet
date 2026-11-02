@@ -16,10 +16,11 @@ type fakeSys struct {
 	calls          []string
 	failOn         string
 	files          map[string]string
+	present        map[string]bool // files that exist before the install
 }
 
 func newFake() *fakeSys {
-	return &fakeSys{exe: `C:\Users\u\Downloads\Boop.exe`, dir: `C:\Program Files\Boop`, data: `C:\ProgramData\Boop`, files: map[string]string{}}
+	return &fakeSys{exe: `C:\Users\u\Downloads\BoopService.exe`, dir: `C:\Program Files\Boop`, data: `C:\ProgramData\Boop`, files: map[string]string{}, present: map[string]bool{}}
 }
 
 func (f *fakeSys) rec(s string) error {
@@ -29,7 +30,11 @@ func (f *fakeSys) rec(s string) error {
 	}
 	return nil
 }
-func (f *fakeSys) Exe() string         { return f.exe }
+func (f *fakeSys) Exe() string { return f.exe }
+func (f *fakeSys) Exists(p string) bool {
+	_, ok := f.present[p]
+	return ok
+}
 func (f *fakeSys) InstallDir() string  { return f.dir }
 func (f *fakeSys) DataDir() string     { return f.data }
 func (f *fakeSys) Logf(string, ...any) {}
@@ -65,10 +70,10 @@ func TestInstallFresh(t *testing.T) {
 	}
 	want := []string{
 		`secure C:\Program Files\Boop`,
-		`copy C:\Users\u\Downloads\Boop.exe ` + filepath.Join(f.dir, "Boop.exe"),
+		`copy C:\Users\u\Downloads\BoopService.exe ` + filepath.Join(f.dir, "BoopService.exe"),
 		`write ` + filepath.Join(f.dir, "wintun.dll"),
 		`secure C:\ProgramData\Boop`,
-		`create ` + filepath.Join(f.dir, "Boop.exe"),
+		`create ` + filepath.Join(f.dir, "BoopService.exe"),
 		`start`,
 		`deltask`,
 	}
@@ -105,7 +110,7 @@ func TestInstallUpgradeStopsRunningService(t *testing.T) {
 // Run from the install dir itself (the in-place update): nothing to copy.
 func TestInstallFromInstallDir(t *testing.T) {
 	f := newFake()
-	f.exe = filepath.Join(f.dir, "Boop.exe")
+	f.exe = filepath.Join(f.dir, "BoopService.exe")
 	_ = Install(f, nil)
 	for _, c := range f.calls {
 		if strings.HasPrefix(c, "copy") {
@@ -171,20 +176,18 @@ func TestUninstall(t *testing.T) {
 
 func TestNeed(t *testing.T) {
 	cases := []struct {
-		svc      string
 		answered bool
-		mine     string
+		proto    int
 		want     bool
 	}{
-		{"", false, "1.4.0", true},
-		{"1.4.0", true, "1.4.0", false},
-		{"1.3.1", true, "1.4.0", true},  // new UI, old service
-		{"1.5.0", true, "1.4.0", false}, // old UI, newer service: compatible, no downgrade
-		{"1.4.0", true, "dev", false},
-		{"", false, "dev", true},
+		{false, 0, true}, // no service
+		{true, 1, false}, // service 1.4.x (protocol 1): the 1.5.0 window works with it
+		{true, 0, false}, // a 1.4.x service that did not say: protocol 1
+		{true, 2, false}, // same protocol
+		{true, 3, false}, // a newer service speaks the previous protocol too
 	}
 	for _, c := range cases {
-		if got, _ := Need(c.svc, c.answered, c.mine); got != c.want {
+		if got, _ := Need(c.answered, c.proto); got != c.want {
 			t.Errorf("%+v: got %v", c, got)
 		}
 	}
@@ -286,7 +289,7 @@ func TestInstallStepErrors(t *testing.T) {
 func TestInstallRepairsBrokenInstall(t *testing.T) {
 	f := newFake()
 	f.state = NotInstalled
-	f.exe = filepath.Join(f.dir, "Boop.exe")
+	f.exe = filepath.Join(f.dir, "BoopService.exe")
 	if err := Install(f, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -335,5 +338,30 @@ func TestRemoveServiceLeavesFiles(t *testing.T) {
 	g.failOn = "delete"
 	if err := RemoveService(g); err == nil {
 		t.Fatal("a failed delete must be reported")
+	}
+}
+
+// The window next to BoopService.exe goes to the install directory with it, and
+// a 1.4.x service (Boop.exe --service) is re-pointed at BoopService.exe.
+func TestInstallCopiesWindowAndRepointsOldService(t *testing.T) {
+	f := newFake()
+	f.state = Running // 1.4.x service, running Boop.exe --service
+	dl := filepath.Join("dl", "u")
+	f.exe = filepath.Join(dl, "BoopService.exe")
+	f.present[filepath.Join(dl, "Boop.exe")] = true
+	if err := Install(f, nil); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		`stop`,
+		`secure C:\Program Files\Boop`,
+		`copy ` + f.exe + ` ` + filepath.Join(f.dir, "BoopService.exe"),
+		`copy ` + filepath.Join(dl, "Boop.exe") + ` ` + filepath.Join(f.dir, "Boop.exe"),
+		`secure C:\ProgramData\Boop`,
+		`create ` + filepath.Join(f.dir, "BoopService.exe"),
+		`start`,
+	}
+	if !reflect.DeepEqual(f.calls, want) {
+		t.Fatalf("calls:\n%q\nwant\n%q", f.calls, want)
 	}
 }

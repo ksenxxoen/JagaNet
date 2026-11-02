@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/ksenxxoen/JagaNet/desktop/vpn"
-	"github.com/ksenxxoen/JagaNet/desktop/vpn/xray"
+	"github.com/ksenxxoen/JagaNet/desktop/vpn/xray/params"
 )
 
 // (issue #29) VLESS+Reality nodes stand next to AmneziaWG ones. People only see
@@ -69,18 +69,18 @@ func serverByID(servers []Server, id string) (Server, bool) {
 	return servers[i], true
 }
 
-func vlessParams(c *TunnelConfig) (xray.Params, error) {
+func vlessParams(c *TunnelConfig) (params.Params, error) {
 	if c == nil || c.Protocol != ProtocolVless {
-		return xray.Params{}, errors.New("not a vless tunnel")
+		return params.Params{}, errors.New("not a vless tunnel")
 	}
-	return xray.ParseParams(c.Params)
+	return params.ParseParams(c.Params)
 }
 
 // resolveVless finds an address for each variant's host, outside the tunnel.
 // The order is the one AmneziaWG's endpoint uses (selectEndpoint): live DNS,
 // then the address already in use, then the panel's hint (endpointIps). A
 // variant whose host has no address is left out; none left is an error.
-func resolveVless(ctx context.Context, p xray.Params, current map[string]netip.Addr) (xray.Params, []netip.Addr, error) {
+func resolveVless(ctx context.Context, p params.Params, current map[string]netip.Addr) (params.Params, []netip.Addr, error) {
 	got := map[string]netip.Addr{}
 	out := p
 	out.Variants = nil
@@ -112,14 +112,14 @@ func resolveVless(ctx context.Context, p xray.Params, current map[string]netip.A
 		addrs = append(addrs, a)
 	}
 	if len(addrs) == 0 {
-		return xray.Params{}, nil, errors.New("no addresses")
+		return params.Params{}, nil, errors.New("no addresses")
 	}
 	return out, addrs, nil
 }
 
 // vlessConfig is what the adapter takes for a VLESS node. Endpoint is the first
 // variant's address, for the log and failure reports.
-func vlessConfig(p xray.Params, addrs []netip.Addr) *vpn.Config {
+func vlessConfig(p params.Params, addrs []netip.Addr) *vpn.Config {
 	return &vpn.Config{
 		Address:  vpn.VlessAddress,
 		DNS:      slices.Clone(vpn.VlessDNS),
@@ -130,7 +130,7 @@ func vlessConfig(p xray.Params, addrs []netip.Addr) *vpn.Config {
 }
 
 // hostAddrs remembers which address each host got, for the next resolve.
-func hostAddrs(p xray.Params, addrs []netip.Addr) map[string]netip.Addr {
+func hostAddrs(p params.Params, addrs []netip.Addr) map[string]netip.Addr {
 	m := map[string]netip.Addr{}
 	for i, v := range p.Variants {
 		m[v.Host] = addrs[i]

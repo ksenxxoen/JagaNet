@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/ksenxxoen/JagaNet/desktop/vpn/split"
-	"github.com/ksenxxoen/JagaNet/desktop/vpn/xray"
 )
 
 // DefaultRoute is the adapter's route when nothing is excluded.
@@ -50,19 +49,6 @@ func PermitPrefixes(c *Config) []netip.Prefix {
 		return c.Split.Local()
 	}
 	return c.Excluded()
-}
-
-// Direct is what Xray sends around the proxy: the excluded ranges and the
-// typed-in domains. Nil when there is nothing.
-func Direct(c *Config) *xray.Direct {
-	if c == nil || c.Vless == nil || c.Split.Empty() {
-		return nil
-	}
-	d := &xray.Direct{Prefixes: c.Excluded(), Domains: append([]string(nil), c.Split.Domains...)}
-	if len(d.Prefixes) == 0 && len(d.Domains) == 0 {
-		return nil
-	}
-	return d
 }
 
 // SplitUAPI rewrites the peer's allowed_ip lines so the excluded ranges are

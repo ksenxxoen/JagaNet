@@ -5,7 +5,7 @@
  * Copyright (C) 2019-2021 WireGuard LLC. All Rights Reserved.
  */
 
-package vpn
+package engine
 
 import (
 	"sync"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/amnezia-vpn/amneziawg-go/v3/conn"
 	"github.com/amnezia-vpn/amneziawg-windows/v3/tunnel/winipcfg"
+	"github.com/ksenxxoen/JagaNet/desktop/vpn"
 	"golang.org/x/sys/windows"
 )
 
@@ -50,10 +51,10 @@ func bindSocketRoute(family winipcfg.AddressFamily, binder conn.BindSocketToInte
 	*lastLUID = luid
 	*lastIndex = index
 	if family == windows.AF_INET {
-		physical4.Store(index)
+		vpn.SetPhysical4(index)
 		return binder.BindSocketToInterface4(index, index == 0)
 	}
-	physical6.Store(index)
+	vpn.SetPhysical6(index)
 	return binder.BindSocketToInterface6(index, index == 0)
 }
 

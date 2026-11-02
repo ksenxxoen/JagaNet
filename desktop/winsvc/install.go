@@ -11,16 +11,21 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/ksenxxoen/JagaNet/desktop/core"
+	"github.com/ksenxxoen/JagaNet/desktop/helper"
 )
 
 // ServiceName is the service's name in the Service Control Manager.
 const ServiceName = "BoopVPN"
 
-// BinaryName is the program's file name in the install directory.
-const BinaryName = "Boop.exe"
+// BinaryName is the service's file name in the install directory; WindowName is
+// the window's. Up to 1.4.x one Boop.exe was both (its --service mode); since
+// 1.5.0 the service is BoopService.exe and Boop.exe is only the window.
+const (
+	BinaryName = "BoopService.exe"
+	WindowName = "Boop.exe"
+)
 
-// Flags of the one program (the same Boop.exe is the UI and the service).
+// Flags of BoopService.exe (the window has its own, in main).
 const (
 	FlagService   = "--service"           // run as the service (only the SCM does this)
 	FlagInstall   = "--install-service"   // install or upgrade the service (elevated)
@@ -46,10 +51,12 @@ const (
 
 // System is everything the installer touches on the machine.
 type System interface {
-	// Exe is the running program; InstallDir is where the service's copy lives
+	// Exe is the running program (BoopService.exe); InstallDir is where the service's copy lives
 	// (a directory ordinary users cannot write: %ProgramFiles%\Boop).
 	Exe() string
 	InstallDir() string
+	// Exists says whether a file is there.
+	Exists(path string) bool
 
 	ServiceState() (State, error)
 	// CreateService registers (or re-points) the service: LocalSystem, automatic
@@ -82,8 +89,9 @@ type System interface {
 // Extras are files that belong next to the program (wintun.dll).
 type Extras map[string][]byte
 
-// InstalledExe is where the service's copy of the program lives.
-func InstalledExe(sys System) string { return filepath.Join(sys.InstallDir(), BinaryName) }
+// InstalledExe is where the service's program lives; InstalledWindow the window's.
+func InstalledExe(sys System) string    { return filepath.Join(sys.InstallDir(), BinaryName) }
+func InstalledWindow(sys System) string { return filepath.Join(sys.InstallDir(), WindowName) }
 
 // StepError is a failure of one named step of the install, so the person and the
 // log see which step it was and the Windows error behind it, not a bare number.
@@ -151,6 +159,14 @@ func Install(sys System, extras Extras) error {
 			return stepErr("copy-program", err)
 		}
 	}
+	// The window next to this program (the setup program puts both there; the
+	// window's first start from elsewhere runs this program from its own folder).
+	win := filepath.Join(filepath.Dir(sys.Exe()), WindowName)
+	if dstWin := InstalledWindow(sys); win != dstWin && sys.Exists(win) {
+		if err := sys.CopyFile(win, dstWin); err != nil {
+			return stepErr("copy-window", err)
+		}
+	}
 	for name, data := range extras {
 		if err := sys.WriteFile(filepath.Join(dir, name), data); err != nil {
 			return stepErr("write-"+name, err)
@@ -205,7 +221,8 @@ func RemoveService(sys System) error {
 // program that is running it stays until the next restart.
 func Uninstall(sys System) error {
 	errs := []error{RemoveService(sys)}
-	for _, f := range []string{InstalledExe(sys), filepath.Join(sys.InstallDir(), "wintun.dll"), InstalledExe(sys) + ".old", InstalledExe(sys) + ".new"} {
+	for _, f := range []string{InstalledExe(sys), InstalledWindow(sys), filepath.Join(sys.InstallDir(), "wintun.dll"),
+		InstalledExe(sys) + ".old", InstalledExe(sys) + ".new", InstalledWindow(sys) + ".old", InstalledWindow(sys) + ".new"} {
 		if err := sys.RemoveFile(f); err != nil {
 			errs = append(errs, err)
 		}
@@ -219,18 +236,25 @@ func Uninstall(sys System) error {
 	return errors.Join(errs...)
 }
 
-// Need says whether the UI must (re)install the service before it can connect.
-// have is what the service answered to hello (err != nil: it did not answer),
-// mine is the UI's version.
-func Need(serviceVersion string, answered bool, mine string) (bool, string) {
+// Need says whether the window must (re)install the service before it can
+// connect. answered is whether the service answered hello (err != nil: it did
+// not), protocol the one it speaks (0: a 1.4.x service that did not say, i.e. 1).
+//
+// Since 1.5.0 a service older than the window is NOT replaced just for being
+// older: the pipe protocol decides (helper.MinProtocol..helper.Protocol), so a
+// window 1.5.x works with the 1.4.x service until the setup program replaces it.
+// Only a service that does not answer is installed (the one UAC prompt); one that
+// answers with a protocol this window cannot speak is a message, not a prompt
+// (see Tunnel.Ensure).
+func Need(answered bool, serviceProtocol int) (bool, string) {
 	if !answered {
 		return true, "the service does not answer"
 	}
-	if mine == "" || mine == "dev" {
-		return false, ""
+	if serviceProtocol == 0 {
+		serviceProtocol = 1
 	}
-	if core.Newer(mine, serviceVersion) {
-		return true, fmt.Sprintf("the service is %s, this program is %s", serviceVersion, mine)
+	if serviceProtocol < helper.MinProtocol {
+		return true, fmt.Sprintf("the service speaks protocol %d, this window needs %d..%d", serviceProtocol, helper.MinProtocol, helper.Protocol)
 	}
 	return false, ""
 }

@@ -1,4 +1,8 @@
-# Подпись Boop.exe
+# Подпись Boop.exe и BoopService.exe
+
+С 1.5.0 `build.sh` собирает и подписывает **два** файла: `Boop.exe` (окно) и `BoopService.exe` (служба) тем же
+`BOOP_SIGN`; хэши — `dist/Boop.exe.sha256` и `dist/BoopService.exe.sha256`. Манифест обновления (`desktop.json`)
+пока называет один файл, `Boop.exe`; `BoopService.exe` ставит установщик (см. `installer/README.md`).
 
 `Boop.exe` пока не подписан, поэтому SmartScreen и антивирусы предупреждают при
 скачивании и при автообновлении. Сертификат не куплен; сборка подготовлена так, что
