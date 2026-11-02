@@ -327,6 +327,7 @@ jobs:
             foreach ($f in @("$data\install.log", "$data\service.log")) {
               if (Test-Path $f) { Write-Host "--- $f"; Get-Content $f -Tail 60 }
             }
+            Get-ChildItem $env:TEMP -Filter 'Setup Log*' -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "--- $($_.FullName)"; Get-Content $_.FullName -Tail 80 }
           }
           function Check($ok, $what) {
             if (-not $ok) { Dump; throw "FAILED: $what" }

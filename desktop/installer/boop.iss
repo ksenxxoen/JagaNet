@@ -222,7 +222,8 @@ var
   Bin: String;
 begin
   Result := False;
-  Bin := '"' + ExpandConstant('{app}\BoopService.exe') + '" --service';
+  { Inner quotes are escaped: sc.exe parses its command line like any program. }
+  Bin := '\"' + ExpandConstant('{app}\BoopService.exe') + '\" --service';
   if ServiceExists() then
   begin
     if not ScOk('config ' + ServiceName + ' binPath= "' + Bin + '" start= auto obj= LocalSystem DisplayName= "Boop VPN"') then
