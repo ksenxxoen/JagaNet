@@ -68,9 +68,12 @@ import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
+import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
+import dev.jaganet.api.i18n.Lang
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -129,9 +132,13 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
     val serversOverview = dev.jaganet.server.services.ServersOverview(ctx, nodes, monitor)
 }
 
+@Serializable
+data class SetLangReq(val lang: String)
+
 private val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
 private val SIX = Regex("^\\d{6}$")
-private val AUTH_LIMIT = RateLimitName("auth")
+/** Sign-in endpoints: 10 a minute per address (1000 in tests). */
+internal val AUTH_LIMIT = RateLimitName("auth")
 
 suspend fun ApplicationCall.principal(s: Services): Principal = s.auth.authenticate(request.headers[HttpHeaders.Authorization])
 
@@ -175,6 +182,7 @@ fun Application.jaganet(s: Services) {
     routing {
         legalPages()
         website(s)
+        miniAppPage(s)
         ownerLoginLink(s)
         nodeFiles()
         get("/health") {
@@ -240,6 +248,13 @@ fun Application.jaganet(s: Services) {
                 call.respond(s.ent.me(p))
             }
             get("/me/payments") { call.respond(PaymentsRes(s.ent.payments(call.principal(s)))) }
+            // The interface language of the account (bot messages, e-mails), chosen in the Telegram mini app.
+            put("/me/lang") {
+                val p = call.principal(s)
+                val lang = Lang.of(call.receive<SetLangReq>().lang) ?: throw badRequest("Unknown language")
+                ctx.db.run { it.exec("UPDATE users SET lang=? WHERE id=?::uuid", lang.code, p.user.id) }
+                call.respond(OkRes())
+            }
             delete("/me") {
                 val p = call.principal(s)
                 ctx.db.tx { sql ->
@@ -258,9 +273,14 @@ fun Application.jaganet(s: Services) {
             }
             post("/tunnel") {
                 val p = call.principal(s)
+                // A service session (the Telegram mini app's) is not a device: it never gets a tunnel.
+                if (p.service != null) throw forbidden()
                 val b = call.receive<TunnelProvisionReq>()
                 if (!Protocols.ID.matches(b.protocol)) throw badRequest("Invalid protocol id")
-                call.respond(s.tunnels.provision(p, b))
+                val config = s.tunnels.provision(p, b)
+                // "A new device was connected" in Telegram, once per device (issue #87).
+                s.bot?.deviceConnected(p.user.id, p.deviceId)
+                call.respond(config)
             }
             get("/tunnel") { call.respond(s.tunnels.current(call.principal(s))) }
             post("/tunnel/events") {

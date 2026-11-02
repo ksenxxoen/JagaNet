@@ -792,7 +792,7 @@ data class KeyTunnel(
 enum class OrderStatus { @SerialName("pending") PENDING, @SerialName("paid") PAID, @SerialName("cancelled") CANCELLED }
 
 @Serializable
-data class CreateOrderReq(val tariffId: String, /** "web" (default) or "app". */ val channel: String? = null)
+data class CreateOrderReq(val tariffId: String, /** "web" (default), "app" or "telegram" (the Telegram mini app). */ val channel: String? = null)
 
 @Serializable
 data class OrderRes(
