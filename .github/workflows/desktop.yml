@@ -200,6 +200,13 @@ jobs:
         shell: pwsh
         working-directory: .
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
       - uses: actions/download-artifact@v4
         with:
           name: Boop.exe-${{ github.event.pull_request.head.sha || github.sha }}
@@ -317,6 +324,38 @@ jobs:
           Check ($r.Code -eq 0 -and $r.Text -match 'protocol 1\.\.2') 'new window <-> new service: protocol 1..2'
 
           Check ((Run $svcExe '--uninstall-service') -eq 0) 'uninstall exits 0'
+
+      # Issue #78: connect through the service. The test (vpn/xray/service_e2e_windows_test.go)
+      # is the window: a fake panel hands out a VLESS node (Xray-core in the test
+      # process, on loopback), the test sends `up` over the pipe, checks `status`, carries
+      # bytes through the tunnel, sends `down`, and checks that the adapter, routes and WFP
+      # filters are gone. The runner's own traffic rides the tunnel meanwhile, so it is short.
+      - name: connect through the service (fake panel, local Xray node)
+        timeout-minutes: 8
+        env:
+          BOOP_E2E_SERVICE: "1"
+        run: |
+          $svcExe = Join-Path $PWD 'dist\BoopService.exe'
+          $p = Start-Process -FilePath $svcExe -ArgumentList '--install-service' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "install exited $($p.ExitCode)" }
+          Push-Location desktop
+          try {
+            go test -c -o "$env:RUNNER_TEMP\svc-e2e.test.exe" ./vpn/xray/
+            if ($LASTEXITCODE -ne 0) { throw 'building the e2e test failed' }
+          } finally { Pop-Location }
+          try {
+            & "$env:RUNNER_TEMP\svc-e2e.test.exe" -test.run '^TestServiceConnect$' -test.v -test.timeout 5m
+            $code = $LASTEXITCODE
+          } finally {
+            # Whatever happened, the tunnel must not outlive the step.
+            Start-Process -FilePath $svcExe -ArgumentList '--uninstall-service' -Wait | Out-Null
+          }
+          if ($code -ne 0) {
+            foreach ($f in @("$env:ProgramData\Boop\service.log")) {
+              if (Test-Path $f) { Write-Host "--- $f"; Get-Content $f -Tail 80 }
+            }
+            throw "connect through the service failed ($code)"
+          }
 
       # Issue #72: the toast keys and the WinRT calls must not fail (nobody clicks here).
       - name: toast registration and notification (no interaction)
