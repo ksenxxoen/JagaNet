@@ -597,6 +597,32 @@ try {
       await pg.close();
     }
   }
+
+  // ---- the Tauri shell's bridge (window.__TAURI__): same page, calls go to host_call, pushes come as events ----
+  {
+    const ctx = await b2.newContext({ viewport: { width: 360, height: 560 } });
+    const tp = await ctx.newPage();
+    await tp.addInitScript((st) => {
+      window.__calls = []; window.__cb = {};
+      window.__TAURI__ = {
+        core: { invoke: async (cmd, args) => { window.__calls.push([cmd, args]); return cmd === "host_call" && args.name === "ready" ? { ok: true, value: st } : cmd === "host_call" && args.name === "fail" ? { ok: false, error: "nope" } : { ok: true, value: null }; } },
+        event: { listen: async (name, fn) => { window.__cb[name] = fn; return () => {}; } },
+      };
+    }, { ...main, conn: "off" });
+    await tp.route("**/events", (r) => r.abort());
+    await tp.goto(`http://127.0.0.1:${port}/`);
+    await tp.waitForFunction(() => window.__calls.length > 0 && Object.keys(window.__cb).length === 2);
+    check("tauri: ready goes through host_call", await tp.evaluate(() => window.__calls[0][0] === "host_call" && window.__calls[0][1].name === "ready"));
+    check("tauri: no EventSource or fetch to /rpc", await tp.evaluate(() => window.__calls.every((c) => c[0] === "host_call")));
+    check("tauri: state from the call is drawn", (await tp.getAttribute("#boop", "data-state")) === "off");
+    await tp.evaluate((st) => window.__cb["boop://state"]({ payload: st }), { ...main, conn: "on" });
+    check("tauri: boop://state event redraws", (await tp.getAttribute("#boop", "data-state")) === "on");
+    await tp.evaluate(() => window.__cb["boop://toast"]({ payload: "Привет" }));
+    check("tauri: boop://toast event shows a toast", (await tp.textContent("#toast")) === "Привет");
+    const err = await tp.evaluate(() => call("fail", null, { silent: true }).then(() => "", (e) => e.message));
+    check("tauri: a refused call rejects with the host's error", err === "nope");
+    await ctx.close();
+  }
   await b2.close();
 } finally {
   stop();

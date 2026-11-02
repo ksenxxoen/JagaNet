@@ -57,6 +57,10 @@ func main() {
 	if runServiceMode(os.Args[1:]) {
 		return
 	}
+	// The Tauri shell's backend: core.App without a window (host_windows.go).
+	if runHost(os.Args[1:]) {
+		return
+	}
 	// One window at a time. After an update the new process waits out the old one.
 	// A notification button starts `Boop.exe boop:<action>` (toast_windows.go).
 	pending, hasAction := activationAction(os.Args[1:])

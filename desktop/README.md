@@ -21,6 +21,20 @@
 весь список (адреса через запятую). Как работает переключение, фрагмент nginx для `api.boopvpn.app`
 и ручная проверка — [docs/api-fallback.md](docs/api-fallback.md).
 
+## Windows: Tauri-оболочка (C-4, в работе)
+
+Окно на Tauri 2 лежит в `tauri/` и пока **не входит в установщик** (он ставит Go-окно, переключение — C-4b).
+Сборка на Windows (Rust stable, WebView2):
+
+```
+./tauri/prepare-ui.sh            # ui/ -> tauri/app/dist (файлы вместо inline, строгая CSP)
+cd tauri && cargo build --release -p boop-shell --locked   # target/release/Boop.exe
+```
+
+Оболочке нужен Go-хост рядом: `BoopHost.exe --host` (или `BOOP_HOST_EXE=<путь к Boop.exe>`). Тесты клиента pipe
+идут на любой системе: `cd tauri && cargo test -p boop-host`; Go-часть: `go test ./hostpipe`. Подробности —
+`ARCHITECTURE.md`, «Tauri-оболочка (C-4)».
+
 ## Linux: сборка
 
 Нужен Docker (сборка идёт в контейнерах `ubuntu:22.04` и `ubuntu:24.04`, поэтому glibc, GTK и

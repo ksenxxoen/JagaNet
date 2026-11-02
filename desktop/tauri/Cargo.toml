@@ -1,0 +1,13 @@
+# The Tauri 2 shell of Boop for Windows (stage C-4 of #76): window, tray, single instance.
+# `host` is the pipe client for `Boop.exe --host` (hostpipe/ in the Go side) and has no GUI
+# dependencies, so it builds and is tested on any system; `app` is the Tauri program (Windows).
+[workspace]
+members = ["host", "app"]
+resolver = "2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
