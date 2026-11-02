@@ -376,16 +376,6 @@ Linux runners only, no secrets:
   (VLESS over Vision and XHTTP, which `-race` cannot run). The exe's SHA-256 is
   in the log and the run's summary; the exe itself is the artifact `Boop.exe-<sha>` on the
   run's page (kept 7 days). It is a test build for a Windows machine, not a release.
-* job `forbidden-calls` (issue #77): `scripts/forbidden-calls.sh` greps the non-test Go code
-  (not `installer/`, not `scripts/`) for `schtasks`, `reg.exe`, `powershell`, `cmd /c`,
-  `SeRestore`/`SeTakeOwnershipPrivilege`, owner changes, `CreateService`/`DeleteService`,
-  the `Run` key, `go:embed` of binaries and the `.old`/`.new` self-replacement. Today's
-  violations are listed in `scripts/forbidden-calls.allowlist` with the stage of epic #76
-  that removes each; a new one fails CI, and so does an entry whose violation is gone, so
-  the list only shrinks (`--list` shows what is found, `--selftest` proves both failures).
-  The same job lints `scripts/av-trace.ps1` with PSScriptAnalyzer. Manual antivirus
-  procedure: `docs/av-test.md`. The `windows-installer` job also prints the processes Boop
-  starts after install and launch (report only; it becomes strict at stage 3).
 * job `ui`: `node scripts/ui-checks.mjs` and `node scripts/e2e.mjs` against Playwright's
   Chromium (version pinned in the workflow); on failure the app logs are the artifact
   `e2e-logs`.
