@@ -23,8 +23,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -54,6 +56,54 @@ func leftovers(t *testing.T) (adapter, routes, wfp string) {
 	return
 }
 
+// runnerIP is the address of the machine's default route (no packet is sent).
+func runnerIP(t *testing.T) string {
+	t.Helper()
+	c, err := net.Dial("udp4", "192.0.2.1:9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	return c.LocalAddr().(*net.UDPAddr).IP.String()
+}
+
+// forward listens on ip:port (free) and passes each connection to 127.0.0.1:to.
+func forward(t *testing.T, ip string, to int) int {
+	t.Helper()
+	l, err := net.Listen("tcp4", ip+":0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { l.Close() })
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer c.Close()
+				u, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(to)))
+				if err != nil {
+					return
+				}
+				defer u.Close()
+				go io.Copy(u, c)
+				io.Copy(c, u)
+			}()
+		}
+	}()
+	return l.Addr().(*net.TCPAddr).Port
+}
+
+func sameAddr(ip string, n int) []netip.Addr {
+	a := make([]netip.Addr, n)
+	for i := range a {
+		a[i] = netip.MustParseAddr(ip)
+	}
+	return a
+}
+
 func TestServiceConnect(t *testing.T) {
 	if os.Getenv("BOOP_E2E_SERVICE") != "1" {
 		t.Skip("BOOP_E2E_SERVICE is not 1")
@@ -61,8 +111,20 @@ func TestServiceConnect(t *testing.T) {
 
 	// The fake panel and the node.
 	n := startNode(t)
+	// The service binds the sockets to its nodes to the physical interface (so they
+	// never loop into the tunnel), which a node on 127.0.0.1 cannot be reached
+	// through. The node is therefore offered on the runner's own address: a
+	// forwarder per port in front of the loopback node.
+	ip := runnerIP(t)
+	t.Logf("node offered on %s", ip)
+	pub := n.params
+	pub.Variants = append([]Variant(nil), n.params.Variants...)
+	for i, v := range pub.Variants {
+		pub.Variants[i].Host = ip
+		pub.Variants[i].Port = forward(t, ip, v.Port)
+	}
 	panel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(n.params)
+		json.NewEncoder(w).Encode(pub)
 	}))
 	defer panel.Close()
 	resp, err := http.Get(panel.URL)
@@ -93,7 +155,7 @@ func TestServiceConnect(t *testing.T) {
 
 	cfg := &vpn.Config{
 		Address: vpn.VlessAddress, DNS: vpn.VlessDNS, MTU: vpn.VlessMTU,
-		Vless: &vpn.Vless{Params: p, Addrs: loopback(len(p.Variants))},
+		Vless: &vpn.Vless{Params: p, Addrs: sameAddr(ip, len(p.Variants))},
 	}
 	down := func() {
 		cl.Down()
