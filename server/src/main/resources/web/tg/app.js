@@ -426,10 +426,11 @@
   /* ---------------- devices ---------------- */
 
   const platformIcon = (d, isKey) => (isKey ? "key" : d.platform === "desktop" ? "laptop" : "devices");
-  function seenText(d) {
+  // "Ключ" is masculine, "устройство" neuter: the never-connected line agrees with whichever it is.
+  function seenText(d, isKey) {
     if (d.online) return `<span class="dot on"></span>${t("online")}`;
     if (d.lastSeenAt) return h(t("last seen {date}", { date: date(d.lastSeenAt) }));
-    return h(t("not connected yet"));
+    return h(t(isKey ? "key not connected yet" : "not connected yet"));
   }
 
   async function devices() {
@@ -440,7 +441,7 @@
     const v = keys.vless;
     const items = mine.map((d) => {
       const isKey = keyIds.has(d.id);
-      const sub = (isKey ? t("Key for other apps") + ", " : "") + seenText(d);
+      const sub = (isKey ? t("Key for other apps") + ", " : "") + seenText(d, isKey);
       return `<div class="row dev" data-dev="${h(d.id)}">
         <span class="row-ic ${d.online ? "green" : "gray"}">${icon(platformIcon(d, isKey))}</span>
         <span class="row-main"><span class="row-t" data-name>${h(d.name)}</span><span class="row-s">${sub}</span>
