@@ -583,19 +583,16 @@ async function account(params) {
   };
 }
 
-/** The VLESS key every user with access has, outside the device limit: links to copy, QR, subscription. */
+/** The VLESS key every user with access has, outside the device limit: the QR and the one button copy the subscription link. */
 function vlessCard(v) {
-  const withLang = (u) => u + (u.includes("?") ? "&" : "?") + "lang=" + lang;
   return `<div class="card keycard">
-    ${v.active ? `<img class="qr" src="${h(v.qrUrl)}" alt="${t("QR code of your VPN key")}" loading="lazy">` : ""}
+    ${v.active ? `<img class="qr" src="${h(v.subscriptionUrl)}/sub.png" alt="${t("QR code of your VPN key")}" loading="lazy">` : ""}
     <div>
       <h3>${h(v.name)} <span class="badge stable">${t("Stable connection")}</span></h3>
       <p class="muted">${t("Not counted in the device limit")}</p>
       ${v.active ? "" : `<p class="notice bad">${t("This key is off until access is renewed")}</p>`}
       <div class="keyactions">
-        ${v.links.length ? `<button class="btn" data-vcopy="${h(v.links[0])}">${t("Copy key")}</button>` : ""}
-        ${v.links.length ? `<button class="btn secondary" data-vcopy="${h(v.subscriptionUrl)}">${t("Subscription link")}</button>` : ""}
-        <a class="btn secondary" href="${h(withLang(v.pageUrl))}" target="_blank" rel="noreferrer">${t("Open key link")}</a>
+        ${v.active && v.links.length ? `<button class="btn" data-vcopy="${h(v.subscriptionUrl)}">${t("Copy subscription link")}</button>` : ""}
       </div>
     </div></div>`;
 }
