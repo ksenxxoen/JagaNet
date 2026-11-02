@@ -5,10 +5,10 @@
 ; the service, the directory rights and the old-task cleanup are the same code
 ; as when the window installs the service. See installer/README.md.
 ;
-; ISCC /DAppVersion=1.4.3 /DSourceExe=..\dist\Boop.exe [/DWebView2Setup=...] [/DSignCmd=1] boop.iss
+; ISCC /DAppVersion=1.4.4 /DSourceExe=..\dist\Boop.exe [/DWebView2Setup=...] [/DSignCmd=1] boop.iss
 
 #ifndef AppVersion
-  #define AppVersion "1.4.3"
+  #define AppVersion "1.4.4"
 #endif
 #ifndef SourceExe
   #define SourceExe "..\dist\Boop.exe"
@@ -70,7 +70,8 @@ Source: "{#WebView2Setup}"; DestDir: "{tmp}"; DestName: "MicrosoftEdgeWebview2Se
 #endif
 
 [Icons]
-Name: "{autoprograms}\Boop VPN"; Filename: "{app}\Boop.exe"
+; AppUserModelID: the toast notifications (Boop.exe registers the same id, toast/toast.go).
+Name: "{autoprograms}\Boop VPN"; Filename: "{app}\Boop.exe"; AppUserModelID: "Boop.VPN"
 Name: "{autodesktop}\Boop VPN"; Filename: "{app}\Boop.exe"; Tasks: desktopicon
 
 [Run]
@@ -80,7 +81,14 @@ Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"
 ; as the elevated process (whose HKCU may be somebody else's).
 Filename: "{app}\Boop.exe"; Parameters: "--autostart-on"; Flags: runasoriginaluser runhidden waituntilterminated; Tasks: autostart
 Filename: "{app}\Boop.exe"; Parameters: "--autostart-off"; Flags: runasoriginaluser runhidden waituntilterminated; Tasks: not autostart
+; Toasts: the name, icon and boop: handler in the user's HKCU (Boop.exe also does it at every start).
+Filename: "{app}\Boop.exe"; Parameters: "--toast-register"; Flags: runasoriginaluser runhidden waituntilterminated
 Filename: "{app}\Boop.exe"; Description: "Запустить Boop VPN"; Flags: nowait postinstall skipifsilent runasoriginaluser
+
+[Registry]
+; Toast keys: removed by the uninstaller itself (no helper process, so a failure here can't break the uninstall).
+Root: HKCU; Subkey: "Software\Classes\AppUserModelId\Boop.VPN"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\boop"; Flags: uninsdeletekey
 
 [Code]
 const

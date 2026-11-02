@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -63,14 +64,92 @@ func (a *App) alert(code string) {
 	released := a.released
 	strict := a.Store != nil && a.Store.StrictKill
 	failed := a.failed
-	fn := a.OnNotify
 	a.mu.Unlock()
 	msg := phrase(code, released, strict)
 	if failed {
 		msg = failedPhrase(code, released, strict)
 	}
-	if fn != nil && msg != "" {
-		fn(msg)
+	a.sendNotice(NoticeKind(code), msg)
+}
+
+// Kinds of system notification. The Windows host gives each its own buttons
+// (toast package); a kind it does not know gets no buttons.
+const (
+	NoticeInfo   = "info"   // nothing to do about it
+	NoticeDown   = "down"   // the connection is lost or could not be made: «Переподключить»
+	NoticePlan   = "plan"   // the plan ends or has ended: «Продлить»
+	NoticeUpdate = "update" // a new version: «Обновить»
+)
+
+// Notice is a system notification: its kind and the text to show.
+type Notice struct{ Kind, Text string }
+
+// NoticeKind is the kind of the notification for a problem code ("up" and
+// "update" included).
+func NoticeKind(code string) string {
+	switch code {
+	case ProbDead, ProbNoHandshake, ProbOffline:
+		return NoticeDown
+	case ProbPlan:
+		return NoticePlan
+	case "update":
+		return NoticeUpdate
+	}
+	return NoticeInfo
+}
+
+// sendNotice hands a notification to the host: OnNotice when it takes kinds,
+// otherwise OnNotify with the text alone (Linux, the dev server, tests).
+func (a *App) sendNotice(kind, msg string) {
+	if msg == "" {
+		return
+	}
+	a.mu.Lock()
+	f, g := a.OnNotice, a.OnNotify
+	a.mu.Unlock()
+	switch {
+	case f != nil:
+		f(Notice{Kind: kind, Text: msg})
+	case g != nil:
+		g(msg)
+	}
+}
+
+// Notification actions (the toast buttons and the body click), by name.
+const (
+	ActOpen      = "open"
+	ActReconnect = "reconnect"
+	ActRenew     = "renew"
+	ActUpdate    = "update"
+	ActLater     = "later"
+)
+
+// Act runs a notification's action through the same paths as the window's
+// buttons. open is the host's (it shows the window); unknown names and "later"
+// do nothing.
+func (a *App) Act(action string) {
+	switch action {
+	case ActReconnect:
+		a.Reconnect()
+	case ActRenew:
+		_, _ = commands["extend"](a, context.Background(), nil)
+	case ActUpdate:
+		_, _ = a.cmdUpdate(context.Background())
+	}
+}
+
+// Reconnect is the «Переподключить» of a notification: «Повторить» when the app
+// gave up, a new connection when the VPN is off; while it is already
+// (re)connecting or connected there is nothing to add.
+func (a *App) Reconnect() {
+	a.mu.Lock()
+	off, failed := a.conn == "off", a.failed
+	a.mu.Unlock()
+	switch {
+	case failed:
+		a.Retry()
+	case off:
+		a.Connect()
 	}
 }
 

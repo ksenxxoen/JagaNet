@@ -60,7 +60,7 @@ func runServiceMode(args []string) bool {
 	case slices.Contains(args, flagSelfUpdate):
 		os.Exit(runSelfUpdate())
 	}
-	return false
+	return runToastMode(args)
 }
 
 func flagValue(args []string, name string) string {
