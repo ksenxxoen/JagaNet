@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"log"
 	"math"
 	"net"
 	"slices"
@@ -63,7 +64,32 @@ func (a *App) pick(want string, servers []Server) string {
 	return id
 }
 
+// pingFresh is how long a country measurement is reused before a pick measures again.
+const pingFresh = 60 * time.Second
+
+// pickFresh is pick on measurements at most pingFresh old: a stale or missing
+// one is measured first (all nodes at once, 3 s at most).
+func (a *App) pickFresh(want string, servers []Server) string {
+	a.mu.Lock()
+	stale := time.Since(a.pingedAt) > pingFresh
+	a.mu.Unlock()
+	if stale {
+		a.pingAll()
+	}
+	return a.pick(want, servers)
+}
+
+// choose picks by statusTier, then ping. A node that did not answer its probe
+// is not picked while another one did (or is not measured yet); when none
+// answers, the order is as before: all of them, the lowest score first.
 func (a *App) choose(want string, servers []Server, honorSkip bool) string {
+	if id := a.chooseAmong(want, servers, honorSkip, true); id != "?" {
+		return id
+	}
+	return a.chooseAmong(want, servers, honorSkip, false)
+}
+
+func (a *App) chooseAmong(want string, servers []Server, honorSkip, skipDown bool) string {
 	best, tier, score := "?", 0, math.MaxFloat64
 	for _, s := range servers {
 		if a.protocolOf(s) == "" || s.Load >= 1 || (want != "auto" && s.CountryCode != want) {
@@ -82,6 +108,9 @@ func (a *App) choose(want string, servers []Server, honorSkip bool) string {
 			ms = 400
 		}
 		if a.down[k] {
+			if skipDown {
+				continue
+			}
 			ms = unreachableMs // still a choice, but the last one
 		}
 		if v := ms + s.Load*150; best == "?" || t < tier || (t == tier && v < score) {
@@ -191,11 +220,16 @@ func (a *App) pingAll() {
 			delete(a.down, key)
 		case icmpBlind && targets[key].Method != "tcp":
 		default:
+			if !a.down[key] {
+				t := targets[key]
+				log.Printf("ping: %s %s: no answer, node marked unreachable", t.Method, t.Host)
+			}
 			delete(a.pings, key)
 			a.down[key] = true
 		}
 		return true
 	})
+	a.pingedAt = time.Now()
 	a.mu.Unlock()
 	a.emit()
 }

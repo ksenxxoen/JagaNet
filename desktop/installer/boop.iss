@@ -5,10 +5,10 @@
 ; the service, the directory rights and the old-task cleanup are the same code
 ; as when the window installs the service. See installer/README.md.
 ;
-; ISCC /DAppVersion=1.4.1 /DSourceExe=..\dist\Boop.exe [/DWebView2Setup=...] [/DSignCmd=1] boop.iss
+; ISCC /DAppVersion=1.4.2 /DSourceExe=..\dist\Boop.exe [/DWebView2Setup=...] [/DSignCmd=1] boop.iss
 
 #ifndef AppVersion
-  #define AppVersion "1.4.1"
+  #define AppVersion "1.4.2"
 #endif
 #ifndef SourceExe
   #define SourceExe "..\dist\Boop.exe"
