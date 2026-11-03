@@ -1,10 +1,12 @@
 package dev.jaganet.server.services
 
 import dev.jaganet.server.Ctx
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 
 /** Links the website and the Telegram bot hand out. */
 class Site(private val ctx: Ctx) {
@@ -14,8 +16,18 @@ class Site(private val ctx: Ctx) {
     fun androidAppUrl(): String? = ctx.cfg.androidAppUrl ?: apkFile()?.let { "${ctx.cfg.publicUrl.trimEnd('/')}/download/android" }
     fun iosAppUrl(): String? = ctx.cfg.iosAppUrl
 
-    /** Boop.exe, only after it has been placed in DOWNLOADS_DIR. Absent means no Windows build is published. */
-    fun desktopExe(): File? = ctx.cfg.downloadsDir?.let { File(it, "Boop.exe") }?.takeIf { it.isFile }
+    /**
+     * The file /download/windows serves (what the 1.4.x fields url/sha256 describe): Boop.exe, or
+     * Boop-bridge.exe when desktop.json says `"legacy_file": "Boop-bridge.exe"`. Absent means
+     * no Windows build is published.
+     */
+    fun desktopExe(): File? = ctx.cfg.downloadsDir?.let { legacyDesktopFile(File(it)) }
+
+    /** Boop-Setup.exe for /download/windows/setup, only after it has been placed in DOWNLOADS_DIR. */
+    fun desktopSetup(): File? = ctx.cfg.downloadsDir?.let { File(it, SETUP_FILE) }?.takeIf { it.isFile }
+
+    /** Boop-bridge.exe for /download/windows/bridge, only after it has been placed in DOWNLOADS_DIR. */
+    fun desktopBridge(): File? = ctx.cfg.downloadsDir?.let { File(it, BRIDGE_FILE) }?.takeIf { it.isFile }
 
     /**
      * Opt-in desktop update. Both Boop.exe and desktop.json must be in DOWNLOADS_DIR;
@@ -43,7 +55,14 @@ class Site(private val ctx: Ctx) {
     )
 }
 
-/** desktop.json next to Boop.exe. sha256 and signature may be omitted; the hash is then computed. */
+/**
+ * desktop.json next to the Windows files. sha256 and signature may be omitted; the hash is then
+ * computed. Keys the panel reads (others are ignored):
+ *  - version, mandatory, notes, sha256, signature: the 1.4.x fields. They describe the file at
+ *    /download/windows, which is Boop.exe unless `legacy_file` names Boop-bridge.exe.
+ *  - installer_*, min_proto, kind: the installer fields for 1.5.4+ and the bridge; they are passed
+ *    on only when `installer_url` is present.
+ */
 @Serializable
 data class DesktopReleaseFile(
     val version: String,
@@ -51,9 +70,18 @@ data class DesktopReleaseFile(
     val notes: String? = null,
     val sha256: String? = null,
     val signature: String? = null,
+    @SerialName("legacy_file") val legacyFile: String? = null,
+    @SerialName("installer_url") val installerUrl: String? = null,
+    @SerialName("installer_sha256") val installerSha256: String? = null,
+    @SerialName("installer_version") val installerVersion: String? = null,
+    @SerialName("min_proto") val minProto: Int? = null,
+    val kind: String? = null,
 )
 
-/** GET /v1/app/desktop. signature is ed25519 over the raw exe, standard base64, and may be absent. */
+/**
+ * GET /v1/app/desktop. signature is ed25519 over the raw exe, standard base64, and may be absent.
+ * The installer fields are added only when desktop.json has them and they match the file.
+ */
 @Serializable
 data class DesktopAppManifest(
     val version: String,
@@ -62,32 +90,91 @@ data class DesktopAppManifest(
     val signature: String? = null,
     val mandatory: Boolean = false,
     val notes: String? = null,
+    @SerialName("installer_url") val installerUrl: String? = null,
+    @SerialName("installer_sha256") val installerSha256: String? = null,
+    @SerialName("installer_version") val installerVersion: String? = null,
+    @SerialName("min_proto") val minProto: Int? = null,
+    val kind: String? = null,
 )
 
 private val releaseJson = Json { ignoreUnknownKeys = true }
 private val sha256Hex = Regex("^[0-9a-fA-F]{64}$")
 
+const val SETUP_FILE = "Boop-Setup.exe"
+const val BRIDGE_FILE = "Boop-bridge.exe"
+private const val EXE_FILE = "Boop.exe"
+
+/** The only files the old fields (url/sha256) may point to. */
+private val LEGACY_FILES = mapOf("boop.exe" to EXE_FILE, "boop-bridge.exe" to BRIDGE_FILE)
+
+private fun readRelease(dir: File): DesktopReleaseFile? {
+    val meta = File(dir, "desktop.json")
+    if (!meta.isFile) return null
+    return runCatching { releaseJson.decodeFromString<DesktopReleaseFile>(meta.readText()) }.getOrNull()
+}
+
+/** The file behind /download/windows: Boop.exe by default, or the whitelisted `legacy_file`. */
+internal fun legacyDesktopFile(dir: File): File? {
+    if (!dir.isDirectory) return null
+    val name = readRelease(dir)?.legacyFile?.let { LEGACY_FILES[it.trim().lowercase()] } ?: EXE_FILE
+    return File(dir, name).takeIf { it.isFile }
+}
+
 /**
- * Nothing is published unless both files are present. Dropping only the exe
- * does not advertise an update.
+ * Nothing is published unless desktop.json and the file for the old fields are present. Dropping
+ * only the exe does not advertise an update. A sha256 that is not the file's hash means no
+ * document at all; a wrong installer_sha256 only drops the installer fields.
  */
 internal fun loadDesktopManifest(dir: File?, publicUrl: String): DesktopAppManifest? {
     if (dir == null || !dir.isDirectory) return null
-    val exe = File(dir, "Boop.exe")
-    val meta = File(dir, "desktop.json")
-    if (!exe.isFile || !meta.isFile) return null
-    val parsed = runCatching { releaseJson.decodeFromString<DesktopReleaseFile>(meta.readText()) }.getOrNull() ?: return null
+    val parsed = readRelease(dir) ?: return null
     val version = parsed.version.trim()
     if (version.isEmpty()) return null
-    val sha = parsed.sha256?.trim()?.takeIf { sha256Hex.matches(it) }?.lowercase() ?: sha256File(exe)
-    return DesktopAppManifest(
+    val legacyName = if (parsed.legacyFile == null) EXE_FILE else LEGACY_FILES[parsed.legacyFile.trim().lowercase()] ?: return null
+    val exe = File(dir, legacyName).takeIf { it.isFile } ?: return null
+    val actual = cachedSha256(exe)
+    val declared = parsed.sha256?.trim()?.takeIf { sha256Hex.matches(it) }?.lowercase()
+    if (declared != null && declared != actual) return null
+    val base = publicUrl.trimEnd('/')
+    val m = DesktopAppManifest(
         version = version,
-        url = publicUrl.trimEnd('/') + "/download/windows",
-        sha256 = sha,
+        url = "$base/download/windows",
+        sha256 = actual,
         signature = parsed.signature?.trim()?.takeIf { it.isNotEmpty() },
         mandatory = parsed.mandatory,
         notes = parsed.notes?.trim()?.takeIf { it.isNotEmpty() },
     )
+    val rawUrl = parsed.installerUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return m
+    val installerUrl = if (rawUrl.startsWith("/")) base + rawUrl else rawUrl
+    val declaredInstaller = parsed.installerSha256?.trim()?.takeIf { sha256Hex.matches(it) }?.lowercase()
+    val installerSha = if (installerUrl.substringBefore('?') == "$base/download/windows/setup") {
+        // Our own route: the hash is the served file's. Without the file there is nothing to offer.
+        val setup = File(dir, SETUP_FILE).takeIf { it.isFile } ?: return m
+        cachedSha256(setup).takeIf { declaredInstaller == null || declaredInstaller == it } ?: return m
+    } else {
+        declaredInstaller ?: return m // not served by us: we cannot compute it
+    }
+    return m.copy(
+        installerUrl = installerUrl,
+        installerSha256 = installerSha,
+        installerVersion = parsed.installerVersion?.trim()?.takeIf { it.isNotEmpty() },
+        minProto = parsed.minProto,
+        kind = parsed.kind?.trim()?.takeIf { it.isNotEmpty() },
+    )
+}
+
+private class HashEntry(val mtime: Long, val size: Long, val sha: String)
+private val hashCache = ConcurrentHashMap<String, HashEntry>()
+
+/** SHA-256 of a file, recomputed only when its mtime or size changes (clients poll every 6 h). */
+private fun cachedSha256(f: File): String {
+    val key = f.absolutePath
+    val mtime = f.lastModified()
+    val size = f.length()
+    hashCache[key]?.let { if (it.mtime == mtime && it.size == size) return it.sha }
+    val sha = sha256File(f)
+    hashCache[key] = HashEntry(mtime, size, sha)
+    return sha
 }
 
 private fun sha256File(f: File): String {

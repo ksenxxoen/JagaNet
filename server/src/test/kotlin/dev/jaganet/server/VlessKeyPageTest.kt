@@ -34,6 +34,12 @@ class VlessKeyPageTest {
         assertTrue("version 1.5.1" in html)
     }
 
+    @Test fun `Windows item leads to the installer when one is published`() {
+        val html = Pages(Lang.EN).vlessKey(key(listOf(link)), pub, VlessApps(windows = true, windowsVersion = "2.0.0", windowsHref = "/download/windows/setup"))
+        assertTrue("href=\"/download/windows/setup\"" in html)
+        assertTrue("version 2.0.0" in html)
+    }
+
     @Test fun `Windows item is hidden without the installer`() {
         val html = Pages(Lang.RU).vlessKey(key(listOf(link)), pub, VlessApps(windows = false))
         assertFalse("/download/windows" in html)
