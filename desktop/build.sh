@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Builds dist/Boop.exe (the window) and dist/BoopService.exe (the service) for
-# Windows (amd64) from any system with Go.
+# Builds for Windows (amd64) from any system with Go:
+#   dist/BoopHost.exe    the Go host of the Tauri window (core.App, toasts, autostart value)
+#   dist/BoopService.exe the service (tunnel)
+#   dist/Boop-bridge.exe the transition program for Boop 1.4.x (RELEASE-2.0.0.md)
+# The window itself, Boop.exe, is the Tauri shell (tauri/, built by cargo).
 #   ./build.sh [version] [api]
 # api: the panel's addresses in order, separated by commas (main one first, then
 # the spares, issue #37). Left out: the list in ui.go (apiBase), which is what a
@@ -8,7 +11,7 @@
 # Signing is optional and off by default: set BOOP_SIGN (see SIGNING.md).
 set -euo pipefail
 cd "$(dirname "$0")"
-VERSION="${1:-1.5.4}"
+VERSION="${1:-2.0.0}"
 API="${2:-}"
 APIX=""
 if [ -n "$API" ]; then
@@ -42,29 +45,34 @@ go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --out rsr
   --arch amd64 --file-version "$v4" --product-version "$v4"
 go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/service/winres.json --out cmd/boop-service/rsrc \
   --arch amd64 --file-version "$v4" --product-version "$v4"
+go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/bridge/winres.json --out cmd/boop-bridge/rsrc \
+  --arch amd64 --file-version "$v4" --product-version "$v4"
 # build/wintun.dll (Wintun's own signed file) is not embedded in anything: the
 # setup program puts it next to BoopService.exe (installer/boop.iss).
 
 # go build keeps an existing exe with the same build ID even if it was signed
 # since, so start clean; the .sha256 files are only written by a signed build.
-rm -f dist/Boop.exe dist/Boop.exe.sha256 dist/BoopHost.exe dist/BoopHost.exe.sha256 dist/BoopService.exe dist/BoopService.exe.sha256
-# Boop.exe: window and tray only. It links neither Xray-core nor AmneziaWG
-# (scripts/check-deps.sh proves it); the tunnel is BoopService.exe's.
+rm -f dist/Boop.exe dist/Boop.exe.sha256 dist/BoopHost.exe dist/BoopHost.exe.sha256 dist/BoopService.exe dist/BoopService.exe.sha256 dist/Boop-bridge.exe dist/Boop-bridge.exe.sha256
+# BoopHost.exe: windowless; the installed Tauri Boop.exe starts it with --host. It
+# links neither Xray-core nor AmneziaWG (scripts/check-deps.sh proves it): the
+# tunnel is BoopService.exe's. There is no Go window since 2.0.0.
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
   -ldflags "-s -w -H windowsgui -X main.version=$VERSION $APIX" \
-  -o dist/Boop.exe .
-# BoopHost.exe (since 1.5.3): the same Go program, which the installed Tauri
-# Boop.exe starts with --host (core.App, system toasts, autostart value; no
-# window of its own). The setup program installs it next to the Tauri shell.
-cp dist/Boop.exe dist/BoopHost.exe
+  -o dist/BoopHost.exe .
 # BoopService.exe: console subsystem, no window.
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
   -ldflags "-s -w -X main.version=$VERSION" \
   -o dist/BoopService.exe ./cmd/boop-service
+# Boop-bridge.exe: what a 1.4.x service swaps in for its own Boop.exe (the old
+# url/sha256 fields of desktop.json); it runs as that service, checks and runs the
+# 2.0.0 setup program. Same publisher and panel addresses as the host.
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
+  -ldflags "-s -w -X main.version=$VERSION $APIX" \
+  -o dist/Boop-bridge.exe ./cmd/boop-bridge
 
 # Optional Authenticode signature with an RFC 3161 timestamp. Nothing happens
 # unless BOOP_SIGN is set. Keys and passwords come only from the environment.
-# sign_exe <name> signs dist/<name> (Boop.exe, then BoopService.exe).
+# sign_exe <name> signs dist/<name>.
 sign_exe() {
   local name="$1"
   TSA="${BOOP_SIGN_TSA:-}"
@@ -137,10 +145,8 @@ sign_exe() {
   rm -rf "$signtmp"
 }
 if [ -n "${BOOP_SIGN:-}" ]; then
-  sign_exe Boop.exe
+  sign_exe BoopHost.exe
   sign_exe BoopService.exe
-  # The host is the signed Boop.exe under its other name (same bytes, same signature).
-  cp dist/Boop.exe dist/BoopHost.exe
-  (cd dist && sha256sum BoopHost.exe | tee BoopHost.exe.sha256)
+  sign_exe Boop-bridge.exe
 fi
-ls -l dist/Boop.exe dist/BoopHost.exe dist/BoopService.exe
+ls -l dist/BoopHost.exe dist/BoopService.exe dist/Boop-bridge.exe

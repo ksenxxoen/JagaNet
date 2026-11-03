@@ -6,7 +6,6 @@ require (
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/amnezia-vpn/amneziawg-go/v3 v3.1.20260828
 	github.com/amnezia-vpn/amneziawg-windows/v3 v3.1.20260814
-	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
 	github.com/webview/webview_go v0.0.0-20240831120633-6173450d4dd6
 	github.com/xtls/reality v0.0.0-20261014101318-83f621788ca8
 	github.com/xtls/xray-core v1.260327.1-0.20261029083850-0afec66085a8
@@ -21,7 +20,6 @@ require (
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/jchv/go-winloader v0.0.0-20250406163304-c1995be93bd1 // indirect
 	github.com/juju/ratelimit v1.0.2 // indirect
 	github.com/klauspost/compress v1.20.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.1 // indirect

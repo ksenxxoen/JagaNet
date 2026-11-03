@@ -12,10 +12,10 @@
 ; writes the user's autostart value and removes what 1.3.x/1.4.x left behind (the
 ; scheduled task). See installer/README.md.
 ;
-; ISCC /DAppVersion=1.5.4 /DSourceExe=..\tauri\target\release\Boop.exe /DSourceHost=..\dist\BoopHost.exe /DSourceService=..\dist\BoopService.exe [/DWintunDll=...] [/DWebView2Setup=...] [/DSignCmd=1] boop.iss
+; ISCC /DAppVersion=2.0.0 /DSourceExe=..\tauri\target\release\Boop.exe /DSourceHost=..\dist\BoopHost.exe /DSourceService=..\dist\BoopService.exe [/DWintunDll=...] [/DWebView2Setup=...] [/DSignCmd=1] boop.iss
 
 #ifndef AppVersion
-  #define AppVersion "1.5.4"
+  #define AppVersion "2.0.0"
 #endif
 #ifndef SourceExe
   #define SourceExe "..\tauri\target\release\Boop.exe"
@@ -102,7 +102,7 @@ Name: "{autodesktop}\Boop VPN"; Filename: "{app}\Boop.exe"; Tasks: desktopicon
 ; The service itself is set up by the Pascal code (ssPostInstall), before these.
 Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Установка Microsoft Edge WebView2..."; Flags: skipifdoesntexist waituntilterminated; Check: not WebView2Installed
 ; Toasts: the name, icon and boop: handler in the user's HKCU (the host also does it at every start of the installed copy).
-Filename: "{app}\BoopHost.exe"; Parameters: "--toast-register"; Flags: runasoriginaluser runhidden waituntilterminated
+Filename: "{app}\BoopHost.exe"; Parameters: "--toast-register"; Flags: runasoriginaluser runhidden waituntilterminated; Check: not FromBridge
 Filename: "{app}\Boop.exe"; Description: "Запустить Boop VPN"; Flags: nowait postinstall skipifsilent runasoriginaluser
 ; Update from the running app (it starts this setup with /SILENT /BOOPRESTART=1): postinstall entries are skipped in silent mode, so start the window again here.
 Filename: "{app}\Boop.exe"; Flags: nowait runasoriginaluser; Check: RestartAfterUpdate
@@ -112,11 +112,11 @@ Filename: "{app}\Boop.exe"; Flags: nowait runasoriginaluser; Check: RestartAfter
 ; the person flips the switch (winsvc.RunKeyName), started to the tray. HKCU
 ; because it is per user and the window needs no rights to change it. (When a
 ; different administrator elevates the setup, HKCU is theirs: the window's switch fixes it.)
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "BoopVPN"; ValueData: """{app}\Boop.exe"" --tray"; Flags: uninsdeletevalue; Tasks: autostart
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "BoopVPN"; Flags: deletevalue; Tasks: not autostart
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "BoopVPN"; ValueData: """{app}\Boop.exe"" --tray"; Flags: uninsdeletevalue; Tasks: autostart; Check: not FromBridge
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "BoopVPN"; Flags: deletevalue; Tasks: not autostart; Check: not FromBridge
 ; Toast keys: removed by the uninstaller itself.
-Root: HKCU; Subkey: "Software\Classes\AppUserModelId\Boop.VPN"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\boop"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\AppUserModelId\Boop.VPN"; Flags: uninsdeletekey; Check: not FromBridge
+Root: HKCU; Subkey: "Software\Classes\boop"; Flags: uninsdeletekey; Check: not FromBridge
 
 [Code]
 const
@@ -142,9 +142,18 @@ begin
       Result := True;
 end;
 
+{ /BOOPBRIDGE=1: started by the 1.4.x transition service (cmd/boop-bridge), which
+  is SYSTEM. HKCU and "the original user" are SYSTEM's then, so nothing per-user is
+  written: the person's Run value is the one 1.4.x wrote and already points at
+  Boop.exe --tray; the window is started by the new service in the user's session. }
+function FromBridge(): Boolean;
+begin
+  Result := ExpandConstant('{param:BOOPBRIDGE|0}') = '1';
+end;
+
 function RestartAfterUpdate(): Boolean;
 begin
-  Result := ExpandConstant('{param:BOOPRESTART|0}') = '1';
+  Result := (ExpandConstant('{param:BOOPRESTART|0}') = '1') and not FromBridge();
 end;
 
 function IsRealVersion(const V: String): Boolean;
@@ -326,6 +335,11 @@ begin
     DelTree(ExpandConstant('{commonappdata}\Boop'), True, True, True);
   end;
 end;
+
+[InstallDelete]
+; What the 1.4.x self-update left next to the program (a swapped-out Boop.exe).
+Type: files; Name: "{app}\Boop.exe.old"
+Type: files; Name: "{app}\Boop.exe.new"
 
 [UninstallDelete]
 ; What the client or the service leaves next to the program.

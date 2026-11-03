@@ -97,3 +97,11 @@ pwsh installer/build.ps1 -Version 1.5.1 -Exe dist/Boop.exe -Service dist/BoopSer
 Заметка (переходный период): в CI `dist/Boop.exe` и `dist/BoopHost.exe` — одна и та же Go-сборка (одинаковый SHA-256), это задумано:
 `BoopHost.exe` — копия Go-программы под именем хоста. Установщик берёт `Boop.exe` из `tauri/target/release/` (`-Exe`), а не из `dist/`;
 из `dist/` в него попадают только `BoopHost.exe`, `BoopService.exe` и `wintun.dll`.
+
+## Started by the 1.4.x bridge (`/BOOPBRIDGE=1`, since 2.0.0)
+
+`Boop-bridge.exe` (cmd/boop-bridge, see `docs/RELEASE-2.0.0.md`) runs the setup as SYSTEM with
+`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /BOOPBRIDGE=1`. With that switch every per-user entry is skipped
+(`Check: not FromBridge`: HKCU Run, toast keys, `--toast-register`, which would all land in SYSTEM's profile) and
+`/BOOPRESTART=1` does nothing — the window must not start as SYSTEM. The new `BoopService.exe` starts it in the user's session.
+`[InstallDelete]` removes `Boop.exe.old`/`.new` left by the 1.4.x swap.

@@ -29,7 +29,7 @@ defaults:
 
 jobs:
   build:
-    name: vet, test, Boop.exe
+    name: vet, test, Go exes
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -56,7 +56,7 @@ jobs:
 
       # Issue #78: Boop.exe is the window only; the engine (Xray-core, AmneziaWG) is
       # BoopService.exe's. Checked on the package graphs and on the built files.
-      - name: Boop.exe has no engine, BoopService.exe has no window
+      - name: BoopHost.exe and Boop-bridge.exe have no engine, BoopService.exe has no window
         run: scripts/check-deps.sh dist
 
       # Issue #53: the embedded Xray-core must not be older than the nodes' (the one
@@ -76,11 +76,11 @@ jobs:
             exit 1
           fi
 
-      # Issue #81: the update path of the host starts the setup program only through
-      # ShellExecute; no cmd, powershell, schtasks or reg child.
+      # Issue #81/#82: the update path of the host starts the setup program only through
+      # ShellExecute (the bridge: one CreateProcess of the checked file); no cmd, powershell, schtasks or reg child.
       - name: the host update path starts no cmd/powershell/schtasks/reg
         run: |
-          if grep -nE 'exec\.Command|"(schtasks|reg|powershell|pwsh|cmd)(\.exe)?"' update_windows.go host_windows.go core/update.go hostpipe/*.go winsvc/*.go | grep -v _test.go; then
+          if grep -nE 'exec\.Command|"(schtasks|reg|powershell|pwsh|cmd)(\.exe)?"' update_windows.go host_windows.go core/update.go hostpipe/*.go winsvc/*.go cmd/boop-bridge/*.go authenticode/*.go | grep -v _test.go; then
             echo "::error::the update path must not run cmd/powershell/schtasks/reg"; exit 1
           fi
 
@@ -110,25 +110,25 @@ jobs:
       - name: SHA-256
         run: |
           summary=""
-          for f in Boop.exe BoopHost.exe BoopService.exe; do
+          for f in BoopHost.exe BoopService.exe Boop-bridge.exe; do
             sum="$(sha256sum "dist/$f" | cut -d' ' -f1)"
             echo "$f SHA-256: $sum"
             summary+="* $f: SHA-256 \`$sum\`, $(stat -c %s "dist/$f") bytes"$'\n'
           done
           {
-            echo "### Boop.exe and BoopService.exe (unsigned, 0.0.0-ci+${HEAD_SHA::7})"
+            echo "### BoopHost.exe, BoopService.exe and Boop-bridge.exe (unsigned, 0.0.0-ci+${HEAD_SHA::7})"
             echo
             printf '%s\n' "$summary"
-            echo "Download: artifact \`Boop.exe-${HEAD_SHA}\` on this run's page (both files, kept 7 days)."
+            echo "Download: artifact \`Boop-go-${HEAD_SHA}\` on this run's page (the three files, kept 7 days)."
           } >>"$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Boop.exe-${{ github.event.pull_request.head.sha || github.sha }}
+          name: Boop-go-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
-            desktop/dist/Boop.exe
             desktop/dist/BoopHost.exe
             desktop/dist/BoopService.exe
+            desktop/dist/Boop-bridge.exe
           retention-days: 7
           if-no-files-found: error
 
@@ -176,6 +176,26 @@ jobs:
             baseline151/desktop/dist/Boop.exe
             baseline151/desktop/dist/BoopService.exe
             baseline151/desktop/build/wintun.dll
+          retention-days: 7
+          if-no-files-found: error
+
+      # Issue #82: the REAL 1.4.4 release commit (full SHA; a short ref broke CI once),
+      # built with the fake panel's address baked in, for the 1.4.4 -> 2.0.0 e2e.
+      - uses: actions/checkout@v4
+        with:
+          ref: c4ad767145537b428efac1f59efd7c653f280af9
+          path: baseline144
+
+      - name: Boop.exe 1.4.4 release commit (fake panel address; e2e baseline)
+        working-directory: baseline144/desktop
+        run: |
+          grep -q 'VERSION="${1:-1.4.4}"' build.sh || { echo "::error::the checked-out commit is not 1.4.4"; exit 1; }
+          ./build.sh 1.4.4 http://127.0.0.1:18444
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Boop-1.4.4-e2e-${{ github.event.pull_request.head.sha || github.sha }}
+          path: baseline144/desktop/dist/Boop.exe
           retention-days: 7
           if-no-files-found: error
 
@@ -242,7 +262,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: Boop.exe-${{ github.event.pull_request.head.sha || github.sha }}
+          name: Boop-go-${{ github.event.pull_request.head.sha || github.sha }}
           path: dist
 
       # Issue #79: a copy that runs from "Downloads" (portable) registers and
@@ -252,11 +272,11 @@ jobs:
         run: |
           $dl = Join-Path $env:USERPROFILE 'Downloads\boop-portable'
           New-Item -ItemType Directory -Force $dl | Out-Null
-          Copy-Item dist\Boop.exe $dl
+          Copy-Item dist\BoopHost.exe $dl
           Copy-Item dist\BoopService.exe $dl
           $before = (Get-ChildItem $dl -Recurse | ForEach-Object Name | Sort-Object) -join ','
           $o = Join-Path $env:TEMP 'portable-check.txt'
-          $p = Start-Process -FilePath "$dl\Boop.exe" -ArgumentList '--service-check' -Wait -PassThru -RedirectStandardOutput $o
+          $p = Start-Process -FilePath "$dl\BoopHost.exe" -ArgumentList '--service-check' -Wait -PassThru -RedirectStandardOutput $o
           Write-Host "service-check exit $($p.ExitCode): $(Get-Content $o -Raw)"
           $after = (Get-ChildItem $dl -Recurse | ForEach-Object Name | Sort-Object) -join ','
           if ($before -ne $after) { throw "files appeared next to the exe: $before -> $after" }
@@ -273,7 +293,7 @@ jobs:
       # Issue #72: the toast keys and the WinRT calls must not fail (nobody clicks here).
       - name: toast registration and notification (no interaction)
         run: |
-          $exe = Join-Path $PWD 'dist\Boop.exe'
+          $exe = Join-Path $PWD 'dist\BoopHost.exe'
           $p = Start-Process -FilePath $exe -ArgumentList '--toast-selftest' -Wait -PassThru
           if ($p.ExitCode -ne 0) {
             $log = Join-Path $env:LOCALAPPDATA 'Boop\toast-selftest.log'
@@ -308,7 +328,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: Boop.exe-${{ github.event.pull_request.head.sha || github.sha }}
+          name: Boop-go-${{ github.event.pull_request.head.sha || github.sha }}
           path: desktop/dist
 
       - uses: actions/download-artifact@v4
@@ -453,6 +473,169 @@ jobs:
           Check ($r.Code -eq 0) 'host <-> service after the update over 1.5.1'
           $unins = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /PURGEDATA' -Wait -PassThru
           Check ($unins.ExitCode -eq 0) 'uninstall exits 0 (after 1.5.1)'
+          exit 0 # schtasks /Query above fails on purpose
+
+      # Issue #82 (C-6): update from a REAL 1.4.4 to 2.0.0 the way a customer's machine does
+      # it. The 1.4.4 service fetches desktop.json from the fake panel, downloads the
+      # bridge (the old url/sha256 fields) and swaps it in for its Boop.exe; the SCM
+      # restarts the service, which now is the bridge: it checks the 2.0.0 setup
+      # program (SHA-256 + Authenticode + publisher of a CI-only certificate) and runs
+      # it as SYSTEM, without a UAC prompt. Checked afterwards: files, service, the
+      # sealed token and settings, autostart, old task, leftovers, uninstall.
+      - uses: actions/checkout@v4
+        with:
+          ref: c4ad767145537b428efac1f59efd7c653f280af9
+          path: baseline144
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: Boop-1.4.4-e2e-${{ github.event.pull_request.head.sha || github.sha }}
+          path: baseline144/desktop/dist
+
+      - name: update from a real 1.4.4 to 2.0.0 (bridge, migration, no UAC)
+        timeout-minutes: 15
+        run: |
+          $dir = Join-Path $env:ProgramFiles 'Boop'
+          $data = Join-Path $env:ProgramData 'Boop'
+          $tmp = $env:RUNNER_TEMP
+          function Dump {
+            foreach ($f in @("$data\install.log", "$data\bridge.log", "$data\service.log", "$tmp\requests.log", "$tmp\spawn.log")) {
+              if (Test-Path $f) { Write-Host "--- $f"; Get-Content $f -Tail 80 }
+            }
+            Get-ChildItem $env:TEMP -Filter 'Setup Log*' -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "--- $($_.FullName)"; Get-Content $_.FullName -Tail 60 }
+          }
+          function Check($ok, $what) { if (-not $ok) { Dump; throw "FAILED: $what" }; Write-Host "ok: $what" }
+          $silent = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG'
+          $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          function Binary { (Get-CimInstance Win32_Service -Filter "Name='BoopVPN'").PathName }
+
+          # The 1.4.4 setup program, from the release commit.
+          Check ((Get-Item baseline144/desktop/dist/Boop.exe).Length -gt 1MB) 'the 1.4.4 Boop.exe is there'
+          ./baseline144/desktop/installer/build.ps1
+          $old = (Get-ChildItem baseline144/desktop/dist/Boop-Setup-1.4.4.exe).FullName
+
+          # The 2.0.0 setup program signed with a CI-only certificate, and a bridge that
+          # trusts exactly that publisher and the fake panel (the same source as
+          # dist/Boop-bridge.exe, other -X values).
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=BoopCI' -CertStoreLocation Cert:\CurrentUser\My
+          $cer = Join-Path $tmp 'boopci.cer'
+          Export-Certificate -Cert $cert -FilePath $cer | Out-Null
+          Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+          Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
+          $new = (Get-ChildItem desktop/dist/Boop-Setup-2.0.0.exe).FullName
+          $signed = Join-Path $tmp 'Setup-2.0.0-signed.exe'
+          Copy-Item $new $signed
+          Check ((Set-AuthenticodeSignature -FilePath $signed -Certificate $cert -HashAlgorithm SHA256).Status -eq 'Valid') 'the 2.0.0 setup program is signed'
+          $bridge = Join-Path $tmp 'Boop-bridge.exe'
+          Push-Location desktop
+          try {
+            $env:GOOS = 'windows'
+            go build -trimpath -ldflags '-s -w -X main.version=2.0.0 -X main.apiBase=http://127.0.0.1:18444 -X main.setupPublisher=BoopCI' -o $bridge ./cmd/boop-bridge
+            if ($LASTEXITCODE -ne 0) { throw 'building the bridge failed' }
+          } finally { Pop-Location }
+          $manifest = Join-Path $tmp 'desktop.json'
+          [ordered]@{
+            version = '2.0.0'; url = 'http://127.0.0.1:18444/bridge.exe'; sha256 = (Get-FileHash $bridge).Hash.ToLower(); mandatory = $false
+            installer_version = '2.0.0'; installer_url = 'http://127.0.0.1:18444/setup.exe'; installer_sha256 = (Get-FileHash $signed).Hash.ToLower()
+            min_proto = 3; kind = 'installer'
+          } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM $manifest
+
+          # The fake panel, in its own process.
+          $stop = Join-Path $tmp 'panel.stop'; Remove-Item $stop -ErrorAction SilentlyContinue
+          $panel = Start-Process pwsh -PassThru -ArgumentList @('-NoProfile', '-File', (Resolve-Path desktop/scripts/fake-desktop-json.ps1).Path,
+            '-Port', '18444', '-Manifest', $manifest, '-Bridge', $bridge, '-Setup', $signed, '-Log', "$tmp\requests.log", '-StopFile', $stop)
+          Start-Sleep 3
+
+          # Everything the update path must not start, and the UAC prompt, watched while it runs.
+          $spawn = Start-Job -ArgumentList "$tmp\spawn.log", "$dir" -ScriptBlock {
+            param($log, $dir)
+            $bad = 'schtasks.exe', 'reg.exe', 'powershell.exe', 'pwsh.exe', 'cmd.exe', 'consent.exe'
+            while ($true) {
+              foreach ($p in Get-CimInstance Win32_Process -ErrorAction SilentlyContinue) {
+                if ($bad -contains $p.Name.ToLower()) {
+                  $parent = Get-CimInstance Win32_Process -Filter "ProcessId=$($p.ParentProcessId)" -ErrorAction SilentlyContinue
+                  $pp = if ($parent) { "$($parent.Name) $($parent.ExecutablePath)" } else { '?' }
+                  Add-Content $log "$($p.Name) <- $pp"
+                }
+              }
+              Start-Sleep -Milliseconds 150
+            }
+          }
+
+          try {
+            # 1.4.4 as a customer has it: installed, autostart on (the Run value 1.4.x writes), an old task left over.
+            Check ((Start-Process -FilePath $old -ArgumentList $silent -Wait -PassThru).ExitCode -eq 0) '1.4.4 installs'
+            Check ((Get-Service BoopVPN).Status -eq 'Running') '1.4.4 service Running'
+            Check ((Binary) -match 'Boop\.exe"? --service') 'the service runs Boop.exe --service'
+            Set-ItemProperty -Path $runKey -Name BoopVPN -Value "`"$dir\Boop.exe`" --tray"
+            $runBefore = (Get-ItemProperty $runKey).BoopVPN
+            schtasks.exe /Create /TN 'Boop VPN' /TR 'cmd.exe /c exit' /SC ONLOGON /RL HIGHEST /F | Out-Null
+            Push-Location desktop
+            try {
+              $env:BOOP_E2E_MIGRATION = 'seed'
+              go test -count=1 -run '^TestMigrationE2E$' .
+              Check ($LASTEXITCODE -eq 0) 'signed in: the token and settings are written (DPAPI) as 1.4.4 keeps them'
+            } finally { Pop-Location }
+            Set-Content "$data\keep-data.txt" 'x'
+
+            # The update, by the 1.4.4 service's own mechanism: the window's "update" request over the pipe.
+            $c = [System.IO.Pipes.NamedPipeClientStream]::new('.', 'BoopVPN', [System.IO.Pipes.PipeDirection]::InOut)
+            $c.Connect(15000)
+            $w = [System.IO.StreamWriter]::new($c); $w.AutoFlush = $true
+            $w.WriteLine('{"op":"update"}')
+            $answer = [System.IO.StreamReader]::new($c).ReadLine()
+            $c.Dispose()
+            Write-Host "service answered: $answer"
+            Check ($answer -match '"ok":true' -and $answer -match '2\.0\.0') '1.4.4 swapped in the bridge'
+
+            $deadline = (Get-Date).AddSeconds(240)
+            while (((Binary) -notmatch 'BoopService\.exe"? --service' -or (Get-Service BoopVPN).Status -ne 'Running') -and (Get-Date) -lt $deadline) { Start-Sleep 3 }
+            Start-Sleep 8
+          } finally {
+            Stop-Job $spawn -ErrorAction SilentlyContinue
+          }
+          Check ((Binary) -match 'BoopService\.exe"? --service') 'the service now runs BoopService.exe'
+          Check ((Get-Service BoopVPN).Status -eq 'Running') 'the service is Running'
+          $req = Get-Content "$tmp\requests.log"
+          Check (@($req | Where-Object { $_ -eq 'GET /bridge.exe' }).Count -eq 1) 'the bridge was downloaded once (by 1.4.4)'
+          Check (@($req | Where-Object { $_ -eq 'GET /setup.exe' }).Count -eq 1) 'the setup program was downloaded once (by the bridge)'
+          Check (Test-Path "$data\bridge.log") 'the bridge ran as the service'
+          Check ((Get-Content "$data\bridge.log" -Raw) -match 'staged and checked') 'the bridge checked the setup program (hash, signature, publisher)'
+          Check (Test-Path "$dir\Boop.exe") 'Boop.exe in Program Files'
+          Check ((Get-Item "$dir\Boop.exe").Length -lt 12MB) 'Boop.exe is the Tauri window'
+          Check ((Get-FileHash "$dir\Boop.exe").Hash -eq (Get-FileHash desktop/tauri/target/release/Boop.exe).Hash) 'Boop.exe is the 2.0.0 window'
+          foreach ($f in 'BoopHost.exe', 'BoopService.exe', 'wintun.dll') { Check (Test-Path "$dir\$f") "$f installed" }
+          Check (-not (Get-ChildItem $dir -Recurse -Include '*.old', '*.new' -ErrorAction SilentlyContinue)) 'no *.old / *.new next to the program'
+          Check (-not (Test-Path "$data\update")) 'the staged setup program is removed'
+          Check (-not (Test-Path "$data\after-bridge")) 'the bridge marker is consumed'
+          Check (Test-Path "$data\keep-data.txt") 'the service data stays'
+          Push-Location desktop
+          try {
+            $env:BOOP_E2E_MIGRATION = 'verify'
+            go test -count=1 -run '^TestMigrationE2E$' .
+            Check ($LASTEXITCODE -eq 0) 'token and settings are read by the new code: no sign-in needed'
+          } finally { Pop-Location }
+          Check ((Get-ItemProperty $runKey).BoopVPN -eq $runBefore) 'autostart: the Run value is kept and starts the new Boop.exe --tray'
+          schtasks.exe /Query /TN 'Boop VPN' 2>$null | Out-Null
+          Check ($LASTEXITCODE -ne 0) 'the old scheduled task is gone'
+          $svc = Start-Process -FilePath "$dir\BoopHost.exe" -ArgumentList '--service-check' -Wait -PassThru
+          Check ($svc.ExitCode -eq 0) 'host <-> new service'
+          $spawned = if (Test-Path "$tmp\spawn.log") { Get-Content "$tmp\spawn.log" } else { @() }
+          $fromApp = @($spawned | Where-Object { $_ -match 'Program Files\\Boop\\' -or $_ -match '^consent' })
+          Check ($fromApp.Count -eq 0) "no schtasks/reg/powershell/cmd from Boop programs and no UAC prompt ($($fromApp -join '; '))"
+          Check ($null -eq (Get-Process -Name consent -ErrorAction SilentlyContinue)) 'no consent.exe (UAC)'
+
+          # Uninstall is clean.
+          New-Item -ItemType File $stop | Out-Null
+          Get-Process -Name Boop, BoopHost -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          $u = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /PURGEDATA' -Wait -PassThru
+          Check ($u.ExitCode -eq 0) 'uninstall exits 0'
+          $deadline = (Get-Date).AddSeconds(60)
+          while ((Get-Service BoopVPN -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
+          Check ($null -eq (Get-Service BoopVPN -ErrorAction SilentlyContinue)) 'service removed'
+          Check (-not (Test-Path "$dir\Boop.exe")) 'Boop.exe removed'
+          Check (-not (Test-Path $data)) 'ProgramData\Boop removed'
+          Check ($null -eq (Get-ItemProperty $runKey -ErrorAction SilentlyContinue).BoopVPN) 'the Run value is removed'
           exit 0 # schtasks /Query above fails on purpose
 
       - name: install, upgrade, uninstall (silent)
@@ -698,7 +881,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: Boop.exe-${{ github.event.pull_request.head.sha || github.sha }}
+          name: Boop-go-${{ github.event.pull_request.head.sha || github.sha }}
           path: desktop/dist
 
       - uses: actions/download-artifact@v4

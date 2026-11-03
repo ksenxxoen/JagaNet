@@ -105,6 +105,8 @@ func (h *handler) Execute(_ []string, req <-chan svc.ChangeRequest, status chan<
 	})
 
 	status <- svc.Status{State: svc.Running, Accepts: accepted}
+	// After the 1.4.x bridge's setup: start the window in the user's session.
+	core.Go("bridge finish", FinishBridgeUpdate)
 	code := uint32(0)
 loop:
 	for {

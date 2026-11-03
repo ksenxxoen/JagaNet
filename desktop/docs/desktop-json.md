@@ -18,7 +18,7 @@ The panel serves this file from disk; the server is not changed by the installer
 1. Fields are only **added**. Existing fields keep their meaning; 1.4.x ignores unknown keys, so it updates as before from `version`/`url`/`sha256`.
 2. A client of 1.5.4+ looks only at the installer fields. A document without `installer_url` is a 1.4.x-format document: it offers nothing to 1.5.4+ (it no longer replaces its own files). On Linux (`UpdateLink`) the old fields still name the package page.
 3. Clients install only a **strictly higher** `installer_version`.
-4. 1.5.0–1.5.3 and 1.5.4 are never published in the 1.4.x fields. What `version`/`url`/`sha256` point to for 1.4.x clients is the transition release's decision (subtask C-6); the generator (`installer/build.ps1`) can write them when `BOOP_LEGACY_URL` and `BOOP_LEGACY_SHA256` are set.
+4. 1.5.0–1.5.4 are never published in the 1.4.x fields. From 2.0.0 `version`/`url`/`sha256`(/`signature`) name **`Boop-bridge.exe`**, the program a 1.4.x service swaps in for itself and which then runs the setup named by the `installer_*` fields (`RELEASE-2.0.0.md`). `version` must be above 1.4.4. The generator (`installer/build.ps1`) writes them when `BOOP_LEGACY_URL` is set (absolute https URL; hash from `BOOP_LEGACY_SHA256` or the signed bridge; `BOOP_LEGACY_SIGNATURE` optional). 1.5.4+ clients and the bridge read only the installer fields; the bridge accepts an `installer_version` equal to or above its own release.
 
 ## What the client does (Go host `BoopHost.exe`)
 

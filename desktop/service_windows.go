@@ -4,12 +4,8 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"slices"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -54,19 +50,6 @@ func serviceCheck() int {
 	return exitOK
 }
 
-// serviceExe is BoopService.exe next to this program.
-func serviceExe() (string, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	p := filepath.Join(filepath.Dir(exe), winsvc.BinaryName)
-	if !fileExists(p) {
-		return "", fmt.Errorf("%s not found", p)
-	}
-	return p, nil
-}
-
 // installedCopy reports whether this program is the window the setup program
 // put in %ProgramFiles%\Boop. Any other copy (from "Downloads", say) is
 // portable: it registers nothing, writes nothing next to itself and, without a
@@ -91,30 +74,6 @@ func noService(site string) error {
 // userAttempts is false while the window starts: the installer's page opens
 // only when the person asks for the VPN, never out of nowhere at sign-in.
 var userAttempts atomic.Bool
-
-// relaunchInstalled starts the window again from the installed copy when this
-// one runs from somewhere else (the first start after the install): that copy
-// is what autostart and the updater keep current. It reports whether it did.
-func relaunchInstalled() bool {
-	if version == "dev" {
-		return false
-	}
-	exe, err := os.Executable()
-	if err != nil {
-		return false
-	}
-	inst := winsvc.InstalledWindowExe()
-	if !fileExists(inst) || strings.EqualFold(filepath.Clean(exe), filepath.Clean(inst)) {
-		return false
-	}
-	cmd := exec.Command(inst, os.Args[1:]...)
-	if err := cmd.Start(); err != nil {
-		log.Printf("relaunch: %v", err)
-		return false
-	}
-	log.Printf("started %s instead of %s", inst, exe)
-	return true
-}
 
 // upCache answers "is the service's tunnel up" cheaply for SocketControl, which
 // asks for every new socket: the service is asked at most every two seconds.

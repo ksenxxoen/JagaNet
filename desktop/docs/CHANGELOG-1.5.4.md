@@ -6,4 +6,4 @@
 - Service protocol **3** (`MinProtocol` 2): the `update` op and `updated` field are removed. Boop 1.4.x windows (protocol 1) are refused by a 1.5.4 service with «обновите» — the setup program replaces both.
 - `boop.iss`: `/BOOPRESTART=1` starts `Boop.exe` after a silent update.
 - Version 1.5.4. This version is not put in the fields 1.4.x reads.
-- Not done here (needs Windows): the N→N+1 e2e and the real-certificate signature check; see the issue report.
+- The N→N+1 e2e (hash, unsigned and foreign-signed refusals, a CI-only certificate) was added in the same stage and runs in the `windows-installer` job. The 1.4.x → 2.0.0 path is in `RELEASE-2.0.0.md`.
