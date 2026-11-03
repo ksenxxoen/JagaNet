@@ -503,6 +503,12 @@ jobs:
               if (Test-Path $f) { Write-Host "--- $f"; Get-Content $f -Tail 80 }
             }
             Get-ChildItem $env:TEMP -Filter 'Setup Log*' -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "--- $($_.FullName)"; Get-Content $_.FullName -Tail 60 }
+            $hl = Join-Path $env:LOCALAPPDATA 'Boop\boop-host.log'
+            if (Test-Path $hl) { Write-Host "--- $hl"; Get-Content $hl -Tail 60 }
+            Write-Host '--- Service Control Manager events'
+            Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Service Control Manager'; StartTime = (Get-Date).AddMinutes(-15) } -ErrorAction SilentlyContinue |
+              Where-Object { $_.Message -match 'Boop' } | Sort-Object TimeCreated |
+              ForEach-Object { Write-Host "$($_.TimeCreated.ToString('HH:mm:ss')) id=$($_.Id) user=$($_.UserId) $($_.Message)" }
           }
           function Check($ok, $what) { if (-not $ok) { Dump; throw "FAILED: $what" }; Write-Host "ok: $what" }
           $silent = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG'
