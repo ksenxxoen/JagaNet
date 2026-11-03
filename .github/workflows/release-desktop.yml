@@ -1,0 +1,147 @@
+# Manual release build of the Windows client: the setup program with the real version in
+# every exe (not 0.0.0-ci+<sha>), plus Boop-bridge.exe and desktop.json for the panel.
+# Signing is optional and off: BOOP_SIGN is not set here, so the publisher stays empty.
+# Nothing is published or deployed; the files are a workflow artifact to copy by hand.
+name: release-desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, e.g. 2.0.2"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-desktop-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  go:
+    name: Go exes ${{ inputs.version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: desktop
+    steps:
+      - name: check the version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "version must look like 2.0.2" >&2; exit 1; }
+        working-directory: .
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - name: build.sh
+        env:
+          VERSION: ${{ inputs.version }}
+        run: ./build.sh "$VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-go-${{ inputs.version }}
+          path: |
+            desktop/dist/BoopHost.exe
+            desktop/dist/BoopService.exe
+            desktop/dist/Boop-bridge.exe
+            desktop/build/wintun.dll
+          if-no-files-found: error
+
+  setup:
+    name: Boop-Setup.exe ${{ inputs.version }}
+    needs: go
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-go-${{ inputs.version }}
+          path: release-go
+
+      - name: place the Go exes
+        run: |
+          New-Item -ItemType Directory -Force desktop/dist, desktop/build | Out-Null
+          Copy-Item release-go/desktop/dist/*.exe desktop/dist/
+          Copy-Item release-go/desktop/build/wintun.dll desktop/build/
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~\.cargo\registry
+            desktop\tauri\target
+          key: tauri-win-${{ hashFiles('desktop/tauri/Cargo.lock') }}
+
+      - name: UI for the Tauri window
+        shell: bash
+        run: ./desktop/tauri/prepare-ui.sh
+
+      # The window's version info comes from tauri.conf.json; Cargo.toml stays as it is
+      # so that --locked keeps working.
+      - name: stamp the version into the Tauri window
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          $p = 'desktop/tauri/app/tauri.conf.json'
+          $j = Get-Content $p -Raw | ConvertFrom-Json
+          $j.version = $env:VERSION
+          $j | ConvertTo-Json -Depth 32 | Set-Content -Encoding utf8NoBOM $p
+
+      - name: build Boop.exe (Tauri)
+        run: cargo build --release -p boop-shell --locked
+        working-directory: desktop/tauri
+
+      - name: Inno Setup
+        run: |
+          if (-not (Get-Command ISCC.exe -ErrorAction SilentlyContinue) -and
+              -not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+          }
+
+      - name: build the setup program
+        env:
+          VERSION: ${{ inputs.version }}
+          BOOP_LEGACY: "1"
+        run: ./desktop/installer/build.ps1 -Version $env:VERSION
+
+      - name: collect the release files
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          $out = 'release'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item "desktop/dist/Boop-Setup-$env:VERSION.exe" "$out/Boop-Setup.exe"
+          Copy-Item desktop/dist/Boop-bridge.exe $out/
+          Copy-Item desktop/dist/desktop.json $out/
+          # No exe may still carry the CI placeholder version.
+          foreach ($f in 'Boop-Setup.exe', 'Boop-bridge.exe') {
+            $v = (Get-Item "$out/$f").VersionInfo
+            Write-Host "$f file=$($v.FileVersion) product=$($v.ProductVersion)"
+            if ("$($v.FileVersion)$($v.ProductVersion)" -match '0\.0\.0') { throw "$f carries a placeholder version" }
+          }
+          $m = Get-Content "$out/desktop.json" -Raw | ConvertFrom-Json
+          if ($m.installer_version -ne $env:VERSION) { throw "desktop.json installer_version is $($m.installer_version)" }
+          $hash = (Get-FileHash "$out/Boop-Setup.exe" -Algorithm SHA256).Hash.ToLower()
+          if ($m.installer_sha256 -ne $hash) { throw 'desktop.json installer_sha256 does not match Boop-Setup.exe' }
+          Get-ChildItem $out | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Boop-release-${{ inputs.version }}
+          path: release/*
+          if-no-files-found: error
