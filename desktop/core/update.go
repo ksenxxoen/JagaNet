@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/url"
 	"os"
@@ -293,33 +294,10 @@ func (a *App) installUpdate(m Manifest, apply bool) {
 	a.setStage("downloading")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	data, err := a.API.Download(ctx, m.InstallerURL, 256<<20)
-	if err != nil {
-		a.failUpdate("update: download: %v", err)
-		return
-	}
-	if err := VerifyInstaller(m, data, UpdatePublicKey); err != nil {
-		a.failUpdate("update: %v", err)
-		return
-	}
-	dir, err := os.MkdirTemp(a.UpdateDir, "setup-")
+	path, err := StageInstaller(ctx, a.API, m, a.UpdateDir, a.VerifySetup)
 	if err != nil {
 		a.failUpdate("update: %v", err)
 		return
-	}
-	path := filepath.Join(dir, "Boop-Setup-"+safeName(m.TargetVersion())+".exe")
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		a.failUpdate("update: %v", err)
-		return
-	}
-	// The signature is checked on the file on disk, after the hash: an
-	// installer that fails either is never started.
-	if a.VerifySetup != nil {
-		if err := a.VerifySetup(path); err != nil {
-			_ = os.RemoveAll(dir)
-			a.failUpdate("update: signature: %v", err)
-			return
-		}
 	}
 	log.Printf("update: staged %s", m.TargetVersion())
 	if !apply || a.RunInstaller == nil {
@@ -330,6 +308,39 @@ func (a *App) installUpdate(m Manifest, apply bool) {
 	if err := a.RunInstaller(path); err != nil {
 		a.failUpdate("update: run installer: %v", err)
 	}
+}
+
+// StageInstaller downloads the setup program named by m into a fresh directory
+// under dir and checks it: SHA-256 (and the ed25519 signature when a key is
+// configured) on the bytes, then verify (Authenticode and publisher; nil skips) on
+// the file on disk. The path it returns is the checked file; on any error nothing
+// is left behind. The Windows host and the 1.4.x bridge both come through here.
+func StageInstaller(ctx context.Context, api *API, m Manifest, dir string, verify func(path string) error) (string, error) {
+	data, err := api.Download(ctx, m.InstallerURL, 256<<20)
+	if err != nil {
+		return "", fmt.Errorf("download: %w", err)
+	}
+	if err := VerifyInstaller(m, data, UpdatePublicKey); err != nil {
+		return "", err
+	}
+	tmp, err := os.MkdirTemp(dir, "setup-")
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(tmp, "Boop-Setup-"+safeName(m.TargetVersion())+".exe")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		_ = os.RemoveAll(tmp)
+		return "", err
+	}
+	// The signature is checked on the file on disk, after the hash: an
+	// installer that fails either is never started.
+	if verify != nil {
+		if err := verify(path); err != nil {
+			_ = os.RemoveAll(tmp)
+			return "", fmt.Errorf("signature: %w", err)
+		}
+	}
+	return path, nil
 }
 
 // safeName keeps a version fit for a file name.

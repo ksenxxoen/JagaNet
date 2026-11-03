@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Boop.exe is the window and the tray only; BoopService.exe is the tunnel. The
-# split is worth nothing if the window still carries the engine, so check the
+# BoopHost.exe (the Go half of the window) and Boop-bridge.exe (the 1.4.x
+# transition program) are not the tunnel; BoopService.exe is. The split is worth
+# nothing if they still carry the engine, so check the
 # built files (go version -m lists every module linked into a Go binary) and the
 # package graph of both programs.
 #   scripts/check-deps.sh [dist]
@@ -17,9 +18,14 @@ ui='github.com/jchv/go-webview2|github.com/webview/|JagaNet/desktop/toast'
 
 echo "== packages (GOOS=windows)"
 if GOOS=windows go list -deps . | grep -E "$engine"; then
-  echo "::error::Boop.exe's package graph contains the engine (see above)"; fail=1
+  echo "::error::BoopHost.exe's package graph contains the engine (see above)"; fail=1
 else
-  echo "ok: Boop.exe's packages: no Xray-core, no AmneziaWG"
+  echo "ok: BoopHost.exe's packages: no Xray-core, no AmneziaWG"
+fi
+if GOOS=windows go list -deps ./cmd/boop-bridge | grep -E "$engine|$ui"; then
+  echo "::error::Boop-bridge.exe's package graph contains the engine or the window's libraries"; fail=1
+else
+  echo "ok: Boop-bridge.exe's packages: no engine, no window libraries"
 fi
 if GOOS=windows go list -deps ./cmd/boop-service | grep -E "$ui"; then
   echo "::error::BoopService.exe's package graph contains the window's libraries"; fail=1
@@ -27,13 +33,16 @@ else
   echo "ok: BoopService.exe's packages: no WebView2"
 fi
 
-if [ -f "$dist/Boop.exe" ] && [ -f "$dist/BoopService.exe" ]; then
+if [ -f "$dist/BoopHost.exe" ] && [ -f "$dist/BoopService.exe" ]; then
   echo "== binaries ($dist)"
-  if go version -m "$dist/Boop.exe" | grep -E "$engine"; then
-    echo "::error::$dist/Boop.exe links the engine"; fail=1
-  else
-    echo "ok: $dist/Boop.exe links no Xray-core and no AmneziaWG"
-  fi
+  for f in BoopHost.exe Boop-bridge.exe; do
+    [ -f "$dist/$f" ] || continue
+    if go version -m "$dist/$f" | grep -E "$engine"; then
+      echo "::error::$dist/$f links the engine"; fail=1
+    else
+      echo "ok: $dist/$f links no Xray-core and no AmneziaWG"
+    fi
+  done
   # What the service must have, or the split lost the tunnel.
   svc="$(go version -m "$dist/BoopService.exe")"
   for m in github.com/xtls/xray-core github.com/amnezia-vpn/amneziawg-go; do

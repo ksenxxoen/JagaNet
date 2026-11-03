@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ksenxxoen/JagaNet/desktop/authenticode"
 	"github.com/ksenxxoen/JagaNet/desktop/core"
 )
 
@@ -93,7 +94,7 @@ func TestUpdateE2E(t *testing.T) {
 		}
 		// The CI build is not signed, so the check is switched on here, exactly as
 		// a BOOP_SIGN release does through setupPublisher.
-		app.VerifySetup = func(p string) error { return checkAuthenticode(p, publisher) }
+		app.VerifySetup = func(p string) error { return authenticode.Check(p, publisher) }
 		app.RunInstaller = func(p string) error { n.Add(1); return runSetup(p) }
 		app.CheckUpdate()
 		tmu.Lock()
