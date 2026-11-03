@@ -522,21 +522,21 @@ jobs:
           Export-Certificate -Cert $cert -FilePath $cer | Out-Null
           Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
           Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
-          $new = (Get-ChildItem desktop/dist/Boop-Setup-2.0.0.exe).FullName
-          $signed = Join-Path $tmp 'Setup-2.0.0-signed.exe'
+          $new = (Get-ChildItem desktop/dist/Boop-Setup-2.0.2.exe).FullName
+          $signed = Join-Path $tmp 'Setup-2.0.2-signed.exe'
           Copy-Item $new $signed
-          Check ((Set-AuthenticodeSignature -FilePath $signed -Certificate $cert -HashAlgorithm SHA256).Status -eq 'Valid') 'the 2.0.0 setup program is signed'
+          Check ((Set-AuthenticodeSignature -FilePath $signed -Certificate $cert -HashAlgorithm SHA256).Status -eq 'Valid') 'the 2.0.2 setup program is signed'
           $bridge = Join-Path $tmp 'Boop-bridge.exe'
           Push-Location desktop
           try {
             $env:GOOS = 'windows'
-            go build -trimpath -ldflags '-s -w -X main.version=2.0.0 -X main.apiBase=http://127.0.0.1:18444 -X main.setupPublisher=BoopCI' -o $bridge ./cmd/boop-bridge
+            go build -trimpath -ldflags '-s -w -X main.version=2.0.2 -X main.apiBase=http://127.0.0.1:18444 -X main.setupPublisher=BoopCI' -o $bridge ./cmd/boop-bridge
             if ($LASTEXITCODE -ne 0) { throw 'building the bridge failed' }
           } finally { Pop-Location }
           $manifest = Join-Path $tmp 'desktop.json'
           [ordered]@{
-            version = '2.0.0'; url = 'http://127.0.0.1:18444/bridge.exe'; sha256 = (Get-FileHash $bridge).Hash.ToLower(); mandatory = $false
-            installer_version = '2.0.0'; installer_url = 'http://127.0.0.1:18444/setup.exe'; installer_sha256 = (Get-FileHash $signed).Hash.ToLower()
+            version = '2.0.2'; url = 'http://127.0.0.1:18444/bridge.exe'; sha256 = (Get-FileHash $bridge).Hash.ToLower(); mandatory = $false
+            installer_version = '2.0.2'; installer_url = 'http://127.0.0.1:18444/setup.exe'; installer_sha256 = (Get-FileHash $signed).Hash.ToLower()
             min_proto = 3; kind = 'installer'
           } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM $manifest
 
@@ -603,7 +603,7 @@ jobs:
           Check ((Get-Content "$data\bridge.log" -Raw) -match 'staged and checked') 'the bridge checked the setup program (hash, signature, publisher)'
           Check (Test-Path "$dir\Boop.exe") 'Boop.exe in Program Files'
           Check ((Get-Item "$dir\Boop.exe").Length -lt 12MB) 'Boop.exe is the Tauri window'
-          Check ((Get-FileHash "$dir\Boop.exe").Hash -eq (Get-FileHash desktop/tauri/target/release/Boop.exe).Hash) 'Boop.exe is the 2.0.0 window'
+          Check ((Get-FileHash "$dir\Boop.exe").Hash -eq (Get-FileHash desktop/tauri/target/release/Boop.exe).Hash) 'Boop.exe is the 2.0.2 window'
           foreach ($f in 'BoopHost.exe', 'BoopService.exe', 'wintun.dll') { Check (Test-Path "$dir\$f") "$f installed" }
           Check (-not (Get-ChildItem $dir -Recurse -Include '*.old', '*.new' -ErrorAction SilentlyContinue)) 'no *.old / *.new next to the program'
           $deadline = (Get-Date).AddSeconds(120)
