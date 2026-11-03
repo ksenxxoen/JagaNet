@@ -613,7 +613,9 @@ try {
     await tp.goto(`http://127.0.0.1:${port}/`);
     await tp.waitForFunction(() => window.__calls.length > 0 && Object.keys(window.__cb).length === 2);
     check("tauri: ready goes through host_call", await tp.evaluate(() => window.__calls[0][0] === "host_call" && window.__calls[0][1].name === "ready"));
-    check("tauri: no EventSource or fetch to /rpc", await tp.evaluate(() => window.__calls.every((c) => c[0] === "host_call")));
+    check("tauri: no EventSource or fetch to /rpc", await tp.evaluate(() => window.__calls.every((c) => c[0] === "host_call" || c[0] === "ui_ready")));
+    // Issue #106: the page tells the shell once, after its first render, which screen it drew.
+    check("tauri: ui_ready is reported once, after the first render", await tp.evaluate(() => { const u = window.__calls.filter((c) => c[0] === "ui_ready"); return u.length === 1 && u[0][1].screen === "main"; }));
     check("tauri: state from the call is drawn", (await tp.getAttribute("#boop", "data-state")) === "off");
     await tp.evaluate((st) => window.__cb["boop://state"]({ payload: st }), { ...main, conn: "on" });
     check("tauri: boop://state event redraws", (await tp.getAttribute("#boop", "data-state")) === "on");
