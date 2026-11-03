@@ -181,6 +181,11 @@ func (a *App) state() UIState {
 	return s
 }
 
+// PushState sends the current state to OnState. The Windows host calls it once
+// after Init, so a shell that connects always gets a first state, whether or not
+// anything else (an update, a probe, a sign-in) has changed the state yet.
+func (a *App) PushState() { a.emit() }
+
 func (a *App) emit() {
 	a.mu.Lock()
 	s := a.state()

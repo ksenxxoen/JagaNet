@@ -100,6 +100,7 @@ func runHost(args []string) bool {
 	app.OnNotice = func(n core.Notice) { core.Go("toast", func() { notifier.Notify(n) }) }
 	app.Init()
 	defer app.Disconnect()
+	app.PushState()
 
 	done := make(chan struct{})
 	srv.OnQuit = func() { close(done) }

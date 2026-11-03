@@ -130,6 +130,13 @@ func (s *Server) handle(c net.Conn) {
 		switch q.Method {
 		case "hello":
 			s.write(response{ID: q.ID, Result: map[string]any{"ok": true, "version": s.Version, "protocol": Protocol}})
+			// A shell that connects late still gets the latest state as an event.
+			s.mu.Lock()
+			st := s.state
+			s.mu.Unlock()
+			if st != nil {
+				s.write(map[string]any{"event": "state", "state": st})
+			}
 		case "state":
 			s.mu.Lock()
 			st := s.state
