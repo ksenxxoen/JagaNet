@@ -586,7 +586,7 @@ jobs:
             $answer = [System.IO.StreamReader]::new($c).ReadLine()
             $c.Dispose()
             Write-Host "service answered: $answer"
-            Check ($answer -match '"ok":true' -and $answer -match '2\.0\.0') '1.4.4 swapped in the bridge'
+            Check ($answer -match '"ok":true' -and $answer -match '2\.0\.2') '1.4.4 swapped in the bridge'
 
             $deadline = (Get-Date).AddSeconds(240)
             while (((Binary) -notmatch 'BoopService\.exe"? --service' -or (Get-Service BoopVPN).Status -ne 'Running') -and (Get-Date) -lt $deadline) { Start-Sleep 3 }
