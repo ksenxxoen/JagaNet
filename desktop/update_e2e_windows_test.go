@@ -80,9 +80,15 @@ func TestUpdateE2E(t *testing.T) {
 		mu.Unlock()
 		var n atomic.Int32
 		var tmu sync.Mutex
+		// Not t.TempDir: the setup program started from here is still running (and elevated)
+		// when the test ends, so the directory cannot be removed then; the runner is thrown away.
+		updDir, err := os.MkdirTemp("", "boop-e2e-update-")
+		if err != nil {
+			t.Fatal(err)
+		}
 		app := &core.App{
 			API: core.NewAPI(srv.URL, nil), Store: core.LoadStore(t.TempDir()),
-			Version: vn, UpdateDir: t.TempDir(),
+			Version: vn, UpdateDir: updDir,
 			OnToast: func(m string) { tmu.Lock(); toasts = append(toasts, m); tmu.Unlock() },
 		}
 		// The CI build is not signed, so the check is switched on here, exactly as
