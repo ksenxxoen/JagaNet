@@ -962,6 +962,7 @@ jobs:
           $log = Join-Path $PWD 'shell.log'
           $env:BOOP_SHELL_LOG = $log
           $env:BOOP_SHELL_EXIT_AFTER_STATE = '1'
+          $env:BOOP_SHELL_LATE_REQUEST = '1'
           $shell = Start-Process -FilePath "$dir\Boop.exe" -PassThru
           if (-not $shell.WaitForExit(180000)) {
             $shell.Kill()
@@ -976,11 +977,17 @@ jobs:
           $text = Get-Content $log -Raw
           if ($text -notmatch 'hello ok') { throw 'the shell did not reach the host over the pipe' }
           if ($text -notmatch 'state conn=') { throw 'the shell got no state from the host' }
+          # Issue #106: the first window of 2.0.0 stayed empty because requests hung on the pipe.
+          # 'ui ready' is logged by the page after its first render(), so the UI is really there.
+          if ($text -notmatch 'ui ready screen=signin') { throw 'the window did not render the sign-in screen (no "ui ready screen=signin")' }
+          if ($text -notmatch 'call ready ok') { throw "the page's call('ready') got no answer over the pipe" }
+          if ($text -notmatch 'late request ok') { throw 'a request after a quiet period got no answer over the pipe' }
           if ((Get-Content $hostLog -Raw) -match 'service: ') { throw 'the host could not reach the service' }
           Start-Sleep -Seconds 3
           if (Get-Process -Name BoopHost -ErrorAction SilentlyContinue) { throw 'the host is still running after the shell closed' }
           Write-Host 'ok: window started, host reached over the pipe, first state received, closed cleanly'
           Remove-Item Env:BOOP_SHELL_EXIT_AFTER_STATE
+          Remove-Item Env:BOOP_SHELL_LATE_REQUEST
 
       - name: chain - hidden --tray start, boop:open into the running window
         run: |

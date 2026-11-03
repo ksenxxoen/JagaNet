@@ -12,10 +12,10 @@
 ; writes the user's autostart value and removes what 1.3.x/1.4.x left behind (the
 ; scheduled task). See installer/README.md.
 ;
-; ISCC /DAppVersion=2.0.0 /DSourceExe=..\tauri\target\release\Boop.exe /DSourceHost=..\dist\BoopHost.exe /DSourceService=..\dist\BoopService.exe [/DWintunDll=...] [/DWebView2Setup=...] [/DSignCmd=1] boop.iss
+; ISCC /DAppVersion=2.0.2 /DSourceExe=..\tauri\target\release\Boop.exe /DSourceHost=..\dist\BoopHost.exe /DSourceService=..\dist\BoopService.exe [/DWintunDll=...] [/DWebView2Setup=...] [/DSignCmd=1] boop.iss
 
 #ifndef AppVersion
-  #define AppVersion "2.0.0"
+  #define AppVersion "2.0.2"
 #endif
 #ifndef SourceExe
   #define SourceExe "..\tauri\target\release\Boop.exe"

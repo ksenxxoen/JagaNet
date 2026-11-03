@@ -3,7 +3,7 @@ Builds dist\Boop-Setup-<version>.exe with Inno Setup 6.3+ from
   -Exe      the Tauri window (tauri\target\release\Boop.exe, cargo build --release -p boop-shell),
   -HostExe  the Go host (dist\BoopHost.exe) and
   -Service  the service (dist\BoopService.exe).
-  pwsh installer\build.ps1 [-Version 2.0.0] [-Exe ...] [-HostExe ...] [-Service ...] [-OutDir dist]
+  pwsh installer\build.ps1 [-Version 2.0.2] [-Exe ...] [-HostExe ...] [-Service ...] [-OutDir dist]
 
 The Go exes come from ./build.sh (they are already signed there when BOOP_SIGN is
 set); the Tauri window is signed here (installer\sign-file.ps1) when BOOP_SIGN is set. If BOOP_SIGN is set here too, the setup program and its uninstaller are

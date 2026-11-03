@@ -186,6 +186,14 @@ function problemAction() {
   }
 }
 
+// The Tauri shell logs this for the CI smoke test: the first screen is really on the page.
+let uiReported = false;
+function reportUiReady() {
+  if (uiReported || !tauri()) return;
+  uiReported = true;
+  tauri().core.invoke("ui_ready", { screen: S.screen }).catch(() => {});
+}
+
 function render(next) {
   if (next.toast) return toast(next.toast);
   const prev = S;
@@ -196,6 +204,7 @@ function render(next) {
 
   $("signin").hidden = S.screen !== "signin";
   $("main").hidden = S.screen !== "main";
+  reportUiReady();
   renderUpdate();
   renderPlanWarn();
   renderNotice();

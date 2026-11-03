@@ -19,10 +19,14 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 )
 
 // Protocol is the version of this wire format. Bumped on any incompatible change.
 const Protocol = 1
+
+// DefaultTick is how often the host sends {"event":"tick"} to the shell.
+const DefaultTick = 100 * time.Millisecond
 
 // MaxLine bounds one request line.
 const MaxLine = 256 << 10
@@ -52,6 +56,10 @@ type Server struct {
 	Version string
 	// OnQuit is called on the "quit" method (the shell is closing for good).
 	OnQuit func()
+	// Tick is the heartbeat period (0 = DefaultTick, negative = none). The window ignores the
+	// event; it keeps the pipe busy in both directions (2.0.1 workaround for the pipe stall of
+	// issue #106, harmless after the overlapped client).
+	Tick time.Duration
 
 	mu    sync.Mutex
 	conn  net.Conn
@@ -63,6 +71,26 @@ func (s *Server) write(v any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.enc != nil {
+		_ = s.enc.Encode(v)
+	}
+}
+
+func (s *Server) tick() time.Duration {
+	switch {
+	case s.Tick == 0:
+		return DefaultTick
+	case s.Tick < 0:
+		return 0
+	}
+	return s.Tick
+}
+
+// writeTo writes only while c is still the current connection (a replaced connection's
+// heartbeat must not write into its successor).
+func (s *Server) writeTo(c net.Conn, v any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.conn == c && s.enc != nil {
 		_ = s.enc.Encode(v)
 	}
 }
@@ -116,6 +144,22 @@ func (s *Server) handle(c net.Conn) {
 		s.mu.Unlock()
 		_ = c.Close()
 	}()
+	done := make(chan struct{})
+	defer close(done)
+	if tick := s.tick(); tick > 0 {
+		go func() {
+			t := time.NewTicker(tick)
+			defer t.Stop()
+			for {
+				select {
+				case <-done:
+					return
+				case <-t.C:
+					s.writeTo(c, map[string]any{"event": "tick"})
+				}
+			}
+		}()
+	}
 	r := bufio.NewReaderSize(c, 64<<10)
 	for {
 		line, err := readLine(r)

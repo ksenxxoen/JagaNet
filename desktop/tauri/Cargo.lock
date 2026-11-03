@@ -288,14 +288,15 @@ dependencies = [
 
 [[package]]
 name = "boop-host"
-version = "2.0.0"
+version = "2.0.2"
 dependencies = [
  "serde_json",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "boop-shell"
-version = "2.0.0"
+version = "2.0.2"
 dependencies = [
  "boop-host",
  "serde_json",

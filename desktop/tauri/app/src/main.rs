@@ -128,16 +128,15 @@ fn spawn_host(_pipe: &str, _tray: bool) -> std::io::Result<Child> {
     Command::new(host_exe()).arg("--host").spawn()
 }
 
-/// Opens the host's pipe, waiting for the host to create it.
+/// Opens the host's pipe, waiting for the host to create it. The pipe is opened overlapped
+/// (boop_host::pipe_windows): a synchronous handle serializes the reader's pending ReadFile
+/// with every write, which hung all requests (issue #106).
 #[cfg(windows)]
-fn connect(pipe: &str) -> std::io::Result<(std::fs::File, std::fs::File)> {
+fn connect(pipe: &str) -> std::io::Result<(boop_host::pipe_windows::PipeReader, boop_host::pipe_windows::PipeWriter)> {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
-        match std::fs::OpenOptions::new().read(true).write(true).open(pipe) {
-            Ok(f) => {
-                let w = f.try_clone()?;
-                return Ok((f, w));
-            }
+        match boop_host::pipe_windows::open(pipe) {
+            Ok(rw) => return Ok(rw),
             Err(e) if Instant::now() < deadline => {
                 let _ = e;
                 std::thread::sleep(Duration::from_millis(100));
@@ -148,14 +147,26 @@ fn connect(pipe: &str) -> std::io::Result<(std::fs::File, std::fs::File)> {
 }
 
 #[cfg(not(windows))]
-fn connect(_pipe: &str) -> std::io::Result<(std::fs::File, std::fs::File)> {
+fn connect(_pipe: &str) -> std::io::Result<(std::io::Empty, std::io::Sink)> {
     Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "the Boop shell runs on Windows"))
+}
+
+/// Called by the page after its first `render()`: proof for CI that the UI is on screen, not just
+/// that the host answered.
+#[tauri::command]
+fn ui_ready(screen: Option<String>) {
+    smoke_log(&format!("ui ready screen={}", screen.unwrap_or_default()));
 }
 
 #[tauri::command]
 async fn host_call(host: tauri::State<'_, Host>, name: String, arg: Value) -> Result<Value, String> {
     let c = host.client.clone();
-    tauri::async_runtime::spawn_blocking(move || c.call(&name, arg)).await.map_err(|e| e.to_string())?
+    let is_ready = name == "ready";
+    let r = tauri::async_runtime::spawn_blocking(move || c.call(&name, arg)).await.map_err(|e| e.to_string())?;
+    if is_ready && r.is_ok() {
+        smoke_log("call ready ok");
+    }
+    r
 }
 
 #[tauri::command]
@@ -176,6 +187,16 @@ fn on_host_event(app: &AppHandle, ev: Value) {
                     // (the host not managed yet, the event loop not running), and a quit then does nothing.
                     std::thread::spawn(move || {
                         std::thread::sleep(Duration::from_secs(3));
+                        // CI: a request after a quiet period of several seconds (issue #106: a
+                        // reader parked in ReadFile used to block every later write).
+                        if std::env::var_os("BOOP_SHELL_LATE_REQUEST").is_some() {
+                            std::thread::sleep(Duration::from_secs(5));
+                            let late = app.try_state::<Host>().map(|h| h.client.clone());
+                            match late.map(|c| c.state()) {
+                                Some(Ok(_)) => smoke_log("late request ok"),
+                                other => smoke_log(&format!("late request failed: {:?}", other.map(|r| r.err()))),
+                            }
+                        }
                         quit(&app);
                     });
                 }
@@ -281,7 +302,7 @@ fn main() {
             }
             handle_args(app, &argv);
         }))
-        .invoke_handler(tauri::generate_handler![host_call, host_state])
+        .invoke_handler(tauri::generate_handler![host_call, host_state, ui_ready])
         .setup(move |app| {
             let handle = app.handle().clone();
             // Pipe name of this run; the ACL on the host side lets only this user in.

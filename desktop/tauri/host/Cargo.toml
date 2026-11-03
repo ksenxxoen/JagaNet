@@ -1,9 +1,12 @@
 [package]
 name = "boop-host"
-version = "2.0.0"
+version = "2.0.2"
 edition = "2021"
 publish = false
 description = "Client of the Boop host pipe (hostpipe/ in the Go side): one JSON object per line"
 
 [dependencies]
 serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Threading", "Win32_System_Pipes"] }
