@@ -13,10 +13,10 @@ func TestNeed(t *testing.T) {
 		want     bool
 	}{
 		{false, 0, true}, // no service
-		{true, 1, false}, // service 1.4.x (protocol 1): the 1.5.0 window works with it
-		{true, 0, false}, // a 1.4.x service that did not say: protocol 1
-		{true, 2, false}, // same protocol
-		{true, 3, false}, // a newer service speaks the previous protocol too
+		{true, 1, true},  // service 1.4.x (protocol 1): below MinProtocol 2, must be replaced
+		{true, 0, true},  // a 1.4.x service that did not say: protocol 1
+		{true, 2, false}, // MinProtocol: still served
+		{true, 3, false}, // same protocol
 	}
 	for _, c := range cases {
 		if got, _ := Need(c.answered, c.proto); got != c.want {

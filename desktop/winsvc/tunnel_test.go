@@ -111,9 +111,9 @@ type failTunnel struct{ *recTunnel }
 
 func (*failTunnel) Apply(*vpn.Config) error { return errors.New("adapter: nope") }
 
-// An older service that speaks a protocol the window still understands is kept
-// (1.4.x service, 1.5.0 window); only a service that does not answer is installed.
-func TestEnsureKeepsCompatibleService(t *testing.T) {
+// A service below MinProtocol (1.4.x, protocol 1) is refused with ErrServiceOld and
+// not reinstalled from the window; only a service that does not answer is installed.
+func TestEnsureRefusesOldService(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "s.sock")
 	l, err := net.Listen("unix", path)
 	if err != nil {
@@ -138,9 +138,12 @@ func TestEnsureKeepsCompatibleService(t *testing.T) {
 	n := 0
 	tn := NewTunnel(dialer(path), "1.5.0", func() error { n++; return nil })
 	defer tn.Close()
-	if err := tn.Ensure(); err != nil || n != 0 || !tn.Ready() {
+	// Protocol 1 is below MinProtocol 2 (PROTOCOL.md): the window refuses it and
+	// says what to update; reinstalling from the window would not help.
+	if err := tn.Ensure(); !errors.Is(err, helper.ErrServiceOld) || n != 0 {
 		t.Fatalf("err %v installs %d", err, n)
 	}
+	n = 0
 	// No service at all: installed.
 	tn2 := NewTunnel(dialer(filepath.Join(t.TempDir(), "none.sock")), "1.5.0", func() error { n++; return nil })
 	defer tn2.Close()

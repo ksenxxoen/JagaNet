@@ -76,6 +76,14 @@ jobs:
             exit 1
           fi
 
+      # Issue #81: the update path of the host starts the setup program only through
+      # ShellExecute; no cmd, powershell, schtasks or reg child.
+      - name: the host update path starts no cmd/powershell/schtasks/reg
+        run: |
+          if grep -nE 'exec\.Command|"(schtasks|reg|powershell|pwsh|cmd)(\.exe)?"' update_windows.go host_windows.go core/update.go hostpipe/*.go winsvc/*.go | grep -v _test.go; then
+            echo "::error::the update path must not run cmd/powershell/schtasks/reg"; exit 1
+          fi
+
       - name: go test
         run: go test -race -count=1 ./...
 
@@ -511,6 +519,88 @@ jobs:
           while ((Test-Path $data) -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
           Check (-not (Test-Path $data)) 'ProgramData\Boop removed with /PURGEDATA'
           Check ($null -eq (Get-Service BoopVPN -ErrorAction SilentlyContinue)) 'service removed again'
+
+      # Issue #81: update N -> N+1 through the host's own update path. N is the 1.5.1
+      # setup program; the "host" is TestUpdateE2E (update_e2e_windows_test.go): it
+      # downloads N+1 from a local HTTP server (the fake desktop.json), checks SHA-256
+      # and the Authenticode signature (a CI self-signed certificate, trusted on this
+      # runner only) and starts it through the real runSetup (one UAC-style runas).
+      - name: update N to N+1 through desktop.json (hash and signature checks)
+        timeout-minutes: 10
+        run: |
+          $dir = Join-Path $env:ProgramFiles 'Boop'
+          $data = Join-Path $env:ProgramData 'Boop'
+          function Check($ok, $what) {
+            if (-not $ok) {
+              foreach ($f in @("$data\install.log", "$data\service.log")) { if (Test-Path $f) { Write-Host "--- $f"; Get-Content $f -Tail 60 } }
+              throw "FAILED: $what"
+            }
+            Write-Host "ok: $what"
+          }
+          $silent = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG'
+          $n1 = (Get-ChildItem desktop/dist/Boop-Setup-*.exe | Select-Object -First 1).FullName
+          $v1 = ([regex]::Match($n1, 'Boop-Setup-(.+)\.exe$')).Groups[1].Value
+          $old = (Get-ChildItem baseline151/desktop/dist/Boop-Setup-1.5.1.exe).FullName
+
+          # A CI-only code-signing certificate, trusted here so WinVerifyTrust accepts it.
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=Boop CI Test' -CertStoreLocation Cert:\CurrentUser\My
+          $cer = Join-Path $env:RUNNER_TEMP 'boop-ci.cer'
+          Export-Certificate -Cert $cert -FilePath $cer | Out-Null
+          Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+          Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
+          $signed = Join-Path $env:RUNNER_TEMP 'Setup-signed.exe'
+          $unsigned = Join-Path $env:RUNNER_TEMP 'Setup-unsigned.exe'
+          Copy-Item $n1 $signed; Copy-Item $n1 $unsigned
+          $r = Set-AuthenticodeSignature -FilePath $signed -Certificate $cert -HashAlgorithm SHA256
+          Check ($r.Status -eq 'Valid') "the test setup program is signed ($($r.Status))"
+
+          $e2e = @{ BOOP_E2E_UPDATE = '1'; BOOP_E2E_SETUP = $signed; BOOP_E2E_VERSION_N = '1.5.1'; BOOP_E2E_VERSION_N1 = $v1; BOOP_E2E_PUBLISHER = 'Boop CI Test' }
+          foreach ($k in $e2e.Keys) { Set-Item "env:$k" $e2e[$k] }
+
+          Check ((Start-Process -FilePath $old -ArgumentList $silent -Wait -PassThru).ExitCode -eq 0) 'N (1.5.1) installs'
+          Check ((Get-Service BoopVPN).Status -eq 'Running') 'N service Running'
+          $mine = Join-Path $env:LOCALAPPDATA 'Boop'
+          New-Item -ItemType Directory -Force $mine | Out-Null
+          Set-Content "$mine\keep-settings.txt" 'x'
+          Set-Content "$data\keep-data.txt" 'x'
+          $hostHashBefore = if (Test-Path "$dir\BoopHost.exe") { (Get-FileHash "$dir\BoopHost.exe").Hash } else { '' }
+
+          Push-Location desktop
+          try {
+            # Refusals first: swapped hash, unsigned setup, signer that is not the publisher.
+            $env:BOOP_E2E_MODE = 'refuse'
+            $env:BOOP_E2E_UNSIGNED_SETUP = $unsigned
+            go test -count=1 -run '^TestUpdateE2E$' -v .
+            Check ($LASTEXITCODE -eq 0) 'swapped hash, unsigned and foreign-signed setup programs are not started'
+            Check ((Get-Service BoopVPN).Status -eq 'Running') 'N untouched after the refusals'
+            Check ((Test-Path "$dir\BoopHost.exe") -eq [bool]$hostHashBefore) 'N files untouched after the refusals'
+
+            # The update: exactly one setup process, started by the host's runSetup.
+            $env:BOOP_E2E_MODE = 'apply'
+            Remove-Item env:BOOP_E2E_UNSIGNED_SETUP
+            go test -count=1 -run '^TestUpdateE2E$' -v .
+            Check ($LASTEXITCODE -eq 0) 'the host downloaded, verified and started one setup program'
+          } finally { Pop-Location }
+
+          $deadline = (Get-Date).AddSeconds(180)
+          function Same($name, $src) { (Test-Path "$dir\$name") -and ((Get-FileHash "$dir\$name").Hash -eq (Get-FileHash $src).Hash) }
+          while (-not (Same 'BoopHost.exe' 'desktop/dist/BoopHost.exe') -and (Get-Date) -lt $deadline) { Start-Sleep 3 }
+          # The setup program finishes after it replaced the files; wait for it to be gone.
+          while ((Get-Process -Name 'Boop-Setup*','*.tmp' -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Boop-Setup*' -or $_.Path -like '*is-*' }) -and (Get-Date) -lt $deadline) { Start-Sleep 3 }
+          Start-Sleep 5
+          Check (Same 'BoopHost.exe' 'desktop/dist/BoopHost.exe') 'BoopHost.exe is N+1'
+          Check (Same 'BoopService.exe' 'desktop/dist/BoopService.exe') 'BoopService.exe is N+1'
+          Check (Same 'Boop.exe' 'desktop/tauri/target/release/Boop.exe') 'Boop.exe is N+1'
+          Check ((Get-Service BoopVPN).Status -eq 'Running') 'the service runs after the update'
+          Check ((Get-CimInstance Win32_Service -Filter "Name='BoopVPN'").PathName -match 'BoopService\.exe"? --service') 'the service runs BoopService.exe'
+          Check (-not (Get-ChildItem $dir -Recurse -Include '*.old','*.new' -ErrorAction SilentlyContinue)) 'no *.old / *.new files'
+          Check (Test-Path "$mine\keep-settings.txt") 'the user settings stay'
+          Check (Test-Path "$data\keep-data.txt") 'the service data and token stay'
+          $svc = Start-Process -FilePath "$dir\BoopHost.exe" -ArgumentList '--service-check' -Wait -PassThru
+          Check ($svc.ExitCode -eq 0) 'host <-> service after the update'
+
+          Get-Process -Name Boop, BoopHost -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Process -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /PURGEDATA' -Wait | Out-Null
 
       # Issue #78 / #79: connect through the service the setup program registered.
       # The test (vpn/xray/service_e2e_windows_test.go) is the window: a fake panel

@@ -3,15 +3,15 @@
 package core
 
 import (
-	"errors"
-	"strings"
 	"bytes"
-	"os"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -111,9 +111,8 @@ func TestBadInstallerNotRun(t *testing.T) {
 
 // Only a strictly higher version is installed.
 func TestInstallerNotOlder(t *testing.T) {
-	ta := newTestApp(t, newFakePanel(t), nil)
-	ta.UpdateDir = t.TempDir()
-	ta.Version = "2.0.0"
+	dir := t.TempDir()
+	ta := newTestApp(t, newFakePanel(t), nil, func(ta *testApp) { ta.Version = "2.0.0"; ta.UpdateDir = dir })
 	ta.RunInstaller = func(string) error { t.Fatal("ran"); return nil }
 	for _, v := range []string{"2.0.0", "0.0.1"} {
 		ta.installUpdate(Manifest{Version: v, InstallerURL: "https://x.test/S.exe", InstallerSHA256: strings.Repeat("a", 64)}, true)

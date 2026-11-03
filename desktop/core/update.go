@@ -204,6 +204,11 @@ func (a *App) updateLoop() {
 	}
 }
 
+// CheckUpdate asks the panel for the desktop.json document once (the update loop
+// does it every 6 hours); a mandatory update is installed right away. Used by the
+// Windows update e2e test.
+func (a *App) CheckUpdate() { a.checkUpdate() }
+
 func (a *App) checkUpdate() {
 	if a == nil || a.API == nil || a.Version == "" || a.Version == "dev" {
 		return
