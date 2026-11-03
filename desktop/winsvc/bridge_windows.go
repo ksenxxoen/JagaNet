@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -37,7 +38,6 @@ func FinishBridgeUpdate() {
 		return
 	}
 	_ = os.Remove(marker)
-	_ = os.RemoveAll(filepath.Join(dir, BridgeUpdateDir))
 	exe := InstalledWindowExe()
 	if _, err := os.Stat(exe); err != nil {
 		log.Printf("bridge: no window to start: %v", err)
@@ -45,9 +45,20 @@ func FinishBridgeUpdate() {
 	}
 	if err := LaunchInUserSession(exe, nil); err != nil {
 		log.Printf("bridge: window not started: %v", err)
-		return
+	} else {
+		log.Printf("bridge: started %s in the user's session", exe)
 	}
-	log.Printf("bridge: started %s in the user's session", exe)
+	// The setup program that started us is still finishing and runs from the
+	// staging directory (the service is started in its last steps): remove it
+	// once it has exited and the files are free.
+	staged := filepath.Join(dir, BridgeUpdateDir)
+	for i := 0; i < 90; i++ {
+		if err := os.RemoveAll(staged); err == nil {
+			return
+		}
+		time.Sleep(2 * time.Second)
+	}
+	log.Printf("bridge: could not remove %s", staged)
 }
 
 // LaunchInUserSession starts exe with args in the active console session, as the

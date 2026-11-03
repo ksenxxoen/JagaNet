@@ -606,6 +606,8 @@ jobs:
           Check ((Get-FileHash "$dir\Boop.exe").Hash -eq (Get-FileHash desktop/tauri/target/release/Boop.exe).Hash) 'Boop.exe is the 2.0.0 window'
           foreach ($f in 'BoopHost.exe', 'BoopService.exe', 'wintun.dll') { Check (Test-Path "$dir\$f") "$f installed" }
           Check (-not (Get-ChildItem $dir -Recurse -Include '*.old', '*.new' -ErrorAction SilentlyContinue)) 'no *.old / *.new next to the program'
+          $deadline = (Get-Date).AddSeconds(120)
+          while ((Test-Path "$data\update") -and (Get-Date) -lt $deadline) { Start-Sleep 3 }
           Check (-not (Test-Path "$data\update")) 'the staged setup program is removed'
           Check (-not (Test-Path "$data\after-bridge")) 'the bridge marker is consumed'
           Check (Test-Path "$data\keep-data.txt") 'the service data stays'
