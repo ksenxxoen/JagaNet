@@ -329,11 +329,16 @@ fn main() {
             app.manage(TrayParts { toggle, conn: Mutex::new("off".into()) });
 
             // The state that was pushed before we were listening.
-            if let Ok(st) = client.state() {
-                if !st.is_null() {
-                    on_host_event(&handle, serde_json::json!({"event": "state", "state": st}));
+            // Not on this (main) thread: the reader thread may be inside app.emit, which waits for
+            // the main thread, while a blocking request here waits for the reader thread.
+            let (h_state, c_state) = (handle.clone(), client.clone());
+            std::thread::spawn(move || {
+                if let Ok(st) = c_state.state() {
+                    if !st.is_null() {
+                        on_host_event(&h_state, serde_json::json!({"event": "state", "state": st}));
+                    }
                 }
-            }
+            });
             restore_pos(&handle);
             if !tray_only {
                 show_window(&handle);
