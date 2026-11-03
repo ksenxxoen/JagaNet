@@ -5,8 +5,12 @@
 //! host → shell `{"id":1,"result":{"ok":true,"value":…}}` and events
 //! `{"event":"state"|"toast"|"notice",…}`.
 //!
-//! The transport is any `Read` + `Write` pair: a file opened on `\\.\pipe\BoopApp-…` on Windows,
+//! The transport is any `Read` + `Write` pair: an overlapped handle on `\\.\pipe\BoopApp-…` on Windows
+//! (`pipe_windows`; a plain synchronous file would deadlock, #106),
 //! a unix socket in tests. No business logic lives here.
+
+#[cfg(windows)]
+pub mod pipe_windows;
 
 use serde_json::{json, Value};
 use std::collections::HashMap;

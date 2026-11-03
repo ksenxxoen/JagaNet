@@ -26,7 +26,7 @@ func start(t *testing.T) (*Server, net.Conn, *bufio.Reader) {
 	if err != nil {
 		t.Skip("no unix sockets:", err)
 	}
-	s := &Server{App: fakeCore{acts: new([]string)}, Version: "9.9"}
+	s := &Server{App: fakeCore{acts: new([]string)}, Version: "9.9", Tick: -1}
 	go s.Serve(l)
 	t.Cleanup(func() { l.Close() })
 	c, err := net.Dial("unix", l.Addr().String())
@@ -140,5 +140,41 @@ func TestAct(t *testing.T) {
 	}
 	if len(*acts) != 1 || (*acts)[0] != "reconnect" {
 		t.Fatalf("acts: %v", *acts)
+	}
+}
+
+func TestHeartbeat(t *testing.T) {
+	l, err := net.Listen("unix", filepath.Join(t.TempDir(), "h.sock"))
+	if err != nil {
+		t.Skip("no unix sockets:", err)
+	}
+	s := &Server{App: fakeCore{acts: new([]string)}, Version: "9.9", Tick: 10 * time.Millisecond}
+	go s.Serve(l)
+	t.Cleanup(func() { l.Close() })
+	c, err := net.Dial("unix", l.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(5 * time.Second))
+	r := bufio.NewReader(c)
+	for i := 0; i < 3; i++ {
+		line, err := r.ReadBytes('\n')
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(line, &m); err != nil || m["event"] != "tick" {
+			t.Fatalf("want a tick, got %s", line)
+		}
+	}
+}
+
+func TestDefaultTickIs100ms(t *testing.T) {
+	if (&Server{}).tick() != 100*time.Millisecond {
+		t.Fatal("default heartbeat must be 100ms")
+	}
+	if (&Server{Tick: -1}).tick() != 0 {
+		t.Fatal("negative Tick disables the heartbeat")
 	}
 }

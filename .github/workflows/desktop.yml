@@ -347,6 +347,13 @@ jobs:
           go-version-file: desktop/go.mod
           cache-dependency-path: desktop/go.sum
 
+      # Hermetic: the window has the real panel's address built in and, now that the pipe works
+      # (#106), checks the live desktop.json and updates itself to whatever is published, in the
+      # middle of the tests. The runner is thrown away afterwards, so the hosts file is not restored.
+      - name: keep the live panel out of reach
+        run: |
+          Add-Content (Join-Path $env:SystemRoot 'System32\drivers\etc\hosts') "`n127.0.0.1 boopvpn.app`n127.0.0.1 api.boopvpn.app"
+
       - name: Inno Setup
         run: |
           if (-not (Get-Command ISCC.exe -ErrorAction SilentlyContinue) -and
@@ -503,6 +510,12 @@ jobs:
               if (Test-Path $f) { Write-Host "--- $f"; Get-Content $f -Tail 80 }
             }
             Get-ChildItem $env:TEMP -Filter 'Setup Log*' -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "--- $($_.FullName)"; Get-Content $_.FullName -Tail 60 }
+            $hl = Join-Path $env:LOCALAPPDATA 'Boop\boop-host.log'
+            if (Test-Path $hl) { Write-Host "--- $hl"; Get-Content $hl -Tail 60 }
+            Write-Host '--- Service Control Manager events'
+            Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Service Control Manager'; StartTime = (Get-Date).AddMinutes(-15) } -ErrorAction SilentlyContinue |
+              Where-Object { $_.Message -match 'Boop' } | Sort-Object TimeCreated |
+              ForEach-Object { Write-Host "$($_.TimeCreated.ToString('HH:mm:ss')) id=$($_.Id) user=$($_.UserId) $($_.Message)" }
           }
           function Check($ok, $what) { if (-not $ok) { Dump; throw "FAILED: $what" }; Write-Host "ok: $what" }
           $silent = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /LOG'
@@ -522,21 +535,21 @@ jobs:
           Export-Certificate -Cert $cert -FilePath $cer | Out-Null
           Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
           Import-Certificate -FilePath $cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
-          $new = (Get-ChildItem desktop/dist/Boop-Setup-2.0.0.exe).FullName
-          $signed = Join-Path $tmp 'Setup-2.0.0-signed.exe'
+          $new = (Get-ChildItem desktop/dist/Boop-Setup-2.0.2.exe).FullName
+          $signed = Join-Path $tmp 'Setup-2.0.2-signed.exe'
           Copy-Item $new $signed
-          Check ((Set-AuthenticodeSignature -FilePath $signed -Certificate $cert -HashAlgorithm SHA256).Status -eq 'Valid') 'the 2.0.0 setup program is signed'
+          Check ((Set-AuthenticodeSignature -FilePath $signed -Certificate $cert -HashAlgorithm SHA256).Status -eq 'Valid') 'the 2.0.2 setup program is signed'
           $bridge = Join-Path $tmp 'Boop-bridge.exe'
           Push-Location desktop
           try {
             $env:GOOS = 'windows'
-            go build -trimpath -ldflags '-s -w -X main.version=2.0.0 -X main.apiBase=http://127.0.0.1:18444 -X main.setupPublisher=BoopCI' -o $bridge ./cmd/boop-bridge
+            go build -trimpath -ldflags '-s -w -X main.version=2.0.2 -X main.apiBase=http://127.0.0.1:18444 -X main.setupPublisher=BoopCI' -o $bridge ./cmd/boop-bridge
             if ($LASTEXITCODE -ne 0) { throw 'building the bridge failed' }
           } finally { Pop-Location }
           $manifest = Join-Path $tmp 'desktop.json'
           [ordered]@{
-            version = '2.0.0'; url = 'http://127.0.0.1:18444/bridge.exe'; sha256 = (Get-FileHash $bridge).Hash.ToLower(); mandatory = $false
-            installer_version = '2.0.0'; installer_url = 'http://127.0.0.1:18444/setup.exe'; installer_sha256 = (Get-FileHash $signed).Hash.ToLower()
+            version = '2.0.2'; url = 'http://127.0.0.1:18444/bridge.exe'; sha256 = (Get-FileHash $bridge).Hash.ToLower(); mandatory = $false
+            installer_version = '2.0.2'; installer_url = 'http://127.0.0.1:18444/setup.exe'; installer_sha256 = (Get-FileHash $signed).Hash.ToLower()
             min_proto = 3; kind = 'installer'
           } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM $manifest
 
@@ -586,7 +599,7 @@ jobs:
             $answer = [System.IO.StreamReader]::new($c).ReadLine()
             $c.Dispose()
             Write-Host "service answered: $answer"
-            Check ($answer -match '"ok":true' -and $answer -match '2\.0\.0') '1.4.4 swapped in the bridge'
+            Check ($answer -match '"ok":true' -and $answer -match '2\.0\.2') '1.4.4 swapped in the bridge'
 
             $deadline = (Get-Date).AddSeconds(240)
             while (((Binary) -notmatch 'BoopService\.exe"? --service' -or (Get-Service BoopVPN).Status -ne 'Running') -and (Get-Date) -lt $deadline) { Start-Sleep 3 }
@@ -603,7 +616,7 @@ jobs:
           Check ((Get-Content "$data\bridge.log" -Raw) -match 'staged and checked') 'the bridge checked the setup program (hash, signature, publisher)'
           Check (Test-Path "$dir\Boop.exe") 'Boop.exe in Program Files'
           Check ((Get-Item "$dir\Boop.exe").Length -lt 12MB) 'Boop.exe is the Tauri window'
-          Check ((Get-FileHash "$dir\Boop.exe").Hash -eq (Get-FileHash desktop/tauri/target/release/Boop.exe).Hash) 'Boop.exe is the 2.0.0 window'
+          Check ((Get-FileHash "$dir\Boop.exe").Hash -eq (Get-FileHash desktop/tauri/target/release/Boop.exe).Hash) 'Boop.exe is the 2.0.2 window'
           foreach ($f in 'BoopHost.exe', 'BoopService.exe', 'wintun.dll') { Check (Test-Path "$dir\$f") "$f installed" }
           Check (-not (Get-ChildItem $dir -Recurse -Include '*.old', '*.new' -ErrorAction SilentlyContinue)) 'no *.old / *.new next to the program'
           $deadline = (Get-Date).AddSeconds(120)
@@ -935,6 +948,13 @@ jobs:
             if ($text.Contains($bad)) { throw "the Tauri window contains $bad" }
           }
 
+      # Hermetic: the window has the real panel's address built in and, now that the pipe works
+      # (#106), checks the live desktop.json and updates itself to whatever is published, in the
+      # middle of the tests. The runner is thrown away afterwards, so the hosts file is not restored.
+      - name: keep the live panel out of reach
+        run: |
+          Add-Content (Join-Path $env:SystemRoot 'System32\drivers\etc\hosts') "`n127.0.0.1 boopvpn.app`n127.0.0.1 api.boopvpn.app"
+
       - name: Inno Setup
         run: |
           if (-not (Get-Command ISCC.exe -ErrorAction SilentlyContinue) -and
@@ -962,6 +982,7 @@ jobs:
           $log = Join-Path $PWD 'shell.log'
           $env:BOOP_SHELL_LOG = $log
           $env:BOOP_SHELL_EXIT_AFTER_STATE = '1'
+          $env:BOOP_SHELL_LATE_REQUEST = '1'
           $shell = Start-Process -FilePath "$dir\Boop.exe" -PassThru
           if (-not $shell.WaitForExit(180000)) {
             $shell.Kill()
@@ -976,11 +997,17 @@ jobs:
           $text = Get-Content $log -Raw
           if ($text -notmatch 'hello ok') { throw 'the shell did not reach the host over the pipe' }
           if ($text -notmatch 'state conn=') { throw 'the shell got no state from the host' }
+          # Issue #106: the first window of 2.0.0 stayed empty because requests hung on the pipe.
+          # 'ui ready' is logged by the page after its first render(), so the UI is really there.
+          if ($text -notmatch 'ui ready screen=signin') { throw 'the window did not render the sign-in screen (no "ui ready screen=signin")' }
+          if ($text -notmatch 'call ready ok') { throw "the page's call('ready') got no answer over the pipe" }
+          if ($text -notmatch 'late request ok') { throw 'a request after a quiet period got no answer over the pipe' }
           if ((Get-Content $hostLog -Raw) -match 'service: ') { throw 'the host could not reach the service' }
           Start-Sleep -Seconds 3
           if (Get-Process -Name BoopHost -ErrorAction SilentlyContinue) { throw 'the host is still running after the shell closed' }
           Write-Host 'ok: window started, host reached over the pipe, first state received, closed cleanly'
           Remove-Item Env:BOOP_SHELL_EXIT_AFTER_STATE
+          Remove-Item Env:BOOP_SHELL_LATE_REQUEST
 
       - name: chain - hidden --tray start, boop:open into the running window
         run: |

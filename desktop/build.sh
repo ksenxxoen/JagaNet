@@ -11,7 +11,7 @@
 # Signing is optional and off by default: set BOOP_SIGN (see SIGNING.md).
 set -euo pipefail
 cd "$(dirname "$0")"
-VERSION="${1:-2.0.0}"
+VERSION="${1:-2.0.2}"
 API="${2:-}"
 APIX=""
 if [ -n "$API" ]; then
