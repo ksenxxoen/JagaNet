@@ -347,6 +347,13 @@ jobs:
           go-version-file: desktop/go.mod
           cache-dependency-path: desktop/go.sum
 
+      # Hermetic: the window has the real panel's address built in and, now that the pipe works
+      # (#106), checks the live desktop.json and updates itself to whatever is published, in the
+      # middle of the tests. The runner is thrown away afterwards, so the hosts file is not restored.
+      - name: keep the live panel out of reach
+        run: |
+          Add-Content (Join-Path $env:SystemRoot 'System32\drivers\etc\hosts') "`n127.0.0.1 boopvpn.app`n127.0.0.1 api.boopvpn.app"
+
       - name: Inno Setup
         run: |
           if (-not (Get-Command ISCC.exe -ErrorAction SilentlyContinue) -and
@@ -568,12 +575,6 @@ jobs:
             }
           }
 
-          # Hermetic: the window the new service starts has the real panel's address built in, and
-          # since the pipe works (#106) it checks the live desktop.json and would update itself to
-          # whatever is published (2.0.1) in the middle of this test. The real panel is not reachable here.
-          $hostsFile = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
-          $hostsBefore = Get-Content $hostsFile -Raw
-          Add-Content $hostsFile "`n127.0.0.1 boopvpn.app`n127.0.0.1 api.boopvpn.app"
           try {
             # 1.4.4 as a customer has it: installed, autostart on (the Run value 1.4.x writes), an old task left over.
             Check ((Start-Process -FilePath $old -ArgumentList $silent -Wait -PassThru).ExitCode -eq 0) '1.4.4 installs'
@@ -639,8 +640,7 @@ jobs:
           Check ($fromApp.Count -eq 0) "no schtasks/reg/powershell/cmd from Boop programs and no UAC prompt ($($fromApp -join '; '))"
           Check ($null -eq (Get-Process -Name consent -ErrorAction SilentlyContinue)) 'no consent.exe (UAC)'
 
-          # Uninstall is clean (and the runner's hosts file is back as it was).
-          Set-Content $hostsFile $hostsBefore -NoNewline
+          # Uninstall is clean.
           New-Item -ItemType File $stop | Out-Null
           Get-Process -Name Boop, BoopHost -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           $u = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /PURGEDATA' -Wait -PassThru
@@ -947,6 +947,13 @@ jobs:
           foreach ($bad in 'xray-core', 'amneziawg') {
             if ($text.Contains($bad)) { throw "the Tauri window contains $bad" }
           }
+
+      # Hermetic: the window has the real panel's address built in and, now that the pipe works
+      # (#106), checks the live desktop.json and updates itself to whatever is published, in the
+      # middle of the tests. The runner is thrown away afterwards, so the hosts file is not restored.
+      - name: keep the live panel out of reach
+        run: |
+          Add-Content (Join-Path $env:SystemRoot 'System32\drivers\etc\hosts') "`n127.0.0.1 boopvpn.app`n127.0.0.1 api.boopvpn.app"
 
       - name: Inno Setup
         run: |
