@@ -34,8 +34,8 @@ const Group = "boop"
 // oldest they still understand: a service answers the current and the previous
 // version (PROTOCOL.md). 1 is Boop 1.4.x, which sent no "proto" at all.
 const (
-	Protocol    = 2
-	MinProtocol = 1
+	Protocol    = 3
+	MinProtocol = 2
 )
 
 // Codes of Response.Code, for the errors a window must tell apart.
@@ -51,11 +51,10 @@ const (
 	OpStatus = "status" // up? counters, last handshake
 	OpPing   = "ping"   // one ICMP echo around the tunnel
 	OpLog    = "log"    // the tail of the service's log (no secrets are logged)
-	OpUpdate = "update" // the service updates itself from the panel's manifest
 )
 
 // Ops is every operation the helper answers; anything else is refused.
-var Ops = []string{OpHello, OpUp, OpDown, OpStatus, OpPing, OpLog, OpUpdate}
+var Ops = []string{OpHello, OpUp, OpDown, OpStatus, OpPing, OpLog}
 
 // maxLine bounds one message (a config is a few kilobytes).
 const maxLine = 256 << 10
@@ -86,9 +85,8 @@ type Response struct {
 	Handshake int64 `json:"handshake,omitempty"`
 	// RTT is a ping's round trip in nanoseconds.
 	RTT int64 `json:"rtt,omitempty"`
-	// Log is the log's tail (OpLog); Updated the version installed (OpUpdate).
-	Log     string `json:"log,omitempty"`
-	Updated string `json:"updated,omitempty"`
+	// Log is the log's tail (OpLog).
+	Log string `json:"log,omitempty"`
 }
 
 // Config is vpn.Config on the wire.

@@ -97,7 +97,7 @@ func (a *App) state() UIState {
 		Notice: a.noticeNow(), Platform: a.Platform,
 	}
 	if a.available != nil {
-		s.Update = &UpdateUI{Version: a.available.Version, Notes: a.available.Notes, Mandatory: a.available.Mandatory, Stage: a.updStage, Link: a.UpdateLink}
+		s.Update = &UpdateUI{Version: a.available.TargetVersion(), Notes: a.available.Notes, Mandatory: a.available.Mandatory, Stage: a.updStage, Link: a.UpdateLink}
 	}
 	for _, k := range a.keys {
 		ui := KeyUI{ID: k.ID, Name: k.Name}
@@ -180,6 +180,11 @@ func (a *App) state() UIState {
 	}
 	return s
 }
+
+// PushState sends the current state to OnState. The Windows host calls it once
+// after Init, so a shell that connects always gets a first state, whether or not
+// anything else (an update, a probe, a sign-in) has changed the state yet.
+func (a *App) PushState() { a.emit() }
 
 func (a *App) emit() {
 	a.mu.Lock()

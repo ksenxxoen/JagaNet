@@ -256,10 +256,3 @@ func (c *Client) Log() (string, error) {
 	res, err := answer(c.call(Request{Op: OpLog}, 5*time.Second))
 	return res.Log, err
 }
-
-// Update asks the service to update itself from the panel's manifest and
-// returns the version now installed ("" when it is already current).
-func (c *Client) Update() (string, error) {
-	res, err := answer(c.call(Request{Op: OpUpdate}, 5*time.Minute))
-	return res.Updated, err
-}

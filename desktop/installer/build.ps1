@@ -3,7 +3,7 @@ Builds dist\Boop-Setup-<version>.exe with Inno Setup 6.3+ from
   -Exe      the Tauri window (tauri\target\release\Boop.exe, cargo build --release -p boop-shell),
   -HostExe  the Go host (dist\BoopHost.exe) and
   -Service  the service (dist\BoopService.exe).
-  pwsh installer\build.ps1 [-Version 1.5.3] [-Exe ...] [-HostExe ...] [-Service ...] [-OutDir dist]
+  pwsh installer\build.ps1 [-Version 1.5.4] [-Exe ...] [-HostExe ...] [-Service ...] [-OutDir dist]
 
 The Go exes come from ./build.sh (they are already signed there when BOOP_SIGN is
 set); the Tauri window is signed here (installer\sign-file.ps1) when BOOP_SIGN is set. If BOOP_SIGN is set here too, the setup program and its uninstaller are
@@ -89,3 +89,19 @@ $hash = (Get-FileHash $out -Algorithm SHA256).Hash.ToLower()
 "$hash  Boop-Setup-$Version.exe" | Set-Content -Encoding ascii "$out.sha256"
 Write-Host "built $out"
 Write-Host "SHA-256: $hash"
+
+# desktop.json for the panel: the 1.4.x fields are left to the transition release
+# (docs/desktop-json.md); here only the installer ones are produced. Not published.
+$json = [ordered]@{
+  installer_version = $Version
+  installer_url     = if ($env:BOOP_INSTALLER_URL) { $env:BOOP_INSTALLER_URL } else { "/download/Boop-Setup-$Version.exe" }
+  installer_sha256  = $hash
+  min_proto         = 3
+  kind              = 'installer'
+}
+if ($env:BOOP_LEGACY_URL -and $env:BOOP_LEGACY_SHA256) {
+  # What 1.4.x applies (decided by the transition release, subtask 6).
+  $json = [ordered]@{ version = $Version; url = $env:BOOP_LEGACY_URL; sha256 = $env:BOOP_LEGACY_SHA256; mandatory = $false } + $json
+}
+$json | ConvertTo-Json | Set-Content -Encoding utf8NoBOM (Join-Path $OutDir 'desktop.json')
+Write-Host "wrote $(Join-Path $OutDir 'desktop.json')"

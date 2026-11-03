@@ -1,6 +1,6 @@
 [package]
 name = "boop-host"
-version = "1.5.3"
+version = "1.5.4"
 edition = "2021"
 publish = false
 description = "Client of the Boop host pipe (hostpipe/ in the Go side): one JSON object per line"

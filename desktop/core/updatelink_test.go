@@ -34,7 +34,7 @@ func TestUpdateLinkOpensTheDownload(t *testing.T) {
 	a := &App{API: NewAPI(srv.URL, nil), Store: &Store{}, Version: "1.0.0", UpdateLink: true, Platform: "linux",
 		UpdateDir: t.TempDir(), OpenURL: func(u string) { opened = append(opened, u) }}
 	a.API.ManifestQuery = "platform=linux&distro=ubuntu24.04"
-	a.ApplyUpdate = func(string) error { t.Fatal("Linux must not apply an update"); return nil }
+	a.RunInstaller = func(string) error { t.Fatal("Linux must not run an installer"); return nil }
 	a.checkUpdate()
 
 	mu.Lock()

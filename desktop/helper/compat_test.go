@@ -32,18 +32,21 @@ func rawCall(t *testing.T, path, line string) Response {
 	return r
 }
 
-// The old window (Boop 1.4.x) sends no "proto": the new service treats it as 1.
+// The previous window (1.5.0-1.5.3, protocol 2) is still served; Boop 1.4.x,
+// which sends no "proto" (= 1), is refused with the coded answer.
 func TestOldWindowNewService(t *testing.T) {
-	path := serve(t, &Server{Tunnel: &fakeTunnel{}, Version: "1.5.0"})
-	r := rawCall(t, path, `{"op":"hello"}`)
-	if !r.OK || r.Version != "1.5.0" || r.Protocol != Protocol || r.MinProtocol != MinProtocol {
+	path := serve(t, &Server{Tunnel: &fakeTunnel{}, Version: "1.5.4"})
+	r := rawCall(t, path, `{"proto":2,"op":"hello"}`)
+	if !r.OK || r.Version != "1.5.4" || r.Protocol != Protocol || r.MinProtocol != MinProtocol {
 		t.Fatalf("hello: %+v", r)
 	}
-	if r := rawCall(t, path, `{"op":"status"}`); !r.OK || r.Protocol != Protocol {
+	if r := rawCall(t, path, `{"proto":2,"op":"status"}`); !r.OK || r.Protocol != Protocol {
 		t.Fatalf("status: %+v", r)
 	}
-	if r := rawCall(t, path, `{"proto":1,"op":"status"}`); !r.OK {
-		t.Fatalf("proto 1: %+v", r)
+	for _, line := range []string{`{"op":"status"}`, `{"proto":1,"op":"status"}`} {
+		if r := rawCall(t, path, line); r.OK || r.Code != CodeProto {
+			t.Fatalf("%s: %+v", line, r)
+		}
 	}
 }
 
@@ -52,7 +55,7 @@ func TestOldWindowNewService(t *testing.T) {
 func TestFutureWindowRefused(t *testing.T) {
 	ft := &fakeTunnel{}
 	path := serve(t, &Server{Tunnel: ft, Version: "1.5.0"})
-	for _, line := range []string{`{"proto":3,"op":"hello"}`, `{"proto":99,"op":"down"}`, `{"proto":-1,"op":"hello"}`} {
+	for _, line := range []string{`{"proto":4,"op":"hello"}`, `{"proto":1,"op":"hello"}`, `{"proto":99,"op":"down"}`, `{"proto":-1,"op":"hello"}`} {
 		r := rawCall(t, path, line)
 		if r.OK || r.Code != CodeProto || r.Error == "" || r.Protocol != Protocol {
 			t.Fatalf("%s: %+v", line, r)
@@ -102,15 +105,12 @@ func oldService(t *testing.T) string {
 
 func TestNewWindowOldService(t *testing.T) {
 	cl := NewClient(oldService(t))
-	h, err := cl.Hello()
-	if err != nil || h.Version != "1.4.4" || h.Protocol != 1 {
-		t.Fatalf("hello: %+v %v", h, err)
+	// A 1.4.x service speaks only protocol 1, below MinProtocol: «обновите службу».
+	if _, err := cl.Hello(); !errors.Is(err, ErrServiceOld) {
+		t.Fatalf("hello: %v", err)
 	}
-	if cl.ServiceProtocol() != 1 || cl.sendProto() != 1 {
-		t.Fatalf("learned %d, sends %d", cl.ServiceProtocol(), cl.sendProto())
-	}
-	if !cl.Up() || cl.Stats().Rx != 5 {
-		t.Fatal("status through the old service")
+	if cl.ServiceProtocol() != 1 {
+		t.Fatalf("learned %d", cl.ServiceProtocol())
 	}
 }
 
@@ -135,7 +135,7 @@ func TestMismatchMessages(t *testing.T) {
 	if err := cl.learn(Response{Code: CodeProto, Error: "x", Protocol: Protocol + 2, MinProtocol: Protocol + 1}); !errors.Is(err, ErrWindowOld) {
 		t.Fatalf("future service: %v", err)
 	}
-	// MinProtocol is 1 today, so no real service is older than it; the refusal of a
+	// MinProtocol is 2 today; the refusal of a
 	// window by an even older service answer is the same code with a low protocol.
 	if err := cl.learn(Response{OK: true, Protocol: MinProtocol}); err != nil {
 		t.Fatalf("oldest supported: %v", err)
@@ -146,7 +146,7 @@ func TestMismatchMessages(t *testing.T) {
 func TestRequestsCarryProto(t *testing.T) {
 	var b []byte
 	b, _ = json.Marshal(Request{Proto: Protocol, Op: OpStatus})
-	if string(b) != `{"proto":2,"op":"status"}` {
+	if string(b) != `{"proto":3,"op":"status"}` {
 		t.Fatalf("%s", b)
 	}
 	b, _ = json.Marshal(Request{Op: OpStatus})

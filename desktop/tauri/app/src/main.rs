@@ -215,7 +215,23 @@ fn update_tray(app: &AppHandle, conn: &str) {
 
 fn quit(app: &AppHandle) {
     smoke_log("quit: start");
-    save_pos(app);
+    // The watchdog goes first: whatever below blocks (a window call while the event loop is not
+    // serving, a host that does not answer), «Выход» must still end the process.
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_secs(6));
+        smoke_log("quit: forced exit");
+        std::process::exit(0);
+    });
+    {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let a = app.clone();
+        std::thread::spawn(move || {
+            save_pos(&a);
+            let _ = tx.send(());
+        });
+        let saved = rx.recv_timeout(Duration::from_secs(2)).is_ok();
+        smoke_log(&format!("quit: position saved={saved}"));
+    }
     if let Some(h) = app.try_state::<Host>() {
         // The host is asked to stop, but never waited for long: «Выход» must always exit.
         let (tx, rx) = std::sync::mpsc::channel();
@@ -232,12 +248,7 @@ fn quit(app: &AppHandle) {
     } else {
         smoke_log("quit: no host registered");
     }
-    // If the event loop does not stop by itself, the process does.
-    std::thread::spawn(|| {
-        std::thread::sleep(Duration::from_secs(3));
-        smoke_log("quit: forced exit");
-        std::process::exit(0);
-    });
+    // If the event loop does not stop by itself, the watchdog above ends the process.
     app.exit(0);
 }
 
@@ -318,11 +329,16 @@ fn main() {
             app.manage(TrayParts { toggle, conn: Mutex::new("off".into()) });
 
             // The state that was pushed before we were listening.
-            if let Ok(st) = client.state() {
-                if !st.is_null() {
-                    on_host_event(&handle, serde_json::json!({"event": "state", "state": st}));
+            // Not on this (main) thread: the reader thread may be inside app.emit, which waits for
+            // the main thread, while a blocking request here waits for the reader thread.
+            let (h_state, c_state) = (handle.clone(), client.clone());
+            std::thread::spawn(move || {
+                if let Ok(st) = c_state.state() {
+                    if !st.is_null() {
+                        on_host_event(&h_state, serde_json::json!({"event": "state", "state": st}));
+                    }
                 }
-            }
+            });
             restore_pos(&handle);
             if !tray_only {
                 show_window(&handle);

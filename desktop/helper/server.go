@@ -34,10 +34,9 @@ type Server struct {
 	// Persist remembers the config last brought up so Restore can bring it up
 	// again after the service restarts or the machine reboots. Optional.
 	Persist Persister
-	// Log returns the tail of the log for OpLog; Update runs OpUpdate and returns
-	// the installed version. Both optional; an operation without its hook is refused.
-	Log    func() string
-	Update func() (string, error)
+	// Log returns the tail of the log for OpLog. Optional; without it the
+	// operation is refused.
+	Log func() string
 
 	op    sync.Mutex // one change to the tunnel at a time; guards owner
 	owner *session
@@ -179,16 +178,6 @@ func (s *Server) do(me *session, req Request) Response {
 			return Response{Error: "no log"}
 		}
 		return Response{OK: true, Log: s.Log()}
-	case OpUpdate:
-		if s.Update == nil {
-			return Response{Error: "no update"}
-		}
-		v, err := s.Update()
-		if err != nil {
-			s.logf("helper: update: %v", err)
-			return Response{Error: err.Error()}
-		}
-		return Response{OK: true, Updated: v}
 	case OpPing:
 		a, err := netip.ParseAddr(req.Host)
 		if err != nil || !a.Is4() {

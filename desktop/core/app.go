@@ -31,13 +31,17 @@ type App struct {
 	// OnNotice, when set, takes the notifications instead of OnNotify, with
 	// their kind (Windows toasts with buttons).
 	OnNotice func(Notice)
-	// ApplyUpdate replaces this process with a staged exe. Nil outside Windows.
-	ApplyUpdate func(staged string) error
+	// VerifySetup checks the Authenticode signature and publisher of a
+	// downloaded setup program. Nil: not checked (unsigned builds, non-Windows).
+	VerifySetup func(path string) error
+	// RunInstaller starts the verified setup program (one UAC) and lets this
+	// process go. Nil outside Windows.
+	RunInstaller func(path string) error
 	// OnUserAttempt, when set, is called as a connection attempt starts from the
 	// person (connect, retry). The Windows host lets the service installer ask
 	// for the administrator prompt again only then, not on every automatic retry.
 	OnUserAttempt func()
-	// UpdateDir is where a downloaded exe is staged. Empty skips installing.
+	// UpdateDir is where the downloaded setup program is staged. Empty skips installing.
 	UpdateDir string
 	// UpdateLink: the app does not install updates itself, "update" opens the
 	// manifest's download link instead (Linux: the person installs the .deb).

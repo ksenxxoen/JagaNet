@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"slices"
@@ -134,7 +133,8 @@ func main() {
 		Version: version, Site: site, OpenURL: openURL, UpdateDir: dir,
 		Autostart: setAutostart, AutostartOn: autostartOn, LogPath: logPath,
 	}
-	app.ApplyUpdate = func(staged string) error { return applyUpdate(app, staged) }
+	app.VerifySetup = verifySetupSignature()
+	app.RunInstaller = runSetup
 	app.OnUserAttempt = svcTun.AllowPrompt
 
 	dpi := uint(96)
@@ -255,39 +255,6 @@ func acquireInstance() bool {
 		time.Sleep(200 * time.Millisecond)
 	}
 	return false
-}
-
-// applyUpdate swaps this window's own file for the staged download and starts
-// it. The service is not part of it: since 1.5.0 it is a separate program
-// (BoopService.exe) that the setup program updates, and it refuses to replace
-// itself from the update manifest (winsvc.ErrUpdateByInstaller). Where the
-// window's folder is not writable (Program Files) the swap fails and the
-// person is sent to the setup program.
-func applyUpdate(app *core.App, staged string) error {
-	app.Disconnect()
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	if err := core.SwapBinary(exe, staged); err != nil {
-		log.Printf("update: swap: %v", err)
-		return &core.ServiceError{Msg: "Не удалось заменить Boop.exe. Скачайте и запустите новый установщик Boop VPN."}
-	}
-	return restartInto(exe)
-}
-
-func restartInto(exe string) error {
-	args := append([]string{}, os.Args[1:]...)
-	if !slices.Contains(args, "--updated") {
-		args = append(args, "--updated")
-	}
-	cmd := exec.Command(exe, args...)
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	log.Printf("update: starting %s", exe)
-	os.Exit(0)
-	return nil
 }
 
 func dpapi(seal bool) func([]byte) ([]byte, error) {

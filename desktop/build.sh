@@ -8,12 +8,18 @@
 # Signing is optional and off by default: set BOOP_SIGN (see SIGNING.md).
 set -euo pipefail
 cd "$(dirname "$0")"
-VERSION="${1:-1.5.3}"
+VERSION="${1:-1.5.4}"
 API="${2:-}"
 APIX=""
 if [ -n "$API" ]; then
   APIX="-X main.apiBase=$API"
   case "$API" in *,*) ;; *) echo "build: one panel address ($API): this build has no spare address" >&2 ;; esac
+fi
+# With signing on, the window/host checks that the setup program it downloads is
+# signed by this publisher (the certificate's subject name): WinVerifyTrust + name.
+if [ -n "${BOOP_SIGN:-}" ]; then
+  [ -n "${BOOP_SIGN_PUBLISHER:-}" ] || { echo "build: BOOP_SIGN is set, so set BOOP_SIGN_PUBLISHER (the certificate's subject name)" >&2; exit 1; }
+  APIX="$APIX -X main.setupPublisher=$BOOP_SIGN_PUBLISHER"
 fi
 SITE="${API%%,*}"; SITE="${SITE:-https://boopvpn.app}"
 export GOTOOLCHAIN="${GOTOOLCHAIN:-go1.27.3}"

@@ -26,9 +26,10 @@ One protocol for both; the code is this package (`proto.go`, `server.go`, `clien
 | protocol | who |
 |---|---|
 | 1 | Boop 1.4.x. Requests carry no `proto`; only `hello` answers `protocol`. |
-| 2 | Boop 1.5.0. Every request carries `proto`; every answer carries `protocol` and `minProtocol`. Same operations and fields as 1. |
+| 2 | Boop 1.5.0–1.5.3. Every request carries `proto`; every answer carries `protocol` and `minProtocol`. Same operations and fields as 1. |
+| 3 | Boop 1.5.4. The `update` operation and the `updated` field are removed: the service never replaces its own file, only the setup program does. Other operations are as in 2. |
 
-`helper.Protocol` is the newest version the code speaks (2), `helper.MinProtocol` the oldest (1).
+`helper.Protocol` is the newest version the code speaks (3), `helper.MinProtocol` the oldest (2).
 
 **Compatibility rule.** A service answers the **current and the previous** protocol
 (`MinProtocol..Protocol`). A request without `proto` counts as 1. A window sends
@@ -37,8 +38,10 @@ lower of the two.
 
 | window | service | result |
 |---|---|---|
-| 1.4.x (no `proto`) | 1.5.x | works: treated as protocol 1 |
-| 1.5.x (`proto` 2) | 1.4.x | works: the old service ignores the unknown key; after `hello` (`protocol` 1) the window sends 1 |
+| 1.4.x (no `proto`) | 1.5.4 | refused (`code` `proto`): treated as protocol 1, below `MinProtocol` 2; the setup program replaces both |
+| 1.5.0–1.5.3 (`proto` 2) | 1.5.4 | works |
+| 1.5.4 (`proto` 3) | 1.5.0–1.5.3 | works: after `hello` the window sends 2 |
+| 1.5.4 | 1.4.x (`protocol` 1) | «обновите службу» (`ErrServiceOld`) |
 | `proto` outside `MinProtocol..Protocol` | any | refused: `ok` false, `code` `"proto"`, `error` says the range; nothing is done |
 
 The window turns a refusal into words (`helper.ErrServiceOld`, `helper.ErrWindowOld`): «служба Boop VPN
@@ -81,7 +84,6 @@ compatibility test in `compat_test.go`. Never reuse a number.
 | `up`, `rx`, `tx`, `handshake` | `status`: tunnel is up, byte counters, last handshake / last sign of life of the node (Unix ns, 0 = none) |
 | `rtt` | `ping`: round trip in ns |
 | `log` | `log`: the tail of the service's log |
-| `updated` | `update`: the version installed |
 
 ## Operations
 
@@ -93,8 +95,7 @@ compatibility test in `compat_test.go`. Never reuse a number.
 | `status` | – | `up`, `rx`, `tx`, `handshake` | |
 | `ping` | `host` (IPv4 only) | `rtt` | one ICMP echo around the tunnel, 3 s |
 | `log` | – | `log` | no secrets are logged |
-| `update` | – | `updated` | 1.4.x: the service updates itself from the panel's manifest. **1.5.x: refused** (`the service is updated by the setup program`); the setup program replaces `BoopService.exe` |
-
+| `update` | – | – | removed in protocol 3 (answered as an unknown operation); the setup program replaces `BoopService.exe` |
 ### `config` (the `up` request)
 
 `vpn.Config` on the wire (`helper.Config`):

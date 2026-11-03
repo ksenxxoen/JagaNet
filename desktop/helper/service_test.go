@@ -141,10 +141,9 @@ func TestFileStoreCorrupt(t *testing.T) {
 }
 
 // Only the typed operations are answered; the answer to anything else is a
-// refusal, and OpUpdate/OpLog take no argument from the caller.
+// refusal, and OpLog takes no argument from the caller.
 func TestServiceRefusesUnknownOps(t *testing.T) {
-	path := serve(t, &Server{Tunnel: &fakeTunnel{}, Log: func() string { return "tail" },
-		Update: func() (string, error) { return "9.9.9", nil }})
+	path := serve(t, &Server{Tunnel: &fakeTunnel{}, Log: func() string { return "tail" }})
 	conn, err := net.Dial("unix", path)
 	if err != nil {
 		t.Fatal(err)
@@ -165,15 +164,16 @@ func TestServiceRefusesUnknownOps(t *testing.T) {
 		return r
 	}
 	for _, op := range []string{"exec", "run", "install", "shell", "", "UP", "update;x"} {
-		if r := ask(`{"op":"` + op + `","host":"calc.exe"}`); r.OK || r.Error == "" {
+		if r := ask(`{"proto":3,"op":"` + op + `","host":"calc.exe"}`); r.OK || r.Error == "" {
 			t.Errorf("op %q answered %+v", op, r)
 		}
 	}
-	if r := ask(`{"op":"log"}`); !r.OK || r.Log != "tail" {
+	if r := ask(`{"proto":3,"op":"log"}`); !r.OK || r.Log != "tail" {
 		t.Errorf("log: %+v", r)
 	}
-	if r := ask(`{"op":"update","host":"https://evil"}`); !r.OK || r.Updated != "9.9.9" {
-		t.Errorf("update: %+v", r)
+	// Protocol 3: the service no longer updates itself; the setup program does.
+	if r := ask(`{"proto":3,"op":"update","host":"https://evil"}`); r.OK || r.Error == "" {
+		t.Errorf("update must be refused: %+v", r)
 	}
 	if r := ask(`not json`); r.OK || r.Error == "" {
 		t.Errorf("garbage: %+v", r)
@@ -191,9 +191,6 @@ func TestServiceOpsWithoutHooks(t *testing.T) {
 	defer c.Close()
 	if _, err := c.Log(); err == nil {
 		t.Error("log without a hook")
-	}
-	if _, err := c.Update(); err == nil {
-		t.Error("update without a hook")
 	}
 }
 

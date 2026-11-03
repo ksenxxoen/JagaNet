@@ -1,6 +1,6 @@
 [package]
 name = "boop-shell"
-version = "1.5.3"
+version = "1.5.4"
 edition = "2021"
 publish = false
 description = "Boop VPN for Windows: the Tauri 2 window and tray (core.App is Boop.exe --host)"

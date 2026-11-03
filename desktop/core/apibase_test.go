@@ -534,7 +534,7 @@ func TestUpdateThroughTheSpare(t *testing.T) {
 				switch r.URL.Path {
 				case "/v1/app/desktop":
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(Manifest{Version: "9.9.9", URL: strings.Replace(c.url, "MAIN", dead, 1), SHA256: c.sha, Mandatory: true})
+					json.NewEncoder(w).Encode(Manifest{Version: "9.9.9", InstallerURL: strings.Replace(c.url, "MAIN", dead, 1), InstallerSHA256: c.sha, Mandatory: true})
 				case "/download/Boop.exe":
 					w.Header().Set("Content-Type", "application/octet-stream")
 					w.Write(exe)
@@ -544,21 +544,24 @@ func TestUpdateThroughTheSpare(t *testing.T) {
 			})
 			var applied []string
 			a := &App{API: NewAPI(dead+","+spare.srv.URL, nil), Store: &Store{}, Version: "1.0.0", UpdateDir: t.TempDir()}
-			a.ApplyUpdate = func(p string) error { applied = append(applied, p); return nil }
+			a.RunInstaller = func(p string) error { applied = append(applied, p); return nil }
 			a.checkUpdate()
 			if a.available == nil || a.available.Version != "9.9.9" {
 				t.Fatalf("manifest not read: %v", spare.seen())
 			}
-			staged := filepath.Join(a.UpdateDir, "Boop.exe.new")
-			b, err := os.ReadFile(staged)
 			if !c.ok {
-				if err == nil || len(applied) != 0 || a.updStage != "failed" {
-					t.Fatalf("a file with the wrong hash went through: %v %v %q", err, applied, a.updStage)
+				if len(applied) != 0 || a.updStage != "failed" {
+					t.Fatalf("a file with the wrong hash went through: %v %q", applied, a.updStage)
 				}
 				return
 			}
+			var b []byte
+			var err error
+			if len(applied) == 1 {
+				b, err = os.ReadFile(applied[0])
+			}
 			if err != nil || !bytes.Equal(b, exe) || len(applied) != 1 {
-				t.Fatalf("staged %v %q, applied %v; spare saw %v", err, b, applied, spare.seen())
+				t.Fatalf("read %v %q, applied %v; spare saw %v", err, b, applied, spare.seen())
 			}
 			want := "GET /download/Boop.exe"
 			if strings.Contains(c.url, "?v=2") {
