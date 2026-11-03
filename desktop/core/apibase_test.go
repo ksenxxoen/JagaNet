@@ -488,7 +488,15 @@ func TestAppRemembersTheSpare(t *testing.T) {
 	if _, err := ta2.API.Me(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if !ta2.API.UsingSpare() || main.count() != 0 {
+	// The update check that Init starts in the background is not what is measured here:
+	// it may reach the main address before or after this point.
+	var onMain []string
+	for _, h := range main.seen() {
+		if h != "GET /v1/app/desktop" {
+			onMain = append(onMain, h)
+		}
+	}
+	if !ta2.API.UsingSpare() || len(onMain) != 0 {
 		t.Fatalf("started on the main address: %v", main.seen())
 	}
 	// Back on the main address: state.json forgets the spare.

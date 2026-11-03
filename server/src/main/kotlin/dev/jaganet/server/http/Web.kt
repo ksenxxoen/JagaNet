@@ -115,11 +115,24 @@ fun Route.website(s: Services) {
         call.response.header(HttpHeaders.ContentDisposition, ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, "Boop.apk").toString())
         call.respondFile(apk)
     }
-    // Opt-in, same as the manifest: 404 until Boop.exe is placed in DOWNLOADS_DIR.
+    // Opt-in, same as the manifest: 404 until Boop.exe (or the bridge desktop.json names) is placed in DOWNLOADS_DIR.
     get("/download/windows") {
         val exe = s.site.desktopExe() ?: throw notFound("The Windows app isn't uploaded yet")
-        call.response.header(HttpHeaders.ContentDisposition, ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, "Boop.exe").toString())
+        call.response.header(HttpHeaders.ContentDisposition, ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, exe.name).toString())
         call.respondFile(exe)
+    }
+    // Fixed names only, never a path from the request.
+    get("/download/windows/setup") {
+        val f = s.site.desktopSetup() ?: throw notFound("The Windows installer isn't uploaded yet")
+        val v = s.site.desktopManifest()?.let { it.installerVersion ?: it.version }?.filter { c -> c.isLetterOrDigit() || c in ".-_+" }
+        val name = if (v.isNullOrEmpty()) "Boop-Setup.exe" else "Boop-Setup-$v.exe"
+        call.response.header(HttpHeaders.ContentDisposition, ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, name).toString())
+        call.respondFile(f)
+    }
+    get("/download/windows/bridge") {
+        val f = s.site.desktopBridge() ?: throw notFound("The Windows bridge isn't uploaded yet")
+        call.response.header(HttpHeaders.ContentDisposition, ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, "Boop-bridge.exe").toString())
+        call.respondFile(f)
     }
 
     // Opt-in too: 404 until boop-<distro>.deb is placed in DOWNLOADS_DIR.
@@ -152,11 +165,14 @@ fun Route.website(s: Services) {
         val token = call.parameters["token"]!!
         if (s.vlessKeys.isOwnToken(token)) {
             val v = call.vless(call.pageLang())
+            val desktop = s.site.desktopManifest()
+            val setup = desktop?.installerUrl?.takeIf { it.endsWith("/download/windows/setup") }
             val apps = VlessApps(
                 android = listOfNotNull(s.site.androidAppUrl()?.let { "Boop for Android" to it }),
                 ios = listOfNotNull(s.site.iosAppUrl()?.let { "Boop for iPhone" to it }),
-                windows = s.site.desktopExe() != null,
-                windowsVersion = s.site.desktopManifest()?.version,
+                windows = setup != null || s.site.desktopExe() != null,
+                windowsVersion = if (setup != null) desktop.installerVersion ?: desktop.version else desktop?.version,
+                windowsHref = if (setup != null) "/download/windows/setup" else "/download/windows",
             )
             return@get call.respondText(Pages(call.pageLang()).vlessKey(v, s.ctx.cfg.publicUrl, apps), ContentType.Text.Html)
         }
@@ -259,6 +275,7 @@ internal data class VlessApps(
     val ios: List<Pair<String, String>> = emptyList(),
     val windows: Boolean = false,
     val windowsVersion: String? = null,
+    val windowsHref: String = "/download/windows",
 )
 
 /** Pages rendered by the server, in one language. */
@@ -305,7 +322,7 @@ internal class Pages(val lang: Lang) {
         val android = links(apps.android + AppStores.androidApps)
         val ios = links(apps.ios + AppStores.iosApps)
         val pc = if (apps.windows) {
-            """<li><a href="/download/windows">${t("Download Boop for Windows")}</a>${apps.windowsVersion?.let { " <span class=\"muted\">${t("version {version}", "version" to it)}</span>" } ?: ""}</li>"""
+            """<li><a href="${apps.windowsHref}">${t("Download Boop for Windows")}</a>${apps.windowsVersion?.let { " <span class=\"muted\">${t("version {version}", "version" to it)}</span>" } ?: ""}</li>"""
         } else ""
         return page(t("Your VPN key"), """
 <div class="head"><div><h1>${t("Your VPN key")}</h1><p class="muted">${esc(v.name)}</p></div></div>

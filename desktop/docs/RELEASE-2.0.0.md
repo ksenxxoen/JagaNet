@@ -99,8 +99,8 @@ they had it. Documented, not automated.
 
 ## Publishing (by the maintainer, not done here)
 
-`installer/build.ps1` writes `dist\desktop.json`. For the old fields set `BOOP_LEGACY_URL` (absolute https URL
-the bridge is published at), and optionally `BOOP_LEGACY_SHA256` (default: hash of the signed
+`installer/build.ps1` writes `dist\desktop.json`. For the old fields set `BOOP_LEGACY=1` (the panel serves the
+bridge at `/download/windows`, see `desktop-json.md`), and optionally `BOOP_LEGACY_SHA256` (default: hash of the signed
 `Boop-bridge.exe` next to `BoopService.exe`) and `BOOP_LEGACY_SIGNATURE`. Order: sign `BoopHost.exe`,
 `BoopService.exe`, `Boop-bridge.exe` (`build.sh` with `BOOP_SIGN`) → build the setup → sign it → SHA-256 →
 `desktop.json`. `version` is 2.0.0 (must be above 1.4.4 for 1.4.x to take it); `url`/`sha256` name the
@@ -133,3 +133,10 @@ it sends; `last.json` exists only with a live tunnel and is not simulated.
 5. Log out and in: Boop starts to the tray. Reboot: the service is up.
 6. Break the hash in `desktop.json` and repeat on a second 1.4.x machine: the setup is not started; `bridge.log` says why.
 7. Uninstall: nothing left in `Program Files\Boop`, `%ProgramData%\Boop` (with "delete settings"), the Run value, the service.
+
+## Publishing (issue #103)
+
+The panel now passes the installer fields on and serves the files itself; the order, the files and the example
+`desktop.json` are in `desktop-json.md` ("Switching 1.4.x to the bridge and back"). In short: copy
+`Boop-bridge.exe` and `Boop-Setup.exe` (renamed from `Boop-Setup-2.0.0.exe`) to `DOWNLOADS_DIR`, then
+`desktop.json`. Rollback: put back the previous `desktop.json` (and keep `Boop.exe`).

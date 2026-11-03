@@ -11,7 +11,7 @@ split tunnel and autostart stay.
 - `boop.iss`: `/BOOPBRIDGE=1` (nothing written to SYSTEM's HKCU, no window started as SYSTEM); `[InstallDelete]` for
   `Boop.exe.old`/`.new`. The new `BoopService.exe` starts the window in the user's session after a bridge install.
 - `build.sh` builds `BoopHost.exe`, `BoopService.exe`, `Boop-bridge.exe` (no Go `Boop.exe`); `installer/build.ps1`
-  writes the old fields from `BOOP_LEGACY_URL` (+ hash of the bridge, optional signature).
+  writes the old fields from `BOOP_LEGACY` (+ hash of the bridge, optional signature).
 - CI: e2e "real 1.4.4 → 2.0.0" with migration checks; the 1.4.4 baseline is the release commit by full SHA.
 - 1.3.x: manual path (run `Boop-Setup-2.0.0.exe`), documented.
 - Versions: Go, Tauri (`Cargo.toml`, `tauri.conf.json`), installer 2.0.0. Service protocol stays 3 (`MinProtocol` 2).

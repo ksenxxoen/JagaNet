@@ -20,13 +20,82 @@ class DesktopReleaseTest {
         assertNull(loadDesktopManifest(dir, "https://boopvpn.app"))
         File(dir, "Boop.exe").writeBytes(byteArrayOf(1, 2, 3, 4))
         assertNull(loadDesktopManifest(dir, "https://boopvpn.app"))
-        File(dir, "desktop.json").writeText("""{"version":"1.1.0","mandatory":false,"notes":"nl1","sha256":"0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"}""")
+        File(dir, "desktop.json").writeText("""{"version":"1.1.0","mandatory":false,"notes":"nl1","sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a"}""")
         val m = loadDesktopManifest(dir, "https://boopvpn.app/")!!
         assertEquals("1.1.0", m.version)
         assertEquals("https://boopvpn.app/download/windows", m.url)
-        assertEquals("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20", m.sha256)
+        assertEquals("9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a", m.sha256)
         assertEquals("nl1", m.notes)
         assertEquals(false, m.mandatory)
+    }
+
+    private fun sha(b: ByteArray) = java.security.MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it) }
+    private val pub = "https://boopvpn.app"
+    private fun wire(m: dev.jaganet.server.services.DesktopAppManifest?) = Protocols.json.encodeToString(dev.jaganet.server.services.DesktopAppManifest.serializer(), m!!)
+
+    @Test fun `an old document gives the same JSON as before the installer fields`() {
+        val dir = kotlin.io.path.createTempDirectory("boop-rel").toFile()
+        val exe = "boop".toByteArray()
+        File(dir, "Boop.exe").writeBytes(exe)
+        File(dir, "desktop.json").writeText("""{"version":"1.4.4","mandatory":false,"notes":"n","sha256":"${sha(exe)}"}""")
+        assertEquals(
+            """{"version":"1.4.4","url":"https://boopvpn.app/download/windows","sha256":"${sha(exe)}","mandatory":false,"notes":"n"}""",
+            wire(loadDesktopManifest(dir, pub)),
+        )
+    }
+
+    @Test fun `a wrong sha256 withholds the whole document`() {
+        val dir = kotlin.io.path.createTempDirectory("boop-rel").toFile()
+        File(dir, "Boop.exe").writeBytes("boop".toByteArray())
+        File(dir, "desktop.json").writeText("""{"version":"1.4.4","sha256":"${"0".repeat(64)}"}""")
+        assertNull(loadDesktopManifest(dir, pub))
+    }
+
+    @Test fun `installer fields pass through and a relative url is made absolute`() {
+        val dir = kotlin.io.path.createTempDirectory("boop-rel").toFile()
+        val bridge = "bridge".toByteArray(); val setup = "setup".toByteArray()
+        File(dir, "Boop-bridge.exe").writeBytes(bridge)
+        File(dir, "Boop-Setup.exe").writeBytes(setup)
+        File(dir, "desktop.json").writeText(
+            """{"version":"2.0.0","legacy_file":"Boop-bridge.exe","installer_version":"2.0.0","installer_url":"/download/windows/setup","min_proto":3,"kind":"installer"}""",
+        )
+        val m = loadDesktopManifest(dir, "$pub/")!!
+        assertEquals(sha(bridge), m.sha256)
+        assertEquals("$pub/download/windows/setup", m.installerUrl)
+        assertEquals(sha(setup), m.installerSha256)
+        assertEquals("2.0.0", m.installerVersion)
+        assertEquals(3, m.minProto)
+        assertEquals("installer", m.kind)
+        // Absolute url of our own route is the same thing.
+        File(dir, "desktop.json").writeText("""{"version":"2.0.0","legacy_file":"Boop-bridge.exe","installer_url":"$pub/download/windows/setup","installer_sha256":"${sha(setup)}"}""")
+        assertEquals(sha(setup), loadDesktopManifest(dir, pub)!!.installerSha256)
+    }
+
+    @Test fun `a wrong installer hash or a missing setup drops only the installer`() {
+        val dir = kotlin.io.path.createTempDirectory("boop-rel").toFile()
+        val exe = "boop".toByteArray()
+        File(dir, "Boop.exe").writeBytes(exe)
+        File(dir, "desktop.json").writeText("""{"version":"2.0.0","installer_url":"/download/windows/setup"}""")
+        val noSetup = loadDesktopManifest(dir, pub)!!
+        assertNull(noSetup.installerUrl)
+        assertEquals(sha(exe), noSetup.sha256)
+        File(dir, "Boop-Setup.exe").writeBytes("setup".toByteArray())
+        File(dir, "desktop.json").writeText("""{"version":"2.0.0","installer_url":"/download/windows/setup","installer_sha256":"${"1".repeat(64)}"}""")
+        val bad = loadDesktopManifest(dir, pub)!!
+        assertNull(bad.installerUrl); assertNull(bad.installerSha256); assertNull(bad.kind)
+        assertEquals(sha(exe), bad.sha256)
+        // Not our route and no hash given: cannot be vouched for.
+        File(dir, "desktop.json").writeText("""{"version":"2.0.0","installer_url":"https://cdn.example/Boop-Setup.exe"}""")
+        assertNull(loadDesktopManifest(dir, pub)!!.installerUrl)
+    }
+
+    @Test fun `legacy_file is limited to the two known names`() {
+        val dir = kotlin.io.path.createTempDirectory("boop-rel").toFile()
+        File(dir, "Boop.exe").writeBytes("boop".toByteArray())
+        File(dir, "desktop.json").writeText("""{"version":"2.0.0","legacy_file":"../etc/passwd"}""")
+        assertNull(loadDesktopManifest(dir, pub))
+        File(dir, "desktop.json").writeText("""{"version":"2.0.0","legacy_file":"Boop-bridge.exe"}""")
+        assertNull(loadDesktopManifest(dir, pub)) // named, but not there
     }
 
     @Test fun `a missing hash is computed and a bad document is ignored`() {

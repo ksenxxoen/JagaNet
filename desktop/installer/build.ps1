@@ -90,29 +90,32 @@ $hash = (Get-FileHash $out -Algorithm SHA256).Hash.ToLower()
 Write-Host "built $out"
 Write-Host "SHA-256: $hash"
 
-# desktop.json for the panel (not published; the panel's document is replaced by hand).
-# The 1.4.x fields (version/url/sha256/signature) name the bridge, Boop-bridge.exe:
-# what a 1.4.x service downloads, checks and swaps in for its own Boop.exe, and which
-# then runs this setup program (docs/RELEASE-2.0.0.md). They are written when
-# BOOP_LEGACY_URL (an absolute https URL where the bridge will be published) is set;
-# the hash is BOOP_LEGACY_SHA256 or, if absent, the hash of the signed bridge next to
-# the other exes. BOOP_LEGACY_SIGNATURE (ed25519, base64) is copied as it is.
-# The installer fields name this setup program, hashed AFTER signing (it is the
-# last step above). Order: sign the exes -> bridge hash -> setup program -> sign it -> hash.
+# desktop.json for the panel (not published; copy it to DOWNLOADS_DIR by hand, docs/desktop-json.md).
+# Written in exactly the format the panel reads (Site.kt loadDesktopManifest): the panel serves the
+# files itself, so the document names no URLs of its own for them.
+# - installer_url is the panel route /download/windows/setup (Boop-Setup.exe in DOWNLOADS_DIR);
+#   installer_sha256 is the hash of THIS setup program, AFTER signing (the panel checks it against
+#   the file and withholds the installer fields on a mismatch). BOOP_INSTALLER_URL overrides the
+#   url for a setup hosted elsewhere (an absolute https URL).
+# - With BOOP_LEGACY=1 (or the older BOOP_LEGACY_URL, whose value is now ignored) the 1.4.x fields
+#   name the bridge: legacy_file = Boop-bridge.exe, sha256 = BOOP_LEGACY_SHA256 or the hash of the
+#   signed bridge next to BoopService.exe, and the panel serves it at /download/windows.
+#   BOOP_LEGACY_SIGNATURE (ed25519, base64) is copied as it is.
+# Order: sign the exes -> bridge hash -> setup program -> sign it -> hash.
 $json = [ordered]@{
   installer_version = $Version
-  installer_url     = if ($env:BOOP_INSTALLER_URL) { $env:BOOP_INSTALLER_URL } else { "/download/Boop-Setup-$Version.exe" }
+  installer_url     = if ($env:BOOP_INSTALLER_URL) { $env:BOOP_INSTALLER_URL } else { '/download/windows/setup' }
   installer_sha256  = $hash
   min_proto         = 3
   kind              = 'installer'
 }
-if ($env:BOOP_LEGACY_URL) {
+if ($env:BOOP_LEGACY -or $env:BOOP_LEGACY_URL) {
   $bridge = Join-Path (Split-Path $Service -Parent) 'Boop-bridge.exe'
   $legacyHash = $env:BOOP_LEGACY_SHA256
   if (-not $legacyHash -and (Test-Path $bridge)) { $legacyHash = (Get-FileHash $bridge -Algorithm SHA256).Hash.ToLower() }
-  if (-not $legacyHash) { throw 'BOOP_LEGACY_URL is set, but there is neither BOOP_LEGACY_SHA256 nor a Boop-bridge.exe next to BoopService.exe' }
+  if (-not $legacyHash) { throw 'BOOP_LEGACY is set, but there is neither BOOP_LEGACY_SHA256 nor a Boop-bridge.exe next to BoopService.exe' }
   if ($env:BOOP_SIGN -and (Test-Path $bridge) -and (Get-AuthenticodeSignature $bridge).Status -eq 'NotSigned') { throw "BOOP_SIGN is set, but $bridge is not signed" }
-  $legacy = [ordered]@{ version = $Version; url = $env:BOOP_LEGACY_URL; sha256 = $legacyHash; mandatory = $false }
+  $legacy = [ordered]@{ version = $Version; legacy_file = 'Boop-bridge.exe'; sha256 = $legacyHash; mandatory = $false }
   if ($env:BOOP_LEGACY_SIGNATURE) { $legacy.signature = $env:BOOP_LEGACY_SIGNATURE }
   $json = $legacy + $json
 }
