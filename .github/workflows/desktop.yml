@@ -422,7 +422,7 @@ jobs:
           Check (Test-Path "$dir\wintun.dll") 'wintun.dll in Program Files'
           Check (Test-Path "$dir\BoopHost.exe") 'BoopHost.exe in Program Files'
           $r = ServiceCheck "$dir\BoopHost.exe"
-          Check ($r.Code -eq 0 -and $r.Text -match 'protocol 1\.\.2') 'host <-> updated service: protocol 1..2'
+          Check ($r.Code -eq 0 -and $r.Text -match 'protocol 2\.\.3') 'host <-> updated service: protocol 2..3'
 
           $unins = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /PURGEDATA' -Wait -PassThru
           Check ($unins.ExitCode -eq 0) 'uninstall exits 0'
