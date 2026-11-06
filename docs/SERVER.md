@@ -196,6 +196,9 @@ switch in `/etc/jaganet/env`, all on by default:
 | `VLESS_SUB_BLOCK_QUIC` | on | UDP 443 (QUIC) blocked in the clients, so apps use TCP at once. `0` turns it off. |
 | `VLESS_SUB_XRAY_JSON` | on | Happ (1.63.1+) and v2RayTun get Xray configs. `0`: links again, with a `routing` header (Happ: DNS only, v2RayTun: the QUIC block only). |
 | `VLESS_ENTRY_BLOCK_QUIC` | on | The UDP 443 block in a cascade entry's balancer fragment (below). `0` leaves it out. |
+| `VLESS_ENTRY_TRANSPORT` | `tcp` | How a cascade entry links to its exits: `tcp` (Reality Vision) or `xhttp` (the exit's XHTTP inbound; falls back to Vision if the exit has none). See "Entry → exit link". |
+| `VLESS_ENTRY_MUX` | off | `1`/`on`: Xray mux on the entry's XHTTP outbounds (never on Vision). |
+| `VLESS_ENTRY_PROBE_INTERVAL` | `1m` | The observatory's probe interval (`30s`, `1m`, `5m`...). Probes run one at a time. |
 
 `?format=json`, `?format=base64`, `?format=singbox` or `?format=clash` on the subscription URL
 picks the format whatever the app.
@@ -222,11 +225,11 @@ users and sends their traffic on to the fastest **exit** (Xray `balancers` with 
          "realitySettings": {"serverName": "fi1.example.com", "fingerprint": "firefox",
            "publicKey": "<exit's Reality public key>", "shortId": "a1b2c3d4"}}},
        {"tag": "boop-block", "protocol": "blackhole"}],
-     "routing": {"balancers": [{"tag": "boop-exits", "selector": ["boop-exit-"], "strategy": {"type": "leastPing"}}],
+     "routing": {"balancers": [{"tag": "boop-exits", "selector": ["boop-exit-"], "strategy": {"type": "leastPing"}, "fallbackTag": "boop-exit-<first exit id>"}],
        "rules": [{"type": "field", "inboundTag": ["vision", "xhttp"], "network": "udp", "port": "443", "outboundTag": "boop-block"},
          {"type": "field", "inboundTag": ["vision", "xhttp"], "balancerTag": "boop-exits"}]},
      "observatory": {"subjectSelector": ["boop-exit-"], "probeUrl": "https://www.gstatic.com/generate_204",
-       "probeInterval": "1m", "enableConcurrency": true}
+       "probeInterval": "1m", "enableConcurrency": false}
    }
    ```
 3. On the entry, merge it into `/usr/local/etc/xray/config.json` by hand: append the `outbounds`
@@ -245,6 +248,33 @@ users and sends their traffic on to the fastest **exit** (Xray `balancers` with 
    `api.services`. The agent (version 3) then reports which exit the balancer selects now
    (`xray api bi -json boop-exits`) and the map shows it. Without it the page shows the exits'
    own health only. Exit pings are not shown: Xray has no command for the observatory's results.
+
+#### Entry → exit link (issue #109)
+
+*No leak to `direct`.* The balancer has a `fallbackTag` (the first exit). If the observatory marks
+every exit dead, Xray otherwise sends the users' traffic to the config's first outbound, normally
+`direct`, i.e. out of the entry itself. With the fallback it keeps using an exit (slow or failing,
+but never from the wrong country). Your own `direct` rules (panel host, your domain) are untouched;
+keep them above the fragment's rules.
+
+*Transport* (`VLESS_ENTRY_TRANSPORT`; clients are not affected, they only see the entry):
+
+| Option | Latency | Stability | Notes |
+|---|---|---|---|
+| `tcp` (default) | best: one TCP+Reality connection per user stream | can degrade on a path that drops or throttles long-lived or many short TCP flows | Vision, no mux |
+| `xhttp` | a bit higher (HTTP framing, padding) | better: `xmux` reuses a few connections (concurrency 16-32, reuse limits), padding 100-1000 bytes | exit needs an XHTTP transport in its node settings |
+| `xhttp` + `VLESS_ENTRY_MUX=1` | similar | fewer connections still | Xray mux; not combinable with Vision, so XHTTP only |
+
+Latency first, so `tcp` stays the default; switch to `xhttp` for a relay whose link to the exits
+degrades after a few connections. Fragment, repeat step 3, restart Xray.
+
+*Observatory:* `leastPing` needs probes, but each probe is a short HTTPS connection through the exit.
+The default is one per minute per exit, run one at a time (`enableConcurrency: false`);
+`VLESS_ENTRY_PROBE_INTERVAL` changes it. Do not use 10 s: that alone makes many short connections.
+
+*Diagnostics:* on the entry run `scripts/node/relay-exit-diag.sh [N] [config]`. It starts a throw-away
+Xray per `boop-exit-*` outbound, makes N requests in a row and prints success, average/max latency
+and the socket's retransmit counters. It prints no keys, UUIDs or short ids.
 
 Get the fragment again and repeat step 3 after adding, removing or switching off an exit, or after
 changing an exit's address or keys. To undo: remove the outbounds `boop-exit-*`, the balancer

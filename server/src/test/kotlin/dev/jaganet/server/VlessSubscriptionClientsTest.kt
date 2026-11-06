@@ -246,6 +246,36 @@ class VlessSubscriptionClientsTest {
         assertTrue(off.arr("outbounds").none { it.str("tag") == XrayBalancer.BLOCK })
     }
 
+    @Test fun `the entry never leaks to direct and links to the exits as configured`() {
+        val uuid = "11111111-2222-4333-8444-555555555555"
+        val exits = listOf(XrayBalancer.Exit("x1", settings("x1.example.com")), XrayBalancer.Exit("x2", settings("x2.example.com")))
+        val f = XrayBalancer.fragment(listOf("vision"), uuid, exits)
+        val balancer = f["routing"]!!.jsonObject.arr("balancers").first().jsonObject
+        assertEquals(XrayBalancer.PREFIX + "x1", balancer.str("fallbackTag"))
+        assertTrue(f.arr("outbounds").any { it.str("tag") == balancer.str("fallbackTag") })
+        assertTrue(f.arr("outbounds").none { it.str("tag") == "direct" })
+        // Defaults: Vision over TCP, no mux, probes every minute, one at a time.
+        assertEquals(setOf("tcp"), f.arr("outbounds").mapNotNull { it["streamSettings"]?.jsonObject?.str("network") }.toSet())
+        assertTrue(f.arr("outbounds").none { "mux" in it })
+        val obs = f["observatory"]!!.jsonObject
+        assertEquals("1m", obs.str("probeInterval"))
+        assertEquals(false, obs["enableConcurrency"]!!.jsonPrimitive.content.toBoolean())
+        // XHTTP + mux + a slower probe.
+        val x = XrayBalancer.fragment(listOf("vision"), uuid, exits, options = XrayBalancer.Options("xhttp", mux = true, probeInterval = "5m"))
+        val outs = x.arr("outbounds").filter { it.str("tag").startsWith(XrayBalancer.PREFIX) }.map { it.jsonObject }
+        assertTrue(outs.all { it["streamSettings"]!!.jsonObject.str("network") == "xhttp" })
+        assertTrue(outs.all { it["mux"]!!.jsonObject["enabled"]!!.jsonPrimitive.content == "true" })
+        assertTrue(outs.all { "xmux" in it["streamSettings"]!!.jsonObject["xhttpSettings"]!!.jsonObject["extra"]!!.jsonObject })
+        assertTrue(outs.all { "flow" !in it["settings"].toString() })
+        assertEquals("5m", x["observatory"]!!.jsonObject.str("probeInterval"))
+        // Mux never goes on Vision.
+        val v = XrayBalancer.fragment(listOf("vision"), uuid, exits, options = XrayBalancer.Options("tcp", mux = true))
+        assertTrue(v.arr("outbounds").none { "mux" in it })
+        // Env parsing, junk falls back to the defaults.
+        assertEquals(XrayBalancer.Options("xhttp", true, "30s"), XrayBalancer.Options.load(mapOf("VLESS_ENTRY_TRANSPORT" to "XHTTP", "VLESS_ENTRY_MUX" to "on", "VLESS_ENTRY_PROBE_INTERVAL" to "30s")))
+        assertEquals(XrayBalancer.Options(), XrayBalancer.Options.load(mapOf("VLESS_ENTRY_TRANSPORT" to "x", "VLESS_ENTRY_PROBE_INTERVAL" to "0s; rm")))
+    }
+
     @Test fun `VLESS_ENTRY_BLOCK_QUIC=0 reaches the panel's fragment`() = harness(mapOf("VLESS_BALANCER" to "1", "VLESS_ENTRY_BLOCK_QUIC" to "0")) {
         val entry = services.nodes.create(NodeReq("VLESS RU", "City", "RU", maxPeers = 100, protocol = "vless", vless = settings("entry.example.com"), cascadeRole = "entry")).node
         services.nodes.create(NodeReq("VLESS FI", "City", "FI", maxPeers = 100, protocol = "vless", vless = settings("x1.example.com"), cascadeRole = "exit"))
