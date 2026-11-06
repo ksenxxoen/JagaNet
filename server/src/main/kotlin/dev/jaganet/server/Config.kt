@@ -65,6 +65,8 @@ data class Config(
     val vlessSub: dev.jaganet.server.services.SubscriptionOptions = dev.jaganet.server.services.SubscriptionOptions(),
     /** VLESS_ENTRY_BLOCK_QUIC=0 leaves the UDP 443 block out of a cascade entry's balancer fragment (issue #59). */
     val entryBlockQuic: Boolean = true,
+    /** VLESS_ENTRY_TRANSPORT / _MUX / _PROBE_INTERVAL: how a cascade entry talks to its exits (issue #109). */
+    val entryLink: dev.jaganet.server.services.XrayBalancer.Options = dev.jaganet.server.services.XrayBalancer.Options(),
     /** SUPPORT_URL: the `support-url` header of VLESS subscriptions; default the Telegram bot, else the website. */
     val supportUrl: String? = null,
     /** SUPPORT_EMAIL: where the website's support form sends messages; default OWNER_EMAIL. */
@@ -111,6 +113,7 @@ data class Config(
                 vlessBalancer = env["VLESS_BALANCER"] == "1",
                 vlessSub = dev.jaganet.server.services.SubscriptionOptions.load(env),
                 entryBlockQuic = env["VLESS_ENTRY_BLOCK_QUIC"]?.trim() != "0",
+                entryLink = dev.jaganet.server.services.XrayBalancer.Options.load(env),
                 supportUrl = env["SUPPORT_URL"]?.takeIf { it.isNotBlank() },
                 supportEmail = env["SUPPORT_EMAIL"]?.trim()?.takeIf { it.isNotBlank() },
                 referralRewards = RewardRules(
