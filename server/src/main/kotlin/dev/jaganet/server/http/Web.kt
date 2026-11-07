@@ -195,7 +195,7 @@ fun Route.website(s: Services) {
         val (up, down) = s.vlessKeys.usage(v.userId)
         val base = s.ctx.cfg.publicUrl.trimEnd('/')
         call.response.header("profile-title", "base64:" + java.util.Base64.getEncoder().encodeToString("Boop VPN".toByteArray()))
-        call.response.header("profile-update-interval", "12")
+        call.response.header("profile-update-interval", s.ctx.cfg.subscriptionUpdateIntervalHours.toString())
         call.response.header("subscription-userinfo", VlessSubscription.userInfo(up, down, s.vlessKeys.dataLimit(v.userId) ?: 0, expire))
         call.response.header("support-url", s.ctx.cfg.supportUrl ?: s.bot?.username?.let { "https://t.me/$it" } ?: base)
         call.response.header("profile-web-page-url", "$base/k/${call.parameters["token"]!!}")
