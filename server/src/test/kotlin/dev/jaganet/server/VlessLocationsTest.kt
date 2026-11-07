@@ -176,7 +176,7 @@ class VlessLocationsTest {
         val res = sub(tokenOf(u.session.user.id))
         // Free plan: 10 GB a month; what the node received is the user's upload.
         assertEquals("upload=1000; download=50000; total=10000000000; expire=0", res.headers["subscription-userinfo"])
-        assertEquals("12", res.headers["profile-update-interval"])
+        assertEquals("3", res.headers["profile-update-interval"])
         assertEquals("https://t.me/boop_support", res.headers["support-url"])
         assertEquals("https://boop.example/k/${tokenOf(u.session.user.id)}", res.headers["profile-web-page-url"])
         assertEquals("base64:" + Base64.getEncoder().encodeToString("Boop VPN".toByteArray()), res.headers["profile-title"])
@@ -189,6 +189,16 @@ class VlessLocationsTest {
         buy(u.api)
         val paid = sub(tokenOf(u.session.user.id)).headers["subscription-userinfo"]!!
         assertTrue(Regex("^upload=1000; download=50000; total=0; expire=\\d{10}$").matches(paid), paid)
+    }
+
+    @Test fun `profile-update-interval is 3 hours by default and follows SUBSCRIPTION_UPDATE_INTERVAL_HOURS`() {
+        assertEquals(3, Config.load(mapOf("JAGANET_MODE" to "test")).subscriptionUpdateIntervalHours)
+        harness(mapOf("SUBSCRIPTION_UPDATE_INTERVAL_HOURS" to "6")) {
+            node("FI", "fi.example.com")
+            val u = signIn("interval@example.com")
+            services.vlessKeys.sync()
+            assertEquals("6", sub(tokenOf(u.session.user.id)).headers["profile-update-interval"])
+        }
     }
 
     @Test fun `sing-box and Clash Meta profiles with an Auto group, chosen by format or User-Agent`() = harness {

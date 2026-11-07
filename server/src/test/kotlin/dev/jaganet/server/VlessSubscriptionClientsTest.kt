@@ -109,7 +109,7 @@ class VlessSubscriptionClientsTest {
             assertTrue(res.headers["Content-Type"]!!.startsWith("application/json"))
             // The subscription's own headers stay; no routing profile with JSON.
             assertTrue(res.headers["subscription-userinfo"]!!.startsWith("upload=0; download=0;"))
-            assertEquals("12", res.headers["profile-update-interval"])
+            assertEquals("3", res.headers["profile-update-interval"])
             assertNull(res.headers["routing"])
             val configs = Json.parseToJsonElement(res.bodyAsText()).jsonArray.map { it.jsonObject }
             // "Авто (лучший)", then the base64 list's links in its order and names.

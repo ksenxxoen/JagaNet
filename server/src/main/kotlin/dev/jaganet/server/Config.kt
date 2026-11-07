@@ -69,6 +69,8 @@ data class Config(
     val entryLink: dev.jaganet.server.services.XrayBalancer.Options = dev.jaganet.server.services.XrayBalancer.Options(),
     /** SUPPORT_URL: the `support-url` header of VLESS subscriptions; default the Telegram bot, else the website. */
     val supportUrl: String? = null,
+    /** Hours clients wait before refreshing a VLESS subscription (`profile-update-interval`). SUBSCRIPTION_UPDATE_INTERVAL_HOURS, default 3. */
+    val subscriptionUpdateIntervalHours: Int = 3,
     /** SUPPORT_EMAIL: where the website's support form sends messages; default OWNER_EMAIL. */
     val supportEmail: String? = null,
     /** "Invite a friend" rewards (issue #40): REFERRAL_* variables, then the admin panel. */
@@ -115,6 +117,7 @@ data class Config(
                 entryBlockQuic = env["VLESS_ENTRY_BLOCK_QUIC"]?.trim() != "0",
                 entryLink = dev.jaganet.server.services.XrayBalancer.Options.load(env),
                 supportUrl = env["SUPPORT_URL"]?.takeIf { it.isNotBlank() },
+                subscriptionUpdateIntervalHours = num("SUBSCRIPTION_UPDATE_INTERVAL_HOURS", 3).coerceIn(1, Int.MAX_VALUE.toLong()).toInt(),
                 supportEmail = env["SUPPORT_EMAIL"]?.trim()?.takeIf { it.isNotBlank() },
                 referralRewards = RewardRules(
                     days = num("REFERRAL_REWARD_DAYS", 14).toInt().coerceIn(0, 3650),

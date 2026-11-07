@@ -185,7 +185,8 @@ hidden in the panel drops them at once. The subscription (`/k/<token>/vless`) li
 the panel's order with their names; v2rayNG and Hiddify get links, Happ and v2RayTun full Xray
 configs, sing-box and Clash Meta clients a profile; all but the links have an "Авто (лучший)"
 entry. Optional: `SUPPORT_URL` in `/etc/jaganet/env` for the subscription's `support-url`
-(default: the Telegram bot, else the site).
+(default: the Telegram bot, else the site). `SUBSCRIPTION_UPDATE_INTERVAL_HOURS` (default 3)
+is the `profile-update-interval` header: how many hours a client waits before refreshing the subscription.
 
 The Xray configs and the profiles also carry DNS and a QUIC block (issue #59); each part has a
 switch in `/etc/jaganet/env`, all on by default:

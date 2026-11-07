@@ -173,7 +173,8 @@ process behind the Wintun adapter (desktop/ARCHITECTURE.md, "VLESS+Reality").
   v2RayTun get the base64 list with a `routing` header instead: Happ a routing profile
   (`happ://routing/onadd/…`, remote DNS, `FakeDNS: false`; it cannot express ports), v2RayTun an
   Xray routing object (UDP 443 to `block`; it has no DNS header).
-  Headers: `profile-title` (base64 "Boop VPN"), `profile-update-interval: 12`,
+  Headers: `profile-title` (base64 "Boop VPN"), `profile-update-interval`
+  (`SUBSCRIPTION_UPDATE_INTERVAL_HOURS`, default 3),
   `subscription-userinfo: upload=…; download=…; total=…; expire=…` (this month's bytes of all the
   user's devices, the monthly limit or 0, the end of access or 0), `support-url` (`SUPPORT_URL`,
   else the Telegram bot, else the website), `profile-web-page-url` (the key page).
