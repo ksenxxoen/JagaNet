@@ -34,14 +34,21 @@ data class VlessLocation(
  * Several VLESS locations in one key (issue #41).
  *
  * The user's UUID lives on every listed VLESS node: the tunnel keeps it on its own node (as
- * before, issue #33), and `vless_replicas` (V22) puts the same UUID on every other active node
- * with `in_subscription`. The node agents get replicas with their peers (Nodes.snapshot), so a
- * new node gets everyone, and a node switched off or hidden loses them. A replica goes with its
+ * before, issue #33), and `vless_replicas` (V22) puts the same UUID on every other active VLESS node
+ * (hidden ones too; only the subscription skips them). The node agents get replicas with their peers (Nodes.snapshot), so a
+ * new node gets everyone, and a node switched off loses them. A replica goes with its
  * tunnel (ON DELETE CASCADE): ended access or a removed device drops the UUID everywhere.
  */
 object VlessLocations {
     /** Nodes that carry every VLESS user and appear in subscriptions (SQL over `servers s`). */
     const val LISTED = "s.active AND s.in_subscription AND (s.protocols -> 'vless') IS NOT NULL"
+
+    /**
+     * Nodes that receive every VLESS user: all active VLESS nodes, hidden from subscriptions or not.
+     * "Hidden" only changes what a subscription lists; clients holding an older subscription still
+     * need their UUID (new keys, revocations) on the node. Disabled nodes get none.
+     */
+    const val REPLICATED = "s.active AND (s.protocols -> 'vless') IS NOT NULL"
 
     /**
      * A remote node silent for this long (or never installed) is left out of subscriptions. Longer
@@ -88,7 +95,7 @@ object VlessLocations {
     fun isBalancingEntry(ctx: Ctx, server: Row): Boolean = ctx.cfg.vlessBalancer && server.strOrNull("cascade_role") == CASCADE_ENTRY
 
     /**
-     * Makes `vless_replicas` match the rule: every VLESS tunnel's UUID on every other listed node.
+     * Makes `vless_replicas` match the rule: every VLESS tunnel's UUID on every other active VLESS node.
      * [deviceId] limits it to one device. Wakes the agents of the nodes whose list changed and
      * returns how many replicas were added or removed. Idempotent.
      */
@@ -96,7 +103,7 @@ object VlessLocations {
         if (ctx.drivers[Protocols.VLESS] == null) return 0
         val added = sql.query(
             """INSERT INTO vless_replicas (device_id, server_id, peer_key)
-               SELECT t.device_id, s.id, t.peer_key FROM tunnels t JOIN servers s ON s.id <> t.server_id AND $LISTED
+               SELECT t.device_id, s.id, t.peer_key FROM tunnels t JOIN servers s ON s.id <> t.server_id AND $REPLICATED
                 WHERE t.protocol = 'vless' AND (?::uuid IS NULL OR t.device_id = ?::uuid)
                ON CONFLICT (device_id, server_id) DO UPDATE SET peer_key = EXCLUDED.peer_key
                 WHERE vless_replicas.peer_key <> EXCLUDED.peer_key
@@ -105,7 +112,7 @@ object VlessLocations {
         ).map { it.str("server_id") }
         val removed = sql.query(
             """DELETE FROM vless_replicas r WHERE (?::uuid IS NULL OR r.device_id = ?::uuid) AND NOT EXISTS (
-                 SELECT 1 FROM tunnels t JOIN servers s ON s.id = r.server_id AND s.id <> t.server_id AND $LISTED
+                 SELECT 1 FROM tunnels t JOIN servers s ON s.id = r.server_id AND s.id <> t.server_id AND $REPLICATED
                   WHERE t.device_id = r.device_id AND t.protocol = 'vless')
                RETURNING server_id""",
             deviceId, deviceId,
