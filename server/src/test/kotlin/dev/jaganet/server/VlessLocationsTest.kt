@@ -102,6 +102,26 @@ class VlessLocationsTest {
         assertEquals(listOf(ua, ub).sorted(), peersOf(nl))
     }
 
+    @Test fun `a hidden enabled node keeps getting users, a disabled one gets none`() = harness {
+        val fi = node("FI", "fi.example.com")
+        val hidden = node("DE", "de.example.com")
+        val off = node("NL", "nl.example.com")
+        update(hidden) { it.copy(inSubscription = false) }
+        update(off) { it.copy(inSubscription = false, active = false) }
+        val ua = signIn("a@example.com")
+        services.vlessKeys.sync()
+        val a = uuidOf(ua.session.user.id)
+        assertEquals(listOf(a), peersOf(hidden))
+        assertEquals(emptyList(), peersOf(off))
+        // A new user arrives while the node is hidden: still delivered.
+        val ub = signIn("b@example.com")
+        services.vlessKeys.sync()
+        val b = uuidOf(ub.session.user.id)
+        assertEquals(listOf(a, b).sorted(), peersOf(hidden))
+        assertEquals(emptyList(), peersOf(off))
+        assertEquals(listOf(a, b).sorted(), peersOf(fi).sorted())
+    }
+
     @Test fun `ended access drops the UUID from every node`() = harness(mapOf("FREE_DAYS" to "3")) {
         val fi = node("FI", "fi.example.com")
         val nl = node("NL", "nl.example.com")
@@ -137,8 +157,8 @@ class VlessLocationsTest {
         assertTrue(links.all { it.startsWith("vless://$uuid@") }, links.toString())
         assertTrue(links[0].contains("@nl.example.com:443?") && "type=tcp" in links[0] && "flow=xtls-rprx-vision" in links[0])
         assertTrue(links[1].contains("@nl.example.com:8443?") && "type=xhttp" in links[1])
-        // Hidden: not in the subscription, nobody's UUID on it, not in the apps' list.
-        assertEquals(emptyList(), peersOf(hidden))
+        // Hidden: not in the subscription and not in the apps' list, but still gets the full user list (issue #112).
+        assertEquals(listOf(uuid), peersOf(hidden))
         assertTrue(u.api.servers(listOf("amneziawg", "vless")).servers.none { it.id == hidden.id })
         // Nothing about protocols in the names.
         assertTrue(names(res.bodyAsText()).none { "vless" in it.lowercase() || "протокол" in it.lowercase() })
