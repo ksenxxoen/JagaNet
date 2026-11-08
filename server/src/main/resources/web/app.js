@@ -1149,7 +1149,7 @@ function stCard(r, d) {
     fact(t("Uptime"), x.uptime ? h(duration(x.uptime * 1000)) : dash),
     fact(t("Last report"), x.reportedAt ? `${h(fullTime(x.reportedAt))} (${h(ago(x.reportedAt))})` : t("never")),
     fact(t("Address"), ([x.host, x.city].filter(Boolean).join(", ") ? h([x.host, x.city].filter(Boolean).join(", ")) : dash)),
-    fact(t("Services"), `${t("Agent")}: ${x.health === "down" ? t("not responding") : t("working")}; ${t("Traffic classes")}: ${h(x.classes || "—")}`),
+    fact(t("Services"), `${t("Agent")}: ${x.health === "down" ? t("not responding") : t("working")}; ${t("Traffic classes")}: ${(x.classes ? h(x.classes) : dash)}`),
     fact(t("CPU"), x.cpu == null ? dash : percent(x.cpu * 100)),
     fact(t("Memory"), x.memTotal ? `${percent((x.memUsed / x.memTotal) * 100)} &middot; ${t("{used} of {total}", { used: h(bytes(x.memUsed)), total: h(bytes(x.memTotal)) })}` : dash),
     fact(t("Disk"), x.diskTotal ? `${percent((1 - x.diskFree / x.diskTotal) * 100)} &middot; ${t("{used} of {total}", { used: h(bytes(x.diskTotal - x.diskFree)), total: h(bytes(x.diskTotal)) })}` : t("not reported by this agent")),
