@@ -161,17 +161,33 @@ Every minute, kept 30 days, page `#/status`:
 - **Services**: VPN interface (devices, online now), database, website over HTTPS, certificate, Telegram bot.
 - **Resources**: CPU, memory, disk.
 
-The page `#/status` ("Состояние серверов") makes one request every 15 seconds,
-`GET /v1/admin/servers/overview?range=1h|24h|7d|30d&open=<server ids>` (owner only): a verdict with
-counts, five numbers (nodes online, devices online, traffic now, the main server, open alerts), a map
-(the main server's site, database, bot, mail and own VPN; cascades with the balancer's selected and
-excluded exits; standalone nodes), a card per server (bars for devices, CPU, memory, channel; traffic
-sparkline; last report) and the alerts. A click on a card opens its charts: for a node from
-`node_metrics` (V24, one sample per agent report, kept 30 days), for the main server the monitoring
-sections below. Colors: green works, orange attention (CPU, memory or places at 90%, the owner's
-"unstable" or "blocked" mark, a warning check), red not responding (no agent report for 3 minutes;
-on the main server the VPN, database or website down), gray off, maintenance or not installed.
-The selected exit of a cascade comes from the entry's agent (version 3, `xray api bi`, see SERVER.md).
+The page `#/status` ("Состояние серверов", issue #115) makes one request every 15 seconds,
+`GET /v1/admin/servers/overview?range=1h|24h|7d|30d&open=<server ids>` (owner only). The main screen is
+one list: a summary line ("Всего N · работает X · проблем Y · не отвечают Z"), a filter (all, problems,
+not responding, off) and a search by name, then one row per server, problems first, the main server's
+own row (its site, database, bot…) among them. A row has the name (`display_name`, the technical id in
+small type, the role: entry, exit, hidden from subscription), one **State** column with the status in
+words (`Работает`, `Проблема`, `Не отвечает`, `Отключён (обслуживание)`) and a short reason ("нет отчёта
+12 мин", "CPU 95%"), the last report, online users / connections, CPU, memory, disk and traffic for a
+day. Color is only a muted accent on problem rows; the status is always written out.
+
+A click on a row opens the server's card: **why this status** (the rule that fired and its numbers; the
+rules: no agent report for 3 minutes is "not responding", CPU, memory or places at 90% or the owner's
+"unstable" / "blocked" mark is "problem"), the last report in full (agent version, uptime, address,
+CPU, memory, disk, network, traffic classes), users per inbound, for cascade nodes the link to entries /
+exits, charts of one color for 1 hour to 30 days (gaps in reports are gaps in the line), and the
+**event log** with the exact time: went silent, back online (after how long), restart (uptime went
+down), maintenance on / off. Events are in `node_events` (V26, kept 30 days): "online" and "restart"
+are written when the agent reports, "offline" by the monitor. The main server's card keeps the
+monitoring sections below. Disk of a node comes from agent version 3 built after #115 (older agents
+show "not reported").
+
+**Maintenance** (`servers.maintenance`, V26): the button on the card, or
+`PUT /v1/admin/nodes/{id}/maintenance` `{maintenance: true|false}` (owner only), marks a node that is
+expected to be silent (for example a hidden spare with a stopped agent). It is shown as
+`Отключён (обслуживание)` and does not raise the "No contact with …" alert. Hidden-from-subscription
+nodes without the flag are watched as usual. Alerts name nodes by `display_name` and add the reason
+("Berlin (No report for 12 min)").
 
 An alert opens when a problem lasts a few minutes (2 for the VPN and database, 3 for ping, 5 for
 channel load…), is sent once by e-mail and Telegram, repeated every 6 hours while critical, and a

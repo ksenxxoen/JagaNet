@@ -18,8 +18,12 @@ import dev.jaganet.server.services.ServersOverviewRes
 import dev.jaganet.server.services.XrayBalancer
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.put
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -159,5 +163,29 @@ class ServersOverviewTest {
         assertEquals("entry", e.cascadeRole)
         assertEquals(listOf(exit), e.balancer!!.selected)
         assertEquals("exit", o.servers.single { it.id == exit }.cascadeRole)
+    }
+
+    @Test fun `maintenance flag, event log and the reason behind a status`() = harness {
+        val owner = signIn("owner@test.dev")
+        val (id, token) = awgNode("Spare")
+        // A report, ten silent minutes, then a report with a smaller uptime: back online and restarted.
+        services.nodes.report(token, NodeReportReq("amneziawg", emptyList(), sys(0.1).copy(uptime = 5000)))
+        clock = clock.plus(Duration.ofMinutes(10))
+        services.nodes.report(token, NodeReportReq("amneziawg", emptyList(), sys(0.1).copy(uptime = 30)))
+        val events = overview(owner.session.token, "?open=$id").servers.single { it.id == id }.events!!
+        assertEquals(listOf("restart", "online"), events.map { it.kind }.take(2), "newest first")
+        assertEquals("10", events.first { it.kind == "online" }.args["downMinutes"])
+
+        // The flag: "off (maintenance)", its own event, no alert; hidden nodes are not excluded as a group.
+        val res = b.createClient {}.put("/v1/admin/nodes/$id/maintenance") {
+            header("Authorization", "Bearer ${owner.session.token}"); contentType(ContentType.Application.Json); setBody("""{"maintenance":true}""")
+        }
+        assertEquals(HttpStatusCode.OK, res.status, res.bodyAsText())
+        clock = clock.plus(Duration.ofMinutes(10))
+        val s = overview(owner.session.token, "?open=$id").servers.single { it.id == id }
+        assertEquals(true, s.maintenance)
+        assertEquals("off" to "maintenance", s.health to s.issues.single().code)
+        assertEquals("maintenance_on", s.events!!.first().kind)
+        assertEquals(3, overview(owner.session.token).rules.silentMinutes)
     }
 }

@@ -42,6 +42,18 @@ data class NodePoint(
     val online: Int? = null,
 )
 
+/** One line of a node's event log (issue #115): [kind] is offline, online, restart, maintenance_on or maintenance_off. */
+@Serializable
+data class OverviewEvent(val ts: String, val kind: String, val args: Map<String, String> = emptyMap())
+
+/** Users (keys) a node holds per protocol, and how many of them were seen in the last 3 minutes. */
+@Serializable
+data class OverviewInbound(val protocol: String, val users: Int, val online: Int, val endpoint: String? = null)
+
+/** The numbers behind the verdicts, for the "why this status" block. */
+@Serializable
+data class OverviewRules(val silentMinutes: Int, val hotPercent: Int)
+
 /** A balancing cascade entry's choice, from its agent (version 3): exit node ids. */
 @Serializable
 data class OverviewBalancer(val selected: List<String> = emptyList(), val override: String? = null, val reportedAt: String? = null)
@@ -86,6 +98,19 @@ data class OverviewServer(
     /** Only for the servers asked for with ?open=: the detailed charts' points, oldest first. */
     val history: List<NodePoint>? = null,
     val balancer: OverviewBalancer? = null,
+    /** Issue #115: expected to be silent; shown as "off (maintenance)", no "no contact" alert. */
+    val maintenance: Boolean = false,
+    val inSubscription: Boolean = true,
+    val sortOrder: Int = 0,
+    val uptime: Long? = null,
+    val diskFree: Long? = null,
+    val diskTotal: Long? = null,
+    /** The traffic classes service on the node: ok, off, stale or an error. */
+    val classes: String? = null,
+    val reportedAt: String? = null,
+    /** Only for the servers asked for with ?open=: users per inbound and the event log, newest first. */
+    val inbounds: List<OverviewInbound>? = null,
+    val events: List<OverviewEvent>? = null,
 )
 
 /** The main server itself: its latest measurements and the services the map shows. */
@@ -117,6 +142,7 @@ data class ServersOverviewRes(
     /** The main server's monitoring as on the old status page; its series only when the main server is open. */
     val monitor: MonitorRes,
     val servers: List<OverviewServer>,
+    val rules: OverviewRules = OverviewRules((NODE_OFFLINE.toMinutes()).toInt(), 90),
 )
 
 /**
@@ -142,7 +168,7 @@ class ServersOverview(private val ctx: Ctx, private val nodes: Nodes, private va
         fun classify(n: AdminNode, checks: List<HealthCheck>): Pair<String, List<OverviewIssue>> {
             val off = when {
                 !n.active -> "disabled"
-                n.status == NodeStatus.MAINTENANCE -> "maintenance"
+                n.maintenance || n.status == NodeStatus.MAINTENANCE -> "maintenance"
                 n.state == NodeState.WAITING -> "waiting"
                 else -> null
             }
@@ -216,6 +242,13 @@ class ServersOverview(private val ctx: Ctx, private val nodes: Nodes, private va
                     traffic24h = traffic[n.id] ?: 0,
                     spark = if (local) localSpark ?: List(SPARK) { null } else remoteSpark[n.id] ?: List(SPARK) { null },
                     history = if (n.remote && n.id in open) history(sql, n.id, now, histStep) else null,
+                    maintenance = n.maintenance, inSubscription = n.inSubscription, sortOrder = n.sortOrder,
+                    uptime = rep?.system?.uptime?.takeIf { n.remote && it > 0 },
+                    diskFree = if (local) last?.long("disk_free") else rep?.system?.takeIf { it.diskTotal > 0 }?.diskFree,
+                    diskTotal = if (local) last?.long("disk_total") else rep?.system?.diskTotal?.takeIf { it > 0 },
+                    classes = rep?.system?.classes, reportedAt = rep?.at?.let { Instant.ofEpochMilli(it).toString() },
+                    inbounds = if (n.remote && n.id in open) inbounds(sql, n, now) else null,
+                    events = if (n.remote && n.id in open) events(sql, n.id) else null,
                     balancer = if (balancerOn && n.cascadeRole == CASCADE_ENTRY) rep?.balancer?.let { b ->
                         OverviewBalancer(
                             b.selected.map { it.removePrefix(XrayBalancer.PREFIX) },
@@ -259,6 +292,23 @@ class ServersOverview(private val ctx: Ctx, private val nodes: Nodes, private va
             slots.toList()
         }
     }
+
+    /** What a node holds per protocol: keys and those seen in the last 3 minutes. */
+    private fun inbounds(sql: Sql, n: AdminNode, now: Instant): List<OverviewInbound> {
+        val rows = sql.query(
+            """SELECT protocol, count(*)::int AS users, count(*) FILTER (WHERE last_handshake > ?)::int AS online
+                 FROM node_peer_counters WHERE server_id = ? GROUP BY 1 ORDER BY 1""",
+            now.minus(NODE_OFFLINE), n.id,
+        )
+        return rows.map { OverviewInbound(it.str("protocol"), it.int("users"), it.int("online"), if (it.str("protocol") in n.protocols) n.endpoint else null) }
+    }
+
+    /** The node's event log, newest first. */
+    private fun events(sql: Sql, id: String): List<OverviewEvent> =
+        sql.query("SELECT ts, kind, args FROM node_events WHERE server_id = ? ORDER BY ts DESC, id DESC LIMIT 100", id).map { r ->
+            val args = r.json("args").mapValues { (it.value as? kotlinx.serialization.json.JsonPrimitive)?.content ?: "" }
+            OverviewEvent(r.instant("ts").toString(), r.str("kind"), args)
+        }
 
     /** One node's detailed history: [HISTORY] steps of [step] seconds, empty steps kept as gaps. */
     private fun history(sql: Sql, id: String, now: Instant, step: Long): List<NodePoint> {

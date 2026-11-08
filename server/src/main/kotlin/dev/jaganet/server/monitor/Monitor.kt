@@ -127,7 +127,7 @@ class Monitor(
 
         // ---- other locations: each remote node's agent reports every minute
         val remote = runCatching {
-            ctx.db.run { it.query("SELECT name, last_report_at FROM servers WHERE active AND agent_token_hash IS NOT NULL AND protocols <> '{}'::jsonb ORDER BY name") }
+            ctx.db.run { it.query("SELECT id, name, display_name, maintenance, last_report_at FROM servers WHERE active AND agent_token_hash IS NOT NULL AND protocols <> '{}'::jsonb ORDER BY name") }
         }.getOrDefault(emptyList())
         // ---- VPN addresses on Russian block lists (see Blocklists)
         val listed = mutableListOf<Pair<String, dev.jaganet.server.services.BlocklistHit>>()
@@ -147,7 +147,29 @@ class Monitor(
                 }
             }
         }
-        val silent = remote.filter { r -> r.instantOrNull("last_report_at")?.let { Duration.between(it, now) >= NODE_OFFLINE } ?: true }.map { it.str("name") }
+        // Issue #115: a node marked "maintenance" is expected to be silent: no alert. Hidden nodes are watched as usual.
+        // The text names the location as the apps do (display name) with a short reason.
+        val silentRows = remote.filter { r -> r.instantOrNull("last_report_at")?.let { Duration.between(it, now) >= NODE_OFFLINE } ?: true }
+        val silent = silentRows.filter { !it.bool("maintenance") }.map { r ->
+            val label = r.strOrNull("display_name") ?: r.str("name")
+            val since = r.instantOrNull("last_report_at")
+            label + " (" + (since?.let { t("No report for {time}", "time" to t("{n} min", "n" to Duration.between(it, now).toMinutes())) } ?: t("No report yet")) + ")"
+        }
+        // The node's event log: one "offline" line when it falls silent (the "online" line is written by its next report).
+        runCatching {
+            ctx.db.run { sql ->
+                for (r in silentRows) {
+                    if (r.bool("maintenance")) continue
+                    val lastKind = sql.one("SELECT kind FROM node_events WHERE server_id=? AND kind IN ('offline','online') ORDER BY ts DESC, id DESC LIMIT 1", r.str("id"))?.str("kind")
+                    if (lastKind != "offline") {
+                        sql.exec(
+                            "INSERT INTO node_events (server_id, ts, kind, args) VALUES (?,?,'offline',?)",
+                            r.str("id"), r.instantOrNull("last_report_at")?.plus(NODE_OFFLINE) ?: now, dev.jaganet.server.db.Jsonb("{}"),
+                        )
+                    }
+                }
+            }
+        }
 
         // ---- database (also stores the minute)
         val dbOk = runCatching {

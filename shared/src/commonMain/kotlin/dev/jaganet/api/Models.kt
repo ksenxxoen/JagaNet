@@ -1130,6 +1130,8 @@ data class AdminNode(
     val inSubscription: Boolean = true,
     /** "entry" or "exit" in a cascade (the server-side balancer), null = neither. */
     val cascadeRole: String? = null,
+    /** Issue #115: expected to be silent (a hidden spare, a stopped agent): shown as "off (maintenance)", no "no contact" alert. */
+    val maintenance: Boolean = false,
 )
 
 @Serializable
@@ -1138,6 +1140,10 @@ data class AdminNodesRes(
     /** VLESS_BALANCER=1 on the server: cascade entries balance over the exits (issue #41). */
     val vlessBalancer: Boolean = false,
 )
+
+/** PUT /admin/nodes/{id}/maintenance (issue #115). */
+@Serializable
+data class NodeMaintenanceReq(val maintenance: Boolean = false)
 
 /** PUT /admin/nodes/{id}/status: the node's [NodeStatus] and its note for the apps (empty or null = none). */
 @Serializable
