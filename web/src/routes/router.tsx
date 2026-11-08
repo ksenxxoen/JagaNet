@@ -1,36 +1,64 @@
 /**
  * Every route of the website with hash history (#/account?order=…), the same addresses as app.js.
- * The screens are placeholders until their sub-tasks of the epic move them (W-3…W-8).
+ * Moved screens load lazily by section (landing, sign-in); the rest are placeholders until their
+ * sub-tasks of the epic move them (W-4…W-8).
  */
-import { createHashHistory, createRootRouteWithContext, createRoute, createRouter, type RouterHistory } from "@tanstack/react-router";
+import {
+  createHashHistory,
+  createRootRouteWithContext,
+  createRoute,
+  createRouter,
+  lazyRouteComponent,
+  redirect,
+  type RouterHistory,
+} from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
 import { t } from "@/i18n";
 import { Shell } from "@/components/shell/Shell";
+import { Spinner } from "@/components/ui";
+import { useSession } from "@/store/session";
 import { requireOwner, requireSignIn, type RouterContext } from "./guards";
-import { Placeholder } from "./Placeholder";
+import { AccountPlaceholder, Placeholder } from "./Placeholder";
 import { AdminScreen } from "@/features/admin/AdminScreen";
 import { parseSearch, pick, stringifySearch } from "./search";
 import type { QueryClient } from "@tanstack/react-query";
 
+const landing = () => import("@/features/public/Landing");
+const auth = () => import("@/features/auth");
+const LazyLanding = lazy(() => landing().then((m) => ({ default: m.Landing })));
+
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: Shell,
-  // "#features" and other landing anchors are not routes: they show the landing page.
-  notFoundComponent: () => <Placeholder title={t("Boop VPN")} />,
+  // "#features" and other landing anchors are not routes, and neither is anything unknown: both
+  // show the landing page (render() in app.js), which then scrolls to the anchor.
+  notFoundComponent: () => (
+    <Suspense fallback={<Spinner />}>
+      <LazyLanding />
+    </Suspense>
+  ),
+  pendingComponent: () => <Spinner />,
 });
 
-const home = createRoute({ getParentRoute: () => rootRoute, path: "/", component: () => <Placeholder title={t("Boop VPN")} /> });
+const home = createRoute({ getParentRoute: () => rootRoute, path: "/", component: lazyRouteComponent(landing, "Landing") });
+
+/** Sign-in screens with a session: the account, as signin() in app.js. */
+const signedOutOnly = () => {
+  if (useSession.getState().token) throw redirect({ to: "/account" });
+};
 
 const signin = createRoute({
   getParentRoute: () => rootRoute,
   path: "/signin",
   validateSearch: pick("ref"),
-  component: () => <Placeholder title={t("Sign in")} />,
+  beforeLoad: signedOutOnly,
+  component: lazyRouteComponent(auth, "SignIn"),
 });
 
 const login = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login",
   validateSearch: pick("token"),
-  component: () => <Placeholder title={t("Sign in")} />,
+  component: lazyRouteComponent(auth, "Login"),
 });
 
 const appLogin = createRoute({
@@ -38,7 +66,7 @@ const appLogin = createRoute({
   path: "/app-login",
   validateSearch: pick("id"),
   beforeLoad: ({ location }) => requireSignIn(`#${location.href}`),
-  component: () => <Placeholder title={t("Sign in")} />,
+  component: lazyRouteComponent(auth, "AppLogin"),
 });
 
 const account = createRoute({
@@ -46,7 +74,7 @@ const account = createRoute({
   path: "/account",
   validateSearch: pick("order", "id"),
   beforeLoad: ({ location }) => requireSignIn(`#${location.href}`),
-  component: () => <Placeholder title={t("My account")} />,
+  component: AccountPlaceholder,
 });
 
 const referrals = createRoute({

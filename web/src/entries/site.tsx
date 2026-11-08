@@ -7,7 +7,7 @@ import { currentLang, initI18n } from "@/i18n";
 import { store } from "@/lib/storage";
 import { createAppRouter } from "@/routes/router";
 import { useSession } from "@/store/session";
-import "./index.css";
+import "@/index.css";
 
 // A referral link (/r/<code>) lands with ?ref=<code>; keep it until the person signs up.
 const ref = new URLSearchParams(window.location.search).get("ref");

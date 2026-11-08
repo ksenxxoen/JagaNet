@@ -1,16 +1,18 @@
 import { ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { useRouterState } from "@tanstack/react-router";
-import { buttonVariants, Card } from "@/components/ui";
+import { Page, PageHeader } from "@/components/layout";
+import { Button, buttonVariants, Card } from "@/components/ui";
+import { useSignOut } from "@/hooks/useSignOut";
 import { useI18n } from "@/i18n";
 
 /** A screen that has not moved yet: its title, a short note and a link to the same screen on the current site. */
-export function Placeholder({ title, children }: { title: string; children?: ReactNode }) {
+export function Placeholder({ title, actions, children }: { title: string; actions?: ReactNode; children?: ReactNode }) {
   const { t } = useI18n();
   const { pathname, searchStr } = useRouterState({ select: (s) => ({ pathname: s.location.pathname, searchStr: s.location.searchStr }) });
   return (
-    <div className="mx-auto w-full max-w-page px-4 py-10 sm:px-6">
-      <h1 className="mb-6 text-[30px] font-extrabold leading-tight tracking-tight">{title}</h1>
+    <Page>
+      <PageHeader title={title} actions={actions} />
       <Card className="max-w-xl">
         <h2 className="mb-2 mt-0 text-lg">{t("This screen is moving to the new website")}</h2>
         <p className="mb-4 text-muted">{t("Until then it works on the current website.")}</p>
@@ -20,6 +22,22 @@ export function Placeholder({ title, children }: { title: string; children?: Rea
         </a>
       </Card>
       {children}
-    </div>
+    </Page>
+  );
+}
+
+/** #/account until W-4 moves it: the placeholder with "Sign out", as the old account's heading has it. */
+export function AccountPlaceholder() {
+  const { t } = useI18n();
+  const { signOut, pending } = useSignOut();
+  return (
+    <Placeholder
+      title={t("My account")}
+      actions={
+        <Button variant="secondary" disabled={pending} onClick={() => void signOut()}>
+          {t("Sign out")}
+        </Button>
+      }
+    />
   );
 }
