@@ -16,6 +16,7 @@ key is stored encrypted (AES-GCM, key derived from `AUTH_SECRET`). The link
 ## Website
 
 Static files in `server/src/main/resources/web/` (plain HTML/CSS/JS, no build step), served at `/`.
+The new React website is being built in `web/` and previewed on `/next/` (see `docs/WEB-FRONTEND.md`).
 Server-rendered pages: `/k/<token>` (key page), `/pay/test/<order>` (test checkout).
 
 API (all under `/v1`, bearer token from the normal email sign-in):

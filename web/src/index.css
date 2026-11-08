@@ -1,0 +1,126 @@
+/* Tokens copied from server/src/main/resources/web/style.css (light and dark), used by tailwind.config.ts. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --bg: #f6f5fa;
+  --surface: #ffffff;
+  --surface-alt: #ffffff;
+  --subtle: #f2f1f7;
+  --hover: #f6f5fb;
+  --text: #2a2838;
+  --heading: #110f1d;
+  --muted: #5d5a6e;
+  --faint: #8a879a;
+  --border: #e5e3ee;
+  --border-strong: #cfccdc;
+  --row: #eeedf4;
+  --primary: #d81e5b;
+  --primary-hover: #c0174f;
+  --primary-active: #a51243;
+  --primary-tint: #fde9f0;
+  --link: #c2185b;
+  --accent: #6b4dff;
+  --accent-tint: #efebff;
+  --focus: #7b61ff;
+  --success: #0b8a4a;
+  --success-tint: #e5f6ec;
+  --success-text: #116a3a;
+  --warning: #b45f00;
+  --warning-tint: #fff2df;
+  --warning-text: #8a4a00;
+  --danger: #d92d20;
+  --danger-tint: #fdecea;
+  --danger-text: #b42318;
+  --neutral-tint: #efeef5;
+  --neutral-text: #4d4a5d;
+  --shadow-sm: 0 1px 2px rgba(17, 15, 29, 0.05);
+  --shadow: 0 1px 2px rgba(17, 15, 29, 0.04), 0 10px 30px -12px rgba(17, 15, 29, 0.12);
+  --shadow-lg: 0 2px 4px rgba(17, 15, 29, 0.04), 0 30px 70px -24px rgba(55, 30, 120, 0.28);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0a0912;
+    --surface: #13121c;
+    --surface-alt: #0e0d17;
+    --subtle: #1b1a27;
+    --hover: #1a1925;
+    --text: #d8d6e5;
+    --heading: #fbfaff;
+    --muted: #a3a0b9;
+    --faint: #78758e;
+    --border: #262435;
+    --border-strong: #3a3751;
+    --row: #201e2e;
+    --primary: #e0245e;
+    --primary-hover: #ec3a71;
+    --primary-active: #c81b52;
+    --primary-tint: rgba(255, 79, 121, 0.14);
+    --link: #ff86a8;
+    --accent: #a593ff;
+    --accent-tint: rgba(123, 97, 255, 0.16);
+    --focus: #9b87ff;
+    --success: #34c77b;
+    --success-tint: rgba(52, 199, 123, 0.14);
+    --success-text: #6ee0a2;
+    --warning: #f0a43a;
+    --warning-tint: rgba(240, 164, 58, 0.14);
+    --warning-text: #f7c06f;
+    --danger: #f05a4f;
+    --danger-tint: rgba(240, 90, 79, 0.15);
+    --danger-text: #ff9086;
+    --neutral-tint: #23212f;
+    --neutral-text: #c4c1d6;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 30px -14px rgba(0, 0, 0, 0.6);
+    --shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.3), 0 30px 70px -24px rgba(0, 0, 0, 0.7);
+  }
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+  body {
+    @apply bg-paper text-ink font-sans;
+    font-size: 15px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  #root {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply text-ink-heading font-bold;
+    letter-spacing: -0.015em;
+  }
+  a {
+    @apply text-link;
+  }
+  /* Numbers line up in tables and tiles. */
+  .tnum,
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+  [id] {
+    scroll-margin-top: 80px;
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+}

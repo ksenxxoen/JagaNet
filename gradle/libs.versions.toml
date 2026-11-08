@@ -17,6 +17,7 @@ qrcodegen = "1.8.0"
 angusMail = "2.0.3"
 jsch = "2.27.3"
 sshd = "2.16.0"
+nodeGradle = "7.1.0"
 
 [libraries]
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
@@ -73,3 +74,4 @@ compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose" 
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-kmp-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
+node-gradle = { id = "com.github.node-gradle.node", version.ref = "nodeGradle" }

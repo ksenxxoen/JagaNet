@@ -1,0 +1,45 @@
+import type { Config } from "tailwindcss";
+
+/**
+ * Theme from the website's tokens (server/src/main/resources/web/style.css, docs/DESIGN.md).
+ * Every color is a CSS variable defined in src/index.css for the light and the dark theme, so the
+ * classes below (bg-paper, text-ink, border-line…) follow prefers-color-scheme like the old site.
+ * Names follow docs/DESIGN.md: paper, surface, ink, muted, line*, primary*, green*, warn*.
+ */
+const v = (name: string) => `var(--${name})`;
+
+export default {
+  content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  darkMode: "media",
+  theme: {
+    extend: {
+      colors: {
+        paper: v("bg"),
+        surface: { DEFAULT: v("surface"), alt: v("surface-alt") },
+        subtle: v("subtle"),
+        hover: v("hover"),
+        ink: { DEFAULT: v("text"), heading: v("heading") },
+        muted: v("muted"),
+        faint: v("faint"),
+        line: { DEFAULT: v("border"), soft: v("row"), strong: v("border-strong") },
+        primary: { DEFAULT: v("primary"), hover: v("primary-hover"), active: v("primary-active"), tint: v("primary-tint") },
+        link: v("link"),
+        accent: { DEFAULT: v("accent"), tint: v("accent-tint") },
+        focus: v("focus"),
+        green: { DEFAULT: v("success"), tint: v("success-tint"), text: v("success-text") },
+        warn: { DEFAULT: v("warning"), tint: v("warning-tint"), text: v("warning-text") },
+        danger: { DEFAULT: v("danger"), tint: v("danger-tint"), text: v("danger-text") },
+        neutral: { tint: v("neutral-tint"), text: v("neutral-text") },
+      },
+      fontFamily: {
+        sans: ["Inter", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
+        mono: ["ui-monospace", "SF Mono", "Menlo", "Consolas", "Liberation Mono", "monospace"],
+      },
+      borderRadius: { ctl: "10px", panel: "16px", lg: "24px" },
+      boxShadow: { sm: v("shadow-sm"), DEFAULT: v("shadow"), lg: v("shadow-lg") },
+      height: { ctl: "40px" },
+      maxWidth: { page: "1200px" },
+    },
+  },
+  plugins: [],
+} satisfies Config;
