@@ -6,23 +6,12 @@
 import { create } from "zustand";
 import { store } from "@/lib/storage";
 import type { Lang } from "@/i18n/format";
+import type { Schema } from "@/api/typed";
 
-export type Role = "user" | "owner" | (string & {});
+export type Role = Schema<"Role">;
 
 /** /v1/site: what the website shows and allows (SiteInfo on the server). */
-export interface SiteInfo {
-  androidAppUrl?: string | null;
-  iosAppUrl?: string | null;
-  telegramBotUrl?: string | null;
-  testPayments?: boolean;
-  paymentsEnabled?: boolean;
-  emailSignIn?: boolean;
-  testCodes?: boolean;
-  referralsPublic?: boolean;
-  inviteRewardDays?: number;
-  communityUrl?: string | null;
-  [key: string]: unknown;
-}
+export type SiteInfo = Schema<"SiteInfo">;
 
 interface SessionState {
   token: string | null;

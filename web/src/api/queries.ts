@@ -1,7 +1,7 @@
 /** React Query: the client and the shared queries of the shell (/me, /site). */
 import { QueryClient, queryOptions } from "@tanstack/react-query";
-import { ApiError, getJson } from "./client";
-import type { Role, SiteInfo } from "@/store/session";
+import { ApiError } from "./client";
+import { get } from "./typed";
 
 export function createQueryClient() {
   return new QueryClient({
@@ -17,12 +17,7 @@ export function createQueryClient() {
   });
 }
 
-export interface Me {
-  user: { id: string; email?: string | null; role: Role; [key: string]: unknown };
-  [key: string]: unknown;
-}
-
 export const meQuery = (token: string | null) =>
-  queryOptions({ queryKey: ["me", token], queryFn: () => getJson<Me>("/me"), enabled: !!token, staleTime: 5 * 60_000 });
+  queryOptions({ queryKey: ["me", token], queryFn: () => get("/me"), enabled: !!token, staleTime: 5 * 60_000 });
 
-export const siteQuery = queryOptions({ queryKey: ["site"], queryFn: () => getJson<SiteInfo>("/site"), staleTime: 5 * 60_000 });
+export const siteQuery = queryOptions({ queryKey: ["site"], queryFn: () => get("/site"), staleTime: 5 * 60_000 });

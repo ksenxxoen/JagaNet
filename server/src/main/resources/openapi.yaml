@@ -1,0 +1,4200 @@
+# The OpenAPI 3.1 description of the panel's /v1 API (epic #117, W-2). Kept by hand, next to the routes in
+# server/src/main/kotlin/dev/jaganet/server/http/*.kt and the models in shared/.../api/Models.kt and the server DTOs.
+# OpenApiTest fails when a route is missing here (or is here but not in Ktor), when a component with
+# x-kotlin no longer matches its class, or when a key endpoint answers something this file does not allow.
+# A new model's schema: OPENAPI_DUMP (see OpenApiDumpTest) prints it. The website's types come from here:
+# `npm run gen:api` in web/ (web/src/api/schema.d.ts). Served to the owner as /v1/openapi.json.
+openapi: 3.1.0
+info:
+  title: Boop panel API
+  version: '1'
+  description: 'The /v1 API of the Boop (JagaNet) panel: website, apps, Telegram bot and mini app, node agents.
+
+
+    Hand-kept next to the routes (server/src/main/resources/openapi.yaml). OpenApiTest checks that every /v1 route is here
+    and back, that every component with `x-kotlin` matches its @Serializable class, and validates real answers of the key
+    endpoints. See docs/WEB-FRONTEND.md, "API description".
+
+
+    JSON: fields with defaults are always sent, null fields are left out (unless the schema says `x-explicit-nulls`); unknown
+    request fields are ignored. Errors: `{"error": {"code", "message"}}` with the HTTP status; the message is translated by
+    `Accept-Language` (ru, de, en).'
+servers:
+- {url: /}
+tags:
+- {name: public, description: No session needed.}
+- {name: user, description: A signed-in user (Bearer session token).}
+- {name: owner, description: The owner (admin panel).}
+- {name: telegram, description: 'Telegram sign-in, linking and the mini app.'}
+- {name: node, description: 'Node agents, with the node token (not a user session).'}
+security:
+- {bearer: []}
+paths:
+  /v1/app/desktop:
+    get:
+      tags: [public]
+      summary: The latest desktop app build (404 until one is published)
+      operationId: getAppDesktop
+      parameters:
+      - name: platform
+        in: query
+        schema: {type: string, enum: [windows, linux]}
+        description: 'Without it: the Windows build (all Windows clients).'
+      - name: distro
+        in: query
+        schema: {type: string}
+        description: Linux only, e.g. ubuntu24.04.
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DesktopAppManifest'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/auth/email/start:
+    post:
+      tags: [public]
+      summary: Send a sign-in code by e-mail
+      operationId: postAuthEmailStart
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EmailStartReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EmailStartRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/auth/email/verify:
+    post:
+      tags: [public]
+      summary: Sign in with the e-mailed code
+      operationId: postAuthEmailVerify
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EmailVerifyReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SessionRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/auth/pair/redeem:
+    post:
+      tags: [public]
+      summary: Sign in a new device with a pairing code
+      operationId: postAuthPairRedeem
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PairRedeemReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SessionRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/auth/app/start:
+    post:
+      tags: [public]
+      summary: Start signing in an app through the website
+      operationId: postAuthAppStart
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AppLoginStartReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AppLoginStartRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/auth/app/poll:
+    post:
+      tags: [public]
+      summary: The app asks whether its sign-in was allowed
+      operationId: postAuthAppPoll
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AppLoginPollReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AppLoginPollRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/auth/app/{id}:
+    get:
+      tags: [user]
+      summary: An app sign-in request, for the website to confirm
+      operationId: getAuthAppById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AppLoginInfo'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/auth/app/{id}/allow:
+    post:
+      tags: [user]
+      summary: Allow an app sign-in request
+      operationId: postAuthAppByIdAllow
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/auth/logout:
+    post:
+      tags: [user]
+      summary: Sign out this session
+      operationId: postAuthLogout
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/auth/link/redeem:
+    post:
+      tags: [public]
+      summary: Sign in with a one-time link (e-mail, bot)
+      operationId: postAuthLinkRedeem
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LinkLoginReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SessionRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/me:
+    get:
+      tags: [user]
+      summary: The account, plan and entitlement
+      operationId: getMe
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MeRes'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      tags: [user]
+      summary: Delete the account
+      operationId: deleteMe
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/me/payments:
+    get:
+      tags: [user]
+      summary: The account's payments
+      operationId: getMePayments
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PaymentsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/me/lang:
+    put:
+      tags: [user]
+      summary: The account's language (bot messages, e-mails)
+      operationId: putMeLang
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SetLangReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/servers:
+    get:
+      tags: [user]
+      summary: VPN locations
+      operationId: getServers
+      parameters:
+      - name: supportedProtocols
+        in: query
+        schema: {type: string}
+        description: Comma-separated protocol ids the app runs, e.g. amneziawg,vless. Without it opt-in protocols (VLESS)
+          are left out.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ServersRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/tunnel:
+    post:
+      tags: [user]
+      summary: A tunnel config for this device
+      operationId: postTunnel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TunnelProvisionReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TunnelConfig'}
+        default: {$ref: '#/components/responses/Error'}
+    get:
+      tags: [user]
+      summary: This device's current tunnel
+      operationId: getTunnel
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TunnelState'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/tunnel/events:
+    post:
+      tags: [user]
+      summary: A connection event from the app
+      operationId: postTunnelEvents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ConnectionEventReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/devices:
+    get:
+      tags: [user]
+      summary: The account's devices
+      operationId: getDevices
+      parameters:
+      - name: supportedProtocols
+        in: query
+        schema: {type: string}
+        description: Comma-separated protocol ids the app runs, e.g. amneziawg,vless. Without it opt-in protocols (VLESS)
+          are left out.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DevicesRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/devices/{id}:
+    patch:
+      tags: [user]
+      summary: Rename a device
+      operationId: patchDevicesById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RenameDeviceReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      tags: [user]
+      summary: Remove a device
+      operationId: deleteDevicesById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/devices/pairing-code:
+    post:
+      tags: [user]
+      summary: A code to sign in another device
+      operationId: postDevicesPairingCode
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PairingCodeRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/stats:
+    get:
+      tags: [user]
+      summary: Traffic statistics of the account
+      operationId: getStats
+      parameters:
+      - name: period
+        in: query
+        schema: {type: string, enum: [day, week, month], default: week}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StatsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/billing/plans:
+    get:
+      tags: [public]
+      summary: Plans and prices (apps)
+      operationId: getBillingPlans
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PlansRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/monitor:
+    get:
+      tags: [owner]
+      summary: Server monitoring
+      operationId: getAdminMonitor
+      parameters:
+      - name: range
+        in: query
+        schema: {type: string, enum: [1h, 24h, 7d, 30d], default: 24h}
+        description: Anything else is 24h.
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MonitorRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/servers/overview:
+    get:
+      tags: [owner]
+      summary: The server status page in one request
+      operationId: getAdminServersOverview
+      parameters:
+      - name: range
+        in: query
+        schema: {type: string, enum: [1h, 24h, 7d, 30d], default: 24h}
+        description: Anything else is 24h.
+      - name: open
+        in: query
+        schema: {type: string}
+        description: Comma-separated server ids whose charts are open (up to 50).
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ServersOverviewRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/monitor/test:
+    post:
+      tags: [owner]
+      summary: Send a test alert
+      operationId: postAdminMonitorTest
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/settings:
+    get:
+      tags: [owner]
+      summary: Panel settings
+      operationId: getAdminSettings
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminSettingsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/settings/plans:
+    put:
+      tags: [owner]
+      summary: Save plan settings
+      operationId: putAdminSettingsPlans
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PlanSettings'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminSettingsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/settings/smtp:
+    put:
+      tags: [owner]
+      summary: Save e-mail (SMTP) settings
+      operationId: putAdminSettingsSmtp
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SmtpSettings'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminSettingsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/settings/alerts:
+    put:
+      tags: [owner]
+      summary: Save alert settings
+      operationId: putAdminSettingsAlerts
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AlertSettings'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminSettingsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/settings/modes:
+    put:
+      tags: [owner]
+      summary: Save modes (test payments, sign-in codes)
+      operationId: putAdminSettingsModes
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ModeSettings'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminSettingsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/settings/network:
+    put:
+      tags: [owner]
+      summary: Save network settings
+      operationId: putAdminSettingsNetwork
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NetworkSettings'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminSettingsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/settings/notice:
+    put:
+      tags: [owner]
+      summary: Save the notice shown in the apps
+      operationId: putAdminSettingsNotice
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NoticeSettings'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminSettingsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/settings/smtp/test:
+    post:
+      tags: [owner]
+      summary: Send a test e-mail
+      operationId: postAdminSettingsSmtpTest
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TestEmailReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/blocklist:
+    get:
+      tags: [owner]
+      summary: Check an address against Russian block lists
+      operationId: getAdminBlocklist
+      parameters:
+      - name: host
+        in: query
+        schema: {type: string}
+        required: true
+        description: An IP address or a domain name.
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BlocklistRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/test-accounts:
+    get:
+      tags: [owner]
+      summary: Test accounts
+      operationId: getAdminTestAccounts
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TestAccountsRes'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [owner]
+      summary: Create test accounts
+      operationId: postAdminTestAccounts
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TestAccountsReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TestAccountsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/test-accounts/{id}/assign:
+    post:
+      tags: [owner]
+      summary: Give a test account to someone
+      operationId: postAdminTestAccountsByIdAssign
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AssignTestAccountReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AssignTestAccountRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/test-accounts/{id}:
+    delete:
+      tags: [owner]
+      summary: Delete a test account
+      operationId: deleteAdminTestAccountsById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/tariffs:
+    get:
+      tags: [owner]
+      summary: Tariffs
+      operationId: getAdminTariffs
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminTariffsRes'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [owner]
+      summary: Create a tariff
+      operationId: postAdminTariffs
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TariffReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminTariffsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/tariffs/{id}:
+    put:
+      tags: [owner]
+      summary: Change a tariff
+      operationId: putAdminTariffsById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TariffReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminTariffsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/finance:
+    get:
+      tags: [owner]
+      summary: Money summary
+      operationId: getAdminFinance
+      parameters:
+      - name: period
+        in: query
+        schema: {type: string, enum: [7d, 30d, 90d, all], default: 30d}
+        description: Anything else is 30d.
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/FinanceRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/node/register:
+    post:
+      tags: [node]
+      summary: A node agent registers itself
+      operationId: postNodeRegister
+      security:
+      - {nodeToken: []}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NodeRegisterReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NodeRegisterRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/node/peers:
+    get:
+      tags: [node]
+      summary: The node's peers (long poll while the version is unchanged)
+      operationId: getNodePeers
+      parameters:
+      - name: version
+        in: query
+        schema: {type: string}
+        description: 'The peers version the agent has: the answer waits (up to 25 s) while it is current.'
+      security:
+      - {nodeToken: []}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NodePeersRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/node/report:
+    post:
+      tags: [node]
+      summary: A node agent's report
+      operationId: postNodeReport
+      security:
+      - {nodeToken: []}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NodeReportReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/nodes:
+    get:
+      tags: [owner]
+      summary: Nodes
+      operationId: getAdminNodes
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminNodesRes'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [owner]
+      summary: Create a node
+      operationId: postAdminNodes
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NodeReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NodeInstallRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/nodes/{id}/balancer:
+    get:
+      tags: [owner]
+      summary: A cascade entry's Xray balancer fragment
+      operationId: getAdminNodesByIdBalancer
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                description: An Xray config fragment (outbounds, routing.balancers, observatory) for the entry node.
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/analytics:
+    get:
+      tags: [owner]
+      summary: Traffic analytics, all servers
+      operationId: getAdminAnalytics
+      parameters:
+      - name: period
+        in: query
+        schema: {type: string, enum: [24h, 7d, 30d, 90d], default: 7d}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AnalyticsOverviewRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/analytics/servers/{id}:
+    get:
+      tags: [owner]
+      summary: Traffic analytics of one server
+      operationId: getAdminAnalyticsServersById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      - name: period
+        in: query
+        schema: {type: string, enum: [24h, 7d, 30d, 90d], default: 7d}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AnalyticsServerRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/analytics/users:
+    get:
+      tags: [owner]
+      summary: Traffic analytics of users
+      operationId: getAdminAnalyticsUsers
+      parameters:
+      - name: period
+        in: query
+        schema: {type: string, enum: [24h, 7d, 30d, 90d], default: 7d}
+      - name: q
+        in: query
+        schema: {type: string}
+        description: Search text.
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AnalyticsUsersRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/analytics/users/{id}:
+    get:
+      tags: [owner]
+      summary: Traffic analytics of one user
+      operationId: getAdminAnalyticsUsersById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      - name: period
+        in: query
+        schema: {type: string, enum: [24h, 7d, 30d, 90d], default: 7d}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AnalyticsUserRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/devices/{id}/move:
+    post:
+      tags: [owner]
+      summary: Move a device to another node
+      operationId: postAdminDevicesByIdMove
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MoveDeviceReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/devices/{id}:
+    patch:
+      tags: [owner]
+      summary: Rename any device
+      operationId: patchAdminDevicesById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RenameDeviceReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/connection-failures:
+    get:
+      tags: [owner]
+      summary: Failed connection attempts reported by the apps
+      operationId: getAdminConnectionFailures
+      parameters:
+      - name: server
+        in: query
+        schema: {type: string}
+        description: Node id.
+      - name: user
+        in: query
+        schema: {type: string}
+        description: User e-mail or id.
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ConnectionFailuresRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/devices/{id}/rekey:
+    post:
+      tags: [owner]
+      summary: Ask the device's app for a new key pair
+      operationId: postAdminDevicesByIdRekey
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/nodes/{id}:
+    put:
+      tags: [owner]
+      summary: Change a node
+      operationId: putAdminNodesById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NodeReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminNode'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/nodes/{id}/maintenance:
+    put:
+      tags: [owner]
+      summary: Maintenance flag of a node
+      operationId: putAdminNodesByIdMaintenance
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NodeMaintenanceReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminNode'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/nodes/{id}/status:
+    put:
+      tags: [owner]
+      summary: What the apps are told about a node
+      operationId: putAdminNodesByIdStatus
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NodeStatusReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminNode'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/nodes/{id}/token:
+    post:
+      tags: [owner]
+      summary: A new agent token for a node
+      operationId: postAdminNodesByIdToken
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NodeInstallRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/nodes/{id}/install:
+    post:
+      tags: [owner]
+      summary: Install the agent over SSH
+      operationId: postAdminNodesByIdInstall
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NodeSshReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NodeInstall'}
+        default: {$ref: '#/components/responses/Error'}
+    get:
+      tags: [owner]
+      summary: Progress of the agent install
+      operationId: getAdminNodesByIdInstall
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NodeInstall'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/nodes/{id}/move-devices:
+    post:
+      tags: [owner]
+      summary: Move all devices of a node to another
+      operationId: postAdminNodesByIdMoveDevices
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MoveDevicesReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MoveDevicesRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/diagnostics:
+    post:
+      tags: [user]
+      summary: A problem report from an app (up to 1 MB)
+      operationId: postDiagnostics
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DiagnosticsReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DiagnosticsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/diagnostics:
+    get:
+      tags: [owner]
+      summary: Problem reports
+      operationId: getAdminDiagnostics
+      parameters:
+      - name: user
+        in: query
+        schema: {type: string}
+        description: User e-mail or id.
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DiagnosticsListRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/diagnostics/{id}:
+    get:
+      tags: [owner]
+      summary: One problem report
+      operationId: getAdminDiagnosticsById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DiagnosticsReport'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/control/dashboard:
+    get:
+      tags: [owner]
+      summary: Control dashboard
+      operationId: getAdminControlDashboard
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlDashboard'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/control/settings:
+    get:
+      tags: [owner]
+      summary: Control settings
+      operationId: getAdminControlSettings
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlSettings'}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      tags: [owner]
+      summary: Save control settings
+      operationId: putAdminControlSettings
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CtlSettings'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlSettings'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/control/audit:
+    get:
+      tags: [owner]
+      summary: The admin action log
+      operationId: getAdminControlAudit
+      parameters:
+      - name: user
+        in: query
+        schema: {type: string}
+        description: User e-mail or id.
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlAuditRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/users:
+    get:
+      tags: [owner]
+      summary: Find users
+      operationId: getAdminUsers
+      parameters:
+      - name: q
+        in: query
+        schema: {type: string}
+        description: Search text.
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlUsersRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/users/{id}:
+    get:
+      tags: [owner]
+      summary: A user's card
+      operationId: getAdminUsersById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlUserCard'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/users/{id}/extend:
+    post:
+      tags: [owner]
+      summary: Extend a subscription
+      operationId: postAdminUsersByIdExtend
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CtlDaysReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlUserCard'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/users/{id}/grant:
+    post:
+      tags: [owner]
+      summary: Grant free days
+      operationId: postAdminUsersByIdGrant
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CtlDaysReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlUserCard'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/users/{id}/plan:
+    post:
+      tags: [owner]
+      summary: Change the plan
+      operationId: postAdminUsersByIdPlan
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CtlPlanReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlUserCard'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/users/{id}/block:
+    post:
+      tags: [owner]
+      summary: Block a user
+      operationId: postAdminUsersByIdBlock
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CtlBlockReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlUserCard'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/users/{id}/unblock:
+    post:
+      tags: [owner]
+      summary: Unblock a user
+      operationId: postAdminUsersByIdUnblock
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlUserCard'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/users/{id}/note:
+    put:
+      tags: [owner]
+      summary: The admin's note on a user
+      operationId: putAdminUsersByIdNote
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CtlNoteReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlUserCard'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/users/{id}/devices/{device}/reissue:
+    post:
+      tags: [owner]
+      summary: Reissue a device key
+      operationId: postAdminUsersByIdDevicesByDeviceReissue
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      - name: device
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlReissueRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/users/{id}/devices/{device}:
+    delete:
+      tags: [owner]
+      summary: Delete a user's device
+      operationId: deleteAdminUsersByIdDevicesByDevice
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      - name: device
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlUserCard'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/payments:
+    get:
+      tags: [owner]
+      summary: Payments
+      operationId: getAdminPayments
+      parameters:
+      - name: from
+        in: query
+        schema: {type: string, format: date}
+        description: YYYY-MM-DD, inclusive.
+      - name: to
+        in: query
+        schema: {type: string, format: date}
+        description: YYYY-MM-DD, inclusive.
+      - name: status
+        in: query
+        schema: {type: string, enum: [paid, pending, cancelled]}
+      - name: q
+        in: query
+        schema: {type: string}
+        description: Search text.
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlPaymentsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/payments.csv:
+    get:
+      tags: [owner]
+      summary: Payments as CSV
+      operationId: getAdminPaymentsCsv
+      parameters:
+      - name: from
+        in: query
+        schema: {type: string, format: date}
+        description: YYYY-MM-DD, inclusive.
+      - name: to
+        in: query
+        schema: {type: string, format: date}
+        description: YYYY-MM-DD, inclusive.
+      - name: status
+        in: query
+        schema: {type: string, enum: [paid, pending, cancelled]}
+      - name: q
+        in: query
+        schema: {type: string}
+        description: Search text.
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            text/csv:
+              schema: {type: string, description: 'UTF-8 with BOM, one payment per line.'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/referrals:
+    get:
+      tags: [user]
+      summary: The app's invite summary
+      operationId: getReferrals
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReferralRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/referrals/stats:
+    get:
+      tags: [user]
+      summary: Referral statistics (owner, or everyone with REFERRALS_PUBLIC=1)
+      operationId: getReferralsStats
+      parameters:
+      - name: period
+        in: query
+        schema: {type: string, enum: [7d, 30d, 90d, all], default: 30d}
+        description: Anything else is 30d.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReferralStatsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/referrals/links:
+    post:
+      tags: [user]
+      summary: Create a referral link
+      operationId: postReferralsLinks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateReferralLinkReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReferralLink'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/referrals/links/{id}:
+    patch:
+      tags: [user]
+      summary: Rename a referral link
+      operationId: patchReferralsLinksById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RenameReferralLinkReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      tags: [user]
+      summary: Archive a referral link
+      operationId: deleteReferralsLinksById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/referrals:
+    get:
+      tags: [owner]
+      summary: All referral links
+      operationId: getAdminReferrals
+      parameters:
+      - name: period
+        in: query
+        schema: {type: string, enum: [7d, 30d, 90d, all], default: 30d}
+        description: Anything else is 30d.
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminReferralsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/referrals/invite:
+    get:
+      tags: [user]
+      summary: The user's invite links and rewards
+      operationId: getReferralsInvite
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InviteRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/referral-rewards:
+    get:
+      tags: [owner]
+      summary: Invite rewards
+      operationId: getAdminReferralRewards
+      parameters:
+      - name: suspicious
+        in: query
+        schema: {type: string, enum: ['1']}
+        description: '1: only rewards with the anti-fraud flag.'
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminReferralRewardsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/referral-rewards/settings:
+    put:
+      tags: [owner]
+      summary: Save invite reward rules
+      operationId: putAdminReferralRewardsSettings
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReferralRewardSettings'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminReferralRewardsRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/referral-rewards/{id}/cancel:
+    post:
+      tags: [owner]
+      summary: Cancel an invite reward
+      operationId: postAdminReferralRewardsByIdCancel
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminReward'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/site:
+    get:
+      tags: [public]
+      summary: Website settings
+      operationId: getSite
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SiteInfo'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/i18n/{lang}:
+    get:
+      tags: [public]
+      summary: The website's texts in one language (keys are the English texts)
+      operationId: getI18NByLang
+      parameters:
+      - name: lang
+        in: path
+        required: true
+        schema: {type: string}
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {type: string}
+                description: English text → translation.
+        default: {$ref: '#/components/responses/Error'}
+  /v1/keys:
+    get:
+      tags: [user]
+      summary: The account's access keys
+      operationId: getKeys
+      parameters:
+      - name: supportedProtocols
+        in: query
+        schema: {type: string}
+        description: Comma-separated protocol ids the app runs, e.g. amneziawg,vless. Without it opt-in protocols (VLESS)
+          are left out.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/KeysRes'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [user]
+      summary: Create an access key
+      operationId: postKeys
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccessKey'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/keys/{id}/tunnel:
+    get:
+      tags: [user]
+      summary: The tunnel config of a key
+      operationId: getKeysByIdTunnel
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/KeyTunnel'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/keys/{id}:
+    delete:
+      tags: [user]
+      summary: Delete an access key
+      operationId: deleteKeysById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/orders:
+    post:
+      tags: [user]
+      summary: Create an order
+      operationId: postOrders
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateOrderReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OrderRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/orders/{id}:
+    get:
+      tags: [user]
+      summary: An order and its status
+      operationId: getOrdersById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OrderRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/auth/telegram/config:
+    get:
+      tags: [telegram]
+      summary: Telegram sign-in settings
+      operationId: getAuthTelegramConfig
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TelegramConfigRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/auth/telegram:
+    post:
+      tags: [telegram]
+      summary: Sign in with the Telegram Login Widget
+      operationId: postAuthTelegram
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [auth]
+              properties:
+                auth:
+                  type: object
+                  additionalProperties: true
+                  description: The fields the Telegram Login Widget returned (id, first_name, username, photo_url, auth_date,
+                    hash, ...), checked by their signature.
+                referralCode: {type: string, maxLength: 32}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SessionRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/auth/telegram/webapp:
+    post:
+      tags: [telegram]
+      summary: Sign in from the Telegram mini app (initData)
+      operationId: postAuthTelegramWebapp
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [initData]
+              properties:
+                initData: {type: string, description: 'Telegram.WebApp.initData as is. A credential: never logged.'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SessionRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/telegram:
+    get:
+      tags: [telegram]
+      summary: Is Telegram linked to the account
+      operationId: getTelegram
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TelegramStatusRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/telegram/notify:
+    put:
+      tags: [telegram]
+      summary: Notifications in Telegram on or off
+      operationId: putTelegramNotify
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [notify]
+              properties:
+                notify: {type: boolean}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/telegram/login-link:
+    post:
+      tags: [telegram]
+      summary: A one-time link that signs in on the website
+      operationId: postTelegramLoginLink
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TelegramLoginLinkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/telegram/link:
+    post:
+      tags: [telegram]
+      summary: A one-time t.me link that links Telegram to the account
+      operationId: postTelegramLink
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TelegramLinkRes'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      tags: [telegram]
+      summary: Unlink Telegram (e-mail accounts only)
+      operationId: deleteTelegramLink
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/support:
+    get:
+      tags: [public]
+      summary: Is the support form working
+      operationId: getSupport
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SupportInfoRes'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [public]
+      summary: Send a message to support (signed in or not)
+      operationId: postSupport
+      security:
+      - {}
+      - {bearer: []}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SupportReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OkRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/overview:
+    get:
+      tags: [owner]
+      summary: Admin overview
+      operationId: getAdminOverview
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminOverviewRes'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/openapi.json:
+    get:
+      tags: [owner]
+      summary: This specification (owner only, 404 for everyone else)
+      operationId: getOpenapiJson
+      description: Owner only; 404 for everyone else (signed in or not).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true, description: This document as JSON.}
+        default: {$ref: '#/components/responses/Error'}
+  /health:
+    get:
+      tags: [public]
+      summary: Liveness check
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HealthRes'}
+        default: {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: The session token from a sign-in endpoint (SessionRes.token).
+    nodeToken:
+      type: http
+      scheme: bearer
+      description: 'The node agent token (Authorization: Bearer <token>), from POST /v1/admin/nodes or /token.'
+  responses:
+    Error:
+      description: 'An error: 400 bad request, 401 no or expired session, 403 not allowed, 404 not found, 409 conflict, 429
+        too many attempts, 5xx.'
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorRes'}
+  schemas:
+    AccessKey:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        protocol: {type: string}
+        location: {type: string}
+        pageUrl: {type: string}
+        configUrl: {type: string}
+        qrUrl: {type: string}
+        createdAt: {type: string}
+        lastSeenAt: {type: string}
+        countryCode: {type: string}
+      required: [id, name, protocol, location, pageUrl, configUrl, qrUrl, createdAt]
+      x-kotlin: dev.jaganet.api.AccessKey
+    AdminNode:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        city: {type: string}
+        countryCode: {type: string}
+        remote: {type: boolean}
+        state: {$ref: '#/components/schemas/NodeState'}
+        active: {type: boolean}
+        maxPeers: {type: integer, format: int32}
+        peers: {type: integer, format: int32}
+        online: {type: integer, format: int32}
+        endpoint: {type: string}
+        hostname: {type: string}
+        publicIp: {type: string}
+        protocols:
+          type: array
+          items: {type: string}
+        lastReportAt: {type: string}
+        cpu: {type: number}
+        memUsed: {type: integer, format: int64}
+        memTotal: {type: integer, format: int64}
+        rxBps: {type: integer, format: int64}
+        txBps: {type: integer, format: int64}
+        createdAt: {type: string}
+        install: {$ref: '#/components/schemas/NodeInstall'}
+        status: {type: string}
+        notice: {type: string}
+        countryName: {type: string}
+        vless: {$ref: '#/components/schemas/VlessNodeSettings'}
+        displayName: {type: string}
+        sortOrder: {type: integer, format: int32}
+        inSubscription: {type: boolean}
+        cascadeRole: {type: string}
+        maintenance: {type: boolean}
+      required: [id, name, city, countryCode, remote, state, active, maxPeers, peers, online, protocols, createdAt, status,
+        sortOrder, inSubscription, maintenance]
+      x-kotlin: dev.jaganet.api.AdminNode
+    AdminNodesRes:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items: {$ref: '#/components/schemas/AdminNode'}
+        vlessBalancer: {type: boolean}
+      required: [nodes, vlessBalancer]
+      x-kotlin: dev.jaganet.api.AdminNodesRes
+    AdminOverviewRes:
+      type: object
+      properties:
+        revenue: {$ref: '#/components/schemas/Revenue'}
+        server: {$ref: '#/components/schemas/ServerHealth'}
+      required: [revenue, server]
+      x-kotlin: dev.jaganet.api.AdminOverviewRes
+    AdminReferralRewardsRes:
+      type: object
+      properties:
+        settings: {$ref: '#/components/schemas/ReferralRewardSettings'}
+        granted: {type: integer, format: int32}
+        daysGranted: {type: integer, format: int32}
+        capped: {type: integer, format: int32}
+        cancelled: {type: integer, format: int32}
+        suspicious: {type: integer, format: int32}
+        top:
+          type: array
+          items: {$ref: '#/components/schemas/RewardTopReferrer'}
+        rewards:
+          type: array
+          items: {$ref: '#/components/schemas/AdminReward'}
+      required: [settings, granted, daysGranted, capped, cancelled, suspicious, top, rewards]
+      x-kotlin: dev.jaganet.api.AdminReferralRewardsRes
+    AdminReferralsRes:
+      type: object
+      properties:
+        period: {$ref: '#/components/schemas/ReferralPeriod'}
+        totals: {$ref: '#/components/schemas/Funnel'}
+        days:
+          type: array
+          items: {$ref: '#/components/schemas/ReferralDay'}
+        sources:
+          type: array
+          items: {$ref: '#/components/schemas/CountBy'}
+        channels:
+          type: array
+          items: {$ref: '#/components/schemas/CountBy'}
+        topReferrers:
+          type: array
+          items: {$ref: '#/components/schemas/TopReferrer'}
+      required: [period, totals, days, sources, channels, topReferrers]
+      x-kotlin: dev.jaganet.api.AdminReferralsRes
+    AdminReward:
+      type: object
+      properties:
+        id: {type: string}
+        createdAt: {type: string}
+        userId: {type: string}
+        userEmail: {type: string}
+        referrerEmail: {type: string}
+        inviteeId: {type: string}
+        inviteeEmail: {type: string}
+        kind: {type: string}
+        reason: {type: string}
+        days: {type: integer, format: int32}
+        status: {type: string}
+        suspicion: {type: string}
+        notifiedVia: {type: string}
+        cancelledAt: {type: string}
+      required: [id, createdAt, userId, userEmail, referrerEmail, inviteeId, inviteeEmail, kind, reason, days, status]
+      x-kotlin: dev.jaganet.api.AdminReward
+    AdminSettingsRes:
+      type: object
+      properties:
+        plans: {$ref: '#/components/schemas/PlanSettings'}
+        smtp: {$ref: '#/components/schemas/SmtpSettings'}
+        smtpHasPassword: {type: boolean}
+        alerts: {$ref: '#/components/schemas/AlertSettings'}
+        modes: {$ref: '#/components/schemas/ModeSettings'}
+        network: {$ref: '#/components/schemas/NetworkSettings'}
+        notice: {$ref: '#/components/schemas/NoticeSettings'}
+        paymentsConnected: {type: boolean}
+        botEnabled: {type: boolean}
+      required: [plans, smtpHasPassword, alerts, modes, network, notice, paymentsConnected, botEnabled]
+      x-kotlin: dev.jaganet.api.AdminSettingsRes
+    AdminTariff:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        durationValue: {type: integer, format: int32}
+        durationUnit: {$ref: '#/components/schemas/DurationUnit'}
+        priceRubMinor: {type: integer, format: int64}
+        priceEurMinor: {type: integer, format: int64}
+        deviceLimit: {type: integer, format: int32}
+        trafficGb: {type: integer, format: int64}
+        badge: {type: string}
+        sort: {type: integer, format: int32}
+        status: {$ref: '#/components/schemas/TariffStatus'}
+        sold: {type: integer, format: int32}
+        activeNow: {type: integer, format: int32}
+        createdAt: {type: string}
+      required: [id, name, durationValue, durationUnit, priceRubMinor, priceEurMinor, deviceLimit, sort, status, sold, activeNow,
+        createdAt]
+      x-kotlin: dev.jaganet.api.AdminTariff
+    AdminTariffsRes:
+      type: object
+      properties:
+        tariffs:
+          type: array
+          items: {$ref: '#/components/schemas/AdminTariff'}
+      required: [tariffs]
+      x-kotlin: dev.jaganet.api.AdminTariffsRes
+    AlertSettings:
+      type: object
+      properties:
+        emails:
+          type: array
+          items: {type: string}
+        telegramChats:
+          type: array
+          items: {type: integer, format: int64}
+      required: [emails, telegramChats]
+      x-kotlin: dev.jaganet.api.AlertSettings
+    AnalyticsDevice:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        platform: {type: string}
+        serverName: {type: string}
+        countryCode: {type: string}
+        traffic: {$ref: '#/components/schemas/TrafficSplit'}
+        lastSeenAt: {type: string}
+        removed: {type: boolean}
+        outsideLimit: {type: boolean}
+      required: [id, name, platform, traffic, removed, outsideLimit]
+      x-kotlin: dev.jaganet.api.AnalyticsDevice
+    AnalyticsOverviewRes:
+      type: object
+      properties:
+        period: {type: string}
+        bucket: {type: string}
+        totals: {$ref: '#/components/schemas/TrafficSplit'}
+        users: {type: integer, format: int32}
+        activeDevices: {type: integer, format: int32}
+        online: {type: integer, format: int32}
+        points:
+          type: array
+          items: {$ref: '#/components/schemas/TrafficPoint'}
+        servers:
+          type: array
+          items: {$ref: '#/components/schemas/AnalyticsServer'}
+      required: [period, bucket, totals, users, activeDevices, online, points, servers]
+      x-kotlin: dev.jaganet.api.AnalyticsOverviewRes
+    AnalyticsServer:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        city: {type: string}
+        countryCode: {type: string}
+        active: {type: boolean}
+        remote: {type: boolean}
+        devices: {type: integer, format: int32}
+        activeDevices: {type: integer, format: int32}
+        users: {type: integer, format: int32}
+        online: {type: integer, format: int32}
+        traffic: {$ref: '#/components/schemas/TrafficSplit'}
+        classes: {type: string}
+      required: [id, name, city, countryCode, active, remote, devices, activeDevices, users, online, traffic, classes]
+      x-kotlin: dev.jaganet.api.AnalyticsServer
+    AnalyticsServerRes:
+      type: object
+      properties:
+        period: {type: string}
+        bucket: {type: string}
+        server: {$ref: '#/components/schemas/AnalyticsServer'}
+        points:
+          type: array
+          items: {$ref: '#/components/schemas/TrafficPoint'}
+        users:
+          type: array
+          items: {$ref: '#/components/schemas/AnalyticsUser'}
+      required: [period, bucket, server, points, users]
+      x-kotlin: dev.jaganet.api.AnalyticsServerRes
+    AnalyticsUser:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        email: {type: string}
+        plan: {type: string}
+        devices: {type: integer, format: int32}
+        activeDevices: {type: integer, format: int32}
+        servers:
+          type: array
+          items: {type: string}
+        traffic: {$ref: '#/components/schemas/TrafficSplit'}
+        lastSeenAt: {type: string}
+      required: [id, name, email, plan, devices, activeDevices, servers, traffic]
+      x-kotlin: dev.jaganet.api.AnalyticsUser
+    AnalyticsUserRes:
+      type: object
+      properties:
+        period: {type: string}
+        bucket: {type: string}
+        user: {$ref: '#/components/schemas/AnalyticsUser'}
+        points:
+          type: array
+          items: {$ref: '#/components/schemas/TrafficPoint'}
+        servers:
+          type: array
+          items: {$ref: '#/components/schemas/AnalyticsUserServer'}
+        devices:
+          type: array
+          items: {$ref: '#/components/schemas/AnalyticsDevice'}
+      required: [period, bucket, user, points, servers, devices]
+      x-kotlin: dev.jaganet.api.AnalyticsUserRes
+    AnalyticsUserServer:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        countryCode: {type: string}
+        traffic: {$ref: '#/components/schemas/TrafficSplit'}
+      required: [id, name, countryCode, traffic]
+      x-kotlin: dev.jaganet.api.AnalyticsUserServer
+    AnalyticsUsersRes:
+      type: object
+      properties:
+        period: {type: string}
+        users:
+          type: array
+          items: {$ref: '#/components/schemas/AnalyticsUser'}
+      required: [period, users]
+      x-kotlin: dev.jaganet.api.AnalyticsUsersRes
+    AppLoginInfo:
+      type: object
+      properties:
+        deviceName: {type: string}
+        platform: {$ref: '#/components/schemas/Platform'}
+        code: {type: string}
+        expiresAt: {type: string}
+      required: [deviceName, platform, code, expiresAt]
+      x-kotlin: dev.jaganet.api.AppLoginInfo
+    AppLoginPollReq:
+      type: object
+      properties:
+        id: {type: string}
+        secret: {type: string}
+      required: [id, secret]
+      x-kotlin: dev.jaganet.api.AppLoginPollReq
+    AppLoginPollRes:
+      type: object
+      properties:
+        session: {$ref: '#/components/schemas/SessionRes'}
+      x-kotlin: dev.jaganet.api.AppLoginPollRes
+    AppLoginStartReq:
+      type: object
+      properties:
+        device: {$ref: '#/components/schemas/DeviceInfo'}
+      required: [device]
+      x-kotlin: dev.jaganet.api.AppLoginStartReq
+    AppLoginStartRes:
+      type: object
+      properties:
+        id: {type: string}
+        secret: {type: string}
+        code: {type: string}
+        url: {type: string}
+        expiresAt: {type: string}
+      required: [id, secret, code, url, expiresAt]
+      x-kotlin: dev.jaganet.api.AppLoginStartRes
+    AssignTestAccountReq:
+      type: object
+      properties:
+        email: {type: string}
+      required: [email]
+      x-kotlin: dev.jaganet.api.AssignTestAccountReq
+    AssignTestAccountRes:
+      type: object
+      properties:
+        email: {type: string}
+        keys: {type: integer, format: int32}
+      required: [email, keys]
+      x-kotlin: dev.jaganet.api.AssignTestAccountRes
+    BillingSource: {type: string, enum: [apple, google, referral, dev, web, telegram, app, test], x-kotlin: dev.jaganet.api.BillingSource}
+    BlocklistHit:
+      type: object
+      properties:
+        ip: {type: string}
+        rknSubnets:
+          type: array
+          items: {type: string}
+        providers:
+          type: array
+          items: {type: string}
+        rknExact:
+          type: array
+          items: {type: string}
+      required: [ip, rknSubnets, providers, rknExact]
+      x-kotlin: dev.jaganet.server.services.BlocklistHit
+    BlocklistRes:
+      type: object
+      properties:
+        loaded: {type: boolean}
+        updatedAt: {type: string}
+        hits:
+          type: array
+          items: {$ref: '#/components/schemas/BlocklistHit'}
+      required: [loaded, hits]
+      x-kotlin: dev.jaganet.server.services.BlocklistRes
+    CheckLevel: {type: string, enum: [ok, warning, critical, unknown], x-kotlin: dev.jaganet.api.CheckLevel}
+    ConnectionEventReq:
+      type: object
+      properties:
+        type: {$ref: '#/components/schemas/ConnectionEventType'}
+        at: {type: string}
+        peakDownBps: {type: [integer, 'null'], format: int64}
+        endpoint: {type: [string, 'null']}
+        serverId: {type: [string, 'null']}
+        reason: {type: [string, 'null']}
+        network: {type: [string, 'null']}
+        appVersion: {type: [string, 'null']}
+        platform: {type: [string, 'null']}
+      required: [type, at]
+      x-kotlin: dev.jaganet.api.ConnectionEventReq
+    ConnectionEventType: {type: string, enum: [connected, disconnected, handshake_failed, no_rx], x-kotlin: dev.jaganet.api.ConnectionEventType}
+    ConnectionFailure:
+      type: object
+      properties:
+        at: {type: string}
+        type: {$ref: '#/components/schemas/ConnectionEventType'}
+        userId: {type: string}
+        email: {type: string}
+        deviceId: {type: string}
+        deviceName: {type: string}
+        serverId: {type: string}
+        serverName: {type: string}
+        reason: {type: string}
+        endpoint: {type: string}
+        network: {type: string}
+        appVersion: {type: string}
+        platform: {type: string}
+      required: [at, type, deviceId]
+      x-kotlin: dev.jaganet.api.ConnectionFailure
+    ConnectionFailuresRes:
+      type: object
+      properties:
+        failures:
+          type: array
+          items: {$ref: '#/components/schemas/ConnectionFailure'}
+        nodes:
+          type: array
+          items: {$ref: '#/components/schemas/NodeFailureCount'}
+      required: [failures, nodes]
+      x-kotlin: dev.jaganet.api.ConnectionFailuresRes
+    CountBy:
+      type: object
+      properties:
+        key: {type: string}
+        count: {type: integer, format: int32}
+      required: [key, count]
+      x-kotlin: dev.jaganet.api.CountBy
+    CreateOrderReq:
+      type: object
+      properties:
+        tariffId: {type: string}
+        channel: {type: [string, 'null']}
+      required: [tariffId]
+      x-kotlin: dev.jaganet.api.CreateOrderReq
+    CreateReferralLinkReq:
+      type: object
+      properties:
+        name: {type: string}
+        code: {type: [string, 'null']}
+      required: [name]
+      x-kotlin: dev.jaganet.api.CreateReferralLinkReq
+    CtlAudit:
+      type: object
+      properties:
+        id: {type: integer, format: int64}
+        at: {type: string}
+        adminEmail: {type: string}
+        userId: {type: string}
+        userEmail: {type: string}
+        action: {type: string}
+        details: {type: object}
+      required: [id, at, adminEmail, action, details]
+      x-kotlin: dev.jaganet.server.services.CtlAudit
+    CtlAuditRes:
+      type: object
+      properties:
+        entries:
+          type: array
+          items: {$ref: '#/components/schemas/CtlAudit'}
+      required: [entries]
+      x-kotlin: dev.jaganet.server.services.CtlAuditRes
+    CtlBlockReq:
+      type: object
+      properties:
+        reason: {type: [string, 'null']}
+      x-kotlin: dev.jaganet.server.services.CtlBlockReq
+    CtlDashboard:
+      type: object
+      properties:
+        usersTotal: {type: integer, format: int32}
+        usersActive: {type: integer, format: int32}
+        usersExpiring3d: {type: integer, format: int32}
+        usersBlocked: {type: integer, format: int32}
+        newUsers24h: {type: integer, format: int32}
+        newUsers7d: {type: integer, format: int32}
+        onlineDevices: {type: integer, format: int32}
+        onlineUsers: {type: integer, format: int32}
+        servers:
+          type: array
+          items: {$ref: '#/components/schemas/CtlServer'}
+        revenueToday:
+          type: array
+          items: {$ref: '#/components/schemas/MoneyAmount'}
+        revenueWeek:
+          type: array
+          items: {$ref: '#/components/schemas/MoneyAmount'}
+        revenueMonth:
+          type: array
+          items: {$ref: '#/components/schemas/MoneyAmount'}
+        paidOrdersMonth: {type: integer, format: int32}
+        newPayersMonth: {type: integer, format: int32}
+        sharingThreshold: {type: integer, format: int32}
+        sharing:
+          type: array
+          items: {$ref: '#/components/schemas/CtlUserRow'}
+        expiring:
+          type: array
+          items: {$ref: '#/components/schemas/CtlUserRow'}
+      required: [usersTotal, usersActive, usersExpiring3d, usersBlocked, newUsers24h, newUsers7d, onlineDevices, onlineUsers,
+        servers, revenueToday, revenueWeek, revenueMonth, paidOrdersMonth, newPayersMonth, sharingThreshold, sharing, expiring]
+      x-kotlin: dev.jaganet.server.services.CtlDashboard
+    CtlDaysReq:
+      type: object
+      properties:
+        days: {type: integer, format: int32}
+        tariffId: {type: [string, 'null']}
+        comment: {type: [string, 'null']}
+      required: [days]
+      x-kotlin: dev.jaganet.server.services.CtlDaysReq
+    CtlDevice:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        kind: {type: string}
+        platform: {type: string}
+        createdAt: {type: string}
+        protocol: {type: string}
+        serverId: {type: string}
+        serverName: {type: string}
+        address: {type: string}
+        lastSeenAt: {type: string}
+        online: {type: boolean}
+        lastIp: {type: string}
+        lastIpAt: {type: string}
+        ips24h:
+          type: array
+          items: {$ref: '#/components/schemas/CtlIp'}
+        traffic24h: {type: integer, format: int64}
+        trafficTotal: {type: integer, format: int64}
+        uuid: {type: string}
+        tokenHint: {type: string}
+        rekeyPending: {type: boolean}
+        suspended: {type: boolean}
+      required: [id, name, kind, platform, createdAt, online, ips24h, traffic24h, trafficTotal, rekeyPending, suspended]
+      x-kotlin: dev.jaganet.server.services.CtlDevice
+    CtlIp:
+      type: object
+      properties:
+        ip: {type: string}
+        lastSeen: {type: string}
+        deviceId: {type: string}
+        serverId: {type: string}
+      required: [ip, lastSeen]
+      x-kotlin: dev.jaganet.server.services.CtlIp
+    CtlNoteReq:
+      type: object
+      properties:
+        note: {type: [string, 'null']}
+      x-kotlin: dev.jaganet.server.services.CtlNoteReq
+    CtlPayment:
+      type: object
+      properties:
+        id: {type: string}
+        createdAt: {type: string}
+        paidAt: {type: string}
+        userId: {type: string}
+        email: {type: string}
+        product: {type: string}
+        amount: {$ref: '#/components/schemas/MoneyAmount'}
+        channel: {type: string}
+        provider: {type: string}
+        status: {type: string}
+        externalId: {type: string}
+      required: [id, createdAt, userId, email, product, amount, channel, provider, status]
+      x-kotlin: dev.jaganet.server.services.CtlPayment
+    CtlPaymentsRes:
+      type: object
+      properties:
+        payments:
+          type: array
+          items: {$ref: '#/components/schemas/CtlPayment'}
+        totals: {$ref: '#/components/schemas/CtlTotals'}
+        truncated: {type: boolean}
+      required: [payments, totals, truncated]
+      x-kotlin: dev.jaganet.server.services.CtlPaymentsRes
+    CtlPlanReq:
+      type: object
+      properties:
+        tariffId: {type: string}
+        comment: {type: [string, 'null']}
+      required: [tariffId]
+      x-kotlin: dev.jaganet.server.services.CtlPlanReq
+    CtlReferrer:
+      type: object
+      properties:
+        id: {type: string}
+        email: {type: string}
+        link: {type: string}
+      required: [id, email]
+      x-kotlin: dev.jaganet.server.services.CtlReferrer
+    CtlReissueRes:
+      type: object
+      properties:
+        mode: {type: string}
+        uuid: {type: string}
+      required: [mode]
+      x-kotlin: dev.jaganet.server.services.CtlReissueRes
+    CtlServer:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        countryCode: {type: string}
+        protocols:
+          type: array
+          items: {type: string}
+        state: {type: string}
+        remote: {type: boolean}
+        peers: {type: integer, format: int32}
+        maxPeers: {type: integer, format: int32}
+        online: {type: integer, format: int32}
+        traffic24h: {type: integer, format: int64}
+        lastReportAt: {type: string}
+        agentVersion: {type: string}
+        cpu: {type: number}
+        rxBps: {type: integer, format: int64}
+        txBps: {type: integer, format: int64}
+      required: [id, name, countryCode, protocols, state, remote, peers, maxPeers, online, traffic24h]
+      x-kotlin: dev.jaganet.server.services.CtlServer
+    CtlSettings:
+      type: object
+      properties:
+        sharingThreshold: {type: integer, format: int32}
+      x-kotlin: dev.jaganet.server.services.CtlSettings
+    CtlSubscription:
+      type: object
+      properties:
+        id: {type: string}
+        source: {type: string}
+        kind: {type: string}
+        tariffName: {type: string}
+        startedAt: {type: string}
+        expiresAt: {type: string}
+        status: {type: string}
+        deviceLimit: {type: integer, format: int32}
+        monthlyBytes: {type: integer, format: int64}
+        renewal: {type: boolean}
+        amount: {$ref: '#/components/schemas/MoneyAmount'}
+      required: [id, source, kind, startedAt, expiresAt, status, renewal]
+      x-kotlin: dev.jaganet.server.services.CtlSubscription
+    CtlTariff:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        status: {type: string}
+      required: [id, name, status]
+      x-kotlin: dev.jaganet.server.services.CtlTariff
+    CtlTotals:
+      type: object
+      properties:
+        revenueToday:
+          type: array
+          items: {$ref: '#/components/schemas/MoneyAmount'}
+        revenueWeek:
+          type: array
+          items: {$ref: '#/components/schemas/MoneyAmount'}
+        revenueMonth:
+          type: array
+          items: {$ref: '#/components/schemas/MoneyAmount'}
+        revenue:
+          type: array
+          items: {$ref: '#/components/schemas/MoneyAmount'}
+        paidCount: {type: integer, format: int32}
+        pendingCount: {type: integer, format: int32}
+        cancelledCount: {type: integer, format: int32}
+        newPayers: {type: integer, format: int32}
+      required: [revenueToday, revenueWeek, revenueMonth, revenue, paidCount, pendingCount, cancelledCount, newPayers]
+      x-kotlin: dev.jaganet.server.services.CtlTotals
+    CtlUserCard:
+      type: object
+      properties:
+        user: {$ref: '#/components/schemas/CtlUserRow'}
+        lang: {type: string}
+        startedAt: {type: string}
+        deviceLimit: {type: integer, format: int32}
+        monthlyBytes: {type: integer, format: int64}
+        usageThisMonth: {type: integer, format: int64}
+        blockedAt: {type: string}
+        blockedReason: {type: string}
+        subscriptions:
+          type: array
+          items: {$ref: '#/components/schemas/CtlSubscription'}
+        payments:
+          type: array
+          items: {$ref: '#/components/schemas/CtlPayment'}
+        devices:
+          type: array
+          items: {$ref: '#/components/schemas/CtlDevice'}
+        ips24h:
+          type: array
+          items: {$ref: '#/components/schemas/CtlIp'}
+        devicesActive24h: {type: integer, format: int32}
+        sharingThreshold: {type: integer, format: int32}
+        referrer: {$ref: '#/components/schemas/CtlReferrer'}
+        referrals: {type: integer, format: int32}
+        audit:
+          type: array
+          items: {$ref: '#/components/schemas/CtlAudit'}
+        tariffs:
+          type: array
+          items: {$ref: '#/components/schemas/CtlTariff'}
+      required: [user, deviceLimit, usageThisMonth, subscriptions, payments, devices, ips24h, devicesActive24h, sharingThreshold,
+        referrals, audit, tariffs]
+      x-kotlin: dev.jaganet.server.services.CtlUserCard
+    CtlUserRow:
+      type: object
+      properties:
+        id: {type: string}
+        email: {type: string}
+        telegramId: {type: integer, format: int64}
+        telegramUsername: {type: string}
+        role: {type: string}
+        createdAt: {type: string}
+        state: {type: string}
+        tariffName: {type: string}
+        accessUntil: {type: string}
+        paidUntil: {type: string}
+        blocked: {type: boolean}
+        devices: {type: integer, format: int32}
+        online: {type: boolean}
+        ips24h: {type: integer, format: int32}
+        sharing: {type: boolean}
+        note: {type: string}
+        matched: {type: string}
+      required: [id, email, role, createdAt, state, blocked, devices, online, ips24h, sharing]
+      x-kotlin: dev.jaganet.server.services.CtlUserRow
+    CtlUsersRes:
+      type: object
+      properties:
+        users:
+          type: array
+          items: {$ref: '#/components/schemas/CtlUserRow'}
+        sharingThreshold: {type: integer, format: int32}
+        telegramUsernames: {type: boolean}
+      required: [users, sharingThreshold, telegramUsernames]
+      x-kotlin: dev.jaganet.server.services.CtlUsersRes
+    DayCount:
+      type: object
+      properties:
+        day: {type: string}
+        count: {type: integer, format: int32}
+      required: [day, count]
+      x-kotlin: dev.jaganet.api.DayCount
+    DesktopAppManifest:
+      type: object
+      properties:
+        version: {type: string}
+        url: {type: string}
+        sha256: {type: string}
+        signature: {type: string}
+        mandatory: {type: boolean}
+        notes: {type: string}
+        installer_url: {type: string}
+        installer_sha256: {type: string}
+        installer_version: {type: string}
+        min_proto: {type: integer, format: int32}
+        kind: {type: string}
+      required: [version, url, sha256, mandatory]
+      x-kotlin: dev.jaganet.server.services.DesktopAppManifest
+    Device:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        platform: {$ref: '#/components/schemas/Platform'}
+        protocol: {type: string}
+        tunnelAddress: {type: string}
+        lastSeenAt: {type: string}
+        online: {type: boolean}
+        isCurrent: {type: boolean}
+        createdAt: {type: string}
+        outsideLimit: {type: boolean}
+      required: [id, name, platform, online, isCurrent, createdAt, outsideLimit]
+      x-kotlin: dev.jaganet.api.Device
+    DeviceInfo:
+      type: object
+      properties:
+        name: {type: string}
+        platform: {$ref: '#/components/schemas/Platform'}
+      required: [name, platform]
+      x-kotlin: dev.jaganet.api.DeviceInfo
+    DeviceTraffic:
+      type: object
+      properties:
+        deviceId: {type: string}
+        name: {type: string}
+        bytes: {type: integer, format: int64}
+      required: [deviceId, name, bytes]
+      x-kotlin: dev.jaganet.api.DeviceTraffic
+    DevicesRes:
+      type: object
+      properties:
+        devices:
+          type: array
+          items: {$ref: '#/components/schemas/Device'}
+        limit: {type: integer, format: int32}
+      required: [devices, limit]
+      x-kotlin: dev.jaganet.api.DevicesRes
+    DiagnosticsListRes:
+      type: object
+      properties:
+        reports:
+          type: array
+          items: {$ref: '#/components/schemas/DiagnosticsSummary'}
+      required: [reports]
+      x-kotlin: dev.jaganet.api.DiagnosticsListRes
+    DiagnosticsReport:
+      type: object
+      properties:
+        report: {$ref: '#/components/schemas/DiagnosticsSummary'}
+        comment: {type: string}
+        host: {type: string}
+        resolved:
+          type: array
+          items: {type: string}
+        handshakeAgeSec: {type: integer, format: int64}
+        rxBytes: {type: integer, format: int64}
+        txBytes: {type: integer, format: int64}
+        probe: {type: string}
+        text: {type: string}
+      required: [report, resolved, text]
+      x-kotlin: dev.jaganet.api.DiagnosticsReport
+    DiagnosticsReq:
+      type: object
+      properties:
+        text: {type: string}
+        comment: {type: [string, 'null']}
+        appVersion: {type: [string, 'null']}
+        platform: {type: [string, 'null']}
+        osVersion: {type: [string, 'null']}
+        state: {type: [string, 'null']}
+        problem: {type: [string, 'null']}
+        serverId: {type: [string, 'null']}
+        country: {type: [string, 'null']}
+        host: {type: [string, 'null']}
+        resolved:
+          type: array
+          items: {type: string}
+        handshakeAgeSec: {type: [integer, 'null'], format: int64}
+        rxBytes: {type: [integer, 'null'], format: int64}
+        txBytes: {type: [integer, 'null'], format: int64}
+        probe: {type: [string, 'null']}
+      required: [text]
+      x-kotlin: dev.jaganet.api.DiagnosticsReq
+    DiagnosticsRes:
+      type: object
+      properties:
+        id: {type: string}
+      required: [id]
+      x-kotlin: dev.jaganet.api.DiagnosticsRes
+    DiagnosticsSummary:
+      type: object
+      properties:
+        id: {type: string}
+        at: {type: string}
+        userId: {type: string}
+        email: {type: string}
+        deviceId: {type: string}
+        deviceName: {type: string}
+        appVersion: {type: string}
+        platform: {type: string}
+        osVersion: {type: string}
+        state: {type: string}
+        problem: {type: string}
+        serverId: {type: string}
+        serverName: {type: string}
+        country: {type: string}
+        hasComment: {type: boolean}
+      required: [id, at, hasComment]
+      x-kotlin: dev.jaganet.api.DiagnosticsSummary
+    DurationUnit: {type: string, enum: [days, months], x-kotlin: dev.jaganet.api.DurationUnit}
+    EmailStartReq:
+      type: object
+      properties:
+        email: {type: string}
+        referralCode: {type: [string, 'null']}
+      required: [email]
+      x-kotlin: dev.jaganet.api.EmailStartReq
+    EmailStartRes:
+      type: object
+      properties:
+        ok: {type: boolean}
+        devCode: {type: string}
+      required: [ok]
+      x-kotlin: dev.jaganet.api.EmailStartRes
+    EmailVerifyReq:
+      type: object
+      properties:
+        email: {type: string}
+        code: {type: string}
+        device: {$ref: '#/components/schemas/DeviceInfo'}
+      required: [email, code, device]
+      x-kotlin: dev.jaganet.api.EmailVerifyReq
+    Entitlement:
+      type: object
+      properties:
+        plan: {$ref: '#/components/schemas/PlanId'}
+        tariffName: {type: string}
+        source: {$ref: '#/components/schemas/BillingSource'}
+        expiresAt: {type: string}
+        autoRenew: {type: boolean}
+        deviceLimit: {type: integer, format: int32}
+        monthlyDataLimitBytes: {type: integer, format: int64}
+        speedLimitMbps: {type: integer, format: int32}
+        freeEnded: {type: boolean}
+      required: [plan, autoRenew, deviceLimit, freeEnded]
+      x-kotlin: dev.jaganet.api.Entitlement
+    ErrorBody:
+      type: object
+      properties:
+        code: {$ref: '#/components/schemas/ErrorCode'}
+        message: {type: string}
+      required: [code, message]
+      x-kotlin: dev.jaganet.api.ErrorBody
+    ErrorCode: {type: string, enum: [BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, INVALID_CODE, TOO_MANY_ATTEMPTS, DEVICE_LIMIT,
+        DATA_LIMIT, FREE_ENDED, SERVER_FULL, UNSUPPORTED_PROTOCOL, NOT_IMPLEMENTED, INTERNAL, SERVICE_UNAVAILABLE], x-kotlin: dev.jaganet.api.ErrorCode}
+    ErrorRes:
+      type: object
+      properties:
+        error: {$ref: '#/components/schemas/ErrorBody'}
+      required: [error]
+      x-kotlin: dev.jaganet.api.ErrorRes
+    FinanceDay:
+      type: object
+      properties:
+        day: {type: string}
+        revenue:
+          type: array
+          items: {$ref: '#/components/schemas/MoneyAmount'}
+        orders: {type: integer, format: int32}
+        newSubscriptions: {type: integer, format: int32}
+        renewals: {type: integer, format: int32}
+      required: [day, revenue, orders, newSubscriptions, renewals]
+      x-kotlin: dev.jaganet.api.FinanceDay
+    FinanceRes:
+      type: object
+      properties:
+        period: {$ref: '#/components/schemas/ReferralPeriod'}
+        revenue:
+          type: array
+          items: {$ref: '#/components/schemas/MoneyAmount'}
+        paidOrders: {type: integer, format: int32}
+        newSubscriptions: {type: integer, format: int32}
+        renewals: {type: integer, format: int32}
+        activeSubscribers: {type: integer, format: int32}
+        mrr:
+          type: array
+          items: {$ref: '#/components/schemas/MoneyAmount'}
+        byChannel:
+          type: array
+          items: {$ref: '#/components/schemas/CountBy'}
+        byProduct:
+          type: array
+          items: {$ref: '#/components/schemas/CountBy'}
+        days:
+          type: array
+          items: {$ref: '#/components/schemas/FinanceDay'}
+        recent:
+          type: array
+          items: {$ref: '#/components/schemas/PaymentRow'}
+        unpaidOrders: {type: integer, format: int32}
+      required: [period, revenue, paidOrders, newSubscriptions, renewals, activeSubscribers, mrr, byChannel, byProduct, days,
+        recent, unpaidOrders]
+      x-kotlin: dev.jaganet.api.FinanceRes
+    FreePlan:
+      type: object
+      properties:
+        monthlyDataLimitBytes: {type: integer, format: int64}
+        deviceLimit: {type: integer, format: int32}
+        speedMbps: {type: integer, format: int32}
+        days: {type: integer, format: int32}
+      required: [deviceLimit]
+      x-kotlin: dev.jaganet.api.FreePlan
+    Funnel:
+      type: object
+      properties:
+        clicks: {type: integer, format: int32}
+        visitors: {type: integer, format: int32}
+        signups: {type: integer, format: int32}
+        paidUsers: {type: integer, format: int32}
+        purchases: {type: integer, format: int32}
+        revenue:
+          type: array
+          items: {$ref: '#/components/schemas/MoneyAmount'}
+      required: [clicks, visitors, signups, paidUsers, purchases, revenue]
+      x-kotlin: dev.jaganet.api.Funnel
+    HealthCheck:
+      type: object
+      properties:
+        key: {type: string}
+        level: {$ref: '#/components/schemas/CheckLevel'}
+        message: {type: string}
+        args:
+          type: object
+          additionalProperties: {type: string}
+      required: [key, level, message, args]
+      x-kotlin: dev.jaganet.api.HealthCheck
+    HealthRes:
+      type: object
+      properties:
+        ok: {type: boolean}
+        mode: {type: string}
+        protocols:
+          type: array
+          items: {type: string}
+      required: [ok, mode, protocols]
+      x-kotlin: dev.jaganet.server.http.HealthRes
+    InstallState: {type: string, enum: [running, done, failed], x-kotlin: dev.jaganet.api.InstallState}
+    InviteRes:
+      type: object
+      properties:
+        enabled: {type: boolean}
+        code: {type: string}
+        webUrl: {type: string}
+        telegramUrl: {type: string}
+        rewardDays: {type: integer, format: int32}
+        condition: {type: string}
+        inviteeDays: {type: integer, format: int32}
+        invited: {type: integer, format: int32}
+        paid: {type: integer, format: int32}
+        daysEarned: {type: integer, format: int32}
+        rewards:
+          type: array
+          items: {$ref: '#/components/schemas/InviteReward'}
+      required: [enabled, code, webUrl, rewardDays, condition, inviteeDays, invited, paid, daysEarned, rewards]
+      x-kotlin: dev.jaganet.api.InviteRes
+    InviteReward:
+      type: object
+      properties:
+        at: {type: string}
+        who: {type: string}
+        days: {type: integer, format: int32}
+        status: {type: string}
+        kind: {type: string}
+      required: [at, who, days, status, kind]
+      x-kotlin: dev.jaganet.api.InviteReward
+    KeyActivity:
+      type: object
+      properties:
+        lastSeenAt: {type: string}
+        rxBytes: {type: integer, format: int64}
+        txBytes: {type: integer, format: int64}
+      required: [rxBytes, txBytes]
+      x-kotlin: dev.jaganet.api.KeyActivity
+    KeyTunnel:
+      type: object
+      properties:
+        config: {$ref: '#/components/schemas/TunnelConfig'}
+        privateKey: {type: string}
+        version: {type: string}
+        countryCode: {type: string}
+      required: [config, privateKey, version]
+      x-kotlin: dev.jaganet.api.KeyTunnel
+    KeysRes:
+      type: object
+      properties:
+        keys:
+          type: array
+          items: {$ref: '#/components/schemas/AccessKey'}
+        vless: {$ref: '#/components/schemas/VlessKey'}
+      required: [keys]
+      x-kotlin: dev.jaganet.api.KeysRes
+    LinkLoginReq:
+      type: object
+      properties:
+        token: {type: string}
+        device: {$ref: '#/components/schemas/DeviceInfo'}
+      required: [token, device]
+      x-kotlin: dev.jaganet.api.LinkLoginReq
+    MeRes:
+      type: object
+      properties:
+        user: {$ref: '#/components/schemas/User'}
+        entitlement: {$ref: '#/components/schemas/Entitlement'}
+        usage: {$ref: '#/components/schemas/Usage'}
+      required: [user, entitlement, usage]
+      x-kotlin: dev.jaganet.api.MeRes
+    MetricPoint:
+      type: object
+      properties:
+        ts: {type: string}
+        cpu: {type: number}
+        memUsed: {type: integer, format: int64}
+        memTotal: {type: integer, format: int64}
+        diskFree: {type: integer, format: int64}
+        diskTotal: {type: integer, format: int64}
+        rxBps: {type: integer, format: int64}
+        txBps: {type: integer, format: int64}
+        utilization: {type: number}
+        pingMs: {type: number}
+        lossPct: {type: number}
+        peers: {type: integer, format: int32}
+        online: {type: integer, format: int32}
+        errors: {type: integer, format: int64}
+        drops: {type: integer, format: int64}
+      required: [ts, cpu, memUsed, memTotal, diskFree, diskTotal, rxBps, txBps, peers, online, errors, drops]
+      x-kotlin: dev.jaganet.api.MetricPoint
+    ModeSettings:
+      type: object
+      properties:
+        showSignInCodes: {type: boolean}
+        testPayments: {type: boolean}
+      required: [showSignInCodes, testPayments]
+      x-kotlin: dev.jaganet.api.ModeSettings
+    MoneyAmount:
+      type: object
+      properties:
+        minor: {type: integer, format: int64}
+        currency: {type: string}
+      required: [minor, currency]
+      x-kotlin: dev.jaganet.api.MoneyAmount
+    MonitorAlert:
+      type: object
+      properties:
+        id: {type: string}
+        key: {type: string}
+        level: {$ref: '#/components/schemas/CheckLevel'}
+        message: {type: string}
+        args:
+          type: object
+          additionalProperties: {type: string}
+        openedAt: {type: string}
+        resolvedAt: {type: string}
+      required: [id, key, level, message, args, openedAt]
+      x-kotlin: dev.jaganet.api.MonitorAlert
+    MonitorRes:
+      type: object
+      properties:
+        checkedAt: {type: string}
+        overall: {$ref: '#/components/schemas/CheckLevel'}
+        checks:
+          type: array
+          items: {$ref: '#/components/schemas/HealthCheck'}
+        network: {$ref: '#/components/schemas/NetworkInfo'}
+        series:
+          type: array
+          items: {$ref: '#/components/schemas/MetricPoint'}
+        alerts:
+          type: array
+          items: {$ref: '#/components/schemas/MonitorAlert'}
+        notify: {$ref: '#/components/schemas/NotifySettings'}
+      required: [overall, checks, network, series, alerts, notify]
+      x-kotlin: dev.jaganet.api.MonitorRes
+    MoveDeviceReq:
+      type: object
+      properties:
+        to: {type: string}
+      required: [to]
+      x-kotlin: dev.jaganet.api.MoveDeviceReq
+    MoveDevicesReq:
+      type: object
+      properties:
+        to: {type: string}
+      required: [to]
+      x-kotlin: dev.jaganet.api.MoveDevicesReq
+    MoveDevicesRes:
+      type: object
+      properties:
+        moved: {type: integer, format: int32}
+      required: [moved]
+      x-kotlin: dev.jaganet.api.MoveDevicesRes
+    NetworkInfo:
+      type: object
+      properties:
+        iface: {type: string}
+        capacityMbps: {type: integer, format: int64}
+        capacitySource: {type: string}
+        monthRxBytes: {type: integer, format: int64}
+        monthTxBytes: {type: integer, format: int64}
+        monthLimitBytes: {type: integer, format: int64}
+      required: [monthRxBytes, monthTxBytes]
+      x-kotlin: dev.jaganet.api.NetworkInfo
+    NetworkSettings:
+      type: object
+      properties:
+        channelMbps: {type: [integer, 'null'], format: int64}
+        monthlyTrafficGb: {type: [integer, 'null'], format: int64}
+      x-kotlin: dev.jaganet.api.NetworkSettings
+    NodeBalancerReport:
+      type: object
+      properties:
+        tag: {type: string}
+        selected:
+          type: array
+          items: {type: string}
+        override: {type: [string, 'null']}
+      x-kotlin: dev.jaganet.server.services.NodeBalancerReport
+    NodeFailureCount:
+      type: object
+      properties:
+        serverId: {type: string}
+        name: {type: string}
+        last15m: {type: integer, format: int32}
+      required: [serverId, name, last15m]
+      x-kotlin: dev.jaganet.api.NodeFailureCount
+    NodeInbound:
+      type: object
+      properties:
+        tag: {type: string}
+        flow: {type: string}
+      required: [tag, flow]
+      x-kotlin: dev.jaganet.server.services.NodeInbound
+    NodeInstall:
+      type: object
+      properties:
+        state: {$ref: '#/components/schemas/InstallState'}
+        host: {type: string}
+        startedAt: {type: string}
+        finishedAt: {type: string}
+        step: {type: string}
+        error: {type: string}
+        errorArgs:
+          type: object
+          additionalProperties: {type: string}
+        log: {type: string}
+      required: [state, host, startedAt, errorArgs, log]
+      x-kotlin: dev.jaganet.api.NodeInstall
+    NodeInstallRes:
+      type: object
+      properties:
+        node: {$ref: '#/components/schemas/AdminNode'}
+        command: {type: string}
+      required: [node, command]
+      x-kotlin: dev.jaganet.api.NodeInstallRes
+    NodeLimit:
+      type: object
+      properties:
+        mbps: {type: integer, format: int32}
+        addresses:
+          type: array
+          items: {type: string}
+      required: [mbps, addresses]
+      x-kotlin: dev.jaganet.server.services.NodeLimit
+    NodeMaintenanceReq:
+      type: object
+      properties:
+        maintenance: {type: boolean}
+      x-kotlin: dev.jaganet.api.NodeMaintenanceReq
+    NodePeer:
+      type: object
+      properties:
+        publicKey: {type: string}
+        address: {type: string}
+      required: [publicKey, address]
+      x-kotlin: dev.jaganet.server.services.NodePeer
+    NodePeerCounter:
+      type: object
+      properties:
+        publicKey: {type: string}
+        rx: {type: integer, format: int64}
+        tx: {type: integer, format: int64}
+        lastHandshake: {type: integer, format: int64}
+        torrentRx: {type: integer, format: int64}
+        torrentTx: {type: integer, format: int64}
+        endpoint: {type: [string, 'null']}
+        ips:
+          type: object
+          additionalProperties: {type: integer, format: int64}
+      required: [publicKey, rx, tx]
+      x-kotlin: dev.jaganet.server.services.NodePeerCounter
+    NodePeersRes:
+      type: object
+      properties:
+        version: {type: string}
+        protocol: {type: string}
+        iface: {type: string}
+        peers:
+          type: array
+          items: {$ref: '#/components/schemas/NodePeer'}
+        limit: {$ref: '#/components/schemas/NodeLimit'}
+        inbounds:
+          type: array
+          items: {$ref: '#/components/schemas/NodeInbound'}
+        balancer: {type: string}
+      required: [version, protocol, iface, peers, inbounds]
+      x-kotlin: dev.jaganet.server.services.NodePeersRes
+    NodePoint:
+      type: object
+      properties:
+        ts: {type: string}
+        cpu: {type: number}
+        mem: {type: number}
+        rxBps: {type: integer, format: int64}
+        txBps: {type: integer, format: int64}
+        online: {type: integer, format: int32}
+      required: [ts]
+      x-kotlin: dev.jaganet.server.services.NodePoint
+    NodeRegisterReq:
+      type: object
+      properties:
+        publicIp: {type: string}
+        port: {type: integer, format: int32}
+        protocol: {type: string}
+      required: [publicIp, protocol]
+      x-kotlin: dev.jaganet.server.services.NodeRegisterReq
+    NodeRegisterRes:
+      type: object
+      properties:
+        protocol: {type: string}
+        privateKey: {type: string}
+        iface: {type: string}
+        address: {type: string}
+        subnet: {type: string}
+        port: {type: integer, format: int32}
+        obfuscation:
+          type: object
+          additionalProperties: {type: string}
+      required: [protocol, privateKey, iface, address, subnet, port, obfuscation]
+      x-kotlin: dev.jaganet.server.services.NodeRegisterRes
+    NodeReportReq:
+      type: object
+      properties:
+        protocol: {type: string}
+        peers:
+          type: array
+          items: {$ref: '#/components/schemas/NodePeerCounter'}
+        system: {$ref: '#/components/schemas/NodeSystem'}
+        balancer:
+          anyOf:
+          - {$ref: '#/components/schemas/NodeBalancerReport'}
+          - {type: 'null'}
+      required: [protocol, peers]
+      x-kotlin: dev.jaganet.server.services.NodeReportReq
+    NodeReq:
+      type: object
+      properties:
+        name: {type: string}
+        city: {type: string}
+        countryCode: {type: string}
+        maxPeers: {type: integer, format: int32}
+        active: {type: boolean}
+        hostname: {type: [string, 'null']}
+        protocol: {type: [string, 'null']}
+        vless:
+          anyOf:
+          - {$ref: '#/components/schemas/VlessNodeSettings'}
+          - {type: 'null'}
+        countryName: {type: [string, 'null']}
+        displayName: {type: [string, 'null']}
+        sortOrder: {type: [integer, 'null'], format: int32}
+        inSubscription: {type: [boolean, 'null']}
+        cascadeRole: {type: [string, 'null']}
+      required: [name, city, countryCode]
+      x-kotlin: dev.jaganet.api.NodeReq
+    NodeSshReq:
+      type: object
+      properties:
+        host: {type: string}
+        port: {type: integer, format: int32}
+        user: {type: string}
+        password: {type: [string, 'null']}
+        privateKey: {type: [string, 'null']}
+      required: [host]
+      x-kotlin: dev.jaganet.api.NodeSshReq
+    NodeState: {type: string, enum: [waiting, online, offline, disabled], x-kotlin: dev.jaganet.api.NodeState}
+    NodeStatusReq:
+      type: object
+      properties:
+        status: {type: string}
+        notice: {type: [string, 'null']}
+      x-kotlin: dev.jaganet.api.NodeStatusReq
+    NodeSystem:
+      type: object
+      properties:
+        cpu: {type: number}
+        memUsed: {type: integer, format: int64}
+        memTotal: {type: integer, format: int64}
+        rxBytes: {type: integer, format: int64}
+        txBytes: {type: integer, format: int64}
+        uptime: {type: integer, format: int64}
+        diskFree: {type: integer, format: int64}
+        diskTotal: {type: integer, format: int64}
+        classes: {type: [string, 'null']}
+        agent: {type: [string, 'null']}
+      x-kotlin: dev.jaganet.server.services.NodeSystem
+    NoticeSettings:
+      type: object
+      properties:
+        text: {type: [string, 'null']}
+      x-kotlin: dev.jaganet.api.NoticeSettings
+    NotifySettings:
+      type: object
+      properties:
+        emails:
+          type: array
+          items: {type: string}
+        emailReady: {type: boolean}
+        telegramChats: {type: integer, format: int32}
+      required: [emails, emailReady, telegramChats]
+      x-kotlin: dev.jaganet.api.NotifySettings
+    OkRes:
+      type: object
+      properties:
+        ok: {type: boolean}
+      required: [ok]
+      x-kotlin: dev.jaganet.api.OkRes
+    OrderRes:
+      type: object
+      properties:
+        id: {type: string}
+        tariffName: {type: string}
+        status: {$ref: '#/components/schemas/OrderStatus'}
+        amount: {type: string}
+        checkoutUrl: {type: string}
+      required: [id, tariffName, status, amount]
+      x-kotlin: dev.jaganet.api.OrderRes
+    OrderStatus: {type: string, enum: [pending, paid, cancelled], x-kotlin: dev.jaganet.api.OrderStatus}
+    OverviewBalancer:
+      type: object
+      properties:
+        selected:
+          type: array
+          items: {type: string}
+        override: {type: string}
+        reportedAt: {type: string}
+      required: [selected]
+      x-kotlin: dev.jaganet.server.services.OverviewBalancer
+    OverviewEvent:
+      type: object
+      properties:
+        ts: {type: string}
+        kind: {type: string}
+        args:
+          type: object
+          additionalProperties: {type: string}
+      required: [ts, kind, args]
+      x-kotlin: dev.jaganet.server.services.OverviewEvent
+    OverviewInbound:
+      type: object
+      properties:
+        protocol: {type: string}
+        users: {type: integer, format: int32}
+        online: {type: integer, format: int32}
+        endpoint: {type: string}
+      required: [protocol, users, online]
+      x-kotlin: dev.jaganet.server.services.OverviewInbound
+    OverviewIssue:
+      type: object
+      properties:
+        code: {type: string}
+        level: {type: string}
+        message: {type: string}
+        args:
+          type: object
+          additionalProperties: {type: string}
+      required: [code, level, args]
+      x-kotlin: dev.jaganet.server.services.OverviewIssue
+    OverviewMain:
+      type: object
+      properties:
+        host: {type: string}
+        cpu: {type: number}
+        memUsed: {type: integer, format: int64}
+        memTotal: {type: integer, format: int64}
+        diskFree: {type: integer, format: int64}
+        diskTotal: {type: integer, format: int64}
+        rxBps: {type: integer, format: int64}
+        txBps: {type: integer, format: int64}
+        measuredAt: {type: string}
+        mailReady: {type: boolean}
+        botEnabled: {type: boolean}
+      required: [host, mailReady, botEnabled]
+      x-kotlin: dev.jaganet.server.services.OverviewMain
+    OverviewRules:
+      type: object
+      properties:
+        silentMinutes: {type: integer, format: int32}
+        hotPercent: {type: integer, format: int32}
+      required: [silentMinutes, hotPercent]
+      x-kotlin: dev.jaganet.server.services.OverviewRules
+    OverviewServer:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        displayName: {type: string}
+        countryName: {type: string}
+        city: {type: string}
+        countryCode: {type: string}
+        host: {type: string}
+        protocols:
+          type: array
+          items: {type: string}
+        remote: {type: boolean}
+        active: {type: boolean}
+        state: {type: string}
+        status: {type: string}
+        notice: {type: string}
+        health: {type: string}
+        issues:
+          type: array
+          items: {$ref: '#/components/schemas/OverviewIssue'}
+        cascadeRole: {type: string}
+        peers: {type: integer, format: int32}
+        maxPeers: {type: integer, format: int32}
+        online: {type: integer, format: int32}
+        cpu: {type: number}
+        memUsed: {type: integer, format: int64}
+        memTotal: {type: integer, format: int64}
+        rxBps: {type: integer, format: int64}
+        txBps: {type: integer, format: int64}
+        lastReportAt: {type: string}
+        agentVersion: {type: string}
+        traffic24h: {type: integer, format: int64}
+        spark:
+          type: array
+          items: {type: [integer, 'null'], format: int64}
+        history:
+          type: array
+          items: {$ref: '#/components/schemas/NodePoint'}
+        balancer: {$ref: '#/components/schemas/OverviewBalancer'}
+        maintenance: {type: boolean}
+        inSubscription: {type: boolean}
+        sortOrder: {type: integer, format: int32}
+        uptime: {type: integer, format: int64}
+        diskFree: {type: integer, format: int64}
+        diskTotal: {type: integer, format: int64}
+        classes: {type: string}
+        reportedAt: {type: string}
+        inbounds:
+          type: array
+          items: {$ref: '#/components/schemas/OverviewInbound'}
+        events:
+          type: array
+          items: {$ref: '#/components/schemas/OverviewEvent'}
+      required: [id, name, city, countryCode, protocols, remote, active, state, status, health, issues, peers, maxPeers, online,
+        traffic24h, spark, maintenance, inSubscription, sortOrder]
+      x-kotlin: dev.jaganet.server.services.OverviewServer
+    PairRedeemReq:
+      type: object
+      properties:
+        code: {type: string}
+        device: {$ref: '#/components/schemas/DeviceInfo'}
+      required: [code, device]
+      x-kotlin: dev.jaganet.api.PairRedeemReq
+    PairingCodeRes:
+      type: object
+      properties:
+        code: {type: string}
+        expiresAt: {type: string}
+      required: [code, expiresAt]
+      x-kotlin: dev.jaganet.api.PairingCodeRes
+    Payment:
+      type: object
+      properties:
+        id: {type: string}
+        productId: {type: string}
+        source: {$ref: '#/components/schemas/BillingSource'}
+        startedAt: {type: string}
+        expiresAt: {type: string}
+        status: {$ref: '#/components/schemas/PaymentStatus'}
+        tariffName: {type: string}
+      required: [id, productId, source, startedAt, expiresAt, status]
+      x-kotlin: dev.jaganet.api.Payment
+    PaymentRow:
+      type: object
+      properties:
+        at: {type: string}
+        email: {type: string}
+        product: {type: string}
+        amount: {$ref: '#/components/schemas/MoneyAmount'}
+        channel: {type: string}
+        renewal: {type: boolean}
+      required: [at, email, product, channel, renewal]
+      x-kotlin: dev.jaganet.api.PaymentRow
+    PaymentStatus: {type: string, enum: [active, expired, cancelled, refunded], x-kotlin: dev.jaganet.api.PaymentStatus}
+    PaymentsRes:
+      type: object
+      properties:
+        payments:
+          type: array
+          items: {$ref: '#/components/schemas/Payment'}
+      required: [payments]
+      x-kotlin: dev.jaganet.api.PaymentsRes
+    PingTarget:
+      type: object
+      properties:
+        host: {type: string}
+        port: {type: integer, format: int32}
+        method: {type: string}
+      required: [host, method]
+      x-kotlin: dev.jaganet.api.PingTarget
+    PlanId: {type: string, enum: [free, pro], x-kotlin: dev.jaganet.api.PlanId}
+    PlanSettings:
+      type: object
+      properties:
+        freeMonthlyGb: {type: integer, format: int64}
+        freeDeviceLimit: {type: integer, format: int32}
+        freeSpeedMbps: {type: integer, format: int32}
+        freeDays: {type: integer, format: int32}
+      required: [freeMonthlyGb, freeDeviceLimit]
+      x-kotlin: dev.jaganet.api.PlanSettings
+    PlansRes:
+      type: object
+      properties:
+        tariffs:
+          type: array
+          items: {$ref: '#/components/schemas/Tariff'}
+        free: {$ref: '#/components/schemas/FreePlan'}
+        paymentsEnabled: {type: boolean}
+      required: [tariffs, free, paymentsEnabled]
+      x-kotlin: dev.jaganet.api.PlansRes
+    Platform: {type: string, enum: [ios, android, desktop, other], x-kotlin: dev.jaganet.api.Platform}
+    ReferralDay:
+      type: object
+      properties:
+        day: {type: string}
+        clicks: {type: integer, format: int32}
+        signups: {type: integer, format: int32}
+        paid: {type: integer, format: int32}
+      required: [day, clicks, signups, paid]
+      x-kotlin: dev.jaganet.api.ReferralDay
+    ReferralLink:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        code: {type: string}
+        main: {type: boolean}
+        webUrl: {type: string}
+        telegramUrl: {type: string}
+        createdAt: {type: string}
+        funnel: {$ref: '#/components/schemas/Funnel'}
+      required: [id, name, code, main, webUrl, createdAt, funnel]
+      x-kotlin: dev.jaganet.api.ReferralLink
+    ReferralPeriod: {type: string, enum: [7d, 30d, 90d, all], x-kotlin: dev.jaganet.api.ReferralPeriod}
+    ReferralRes:
+      type: object
+      properties:
+        code: {type: string}
+        invited: {type: integer, format: int32}
+        subscribed: {type: integer, format: int32}
+        rewardDays: {type: integer, format: int32}
+        daysEarned: {type: integer, format: int32}
+        shareUrl: {type: string}
+        telegramUrl: {type: string}
+        rewardCondition: {type: string}
+      required: [code, invited, subscribed, rewardDays, daysEarned, shareUrl, rewardCondition]
+      x-kotlin: dev.jaganet.api.ReferralRes
+    ReferralRewardSettings:
+      type: object
+      properties:
+        days: {type: integer, format: int32}
+        condition: {type: string}
+        inviteeDays: {type: integer, format: int32}
+        monthlyCap: {type: integer, format: int32}
+      required: [days, condition, inviteeDays, monthlyCap]
+      x-kotlin: dev.jaganet.api.ReferralRewardSettings
+    ReferralStatsRes:
+      type: object
+      properties:
+        period: {$ref: '#/components/schemas/ReferralPeriod'}
+        totals: {$ref: '#/components/schemas/Funnel'}
+        days:
+          type: array
+          items: {$ref: '#/components/schemas/ReferralDay'}
+        links:
+          type: array
+          items: {$ref: '#/components/schemas/ReferralLink'}
+        sources:
+          type: array
+          items: {$ref: '#/components/schemas/CountBy'}
+        channels:
+          type: array
+          items: {$ref: '#/components/schemas/CountBy'}
+        recent:
+          type: array
+          items: {$ref: '#/components/schemas/ReferredUser'}
+        rewardDays: {type: integer, format: int32}
+        daysEarned: {type: integer, format: int32}
+      required: [period, totals, days, links, sources, channels, recent, rewardDays, daysEarned]
+      x-kotlin: dev.jaganet.api.ReferralStatsRes
+    ReferredStatus: {type: string, enum: [registered, active, lapsed], x-kotlin: dev.jaganet.api.ReferredStatus}
+    ReferredUser:
+      type: object
+      properties:
+        who: {type: string}
+        linkName: {type: string}
+        joinedAt: {type: string}
+        channel: {type: string}
+        status: {$ref: '#/components/schemas/ReferredStatus'}
+        purchases: {type: integer, format: int32}
+      required: [who, linkName, joinedAt, channel, status, purchases]
+      x-kotlin: dev.jaganet.api.ReferredUser
+    RenameDeviceReq:
+      type: object
+      properties:
+        name: {type: string}
+      required: [name]
+      x-kotlin: dev.jaganet.api.RenameDeviceReq
+    RenameReferralLinkReq:
+      type: object
+      properties:
+        name: {type: string}
+      required: [name]
+      x-kotlin: dev.jaganet.api.RenameReferralLinkReq
+    Revenue:
+      type: object
+      properties:
+        mrrMinor: {type: integer, format: int64}
+        currency: {type: string}
+        paying: {type: integer, format: int32}
+        free: {type: integer, format: int32}
+        conversion: {type: number}
+        newSubsThisWeek: {type: integer, format: int32}
+        cancelledThisMonth: {type: integer, format: int32}
+        yearly: {type: integer, format: int32}
+        monthly: {type: integer, format: int32}
+        fromReferrals: {type: integer, format: int32}
+        newPayingLast7Days:
+          type: array
+          items: {$ref: '#/components/schemas/DayCount'}
+      required: [mrrMinor, currency, paying, free, conversion, newSubsThisWeek, cancelledThisMonth, yearly, monthly, fromReferrals,
+        newPayingLast7Days]
+      x-kotlin: dev.jaganet.api.Revenue
+    RewardTopReferrer:
+      type: object
+      properties:
+        userId: {type: string}
+        email: {type: string}
+        invited: {type: integer, format: int32}
+        paid: {type: integer, format: int32}
+        rewards: {type: integer, format: int32}
+        days: {type: integer, format: int32}
+        suspicious: {type: integer, format: int32}
+      required: [userId, email, invited, paid, rewards, days, suspicious]
+      x-kotlin: dev.jaganet.api.RewardTopReferrer
+    Role: {type: string, enum: [user, owner], x-kotlin: dev.jaganet.api.Role}
+    ServerHealth:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        connectedNow: {type: integer, format: int32}
+        maxPeers: {type: integer, format: int32}
+        cpu: {type: number}
+        memUsedBytes: {type: integer, format: int64}
+        memTotalBytes: {type: integer, format: int64}
+        trafficThisMonthBytes: {type: integer, format: int64}
+        trafficLimitBytes: {type: integer, format: int64}
+        uptimeSeconds: {type: integer, format: int64}
+        paidThrough: {type: string}
+        warnings:
+          type: array
+          items: {type: string}
+      required: [id, name, connectedNow, maxPeers, cpu, memUsedBytes, memTotalBytes, trafficThisMonthBytes, uptimeSeconds,
+        warnings]
+      x-kotlin: dev.jaganet.api.ServerHealth
+    ServerLocation:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        city: {type: string}
+        countryCode: {type: string}
+        load: {type: number}
+        protocols:
+          type: array
+          items: {type: string}
+        host: {type: string}
+        status: {type: string}
+        notice: {type: string}
+        countryName: {type: string}
+        ping: {$ref: '#/components/schemas/PingTarget'}
+      required: [id, name, city, countryCode, load, protocols, status]
+      x-kotlin: dev.jaganet.api.ServerLocation
+    ServersOverviewRes:
+      type: object
+      properties:
+        now: {type: string}
+        range: {type: string}
+        balancer: {type: boolean}
+        main: {$ref: '#/components/schemas/OverviewMain'}
+        monitor: {$ref: '#/components/schemas/MonitorRes'}
+        servers:
+          type: array
+          items: {$ref: '#/components/schemas/OverviewServer'}
+        rules: {$ref: '#/components/schemas/OverviewRules'}
+      required: [now, range, balancer, main, monitor, servers, rules]
+      x-kotlin: dev.jaganet.server.services.ServersOverviewRes
+    ServersRes:
+      type: object
+      properties:
+        servers:
+          type: array
+          items: {$ref: '#/components/schemas/ServerLocation'}
+        notice: {type: string}
+      required: [servers]
+      x-kotlin: dev.jaganet.api.ServersRes
+    SessionRes:
+      type: object
+      properties:
+        token: {type: string}
+        user: {$ref: '#/components/schemas/User'}
+        deviceId: {type: string}
+      required: [token, user, deviceId]
+      x-kotlin: dev.jaganet.api.SessionRes
+    SetLangReq:
+      type: object
+      properties:
+        lang: {type: string}
+      required: [lang]
+      x-kotlin: dev.jaganet.server.http.SetLangReq
+    SiteInfo:
+      type: object
+      properties:
+        androidAppUrl: {type: string}
+        iosAppUrl: {type: string}
+        telegramBotUrl: {type: string}
+        testPayments: {type: boolean}
+        paymentsEnabled: {type: boolean}
+        emailSignIn: {type: boolean}
+        testCodes: {type: boolean}
+        referralsPublic: {type: boolean}
+        inviteRewardDays: {type: integer, format: int32}
+        communityUrl: {type: string}
+      required: [testPayments, paymentsEnabled, emailSignIn, testCodes, referralsPublic, inviteRewardDays]
+      x-kotlin: dev.jaganet.api.SiteInfo
+    SmtpSettings:
+      type: object
+      properties:
+        host: {type: string}
+        port: {type: integer, format: int32}
+        user: {type: [string, 'null']}
+        password: {type: [string, 'null']}
+        from: {type: string}
+        security: {type: string}
+      required: [host, port, from]
+      x-kotlin: dev.jaganet.api.SmtpSettings
+    StatsBucket:
+      type: object
+      properties:
+        start: {type: string}
+        rxBytes: {type: integer, format: int64}
+        txBytes: {type: integer, format: int64}
+      required: [start, rxBytes, txBytes]
+      x-kotlin: dev.jaganet.api.StatsBucket
+    StatsPeriod: {type: string, enum: [day, week, month], x-kotlin: dev.jaganet.api.StatsPeriod}
+    StatsRes:
+      type: object
+      properties:
+        period: {$ref: '#/components/schemas/StatsPeriod'}
+        buckets:
+          type: array
+          items: {$ref: '#/components/schemas/StatsBucket'}
+        totalRxBytes: {type: integer, format: int64}
+        totalTxBytes: {type: integer, format: int64}
+        protectedSeconds: {type: integer, format: int64}
+        sessions: {type: integer, format: int32}
+        avgDownBps: {type: integer, format: int64}
+        peakDownBps: {type: integer, format: int64}
+        byDevice:
+          type: array
+          items: {$ref: '#/components/schemas/DeviceTraffic'}
+      required: [period, buckets, totalRxBytes, totalTxBytes, protectedSeconds, sessions, byDevice]
+      x-kotlin: dev.jaganet.api.StatsRes
+    SupportInfoRes:
+      type: object
+      properties:
+        available: {type: boolean}
+      required: [available]
+      x-kotlin: dev.jaganet.server.http.SupportInfoRes
+    SupportReq:
+      type: object
+      properties:
+        name: {type: [string, 'null']}
+        email: {type: string}
+        subject: {type: string}
+        message: {type: string}
+        website: {type: [string, 'null']}
+      required: [email, subject, message]
+      x-kotlin: dev.jaganet.server.http.SupportReq
+    Tariff:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        durationValue: {type: integer, format: int32}
+        durationUnit: {$ref: '#/components/schemas/DurationUnit'}
+        priceMinor: {type: integer, format: int64}
+        currency: {type: string}
+        deviceLimit: {type: integer, format: int32}
+        monthlyDataLimitBytes: {type: integer, format: int64}
+        badge: {type: string}
+      required: [id, name, durationValue, durationUnit, priceMinor, currency, deviceLimit]
+      x-kotlin: dev.jaganet.api.Tariff
+    TariffReq:
+      type: object
+      properties:
+        name: {type: string}
+        durationValue: {type: integer, format: int32}
+        durationUnit: {$ref: '#/components/schemas/DurationUnit'}
+        priceRubMinor: {type: integer, format: int64}
+        priceEurMinor: {type: integer, format: int64}
+        deviceLimit: {type: integer, format: int32}
+        trafficGb: {type: [integer, 'null'], format: int64}
+        badge: {type: [string, 'null']}
+        sort: {type: integer, format: int32}
+        status: {$ref: '#/components/schemas/TariffStatus'}
+      required: [name, durationValue, durationUnit, priceRubMinor, priceEurMinor, deviceLimit]
+      x-kotlin: dev.jaganet.api.TariffReq
+    TariffStatus: {type: string, enum: [active, hidden, archived], x-kotlin: dev.jaganet.api.TariffStatus}
+    TelegramConfigRes:
+      type: object
+      properties:
+        bot: {type: [string, 'null']}
+        widget: {type: boolean}
+        loginUrl: {type: [string, 'null']}
+      required: [bot, widget, loginUrl]
+      x-kotlin: dev.jaganet.server.http.TelegramConfigRes
+      x-explicit-nulls: true
+    TelegramLinkRes:
+      type: object
+      properties:
+        url: {type: string}
+        expiresAt: {type: string}
+      required: [url, expiresAt]
+      x-kotlin: dev.jaganet.server.http.TelegramLinkRes
+    TelegramLoginLinkRes:
+      type: object
+      properties:
+        url: {type: string}
+      required: [url]
+      x-kotlin: dev.jaganet.server.http.TelegramLoginLinkRes
+    TelegramStatusRes:
+      type: object
+      properties:
+        linked: {type: boolean}
+        username: {type: [string, 'null']}
+        notify: {type: boolean}
+        telegramOnly: {type: boolean}
+        botUrl: {type: [string, 'null']}
+        bot: {type: [string, 'null']}
+        lang: {type: string}
+        invites: {type: boolean}
+      required: [linked, username, notify, telegramOnly, botUrl, bot, lang, invites]
+      x-kotlin: dev.jaganet.server.http.TelegramStatusRes
+      x-explicit-nulls: true
+    TestAccount:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        email: {type: string}
+        devices: {type: integer, format: int32}
+        expiresAt: {type: string}
+        keys:
+          type: array
+          items: {type: string}
+        createdAt: {type: string}
+        vpnKeys:
+          type: array
+          items: {type: string}
+        activity:
+          type: array
+          items: {$ref: '#/components/schemas/KeyActivity'}
+      required: [id, name, email, devices, expiresAt, keys, createdAt, vpnKeys, activity]
+      x-kotlin: dev.jaganet.api.TestAccount
+    TestAccountReq:
+      type: object
+      properties:
+        name: {type: string}
+        devices: {type: integer, format: int32}
+      required: [name, devices]
+      x-kotlin: dev.jaganet.api.TestAccountReq
+    TestAccountsReq:
+      type: object
+      properties:
+        accounts:
+          type: array
+          items: {$ref: '#/components/schemas/TestAccountReq'}
+        days: {type: integer, format: int32}
+      required: [accounts]
+      x-kotlin: dev.jaganet.api.TestAccountsReq
+    TestAccountsRes:
+      type: object
+      properties:
+        accounts:
+          type: array
+          items: {$ref: '#/components/schemas/TestAccount'}
+      required: [accounts]
+      x-kotlin: dev.jaganet.api.TestAccountsRes
+    TestEmailReq:
+      type: object
+      properties:
+        to: {type: string}
+      required: [to]
+      x-kotlin: dev.jaganet.api.TestEmailReq
+    TopReferrer:
+      type: object
+      properties:
+        email: {type: string}
+        links: {type: integer, format: int32}
+        funnel: {$ref: '#/components/schemas/Funnel'}
+      required: [email, links, funnel]
+      x-kotlin: dev.jaganet.api.TopReferrer
+    TrafficPoint:
+      type: object
+      properties:
+        ts: {type: string}
+        down: {type: integer, format: int64}
+        up: {type: integer, format: int64}
+        torrent: {type: integer, format: int64}
+      required: [ts, down, up, torrent]
+      x-kotlin: dev.jaganet.api.TrafficPoint
+    TrafficSplit:
+      type: object
+      properties:
+        down: {type: integer, format: int64}
+        up: {type: integer, format: int64}
+        torrentDown: {type: integer, format: int64}
+        torrentUp: {type: integer, format: int64}
+      required: [down, up, torrentDown, torrentUp]
+      x-kotlin: dev.jaganet.api.TrafficSplit
+    TunnelConfig:
+      type: object
+      properties:
+        protocol: {type: string}
+        serverId: {type: string}
+        location: {type: string}
+        address: {type: string}
+        dns:
+          type: array
+          items: {type: string}
+        mtu: {type: integer, format: int32}
+        params: {type: object}
+        notice: {type: string}
+      required: [protocol, serverId, location, address, dns, mtu, params]
+      x-kotlin: dev.jaganet.api.TunnelConfig
+    TunnelProvisionReq:
+      type: object
+      properties:
+        protocol: {type: string}
+        serverId: {type: [string, 'null']}
+        clientParams: {type: object}
+      required: [protocol]
+      x-kotlin: dev.jaganet.api.TunnelProvisionReq
+    TunnelState:
+      type: object
+      properties:
+        config: {$ref: '#/components/schemas/TunnelConfig'}
+        version: {type: string}
+        rekey: {type: boolean}
+        countryCode: {type: string}
+        notice: {type: string}
+      required: [version, rekey]
+      x-kotlin: dev.jaganet.api.TunnelState
+    Usage:
+      type: object
+      properties:
+        periodStart: {type: string}
+        bytesUsed: {type: integer, format: int64}
+        devicesUsed: {type: integer, format: int32}
+      required: [periodStart, bytesUsed, devicesUsed]
+      x-kotlin: dev.jaganet.api.Usage
+    User:
+      type: object
+      properties:
+        id: {type: string}
+        email: {type: string}
+        role: {$ref: '#/components/schemas/Role'}
+        createdAt: {type: string}
+      required: [id, email, role, createdAt]
+      x-kotlin: dev.jaganet.api.User
+    VlessKey:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        countryCode: {type: string}
+        active: {type: boolean}
+        links:
+          type: array
+          items: {type: string}
+        subscriptionUrl: {type: string}
+        pageUrl: {type: string}
+        qrUrl: {type: string}
+      required: [id, name, active, links, subscriptionUrl, pageUrl, qrUrl]
+      x-kotlin: dev.jaganet.api.VlessKey
+    VlessNodeSettings:
+      type: object
+      properties:
+        host: {type: string}
+        publicKey: {type: string}
+        shortIds:
+          type: array
+          items: {type: string}
+        sni: {type: string}
+        fingerprint: {type: string}
+        transports:
+          type: array
+          items: {$ref: '#/components/schemas/VlessTransport'}
+      required: [host, publicKey, shortIds, sni, transports]
+      x-kotlin: dev.jaganet.api.Vless$NodeSettings
+    VlessTransport:
+      type: object
+      properties:
+        type: {type: string}
+        port: {type: integer, format: int32}
+        tag: {type: string}
+        flow: {type: string}
+        path: {type: [string, 'null']}
+        mode: {type: [string, 'null']}
+        host: {type: [string, 'null']}
+      required: [type, port]
+      x-kotlin: dev.jaganet.api.Vless$Transport

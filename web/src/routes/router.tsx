@@ -7,6 +7,7 @@ import { t } from "@/i18n";
 import { Shell } from "@/components/shell/Shell";
 import { requireOwner, requireSignIn, type RouterContext } from "./guards";
 import { Placeholder } from "./Placeholder";
+import { AdminScreen } from "@/features/admin/AdminScreen";
 import { parseSearch, pick, stringifySearch } from "./search";
 import type { QueryClient } from "@tanstack/react-query";
 
@@ -88,7 +89,7 @@ const admin = createRoute({
   path: "/admin",
   validateSearch: pick("tab", "id", "from", "to", "status", "q", "period"),
   beforeLoad: ({ context, location }) => requireOwner(context, `#${location.href}`),
-  component: () => <Placeholder title={t("Admin panel")} />,
+  component: AdminScreen,
 });
 
 export const routeTree = rootRoute.addChildren([

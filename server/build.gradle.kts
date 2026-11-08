@@ -30,6 +30,8 @@ dependencies {
     implementation(libs.angus.mail)
     // SSH client: the admin panel installs new VPN nodes over SSH.
     implementation(libs.jsch)
+    // Reads resources/openapi.yaml for /v1/openapi.json (owner only) and the tests.
+    implementation(libs.snakeyaml.engine)
     // Real PostgreSQL binaries from Maven: used by `./gradlew :server:sim` and the tests.
     implementation(libs.embedded.postgres)
 

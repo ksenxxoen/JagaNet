@@ -22,11 +22,10 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
 
 /** Telegram accounts for the bot and the website (made per call: it keeps no state). */
 val Services.telegramAccounts get() = TelegramAccounts(ctx, auth, tunnels)
@@ -43,15 +42,36 @@ val Services.telegramAccounts get() = TelegramAccounts(ctx, auth, tunnels)
  *  - PUT  /telegram/notify       {notify} notifications in Telegram on or off
  *  - POST /telegram/login-link   a one-time link that signs in on the website
  */
+/** GET /v1/auth/telegram/config. Sent with explicit nulls, as before (`"bot": null` when the bot is off). */
+@Serializable
+data class TelegramConfigRes(val bot: String?, val widget: Boolean, val loginUrl: String?)
+
+/** GET /v1/telegram. Sent with explicit nulls, as before. */
+@Serializable
+data class TelegramStatusRes(
+    val linked: Boolean,
+    val username: String?,
+    val notify: Boolean,
+    val telegramOnly: Boolean,
+    val botUrl: String?,
+    val bot: String?,
+    val lang: String,
+    val invites: Boolean,
+)
+
+/** POST /v1/telegram/login-link. */
+@Serializable
+data class TelegramLoginLinkRes(val url: String)
+
+/** POST /v1/telegram/link: the t.me link and when its code expires (ISO-8601). */
+@Serializable
+data class TelegramLinkRes(val url: String, val expiresAt: String)
+
 fun Route.telegramWebApi(s: Services) {
     fun bot(): String? = s.bot?.username
     get("/auth/telegram/config") {
         val bot = bot()
-        call.respond(buildJsonObject {
-            put("bot", bot)
-            put("widget", bot != null && s.ctx.cfg.telegram.loginWidget)
-            put("loginUrl", bot?.let { "https://t.me/$it?start=login" })
-        })
+        call.respondKeepingNulls(TelegramConfigRes(bot, bot != null && s.ctx.cfg.telegram.loginWidget, bot?.let { "https://t.me/$it?start=login" }))
     }
     post("/auth/telegram") {
         val body = call.receive<JsonObject>()
@@ -76,17 +96,19 @@ fun Route.telegramWebApi(s: Services) {
         val p = call.principal(s)
         val r = s.ctx.db.run { it.one("SELECT telegram_id, tg_username, tg_notify, lang FROM users WHERE id=?::uuid", p.user.id) }
         val bot = bot()
-        call.respond(buildJsonObject {
-            put("linked", r?.longOrNull("telegram_id") != null)
-            put("username", r?.strOrNull("tg_username"))
-            put("notify", r?.bool("tg_notify") ?: true)
-            put("telegramOnly", TelegramAccounts.isPlaceholder(p.user.email))
-            put("botUrl", bot?.let { "https://t.me/$it" })
-            put("bot", bot)
-            // For the mini app (issue #87): the account's language and whether "Invite a friend" is shown.
-            put("lang", (Lang.of(r?.strOrNull("lang")) ?: Lang.DEFAULT).code)
-            put("invites", s.invitesFor(p.user.role))
-        })
+        call.respondKeepingNulls(
+            TelegramStatusRes(
+                linked = r?.longOrNull("telegram_id") != null,
+                username = r?.strOrNull("tg_username"),
+                notify = r?.bool("tg_notify") ?: true,
+                telegramOnly = TelegramAccounts.isPlaceholder(p.user.email),
+                botUrl = bot?.let { "https://t.me/$it" },
+                bot = bot,
+                // For the mini app (issue #87): the account's language and whether "Invite a friend" is shown.
+                lang = (Lang.of(r?.strOrNull("lang")) ?: Lang.DEFAULT).code,
+                invites = s.invitesFor(p.user.role),
+            ),
+        )
     }
     // Notifications in Telegram on or off (the bot's "Notifications" button does the same).
     put("/telegram/notify") {
@@ -100,16 +122,13 @@ fun Route.telegramWebApi(s: Services) {
         val p = call.principal(s)
         val lang = call.apiLang()
         val url = s.auth.createLoginLink(p.user.id, TelegramBot.LOGIN_LINK_TTL).replace("/#/", "/?lang=${lang.code}#/")
-        call.respond(buildJsonObject { put("url", url) })
+        call.respond(TelegramLoginLinkRes(url))
     }
     post("/telegram/link") {
         val p = call.principal(s)
         val bot = bot() ?: throw AppError(503, ErrorCode.SERVICE_UNAVAILABLE, "The Telegram bot is off")
         val (code, expires) = s.telegramAccounts.createLinkCode(p.user.id)
-        call.respond(buildJsonObject {
-            put("url", "https://t.me/$bot?start=${TelegramBot.LINK_PREFIX}$code")
-            put("expiresAt", expires.toString())
-        })
+        call.respond(TelegramLinkRes("https://t.me/$bot?start=${TelegramBot.LINK_PREFIX}$code", expires.toString()))
     }
     delete("/telegram/link") {
         s.telegramAccounts.unlink(call.principal(s).user.id)

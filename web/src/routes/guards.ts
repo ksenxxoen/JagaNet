@@ -3,7 +3,7 @@ import { redirect } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
 import { meQuery } from "@/api/queries";
 import { store } from "@/lib/storage";
-import { useSession } from "@/store/session";
+import { useSession, type Role } from "@/store/session";
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -20,7 +20,7 @@ export function requireSignIn(href: string) {
 export async function requireOwner(ctx: RouterContext, href: string) {
   requireSignIn(href);
   const token = useSession.getState().token;
-  let role: string | null = useSession.getState().role;
+  let role: Role | null = useSession.getState().role;
   if (role == null) {
     try {
       role = (await ctx.queryClient.ensureQueryData(meQuery(token))).user.role;

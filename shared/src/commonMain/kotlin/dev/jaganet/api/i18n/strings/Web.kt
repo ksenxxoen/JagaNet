@@ -187,4 +187,8 @@ internal val webStrings: List<S> = listOf(
     S("This screen is moving to the new website", "Этот экран переносится на новый сайт", "Dieser Bereich zieht auf die neue Website um"),
     S("Until then it works on the current website.", "Пока он работает на текущем сайте.", "Bis dahin funktioniert er auf der aktuellen Website."),
     S("Open on the current website", "Открыть на текущем сайте", "Auf der aktuellen Website öffnen"),
+    // The admin panel's API tab (Swagger UI, owner only).
+    S("API", "API", "API"),
+    S("API documentation", "Документация API", "API-Dokumentation"),
+    S("Every /v1 endpoint of the panel. Requests from Try it out are sent with your session.", "Все эндпоинты /v1 панели. Запросы из Try it out отправляются с вашей сессией.", "Alle /v1-Endpunkte des Panels. Anfragen aus Try it out werden mit deiner Sitzung gesendet."),
 )
