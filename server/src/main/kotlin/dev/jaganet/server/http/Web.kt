@@ -108,6 +108,7 @@ fun Route.salesApi(s: Services) {
 /** The website (static files in resources/web), key links and the test checkout. */
 fun Route.website(s: Services) {
     staticResources("/", "web")
+    webNextPreview()
     referralRedirect(s)
 
     get("/download/android") {

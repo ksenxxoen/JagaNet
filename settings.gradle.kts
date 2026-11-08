@@ -21,6 +21,15 @@ dependencyResolutionManagement {
         // Google's mirror of Maven Central: fewer rate limits on CI and cloud machines.
         maven("https://maven-central.storage-download.googleapis.com/maven2/")
         mavenCentral()
+        // Node.js for building the new website (web/, node-gradle plugin in server/build.gradle.kts).
+        // Declared here and not by the plugin: a project repository would hide the ones above.
+        ivy {
+            name = "Node.js"
+            setUrl("https://nodejs.org/dist/")
+            patternLayout { artifact("v[revision]/[artifact](-v[revision]-[classifier]).[ext]") }
+            metadataSources { artifact() }
+            content { includeModule("org.nodejs", "node") }
+        }
     }
 }
 

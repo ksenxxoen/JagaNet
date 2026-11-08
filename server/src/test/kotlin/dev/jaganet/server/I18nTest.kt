@@ -14,9 +14,19 @@ import kotlin.test.assertTrue
  */
 class I18nTest {
     private val root = File("..").canonicalFile
-    private val sources: List<File> = listOf("composeApp/src", "server/src/main", "shared/src/commonMain")
-        .flatMap { File(root, it).walk().filter { f -> f.isFile && (f.extension == "kt" || f.extension == "js") }.toList() }
+    private val sources: List<File> = listOf("composeApp/src", "server/src/main", "shared/src/commonMain", "web/src")
+        .flatMap { File(root, it).walk().filter { f -> f.isFile && f.extension in EXTENSIONS }.toList() }
         .filterNot { "/i18n/strings/" in it.path }
+        // The new website's tests use made-up texts on purpose.
+        .filterNot { f -> f.invariantSeparatorsPath.let { "/web/src/" in it && ("/__tests__/" in it || "/web/src/test/" in it) } }
+
+    @Test fun `the new website is scanned`() {
+        val web = sources.filter { "/web/src/" in it.invariantSeparatorsPath }
+        assertTrue(web.any { it.extension == "tsx" } && web.any { it.extension == "ts" }, "web/src has no .ts/.tsx files to check")
+        // The key regex finds calls in TSX, including inside JSX braces.
+        assertEquals(listOf("Sign in", "{n} day|{n} days"), keyCall.findAll("""<a>{t("Sign in")}</a>{tp(n, "{n} day|{n} days")}""").map { it.groupValues[1] }.toList())
+        assertTrue(web.flatMap { keysIn(it) }.contains("This screen is moving to the new website"))
+    }
 
     /** t("…"), tp(n, "…"), and server errors: notFound("…"), badRequest("…"), AppError(…, "…"), translate(…, "…"). */
     private val keyCall = Regex(
@@ -69,6 +79,8 @@ class I18nTest {
 
     private companion object {
         const val BANNED = "—–·"
+        /** Kotlin, the old website (.js) and the new one (web/src, .ts and .tsx). */
+        val EXTENSIONS = setOf("kt", "js", "ts", "tsx")
         fun styleProblem(s: String): String? = when {
             s.any { it in BANNED } -> "long dash or ·"
             " - " in s -> "a hyphen used as a dash"
