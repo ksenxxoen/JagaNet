@@ -26,7 +26,9 @@ export default defineConfig({
     // tab), qrcode (the account, later the mini app) and, from W-7, @hello-pangea/dnd (node order).
     // Guests never download them.
     rolldownOptions: {
-      output: { codeSplitting: { groups: [{ name: "vendor", test: /node_modules[\\/](?!swagger-ui-dist|@hello-pangea|qrcode|dijkstrajs|pngjs)/ }] } },
+      output: {
+        codeSplitting: { groups: [{ name: "vendor", test: /node_modules[\\/](?!swagger-ui-dist|@hello-pangea|qrcode|dijkstrajs|pngjs)/ }] },
+      },
     },
   },
   server: {

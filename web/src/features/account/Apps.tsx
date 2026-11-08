@@ -41,11 +41,15 @@ export function AppsSection({ site }: { site: Partial<SiteInfo> }) {
               <h3 className="m-0 text-[17px]">{c.title}</h3>
               <p className="m-0 flex-1 text-muted">{c.text}</p>
               {c.href ? (
-                <a className={buttonVariants({ variant: "secondary" })} href={c.href} {...(c.external ? { rel: "noreferrer" } : {})}>
+                <a
+                  className={buttonVariants({ variant: "secondary", className: "w-full" })}
+                  href={c.href}
+                  {...(c.external ? { rel: "noreferrer" } : {})}
+                >
                   {c.label}
                 </a>
               ) : (
-                <Button variant="secondary" disabled>
+                <Button variant="secondary" className="w-full" disabled>
                   {c.label}
                 </Button>
               )}
