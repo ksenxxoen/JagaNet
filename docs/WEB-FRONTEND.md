@@ -20,14 +20,20 @@ Swagger UI (`swagger-ui-dist`, the owner's API tab), Vitest + Testing Library, E
 | Path | What |
 | --- | --- |
 | `web/index.html` | The page: meta tags as the old `index.html`, plus `noindex` for the preview |
-| `web/src/main.tsx` | Start: saves `?ref=`, loads the language, mounts the router |
+| `web/src/entries/site.tsx` | Start of the website: saves `?ref=`, loads the language, mounts the router |
 | `web/src/index.css`, `tailwind.config.ts` | Design tokens from `style.css` (light and dark) as Tailwind colors: `paper`, `surface`, `ink`, `muted`, `line*`, `primary*`, `green*`, `warn*`, `danger*` |
-| `web/src/components/ui/` | Base components: Button, Card, Field/Input/Select, Tabs, Chips, StatusBadge, Table, Spinner, EmptyState, ErrorState |
+| `web/src/components/ui/` | Base components: Button, Card, Field/Input/Select, Tabs, Chips, StatusBadge, Table, Spinner, EmptyState, ErrorState, Notice, CodeInput (6 digits), Form/FormError |
+| `web/src/components/layout/` | Page, PageHeader (title, line, actions), Section, Toolbar |
+| `web/src/hooks/` | `useApiMutation` (toast, server message, invalidation), `useSaveForm` (locked form, error under it), `useSignOut` |
 | `web/src/components/shell/` | Top bar (menu by role, language switch, phone menu), footer |
 | `web/src/routes/` | Routes, typed query parameters, guards, the "screen is moving" placeholder |
-| `web/src/api/` | Axios client for `/v1`, typed calls (`typed.ts`), generated types (`schema.d.ts`), React Query client and shared queries |
+| `web/src/api/` | Axios client for `/v1`, typed calls (`typed.ts`), generated types (`schema.d.ts`), query keys (`keys.ts`), React Query client and shared queries |
+| `web/src/lib/` | `cn`, `notify`, `storage`, `anchors` (landing sections), `checkout` (buy a plan), `rich` (texts with links), `navigate` |
+| `web/src/features/public/` | `#/` landing page (lazy chunk with its own `landing.css`, ported from `style.css`) |
+| `web/src/features/auth/` | `#/signin`, `#/login?token=`, `#/app-login?id=`, the Telegram Login Widget (lazy chunk) |
 | `web/src/features/admin/` | `#/admin` until W-6: the API tab (Swagger UI, lazy chunk) and the placeholder |
 | `web/src/test/api.ts` | `mockApi()`: typed /v1 mocks on the Axios adapter for tests |
+| `web/src/test/app.tsx` | `renderApp(path)`: the whole site on memory history; fixtures (`siteInfo`, `session`, `plans`) |
 | `web/src/store/session.ts` | Zustand: token, role, site settings, language |
 | `web/src/i18n/` | i18next setup, `t`, `tp`, `date`, `dateTime`, `money`, `bytes`, `num` |
 
@@ -78,6 +84,14 @@ address via `JAGANET_DEV_SERVER=http://host:port npm run dev`).
   later `@hello-pangea/dnd`) are excluded from it (`vite.config.ts`) and land in their screen's
   chunk. W-2: `vendor` 487 KB (159 KB gzip) before and after; Swagger UI is `ApiDocs-*.js`
   1.5 MB (423 KB gzip) + `ApiDocs-*.css` 188 KB, downloaded only on `#/admin?tab=api`.
+  W-3: the landing page is `Landing-*.js` 20 KB (6.7 KB gzip) + `Landing-*.css` 18 KB, the sign-in
+  screens `auth-*.js` 8.7 KB (3.5 KB gzip); `vendor` 490 KB (160 KB gzip). Neither pulls Swagger UI.
+
+## Screen boundaries
+
+A screen lives in `src/features/<name>/` and imports only the shared modules and itself; shared
+modules never import a screen (ESLint `no-restricted-imports`, `eslint.config.js`). What two
+screens need moves to `components/`, `hooks/` or `lib/`. ESLint also runs `jsx-a11y`.
 
 ## Adding a screen
 

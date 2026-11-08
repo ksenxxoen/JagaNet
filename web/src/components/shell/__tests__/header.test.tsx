@@ -34,7 +34,7 @@ describe("shell", () => {
     const qc = createQueryClient();
     render(
       <QueryClientProvider client={qc}>
-        <RouterProvider router={createAppRouter(qc, createMemoryHistory({ initialEntries: ["/"] }))} />
+        <RouterProvider router={createAppRouter(qc, createMemoryHistory({ initialEntries: ["/support"] }))} />
       </QueryClientProvider>,
     );
     const user = userEvent.setup();

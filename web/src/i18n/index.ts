@@ -11,7 +11,7 @@ import LanguageDetector from "i18next-browser-languagedetector";
 import HttpBackend from "i18next-http-backend";
 import { initReactI18next, useTranslation } from "react-i18next";
 import { store } from "@/lib/storage";
-import { formatBytes, formatDate, formatDateTime, formatMoney, formatNum, isLang, pluralForm, type Lang } from "./format";
+import { fill, formatBytes, formatDate, formatDateTime, formatMoney, formatNum, isLang, pluralForm, type Lang } from "./format";
 
 export { LANGS, type Lang } from "./format";
 
@@ -84,9 +84,9 @@ export async function setLang(code: string) {
   document.title = t("Boop VPN");
 }
 
-/** The translated text with {placeholders} filled. */
+/** The translated text with {placeholders} filled (before the texts load: the English one, filled too). */
 export function t(en: string, args?: Record<string, unknown>): string {
-  return i18n.isInitialized ? i18n.t(en, { ...args, defaultValue: en }) : en;
+  return i18n.isInitialized ? i18n.t(en, { ...args, defaultValue: en }) : fill(en, args);
 }
 
 /** Plural text: tp(n, "{n} day|{n} days"), the translation has as many forms as the language needs. */

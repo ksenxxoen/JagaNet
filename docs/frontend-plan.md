@@ -46,8 +46,9 @@ OpenAPI как объект и не менялся.
 
 Правило зависимостей: экран может импортировать общие модули и сам себя, но не другой экран.
 Если кусок нужен двум экранам, он переезжает в общие модули (`components/` или `hooks/`).
-Это проверяет ESLint (`no-restricted-imports` для `@/features/*/**` из чужой папки), правило
-добавляется в W-3 вместе с первой папкой `features/`.
+Это проверяет ESLint (`no-restricted-imports` для `@/features/*/**` из чужой папки; общие модули
+`api/`, `components/`, `hooks/`, `i18n/`, `lib/`, `store/` не импортируют экраны вовсе), правило
+есть с W-3 (`web/eslint.config.js`), список папок `features/` берётся из файловой системы.
 
 ### 2.2. Структура папок (целевая)
 
@@ -87,8 +88,8 @@ web/
     test/                    setup, моки API (MSW-подобный хелпер на axios-адаптере), фабрики данных
 ```
 
-Нынешние `routes/`, `components/shell/`, `store/` остаются на месте; перенос `main.tsx` в
-`entries/site.tsx` делается в W-3 одной строкой в `index.html`.
+Нынешние `routes/`, `components/shell/`, `store/` остаются на месте; `main.tsx` перенесён в
+`entries/site.tsx` в W-3 (одна строка в `index.html`).
 
 ### 2.3. UI-kit и что когда появляется
 
@@ -203,7 +204,7 @@ Schema, которое использует файл (без новой зави
 | --- | --- | --- |
 | W-1 #118 | Каркас, сборка, CI, `/next/`, этот план | готово в PR #129 |
 | W-2 #119 | OpenAPI, `schema.d.ts`, `api/typed.ts`, Swagger UI | способ OpenAPI — раздел 2.4; заменить `buildJsonObject` в ответах `/v1` на классы; сузить `vendor`-чанк. Сделано; `test/api.ts` (`mockApi`) уже есть, W-3 использует его |
-| W-3 #120 | Лендинг, вход, `#/login`, `#/app-login` | + `layout/`, `Form`/`useSaveForm`, `useApiMutation`, `api/keys.ts`, `entries/site.tsx`, правило ESLint для `features/` |
+| W-3 #120 | Лендинг, вход, `#/login`, `#/app-login` | + `layout/`, `Form`/`useSaveForm`, `useApiMutation`, `api/keys.ts`, `entries/site.tsx`, правило ESLint для `features/`. Сделано. Отклонения: стили лендинга (тёмный герой, нарисованное приложение, градиентные кнопки, карточки тарифов) перенесены из `style.css` файлом `features/public/landing.css` в области `.lp`, а не утилитами Tailwind: так паритет внешнего вида точный, а файл грузится только с чанком лендинга. Добавлены `Notice` (плашка `.notice`), `lib/anchors.ts`, `lib/checkout.ts` (покупка из лендинга, после входа и в W-4 из кабинета), `lib/rich.tsx` (тексты со ссылками `{a}…{end}` без HTML), `hooks/useSignOut.ts`, `test/app.tsx` (`renderApp` и фикстуры). `usePolling` в W-3 не понадобился: `#/app-login` опрашивает само приложение, страница только показывает код и «Разрешить» (как `appLogin()`); хук делается в W-4. Кнопка «Выйти» до W-4 стоит на заглушке `#/account`. `eslint-plugin-jsx-a11y` 6.10 объявляет ESLint до 9, подключён через `overrides` (с ESLint 10 работает) |
 | W-4 #121 | Кабинет | + `Modal`/`ConfirmDialog` (из W-6), `CopyButton`, `QrCanvas`, `AppLinks`, `usePolling` |
 | W-5 #122 | Рефералы, приглашения, поддержка | + `PeriodPicker`, `SearchBox`, `usePersistedSearch` |
 | W-6 #123 | Админка 1 | + `DataTable`, `KpiGrid`, `Breadcrumbs`, `KeyValueList` (диалог подтверждения уже есть из W-4) |

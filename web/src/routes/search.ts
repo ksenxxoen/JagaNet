@@ -20,5 +20,4 @@ export const pick =
     return out;
   };
 
-/** "#pricing", "#faq"…: a section of the landing page, not a route (isAnchor() in app.js). */
-export const isAnchor = (hash: string) => /^#[a-z]/.test(hash);
+export { isAnchor } from "@/lib/anchors";
