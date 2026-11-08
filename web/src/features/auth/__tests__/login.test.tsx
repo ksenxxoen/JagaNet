@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useSession } from "@/store/session";
 import { apiError, mockApi, resetApi } from "@/test/api";
-import { renderApp, session, siteInfo } from "@/test/app";
+import { accountRoutes, renderApp, session, siteInfo } from "@/test/app";
 
 beforeEach(() => useSession.setState({ token: null, role: null, site: null }));
 afterEach(() => {
@@ -81,12 +81,7 @@ describe("#/app-login?id=", () => {
 describe("sign out", () => {
   it("ends the session on the server and opens the landing page", async () => {
     useSession.getState().setToken("tok");
-    const seen = mockApi({
-      "GET /site": siteInfo(),
-      "GET /me": { user: session().user } as never,
-      "POST /auth/logout": { ok: true },
-      "GET /billing/plans": { tariffs: [], free: { deviceLimit: 1 }, paymentsEnabled: true },
-    });
+    const seen = mockApi({ ...accountRoutes(), "POST /auth/logout": { ok: true } });
     const { router } = renderApp("/account");
     await userEvent.setup().click(await screen.findByRole("button", { name: "Sign out" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/"));

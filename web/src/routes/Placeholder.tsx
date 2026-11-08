@@ -2,8 +2,7 @@ import { ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { Page, PageHeader } from "@/components/layout";
-import { Button, buttonVariants, Card } from "@/components/ui";
-import { useSignOut } from "@/hooks/useSignOut";
+import { buttonVariants, Card } from "@/components/ui";
 import { useI18n } from "@/i18n";
 
 /** A screen that has not moved yet: its title, a short note and a link to the same screen on the current site. */
@@ -23,21 +22,5 @@ export function Placeholder({ title, actions, children }: { title: string; actio
       </Card>
       {children}
     </Page>
-  );
-}
-
-/** #/account until W-4 moves it: the placeholder with "Sign out", as the old account's heading has it. */
-export function AccountPlaceholder() {
-  const { t } = useI18n();
-  const { signOut, pending } = useSignOut();
-  return (
-    <Placeholder
-      title={t("My account")}
-      actions={
-        <Button variant="secondary" disabled={pending} onClick={() => void signOut()}>
-          {t("Sign out")}
-        </Button>
-      }
-    />
   );
 }

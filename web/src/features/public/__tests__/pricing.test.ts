@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { tariff } from "@/test/app";
 import { evenCols } from "../Landing";
-import { devicesLine, period, pricedTariffs } from "../pricing";
+import { devicesLine, period, pricedTariffs } from "@/lib/pricing";
 
 describe("pricing", () => {
   it("orders by length, computes the price per month and the saving against the monthly plan", () => {

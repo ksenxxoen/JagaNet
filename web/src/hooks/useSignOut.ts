@@ -1,7 +1,7 @@
 /**
  * Signing out (the "Sign out" button of the account in app.js): the server forgets the session
  * (an error there does not keep the person signed in), the token and the cached data of the
- * person are dropped, and the landing page opens.
+ * person (/me and the account) are dropped, and the landing page opens.
  */
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -23,6 +23,7 @@ export function useSignOut() {
     }
     useSession.getState().signOut();
     qc.removeQueries({ queryKey: keys.me() });
+    qc.removeQueries({ queryKey: keys.account.all });
     setPending(false);
     await navigate({ to: "/" });
   }, [qc, navigate]);

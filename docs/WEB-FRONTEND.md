@@ -22,18 +22,21 @@ Swagger UI (`swagger-ui-dist`, the owner's API tab), Vitest + Testing Library, E
 | `web/index.html` | The page: meta tags as the old `index.html`, plus `noindex` for the preview |
 | `web/src/entries/site.tsx` | Start of the website: saves `?ref=`, loads the language, mounts the router |
 | `web/src/index.css`, `tailwind.config.ts` | Design tokens from `style.css` (light and dark) as Tailwind colors: `paper`, `surface`, `ink`, `muted`, `line*`, `primary*`, `green*`, `warn*`, `danger*` |
-| `web/src/components/ui/` | Base components: Button, Card, Field/Input/Select, Tabs, Chips, StatusBadge, Table, Spinner, EmptyState, ErrorState, Notice, CodeInput (6 digits), Form/FormError |
+| `web/src/components/ui/` | Base components: Button, Card, Field/Input/Select, Tabs, Chips, StatusBadge, Table, Spinner, EmptyState, ErrorState, Notice, CodeInput (6 digits), Form/FormError, Modal/ConfirmDialog, CopyButton |
+| `web/src/components/qr/` | `QrCanvas`: a QR code drawn on `<canvas>` (no `data:` images, so it works under the mini app's CSP) |
+| `web/src/components/AppLinks.tsx` | "Add to Happ / v2RayTun" import buttons and where to get the apps (the site opens the link, the mini app passes its own `open`) |
 | `web/src/components/layout/` | Page, PageHeader (title, line, actions), Section, Toolbar |
-| `web/src/hooks/` | `useApiMutation` (toast, server message, invalidation), `useSaveForm` (locked form, error under it), `useSignOut` |
+| `web/src/hooks/` | `useApiMutation` (toast, server message, invalidation), `useSaveForm` (locked form, error under it), `useSignOut`, `useConfirm` (confirm() as a promise with the dialog), `useCopy` (clipboard, then execCommand, then prompt; toast), `usePolling` (ask again until the answer is final, paused on a hidden tab) |
 | `web/src/components/shell/` | Top bar (menu by role, language switch, phone menu), footer |
 | `web/src/routes/` | Routes, typed query parameters, guards, the "screen is moving" placeholder |
 | `web/src/api/` | Axios client for `/v1`, typed calls (`typed.ts`), generated types (`schema.d.ts`), query keys (`keys.ts`), React Query client and shared queries |
-| `web/src/lib/` | `cn`, `notify`, `storage`, `anchors` (landing sections), `checkout` (buy a plan), `rich` (texts with links), `navigate` |
+| `web/src/lib/` | `cn`, `notify`, `storage`, `anchors` (landing sections), `checkout` (buy a plan), `rich` (texts with links), `navigate`, `pricing` (prices per month, savings), `apps` (the app cards of the landing page and the account), `links` (import links for Happ / v2RayTun, the `/tg/open` check, `withLang`, VLESS locations), `qr` (QR matrix and pixels) |
 | `web/src/features/public/` | `#/` landing page (lazy chunk with its own `landing.css`, ported from `style.css`) |
 | `web/src/features/auth/` | `#/signin`, `#/login?token=`, `#/app-login?id=`, the Telegram Login Widget (lazy chunk) |
+| `web/src/features/account/` | `#/account` (`?order=`): plan, buying, the order status, VPN keys with QR, devices, apps and the sign-in code, Telegram, payments (lazy chunk) |
 | `web/src/features/admin/` | `#/admin` until W-6: the API tab (Swagger UI, lazy chunk) and the placeholder |
 | `web/src/test/api.ts` | `mockApi()`: typed /v1 mocks on the Axios adapter for tests |
-| `web/src/test/app.tsx` | `renderApp(path)`: the whole site on memory history; fixtures (`siteInfo`, `session`, `plans`) |
+| `web/src/test/app.tsx` | `renderApp(path)`: the whole site on memory history; fixtures (`siteInfo`, `session`, `plans`, `me`, `vlessKey`, `accessKey`, `accountRoutes`) |
 | `web/src/store/session.ts` | Zustand: token, role, site settings, language |
 | `web/src/i18n/` | i18next setup, `t`, `tp`, `date`, `dateTime`, `money`, `bytes`, `num` |
 
@@ -86,6 +89,8 @@ address via `JAGANET_DEV_SERVER=http://host:port npm run dev`).
   1.5 MB (423 KB gzip) + `ApiDocs-*.css` 188 KB, downloaded only on `#/admin?tab=api`.
   W-3: the landing page is `Landing-*.js` 20 KB (6.7 KB gzip) + `Landing-*.css` 18 KB, the sign-in
   screens `auth-*.js` 8.7 KB (3.5 KB gzip); `vendor` 490 KB (160 KB gzip). Neither pulls Swagger UI.
+  W-4: the account is `account-*.js` 41 KB (15 KB gzip), with `qrcode` (kept out of `vendor`, so
+  only the account and later the mini app download it); `vendor` 495 KB (162 KB gzip).
 
 ## Screen boundaries
 
