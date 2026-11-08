@@ -812,3 +812,33 @@ form.rename input { flex: 1; max-width: 320px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* ---- Server status, issue #115: a plain list, one muted accent for problems only ---- */
+.sx-summary { margin: 0 0 12px; font-size: 15px; color: var(--text); }
+.sx-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 12px; }
+.sx-controls input[type="search"] { flex: 1 1 200px; max-width: 320px; height: var(--ctl); }
+.sx-table { --sx-accent: var(--warning-text); }
+.sx-table td, .sx-table th { vertical-align: top; }
+.sx-table th { white-space: nowrap; }
+.sx-row { cursor: pointer; }
+.sx-row:hover { background: var(--hover); }
+.sx-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.sx-row.on { background: var(--subtle); }
+.sx-row.bad td:first-child { box-shadow: inset 3px 0 0 var(--sx-accent); }
+.sx-row.bad .sx-st { color: var(--sx-accent); font-weight: 700; }
+.sx-name { min-width: 180px; max-width: 280px; }
+.sx-id { font-size: 12px; color: var(--faint); }
+.sx-state { min-width: 170px; }
+.sx-st { font-weight: 600; color: var(--heading); }
+.sx-why { margin-top: 2px; font-size: 13px; color: var(--muted); }
+.sx-detail > td { padding: 0; background: var(--bg); }
+.sx-detail .st-detail { padding: 16px; }
+.sx-box { margin: 0 0 16px; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--r-ctl); background: var(--surface); }
+.sx-box h4, .sx-h { margin: 16px 0 8px; font-size: 14px; color: var(--heading); }
+.sx-box h4 { margin-top: 0; }
+.sx-box ul { margin: 0; padding-left: 18px; font-size: 14px; }
+.sx-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px 20px; margin: 0 0 8px; }
+.sx-facts dt { font-size: 12px; color: var(--faint); }
+.sx-facts dd { margin: 2px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+.sx-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.sx-s { font-size: 14px; font-weight: 500; }

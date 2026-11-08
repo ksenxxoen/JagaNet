@@ -446,8 +446,15 @@ def system(prev):
                 rx, tx = int(d[0]), int(d[8])
     with open("/proc/uptime") as f:
         uptime = int(float(f.read().split()[0]))
+    # Issue #115: free and total space of the root disk for the status page (older agents leave it out).
+    try:
+        st = os.statvfs("/")
+        disk_free, disk_total = st.f_bavail * st.f_frsize, st.f_blocks * st.f_frsize
+    except OSError:
+        disk_free = disk_total = 0
     info = {"cpu": cpu, "memUsed": mem.get("MemTotal", 0) - mem.get("MemAvailable", 0), "memTotal": mem.get("MemTotal", 0),
-            "rxBytes": rx, "txBytes": tx, "uptime": uptime}
+            "rxBytes": rx, "txBytes": tx, "uptime": uptime,
+            "diskFree": disk_free, "diskTotal": disk_total}
     return info, (total, idle)
 
 

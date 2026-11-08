@@ -139,4 +139,33 @@ class MonitorTest {
         repeat(3) { minute(m2, p2) }
         assertTrue(sent.size > afterRemind)
     }
+
+    /** Issue #115: a node marked "maintenance" is expected to be silent; others are named as the apps name them. */
+    @Test fun `a node in maintenance raises no no-contact alert and the others are named by display name`() = harness {
+        val p = FakeProbe(); val sent = mutableListOf<Sent>()
+        suspend fun node(name: String, display: String?): String {
+            val res = services.nodes.create(dev.jaganet.api.NodeReq(name, "City", "NL", maxPeers = 100, displayName = display))
+            services.nodes.register(res.command.substringAfter("NODE_TOKEN=").substringBefore(' '), dev.jaganet.server.services.NodeRegisterReq("203.0.113.7", 51821, "amneziawg"))
+            return res.node.id
+        }
+        val loud = node("tech-name-1", "Нидерланды")
+        val spare = node("tech-name-2", "Запасной")
+        services.nodes.setMaintenance(spare, true)
+        val m = monitor(p, sent)
+        repeat(6) { minute(m, p) }
+        val nodes = m.latest.single { it.key == "nodes" }
+        assertEquals(CheckLevel.CRITICAL, nodes.level)
+        val names = nodes.args.getValue("names")
+        assertTrue("Нидерланды" in names && "tech-name-1" !in names, names)
+        assertTrue("Запасной" !in names, "the maintenance node is not mentioned: $names")
+        assertTrue(sent.any { "Нидерланды" in it.text }, "the Telegram text names the location")
+        assertTrue(sent.none { "Запасной" in it.text })
+        // The event log gets one "offline" line for the silent node and none for the one in maintenance.
+        val logged = ctx.db.run { it.query("SELECT server_id, kind FROM node_events") }.map { it.str("server_id") to it.str("kind") }
+        assertEquals(listOf(loud to "offline"), logged.filter { it.second == "offline" })
+        // Switching maintenance on is the only way out of the alert: with it on for both, all is quiet.
+        services.nodes.setMaintenance(services.nodes.list().first { !it.maintenance && it.remote }.id, true)
+        minute(m, p)
+        assertEquals(CheckLevel.OK, m.latest.single { it.key == "nodes" }.level)
+    }
 }

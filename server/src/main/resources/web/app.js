@@ -946,51 +946,9 @@ function issueText(i) {
 
 /** The status pill: a colored dot and one or two words. */
 const pill = (cls, text) => `<span class="st-pill h-${cls}"><i></i>${text}</span>`;
-function healthPill(x) {
-  const first = x.issues?.[0];
-  if (x.health === "ok") return pill("ok", t("Works"));
-  if (x.health === "down") return pill("down", t("Not responding"));
-  if (x.health === "off") return pill("off", t(OFF_WORDS[first?.code] || "Switched off"));
-  const short = first?.code === "cpu" ? t("CPU {p}%", first.args) : first?.code === "memory" ? t("Memory {p}%", first.args) : first?.code === "full" ? t("Almost full") : t("Attention");
-  return pill("warn", short);
-}
-
-/**
- * Columns for n tiles, at most max (or one less): full rows when possible, else the fullest last row
- * (5 tiles in 3 + 2, not 4 + 1); the short last row is centered.
- */
-function balancedCols(n, max) {
-  if (n <= max) return Math.max(1, n);
-  let best = max, fill = (n % max || max) / max;
-  for (let c = max - 1; c >= Math.max(2, max - 1); c--) {
-    const f = (n % c || c) / c;
-    if (f > fill) { best = c; fill = f; }
-  }
-  return best;
-}
 /** "phone", "tablet" or "wide": the page lays tiles and cards out by the space it has. */
 const stWidth = () => (view.clientWidth < 600 ? "phone" : view.clientWidth < 1000 ? "tablet" : "wide");
 
-const bar = (share, cls = "") => `<div class="st-bar"><i class="${cls ? "h-" + cls : ""}" style="width:${share == null ? 0 : Math.max(2, Math.min(100, share * 100)).toFixed(1)}%"></i></div>`;
-const shareCls = (s) => (s >= 0.9 ? "warn" : "");
-
-/** Traffic over the range as a small line (gaps where nothing was reported). */
-function sparkline(values) {
-  const W = 400, H = 40, v = values || [], max = Math.max(1, ...v.filter((x) => x != null));
-  const step = W / Math.max(1, v.length - 1);
-  let d = "", fill = "", run = [];
-  const flush = () => {
-    if (run.length > 1) {
-      const p = run.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join("");
-      d += p;
-      fill += `${p}L${run[run.length - 1][0].toFixed(1)} ${H}L${run[0][0].toFixed(1)} ${H}Z`;
-    }
-    run = [];
-  };
-  v.forEach((x, i) => (x == null ? flush() : run.push([i * step, H - 3 - (x / max) * (H - 8)])));
-  flush();
-  return `<svg class="st-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${fill ? `<path d="${fill}" class="area"/><path d="${d}" class="line"/>` : `<line x1="0" x2="${W}" y1="${H - 3}" y2="${H - 3}" class="none"/>`}</svg>`;
-}
 
 /* ---- the parts of the page ---- */
 
@@ -1007,190 +965,6 @@ function mainLevel(d) {
   const issues = mainIssues(d);
   if (issues.some((c) => c.level === "critical" && MAIN_DOWN.includes(c.key))) return "down";
   return issues.length ? "warn" : d.monitor.checks.length ? "ok" : "off";
-}
-
-function stVerdict(d) {
-  const counts = { ok: 0, warn: 0, down: 0, off: 0 };
-  for (const x of d.servers) counts[x.health]++;
-  const mon = d.monitor;
-  const problems = [...d.servers].filter((x) => x.health === "down" || x.health === "warn").sort((a, b) => HEALTH_RANK[b.health] - HEALTH_RANK[a.health])
-    .map((x) => [x.health, `${srvName(x)}: ${issueText(x.issues[0])}`]);
-  // Main server checks about the machine itself (not its nodes) when it has no VPN card of its own.
-  if (!d.servers.some((x) => !x.remote)) {
-    for (const c of mainIssues(d)) problems.push([MAIN_DOWN.includes(c.key) && c.level === "critical" ? "down" : "warn", `${t(CHECK_NAMES[c.key] || c.key)}: ${t(c.message, c.args)}`]);
-  }
-  const level = problems.some((p) => p[0] === "down") ? "down" : problems.length ? "warn" : d.servers.length || mon.checks.length ? "ok" : "off";
-  const title = { ok: "Everything works", warn: "Works with warnings", down: "There is a problem", off: "State unknown" }[level];
-  const detail = problems.length
-    ? h(problems[0][1]) + (problems.length > 1 ? ` <span class="muted">${t("and {n} more", { n: problems.length - 1 })}</span>` : "")
-    : mon.checkedAt ? t("Checked at {time}", { time: h(dateTime(mon.checkedAt)) }) : t("Not checked yet");
-  const pills = [
-    counts.ok + counts.warn ? pill("ok", tp(counts.ok + counts.warn, "{n} working|{n} working")) : "",
-    counts.warn ? pill("warn", tp(counts.warn, "{n} warning|{n} warnings")) : "",
-    counts.down ? pill("down", tp(counts.down, "{n} not responding|{n} not responding")) : "",
-    counts.off ? pill("off", tp(counts.off, "{n} off|{n} off")) : "",
-  ].join("");
-  return `<section class="card st-verdict h-${level}">
-    <span class="st-vic">${icon(level === "ok" ? "check" : "alert")}</span>
-    <div class="st-vt"><b>${t(title)}</b><div class="st-ell muted">${detail}</div></div>
-    <div class="st-pills">${pills}</div></section>`;
-}
-
-function stKpis(d) {
-  const s = d.servers, m = d.main, mon = d.monitor;
-  const working = s.filter((x) => x.health === "ok" || x.health === "warn").length;
-  const off = s.filter((x) => x.health === "off").length;
-  const live = s.filter((x) => x.remote && (x.health === "ok" || x.health === "warn"));
-  const rx = (m.rxBps || 0) + live.reduce((a, x) => a + (x.rxBps || 0), 0), tx = (m.txBps || 0) + live.reduce((a, x) => a + (x.txBps || 0), 0);
-  const online = s.reduce((a, x) => a + x.online, 0), keys = s.reduce((a, x) => a + x.peers, 0);
-  const lvl = { ok: ["ok", "Fine"], warn: ["warn", "Attention"], down: ["down", "Problem"] }[mainLevel(d)] || ["off", "Unknown"];
-  const open = mon.alerts.filter((a) => !a.resolvedAt);
-  const memShare = m.memTotal ? (m.memUsed / m.memTotal) * 100 : null;
-  const tile = (label, value, note, cls = "") => `<div class="card kpi"><div class="muted">${label}</div><div class="kpi-v ${cls}">${value}</div><div class="muted kpi-n st-ell">${note || "&nbsp;"}</div></div>`;
-  return `<div class="st-kpis">
-    ${tile(t("Nodes online"), `${working} / ${s.length}`, off ? tp(off, "{n} off|{n} off") : "")}
-    ${tile(t("Devices online"), online, tp(keys, "of {n} key|of {n} keys"))}
-    ${tile(t("Traffic now"), h(bits(rx + tx)), `↓ ${h(bits(rx))} ↑ ${h(bits(tx))}`)}
-    ${tile(t("Main server"), t(lvl[1]), m.cpu != null ? t("CPU {cpu}, memory {mem}", { cpu: percent(m.cpu * 100), mem: percent(memShare) }) : "", "h-" + lvl[0])}
-    ${tile(t("Open alerts"), open.length, open.length ? t("Latest {time}", { time: h(ago(open.map((a) => a.openedAt).sort().pop())) }) : "", open.length ? (open.some((a) => a.level === "critical") ? "h-down" : "h-warn") : "")}
-  </div>`;
-}
-
-/** The main server box of the map: its services, each with a colored state. */
-function stMainBox(d) {
-  const mon = d.monitor, by = Object.fromEntries(mon.checks.map((c) => [c.key, c.level]));
-  const lv = (l) => ({ ok: "ok", warning: "warn", critical: "down" }[l] || "off");
-  const local = d.servers.filter((x) => !x.remote);
-  const rows = [
-    [t("Website and API"), by.https ? lv(by.https) : "off", by.https ? t(by.https === "ok" ? "working" : "not responding") : t("unknown")],
-    [t("Database"), by.db ? lv(by.db) : "off", by.db ? t(by.db === "ok" ? "working" : "not responding") : t("unknown")],
-    [t("Telegram bot"), d.main.botEnabled ? (by.bot ? lv(by.bot) : "off") : "off", !d.main.botEnabled ? t("switched off") : by.bot === "ok" ? t("connected") : by.bot ? t("no connection") : t("unknown")],
-    [t("Mail"), d.main.mailReady ? "ok" : "warn", t(d.main.mailReady ? "set up" : "not set up")],
-    ...(local.length ? [[t("Own VPN"), local.some((x) => x.health === "down") ? "down" : by.vpn ? lv(by.vpn) : "ok", t("{n} online", { n: local.reduce((a, x) => a + x.online, 0) })]] : []),
-    // Whatever else makes the header orange or red (disk, ping, certificate…), so the reason is in view.
-    ...mainIssues(d).filter((c) => !["https", "db", "bot", "vpn"].includes(c.key))
-      .map((c) => [t(CHECK_NAMES[c.key] || c.key), lv(c.level), t(c.level === "critical" ? "problem" : "attention"), t(c.message, c.args)]),
-  ];
-  const head = { ok: ["ok", "Works"], warn: ["warn", "Attention"], down: ["down", "Problem"] }[mainLevel(d)] || ["off", "Unknown"];
-  return `<div class="st-main">
-    <div class="st-mh"><span class="muted">${t("Main server")}</span>${pill(head[0], t(head[1]))}</div>
-    <div class="st-host st-ell">${h(d.main.host)}</div>
-    <ul class="st-svc">${rows.map(([n, c, v, why]) => `<li${why ? ` title="${h(why)}"` : ""}><span class="st-ell">${n}</span><span class="st-sv h-${c}"><i></i>${v}</span></li>`).join("")}</ul>
-  </div>`;
-}
-
-/** A compact node on the map: colored stripe, name, state, protocol and devices, a load bar. */
-function stTile(x, right) {
-  // Load: the busier of processor and device places (memory is mostly cache on a VPN node).
-  const load = x.health === "down" || x.health === "off" ? null : Math.max(x.cpu || 0, x.maxPeers ? x.peers / x.maxPeers : 0);
-  const dot = right ?? (x.health === "ok" ? `<span class="st-dot h-ok" title="${t("Works")}"></span>` : healthPill(x));
-  return `<div class="st-tile h-${x.health}">
-    <div class="st-tt">${flagName(x)}${dot}</div>
-    <div class="st-ts muted"><span>${h(protoOf(x)[0] || "")}</span><span class="st-ell">${x.health === "down" ? issueText(x.issues[0]) : t("{n} online", { n: x.online })}</span></div>
-    ${bar(load, x.health === "warn" ? "warn" : x.health)}
-  </div>`;
-}
-
-/**
- * A cascade entry on the map: the server people connect to, shown as the entry with its own host. Its
- * location (country, name) is the exit it forwards to by itself, drawn among the exits ([stOwnExit]).
- */
-function stEntryTile(e) {
-  const load = e.health === "down" || e.health === "off" ? null : Math.max(e.cpu || 0, e.maxPeers ? e.peers / e.maxPeers : 0);
-  const dot = e.health === "ok" ? `<span class="st-dot h-ok" title="${t("Works")}"></span>` : healthPill(e);
-  return `<div class="st-tile h-${e.health}">
-    <div class="st-tt"><b class="st-ell">${t("Entry")}</b>${dot}</div>
-    <div class="st-ts muted"><span class="st-ell">${h(e.host || "")}</span><span class="st-ell">${e.health === "down" ? issueText(e.issues[0]) : t("{n} online", { n: e.online })}</span></div>
-    ${bar(load, e.health === "warn" ? "warn" : e.health)}
-  </div>`;
-}
-
-/** The exit an entry forwards to by itself (its own location): no agent of its own, so it shares the entry's state. */
-function stOwnExit(e, badge) {
-  return `<div class="st-tile h-${e.health}">
-    <div class="st-tt">${flagName(e)}${badge ?? (e.health === "ok" ? `<span class="st-dot h-ok" title="${t("Works")}"></span>` : healthPill(e))}</div>
-    <div class="st-ts muted"><span>${h(protoOf(e)[0] || "")}</span></div>
-    ${bar(null, e.health)}
-  </div>`;
-}
-
-function stMap(d) {
-  const remote = d.servers.filter((x) => x.remote);
-  const entries = d.balancer ? remote.filter((x) => x.cascadeRole === "entry") : [];
-  const exits = d.balancer ? remote.filter((x) => x.cascadeRole === "exit") : [];
-  const loose = remote.filter((x) => !entries.includes(x) && !exits.includes(x));
-  const width = stWidth();
-  const groups = [];
-  for (const e of entries) {
-    const chosen = new Set([...(e.balancer?.selected || []), ...(e.balancer?.override ? [e.balancer.override] : [])]);
-    const exitTiles = exits.map((x) => {
-      const out = x.health === "down" || x.health === "off";
-      const badge = out ? pill("down", t("excluded")) : chosen.has(x.id) ? pill("ok", t("selected")) : e.balancer ? pill("off", t("standby")) : undefined;
-      return stTile(x, badge);
-    });
-    const ownOut = e.health === "down" || e.health === "off";
-    const ownBadge = ownOut ? pill("down", t("excluded")) : chosen.has(e.id) ? pill("ok", t("selected")) : chosen.size ? pill("off", t("standby")) : undefined;
-    exitTiles.unshift(stOwnExit(e, ownBadge));
-    groups.push(`<div class="st-group"><div class="st-gh"><span>${t("Cascade")}</span><span class="muted">${exits.length + 2}</span></div>
-      <div class="st-flow">
-        <div class="st-entry">${stEntryTile(e)}</div>
-        <span class="st-arrow" aria-hidden="true">${icon("arrow")}</span>
-        <div class="st-bal"><span class="st-balchip">${icon("split")}${t("Balancer")}</span></div>
-        <span class="st-arrow" aria-hidden="true">${icon("arrow")}</span>
-        <div class="st-exits">${exitTiles.join("") || `<p class="muted">${t("no data")}</p>`}</div>
-      </div></div>`);
-  }
-  if (loose.length || !groups.length && remote.length) {
-    const cols = width === "phone" ? 1 : balancedCols(loose.length, 3);
-    groups.push(`<div class="st-group"><div class="st-gh"><span>${t("Standalone nodes")}</span><span class="muted">${loose.length}</span></div>
-      <div class="st-tiles" style="--cols:${cols}">${loose.map((x) => stTile(x)).join("")}</div></div>`);
-  }
-  return `<div class="card st-map ${groups.length ? "" : "solo"}">${stMainBox(d)}${groups.length ? `<div class="st-groups">${groups.join("")}</div>` : ""}</div>`;
-}
-
-/** A server's card: where it is, its roles, four numbers with bars, traffic over the range, the last report. */
-function stCard(x, d, maxChannel) {
-  // The main server's own numbers are always fresh (it serves this page); a silent node's are not.
-  const live = x.health === "ok" || x.health === "warn" || (!x.remote && x.cpu != null);
-  const open = stOpen.has(x.id);
-  const tags = [
-    ...protoOf(x).map((p) => `<span class="st-tag">${h(p)}</span>`),
-    !x.remote ? `<span class="st-tag accent">${t("Main server")}</span>` : "",
-    x.cascadeRole === "entry" ? `<span class="st-tag accent">${t("Entry")}</span><span class="st-tag accent">${t("Balancer")}</span>` : "",
-    x.cascadeRole === "exit" ? `<span class="st-tag accent">${t("Exit")}</span>` : "",
-    x.remote && x.agentVersion ? `<span class="st-tag">${t("agent {v}", { v: h(x.agentVersion) })}</span>` : "",
-  ].join("");
-  const problem = x.health === "down" || x.health === "warn" ? `<p class="st-problem h-${x.health}">${h(x.issues.map(issueText).join(". "))}</p>` : "";
-  const mem = x.memTotal ? x.memUsed / x.memTotal : null;
-  const channel = (x.rxBps || 0) + (x.txBps || 0);
-  const metric = (label, value, share, cls = "") => `<div class="st-m"><div class="st-mr"><span class="muted">${label}</span><b>${live ? value : `<span class="muted">${t("no data")}</span>`}</b></div>${bar(live ? share : null, cls)}</div>`;
-  return `<article class="card st-card h-${x.health} ${open ? "on" : ""}" data-key="${h(x.id)}" data-open="${h(x.id)}" tabindex="0" role="button" aria-expanded="${open}">
-    <div class="st-ch"><div class="st-ct">${flagName(x)}<div class="st-loc muted st-ell">${h([x.city, x.host].filter(Boolean).join(", "))}</div></div>${healthPill(x)}</div>
-    <div class="st-tags">${tags}</div>
-    ${problem}
-    <div class="st-metrics">
-      ${metric(t("Online"), `${x.online} / ${x.maxPeers}`, x.maxPeers ? x.online / x.maxPeers : 0, "accent")}
-      ${metric(t("CPU"), percent((x.cpu || 0) * 100), x.cpu || 0, shareCls(x.cpu || 0))}
-      ${metric(t("Memory"), mem == null ? "0%" : percent(mem * 100), mem, shareCls(mem || 0))}
-      ${metric(t("Channel"), h(bits(channel)), maxChannel ? channel / maxChannel : 0, "accent")}
-    </div>
-    ${sparkline(x.spark)}
-    <div class="st-foot muted"><span class="st-ell">${t("Report {time}", { time: h(ago(x.lastReportAt)) })}</span><span class="st-ell">${t("{size} a day", { size: h(bytes(x.traffic24h)) })}</span>${icon("chev", "ic st-chev")}</div>
-  </article>`;
-}
-
-/** An open card's charts, full width under its row. The main server shows the monitoring sections. */
-function stDetail(x, d) {
-  const headRow = `<div class="st-dh"><h3>${flagName(x)}</h3><button class="btn secondary small" type="button" data-open="${h(x.id)}">${t("Close")}</button></div>`;
-  if (!x.remote) return `<section class="st-detail" data-key="detail-${h(x.id)}">${headRow}${stMainCharts(d)}</section>`;
-  if (!x.history) return `<section class="st-detail" data-key="detail-${h(x.id)}">${headRow}<p class="muted st-loading">${t("Loading…")}</p></section>`;
-  const pts = x.history.map((p) => ({ ts: p.ts, rx: p.rxBps, tx: p.txBps, cpu: p.cpu == null ? null : p.cpu * 100, mem: p.mem == null ? null : p.mem * 100, online: p.online }));
-  const whole = (v) => String(Math.round(v));
-  return `<section class="st-detail" data-key="detail-${h(x.id)}">${headRow}
-    ${lineChart(pts, [{ key: "rx", label: t("Download"), color: DOWN }, { key: "tx", label: t("Upload"), color: UP }], t("Throughput"), bits)}
-    ${lineChart(pts, [{ key: "cpu", label: t("Processor"), color: DOWN }, { key: "mem", label: t("Memory"), color: UP }], t("Processor and memory, %"), (v) => `${whole(v)}%`, { top: 100 })}
-    ${lineChart(pts, [{ key: "online", label: t("Online"), color: ONE }], t("Devices online"), whole)}
-  </section>`;
 }
 
 /** The main server's monitoring, as the status page had it: checks, network, resources, VPN. */
@@ -1243,20 +1017,168 @@ function stMainCharts(d) {
   ${lineChart(pts, [{ key: "online", label: t("Online"), color: ONE }], t("Devices online"), whole)}`;
 }
 
-/** Cards and the open cards' charts, in reading order: each chart panel after the row of its card. */
-function stCards(d) {
-  const width = stWidth();
-  const cols = width === "phone" ? 1 : balancedCols(d.servers.length, width === "tablet" ? 2 : 3);
-  const maxChannel = Math.max(0, ...d.servers.filter((x) => x.health === "ok" || x.health === "warn").map((x) => (x.rxBps || 0) + (x.txBps || 0)));
-  const items = [];
-  d.servers.forEach((x, i) => {
-    items.push([x.id, stCard(x, d, maxChannel)]);
-    const rowEnd = Math.min(d.servers.length, Math.ceil((i + 1) / cols) * cols) - 1;
-    if (i === rowEnd) {
-      for (const y of d.servers.slice(rowEnd - ((rowEnd % cols)), rowEnd + 1)) if (stOpen.has(y.id)) items.push(["detail-" + y.id, stDetail(y, d)]);
+/* ---- issue #115: the summary list and a server's card ---- */
+
+let stFilter = "all", stQuery = "";
+const ST_FILTERS = [["all", "All"], ["problem", "Problems"], ["down", "Not responding"], ["off", "Switched off"]];
+const ST_RANK = { down: 0, warn: 1, ok: 2, off: 3 };
+const fullTime = (iso) => `${dateTime(iso)}:${String(new Date(iso).getSeconds()).padStart(2, "0")}`;
+
+/** One row of the list for a node: its status in words, a short reason, the numbers. */
+function stRow(x) {
+  const first = x.issues?.[0];
+  const live = x.health === "ok" || x.health === "warn" || !x.remote;
+  const status = { ok: t("Works"), warn: t("Problem"), down: t("Not responding") }[x.health]
+    || (first?.code === "maintenance" ? t("Switched off (maintenance)") : t(OFF_WORDS[first?.code] || "Switched off"));
+  const reason = x.health === "warn" || x.health === "down" ? x.issues.map(issueText).join("; ") : "";
+  const roles = [x.cascadeRole === "entry" ? t("Entry") : x.cascadeRole === "exit" ? t("Exit") : "", x.inSubscription === false ? t("Hidden from subscription") : ""].filter(Boolean);
+  return {
+    id: x.id, x, main: false, health: x.health, status, reason, name: srvName(x), sub: x.id, role: roles.join(", "), search: `${srvName(x)} ${x.name} ${x.id} ${x.host || ""}`,
+    last: x.lastReportAt, live, users: x.online, conns: x.peers, cpu: x.cpu, mem: x.memTotal ? x.memUsed / x.memTotal : null,
+    disk: x.diskTotal ? 1 - x.diskFree / x.diskTotal : null, traffic: x.traffic24h,
+  };
+}
+
+/** The main server as the first row: its site, database, bot and the rest of the monitor's checks. */
+function stMainRow(d) {
+  const lvl = mainLevel(d), m = d.main;
+  const issues = mainIssues(d);
+  return {
+    id: "main", main: true, health: lvl, status: lvl === "off" ? t("State unknown") : { ok: t("Works"), warn: t("Problem"), down: t("Not responding") }[lvl],
+    reason: issues.map((c) => `${t(CHECK_NAMES[c.key] || c.key)}: ${t(c.message, c.args)}`).join("; "), name: t("Main server"), sub: m.host, role: "", search: `${t("Main server")} ${m.host}`,
+    last: m.measuredAt, live: true, users: null, conns: null, cpu: m.cpu, mem: m.memTotal ? m.memUsed / m.memTotal : null,
+    disk: m.diskTotal ? 1 - m.diskFree / m.diskTotal : null, traffic: null,
+  };
+}
+
+function stRows(d) {
+  const rows = [stMainRow(d), ...d.servers.map(stRow)];
+  return rows.sort((a, b) => ST_RANK[a.health] - ST_RANK[b.health] || (a.main ? -1 : b.main ? 1 : 0) || a.name.localeCompare(b.name));
+}
+
+function stSummary(rows) {
+  const n = (h) => rows.filter((r) => r.health === h).length;
+  return `<b>${t("Total {n}", { n: rows.length })}</b> &middot; ${t("working {n}", { n: n("ok") })} &middot; ${t("problems {n}", { n: n("warn") })} &middot; ${t("not responding {n}", { n: n("down") })}${n("off") ? ` &middot; ${t("off {n}", { n: n("off") })}` : ""}`;
+}
+
+const dash = `<span class="muted">&mdash;</span>`;
+const pc = (v) => (v == null ? dash : percent(v * 100));
+
+function stTable(d) {
+  const all = stRows(d), q = stQuery.trim().toLowerCase();
+  const rows = all.filter((r) => (stFilter === "all" || (stFilter === "problem" ? r.health === "warn" || r.health === "down" : r.health === stFilter))
+    && (!q || r.search.toLowerCase().includes(q)));
+  const body = rows.map((r) => {
+    const bad = r.health === "warn" || r.health === "down";
+    const open = stOpen.has(r.id);
+    const cells = r.live || r.main;
+    const dim = (v) => (cells ? v : dash);
+    const main = `<tr class="sx-row ${bad ? "bad" : ""} ${open ? "on" : ""}" data-open="${h(r.id)}" tabindex="0" aria-expanded="${open}">
+      <td class="sx-name"><b class="st-ell">${r.main ? h(r.name) : flagName(r.x)}</b><div class="sx-id st-ell">${h(r.sub)}${r.role ? ` &middot; ${h(r.role)}` : ""}</div></td>
+      <td class="sx-state"><div class="sx-st">${h(r.status)}</div>${r.reason ? `<div class="sx-why">${h(r.reason)}</div>` : ""}</td>
+      <td>${r.last ? h(ago(r.last)) : dash}</td>
+      <td>${r.users == null ? dash : dim(`${r.users} / ${r.conns}`)}</td>
+      <td>${dim(pc(r.cpu))}</td><td>${dim(pc(r.mem))}</td><td>${dim(pc(r.disk))}</td>
+      <td>${r.traffic == null ? dash : h(bytes(r.traffic))}</td></tr>`;
+    return main + (open ? `<tr class="sx-detail"><td colspan="8">${stCard(r, d)}</td></tr>` : "");
+  }).join("");
+  return `<div class="card tablewrap"><table class="data sx-table"><thead><tr>
+    <th>${t("Server")}</th><th>${t("State")}</th><th>${t("Last report")}</th><th>${t("Online / connections")}</th><th>${t("CPU")}</th><th>${t("Memory")}</th><th>${t("Disk")}</th><th>${t("Traffic per day")}</th>
+    </tr></thead><tbody>${body || `<tr><td colspan="8" class="muted">${t("No servers match")}</td></tr>`}</tbody></table></div>`;
+}
+
+/** Why the server has its status: the rule that fired and the data behind it. */
+function stWhy(r, d) {
+  const x = r.x, rules = d.rules || { silentMinutes: 3, hotPercent: 90 };
+  const hot = rules.hotPercent;
+  if (r.main) {
+    const issues = mainIssues(d);
+    return issues.length ? issues.map((c) => `${t(CHECK_NAMES[c.key] || c.key)}: ${t(c.message, c.args)}`) : [t("All checks of the main server passed.")];
+  }
+  const lines = x.issues.map((i) => {
+    const a = i.args || {};
+    switch (i.code) {
+      case "maintenance": return t("Marked as maintenance: the node is expected to be silent, so there is no \"no contact\" alert.");
+      case "disabled": return t("The node is switched off in the panel.");
+      case "waiting": return t("The node waits for its install to finish.");
+      case "silent": return t("No agent report for {time}. A node without a report for {n} minutes counts as not responding.", { time: a.since ? duration(stNow() - Date.parse(a.since)) : "?", n: rules.silentMinutes });
+      case "cpu": return t("CPU {p}%: from {hot}% a node counts as having a problem.", { p: a.p, hot });
+      case "memory": return t("Memory {p}%: from {hot}% a node counts as having a problem.", { p: a.p, hot });
+      case "full": return t("{peers} of {max} places taken: from {hot}% a node counts as having a problem.", { peers: a.peers, max: a.max, hot });
+      case "degraded": return t("Marked by the owner as unstable.");
+      case "blocked": return t("Marked by the owner as blocked in some networks.");
+      default: return issueText(i);
     }
   });
-  return { cols, items };
+  return lines.length ? lines : [t("All rules passed: reports arrive, CPU, memory and places are below {hot}%.", { hot })];
+}
+
+const EVENT_TEXT = {
+  offline: () => t("Went silent: no agent report"),
+  online: (a) => t("Back online after {time}", { time: duration(Number(a.downMinutes || 0) * 60000) }),
+  restart: () => t("Restarted (uptime reset)"),
+  maintenance_on: () => t("Maintenance on"),
+  maintenance_off: () => t("Maintenance off"),
+};
+
+/** An open row: the full diagnosis from the last report, charts of one color, the event log. */
+function stCard(r, d) {
+  const x = r.x;
+  const closeBtn = `<button class="btn secondary small" type="button" data-open="${h(r.id)}">${t("Close")}</button>`;
+  const why = `<div class="sx-box"><h4>${t("Why this status")}</h4><ul>${stWhy(r, d).map((l) => `<li>${h(l)}</li>`).join("")}</ul></div>`;
+  if (r.main || !x.remote) {
+    return `<section class="st-detail" data-key="detail-${h(r.id)}"><div class="st-dh"><h3>${h(r.name)}</h3>${closeBtn}</div>${why}${stMainCharts(d)}</section>`;
+  }
+  const fact = (k, v) => `<div><dt>${k}</dt><dd>${v}</dd></div>`;
+  const nameOf = (id) => { const s = d.servers.find((y) => y.id === id); return s ? srvName(s) : id; };
+  const entriesOf = d.servers.filter((e) => e.cascadeRole === "entry" && e.balancer);
+  let link = "";
+  if (d.balancer && x.cascadeRole === "exit") {
+    const by = entriesOf.filter((e) => (e.balancer.selected || []).includes(x.id) || e.balancer.override === x.id).map(srvName);
+    link = fact(t("Connection to entries"), entriesOf.length ? (by.length ? t("Selected by: {names}", { names: h(by.join(", ")) }) : t("No entry selects it now")) : t("no data"));
+  } else if (d.balancer && x.cascadeRole === "entry") {
+    const sel = x.balancer?.selected || [];
+    link = fact(t("Connection to exits"), x.balancer ? (sel.length ? t("Uses: {names}", { names: h(sel.map(nameOf).join(", ")) }) : t("No exit selected")) : t("no data"));
+  }
+  const inb = x.inbounds
+    ? (x.inbounds.length ? `<table class="data"><thead><tr><th>${t("Protocol")}</th><th>${t("Address")}</th><th>${t("Users")}</th><th>${t("Online")}</th></tr></thead><tbody>${x.inbounds.map((i) =>
+      `<tr><td>${h(PROTO[i.protocol] || i.protocol)}</td><td class="mono">${(i.endpoint ? h(i.endpoint) : dash)}</td><td>${i.users}</td><td>${i.online}</td></tr>`).join("")}</tbody></table>` : `<span class="muted">${t("no data")}</span>`)
+    : `<span class="muted">${t("Loading…")}</span>`;
+  const facts = [
+    fact(t("Agent version"), (x.agentVersion ? h(x.agentVersion) : dash)),
+    fact(t("Uptime"), x.uptime ? h(duration(x.uptime * 1000)) : dash),
+    fact(t("Last report"), x.reportedAt ? `${h(fullTime(x.reportedAt))} (${h(ago(x.reportedAt))})` : t("never")),
+    fact(t("Address"), ([x.host, x.city].filter(Boolean).join(", ") ? h([x.host, x.city].filter(Boolean).join(", ")) : dash)),
+    fact(t("Services"), `${t("Agent")}: ${x.health === "down" ? t("not responding") : t("working")}; ${t("Traffic classes")}: ${h(x.classes || "—")}`),
+    fact(t("CPU"), x.cpu == null ? dash : percent(x.cpu * 100)),
+    fact(t("Memory"), x.memTotal ? `${percent((x.memUsed / x.memTotal) * 100)} &middot; ${t("{used} of {total}", { used: h(bytes(x.memUsed)), total: h(bytes(x.memTotal)) })}` : dash),
+    fact(t("Disk"), x.diskTotal ? `${percent((1 - x.diskFree / x.diskTotal) * 100)} &middot; ${t("{used} of {total}", { used: h(bytes(x.diskTotal - x.diskFree)), total: h(bytes(x.diskTotal)) })}` : t("not reported by this agent")),
+    fact(t("Network"), `↓ ${h(bits(x.rxBps))} ↑ ${h(bits(x.txBps))}`),
+    fact(t("Traffic per day"), h(bytes(x.traffic24h))),
+    fact(t("Users"), `${x.online} ${t("online")} / ${x.peers} / ${x.maxPeers}`),
+    link,
+  ].join("");
+  let charts = `<p class="muted st-loading">${t("Loading…")}</p>`, events = "";
+  if (x.history) {
+    const pts = x.history.map((p) => ({ ts: p.ts, cpu: p.cpu == null ? null : p.cpu * 100, online: p.online, traffic: p.rxBps == null && p.txBps == null ? null : (p.rxBps || 0) + (p.txBps || 0) }));
+    const whole = (v) => String(Math.round(v));
+    charts = `${lineChart(pts, [{ key: "cpu", label: t("Processor"), color: ONE }], t("Processor, %"), (v) => `${whole(v)}%`, { top: 100 })}
+      ${lineChart(pts, [{ key: "online", label: t("Online"), color: ONE }], t("Devices online"), whole)}
+      ${lineChart(pts, [{ key: "traffic", label: t("Traffic"), color: ONE }], t("Throughput"), bits)}`;
+  }
+  if (x.events) {
+    events = `<h4 class="sx-h">${t("Event log")}</h4><ul class="card st-events">${x.events.map((e) =>
+      `<li class="st-ev"><span class="st-time">${h(fullTime(e.ts))}</span><span class="st-evt">${h((EVENT_TEXT[e.kind] || (() => e.kind))(e.args || {}))}</span></li>`).join("") || `<li class="st-ev empty muted">${t("No events yet")}</li>`}</ul>`;
+  }
+  const maint = `<button class="btn secondary small" type="button" data-maint="${h(r.id)}" data-on="${x.maintenance ? 0 : 1}">${x.maintenance ? t("Turn maintenance off") : t("Turn maintenance on")}</button>`;
+  return `<section class="st-detail" data-key="detail-${h(r.id)}">
+    <div class="st-dh"><h3>${flagName(x)} <span class="muted sx-s">${h(r.status)}</span></h3><div class="sx-btns">${maint}${closeBtn}</div></div>
+    ${why}
+    <dl class="sx-facts">${facts}</dl>
+    <h4 class="sx-h">${t("Inbounds and users")}</h4>${inb}
+    <h4 class="sx-h">${t("History")}</h4>${charts}
+    ${events}
+  </section>`;
 }
 
 function stEvents(d) {
@@ -1320,13 +1242,8 @@ function stPaint() {
   const d = stData;
   if (!d || !document.getElementById("st-body")) return;
   stLayout = stWidth();
-  stPatch("st-verdict", stVerdict(d));
-  stPatch("st-kpis", stKpis(d));
-  stPatch("st-map", stMap(d));
-  const { cols, items } = stCards(d);
-  const grid = document.getElementById("st-cards");
-  grid.style.setProperty("--cols", cols);
-  stPatchList(grid, items);
+  stPatch("st-summary", stSummary(stRows(d)));
+  stPatch("st-table", stTable(d));
   stPatch("st-events", stEvents(d));
   stPatch("st-notify", stNotify(d));
 }
@@ -1361,17 +1278,15 @@ async function status(params) {
   store.set("monRange", range);
   if (range !== stRange) stData = null;
   stRange = range;
-  const legend = [["ok", "Works"], ["warn", "Attention"], ["down", "Not responding"], ["off", "Switched off"]]
-    .map(([c, l]) => `<span class="st-sv h-${c}"><i></i>${t(l)}</span>`).join("");
   view.innerHTML = `
   ${head(t("Server status"), "", `<div class="chips">${RANGES.map(([k, l]) => `<a class="chip ${k === range ? "on" : ""}" href="#/status?range=${k}">${t(l)}</a>`).join("")}</div>`)}
   <div id="st-body">
-    <div id="st-verdict"></div>
-    <div id="st-kpis"></div>
-    <div class="h2row"><h2>${t("Map")}</h2><div class="st-legend">${legend}</div></div>
-    <div id="st-map"></div>
-    <div class="h2row"><h2>${t("All servers")}</h2></div>
-    <div id="st-cards" class="st-cards"></div>
+    <p id="st-summary" class="sx-summary"></p>
+    <div class="sx-controls">
+      <div class="chips" id="st-filters">${ST_FILTERS.map(([k, l]) => `<button type="button" class="chip ${k === stFilter ? "on" : ""}" data-filter="${k}">${t(l)}</button>`).join("")}</div>
+      <input type="search" id="st-q" value="${h(stQuery)}" placeholder="${h(t("Search by name"))}" aria-label="${h(t("Search by name"))}">
+    </div>
+    <div id="st-table"></div>
     <div class="h2row"><h2>${t("Alerts and events")}</h2></div>
     <div id="st-events"></div>
     <div id="st-notify"></div>
@@ -1380,6 +1295,21 @@ async function status(params) {
   body.addEventListener("click", async (e) => {
     const all = e.target.closest("#st-all");
     if (all) { stEventsAll = true; stPaint(); return; }
+    const flt = e.target.closest("[data-filter]");
+    if (flt) {
+      stFilter = flt.dataset.filter;
+      document.querySelectorAll("#st-filters .chip").forEach((c) => c.classList.toggle("on", c.dataset.filter === stFilter));
+      stPaint();
+      return;
+    }
+    const maint = e.target.closest("[data-maint]");
+    if (maint) {
+      maint.disabled = true;
+      try { await api(`/admin/nodes/${encodeURIComponent(maint.dataset.maint)}/maintenance`, { method: "PUT", body: { maintenance: maint.dataset.on === "1" } }); }
+      catch (x) { maint.disabled = false; alert(x.message); return; }
+      await stLoad();
+      return;
+    }
     const test = e.target.closest("#testnote");
     if (test) {
       const res = document.getElementById("testres");
@@ -1392,8 +1322,9 @@ async function status(params) {
     const card = e.target.closest("[data-open]");
     if (card && !e.target.closest("a")) stToggle(card.dataset.open);
   });
+  document.getElementById("st-q").addEventListener("input", (e) => { stQuery = e.target.value; stPaint(); });
   body.addEventListener("keydown", (e) => {
-    const card = e.target.closest?.("article[data-open]");
+    const card = e.target.closest?.("tr[data-open]");
     if (card && e.target === card && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); stToggle(card.dataset.open); }
   });
   if (stData) stPaint();

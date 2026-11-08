@@ -134,6 +134,9 @@ data class NodeSystem(
     val rxBytes: Long = 0,
     val txBytes: Long = 0,
     val uptime: Long = 0,
+    /** Issue #115: the root disk, bytes; older agents leave it out (0). */
+    val diskFree: Long = 0,
+    val diskTotal: Long = 0,
     /** Traffic classes on the node: "ok", "off" (not installed), "stale" or an error. */
     val classes: String? = null,
     /** The agent's version (issue #39: "2" sends client addresses); older agents leave it out. */
@@ -258,7 +261,28 @@ class Nodes(private val ctx: Ctx) {
             countryName = r.strOrNull("country_name"),
             vless = (protocols[Protocols.VLESS] as? JsonObject)?.let { runCatching { Protocols.decode<Vless.NodeSettings>(it) }.getOrNull() },
             displayName = r.strOrNull("display_name"), sortOrder = r.int("sort_order"), inSubscription = r.bool("in_subscription"),
-            cascadeRole = r.strOrNull("cascade_role"),
+            cascadeRole = r.strOrNull("cascade_role"), maintenance = r.bool("maintenance"),
+        )
+    }
+
+    /** Issue #115: the node is expected to be silent. Off the "no contact" alert; the card says "off (maintenance)". */
+    suspend fun setMaintenance(id: String, on: Boolean): AdminNode {
+        ctx.db.tx { sql ->
+            val was = sql.one("SELECT maintenance FROM servers WHERE id=?", id)?.bool("maintenance") ?: throw notFound("Node not found")
+            if (was != on) {
+                sql.exec("UPDATE servers SET maintenance=? WHERE id=?", on, id)
+                event(sql, id, ctx.now(), if (on) "maintenance_on" else "maintenance_off")
+            }
+            Unit
+        }
+        return get(id)
+    }
+
+    /** One line of the node's event log (node card, issue #115). */
+    internal fun event(sql: Sql, id: String, at: Instant, kind: String, args: Map<String, String> = emptyMap()) {
+        sql.exec(
+            "INSERT INTO node_events (server_id, ts, kind, args) VALUES (?,?,?,?)",
+            id, at, kind, Jsonb(JsonObject(args.mapValues { JsonPrimitive(it.value) }).toString()),
         )
     }
 
@@ -723,6 +747,12 @@ class Nodes(private val ctx: Ctx) {
         val balancer = req.balancer?.let { b ->
             b.copy(tag = b.tag.take(64), selected = b.selected.take(32).map { it.take(80) }, override = b.override?.take(80)?.ifEmpty { null })
         }
+        // Event log: back after silence, a restart (uptime went down).
+        val lastAt = s.instantOrNull("last_report_at")
+        if (lastAt != null && Duration.between(lastAt, now) >= NODE_OFFLINE) {
+            event(sql, id, now, "online", mapOf("downMinutes" to Duration.between(lastAt, now).toMinutes().toString()))
+        }
+        if (prev != null && prev.system.uptime > 0 && req.system.uptime in 1 until prev.system.uptime) event(sql, id, now, "restart")
         val stored = StoredReport(now.toEpochMilli(), req.system, bps(req.system.rxBytes, prev?.system?.rxBytes), bps(req.system.txBytes, prev?.system?.txBytes), balancer)
         sql.exec("UPDATE servers SET last_report_at=?, report=? WHERE id=?", now, Jsonb(Protocols.encode(stored).toString()), id)
         // One health sample per report for the status page's per-node charts (V24, kept 30 days).
@@ -736,7 +766,10 @@ class Nodes(private val ctx: Ctx) {
 
     /** Node health samples are kept 30 days (hourly cleanup). */
     suspend fun pruneMetrics() {
-        ctx.db.run { it.exec("DELETE FROM node_metrics WHERE ts < ?", ctx.now().minus(Duration.ofDays(30))) }
+        ctx.db.run {
+            it.exec("DELETE FROM node_metrics WHERE ts < ?", ctx.now().minus(Duration.ofDays(30)))
+            it.exec("DELETE FROM node_events WHERE ts < ?", ctx.now().minus(Duration.ofDays(30)))
+        }
     }
 }
 
