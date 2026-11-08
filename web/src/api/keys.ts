@@ -15,6 +15,15 @@ export const keys = {
     telegram: () => ["account", "telegram"] as const,
     order: (id: string) => ["account", "order", id] as const,
   },
+  referrals: {
+    all: ["referrals"] as const,
+    stats: (period: string) => ["referrals", "stats", period] as const,
+    admin: (period: string) => ["referrals", "admin", period] as const,
+    invite: () => ["referrals", "invite"] as const,
+    rewards: (suspicious: boolean) => ["referrals", "rewards", suspicious] as const,
+    rewardsAll: ["referrals", "rewards"] as const,
+  },
+  support: () => ["support"] as const,
   auth: {
     all: ["auth"] as const,
     telegramConfig: () => ["auth", "telegram", "config"] as const,

@@ -1,7 +1,7 @@
 export { Button, buttonVariants, type ButtonProps } from "./Button";
 export { Card, CardHeader } from "./Card";
 export { Field, Input, Select } from "./Field";
-export { Chips, Tabs, type TabItem } from "./Tabs";
+export { Chips, LinkTabs, Tabs, type LinkTabItem, type TabItem } from "./Tabs";
 export { StatusBadge } from "./StatusBadge";
 export { Table, Td, Th } from "./Table";
 export { EmptyState, ErrorState, Spinner } from "./States";
@@ -10,3 +10,5 @@ export { Form, FormError } from "./Form";
 export { Notice } from "./Notice";
 export { Modal, ConfirmDialog, type ConfirmOptions } from "./Modal";
 export { CopyButton } from "./CopyButton";
+export { KpiGrid, KpiTile, type KpiItem } from "./Kpi";
+export { Level } from "./Level";

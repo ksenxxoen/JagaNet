@@ -1,4 +1,4 @@
-/** "Apps": the app cards (shared with the landing page), a code to sign in to the Boop app, the Telegram group. */
+/** "Apps": the app cards (shared with the landing page), a code to sign in to the Boop app. */
 import { Plane, Shield, Smartphone, TabletSmartphone } from "lucide-react";
 import { useState } from "react";
 import { post } from "@/api/typed";
@@ -61,22 +61,5 @@ export function AppsSection({ site }: { site: Partial<SiteInfo> }) {
         <CardHeader title={t("Sign in to the Boop app")} actions={<PairCode />} className="mb-0 flex-wrap" />
       </Card>
     </Section>
-  );
-}
-
-export function CommunityCard({ url }: { url: string }) {
-  const { t } = useI18n();
-  return (
-    <Card className="mt-4">
-      <CardHeader
-        title={t("Our Telegram group")}
-        actions={
-          <a className={buttonVariants({ variant: "secondary" })} href={url} target="_blank" rel="noopener">
-            {t("Open")}
-          </a>
-        }
-      />
-      <p className="m-0 text-muted">{t("Chat with other Boop users and follow the news in our Telegram group.")}</p>
-    </Card>
   );
 }
