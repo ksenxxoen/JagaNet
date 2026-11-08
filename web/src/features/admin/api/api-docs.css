@@ -1,0 +1,120 @@
+/*
+ * Swagger UI in the project's palette (docs/DESIGN.md): neutral surfaces, one muted accent, no
+ * per-method rainbow. The method stays readable as text (GET, POST, ...). Works in both themes.
+ */
+.api-docs .swagger-ui {
+  font-family: inherit;
+  color: var(--text);
+}
+/* The page has its own title; Authorize (for a node token) stays. */
+.api-docs .swagger-ui .info {
+  display: none;
+}
+.api-docs .swagger-ui .scheme-container {
+  background: transparent;
+  box-shadow: none;
+  padding: 0 0 16px;
+}
+.api-docs .swagger-ui .wrapper {
+  padding: 0;
+  max-width: none;
+}
+.api-docs .swagger-ui,
+.api-docs .swagger-ui .opblock-tag,
+.api-docs .swagger-ui .opblock .opblock-summary-path,
+.api-docs .swagger-ui .opblock .opblock-summary-description,
+.api-docs .swagger-ui .opblock .opblock-section-header h4,
+.api-docs .swagger-ui .tab li,
+.api-docs .swagger-ui .parameter__name,
+.api-docs .swagger-ui .parameter__type,
+.api-docs .swagger-ui .response-col_status,
+.api-docs .swagger-ui .response-col_links,
+.api-docs .swagger-ui table thead tr th,
+.api-docs .swagger-ui table thead tr td,
+.api-docs .swagger-ui .model,
+.api-docs .swagger-ui .model-title,
+.api-docs .swagger-ui section.models h4,
+.api-docs .swagger-ui .renderedMarkdown p,
+.api-docs .swagger-ui label,
+.api-docs .swagger-ui .opblock-description-wrapper p,
+.api-docs .swagger-ui .responses-inner h4,
+.api-docs .swagger-ui .responses-inner h5 {
+  color: var(--text);
+}
+.api-docs .swagger-ui .opblock-tag {
+  border-bottom-color: var(--border);
+  font-size: 18px;
+}
+.api-docs .swagger-ui .opblock,
+.api-docs .swagger-ui .opblock.opblock-get,
+.api-docs .swagger-ui .opblock.opblock-post,
+.api-docs .swagger-ui .opblock.opblock-put,
+.api-docs .swagger-ui .opblock.opblock-patch,
+.api-docs .swagger-ui .opblock.opblock-delete {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: none;
+}
+.api-docs .swagger-ui .opblock .opblock-summary,
+.api-docs .swagger-ui .opblock.is-open .opblock-summary {
+  border-bottom-color: var(--border);
+}
+.api-docs .swagger-ui .opblock .opblock-section-header {
+  background: var(--subtle);
+  box-shadow: none;
+}
+.api-docs .swagger-ui .opblock .opblock-summary-method {
+  background: var(--neutral-tint);
+  color: var(--neutral-text);
+  text-shadow: none;
+  font-variant-numeric: tabular-nums;
+  min-width: 72px;
+}
+.api-docs .swagger-ui .opblock.opblock-delete .opblock-summary-method {
+  background: var(--danger-tint);
+  color: var(--danger-text);
+}
+.api-docs .swagger-ui .btn,
+.api-docs .swagger-ui select,
+.api-docs .swagger-ui input[type="text"],
+.api-docs .swagger-ui textarea {
+  border-radius: 8px;
+  border-color: var(--border-strong);
+  box-shadow: none;
+}
+.api-docs .swagger-ui .btn.execute,
+.api-docs .swagger-ui .btn.authorize {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.api-docs .swagger-ui .btn.authorize svg {
+  fill: #fff;
+}
+.api-docs .swagger-ui .opblock-body pre.microlight,
+.api-docs .swagger-ui .highlight-code > .microlight {
+  border-radius: 8px;
+}
+.api-docs .swagger-ui section.models {
+  border-color: var(--border);
+}
+.api-docs .swagger-ui section.models .model-container {
+  background: var(--subtle);
+}
+.api-docs .swagger-ui .filter .operation-filter-input {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+}
+@media (prefers-color-scheme: dark) {
+  .api-docs .swagger-ui svg:not(:root) {
+    fill: var(--text);
+  }
+  .api-docs .swagger-ui .opblock-body select,
+  .api-docs .swagger-ui input[type="text"],
+  .api-docs .swagger-ui textarea {
+    background: var(--subtle);
+    color: var(--text);
+  }
+}

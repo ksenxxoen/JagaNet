@@ -11,7 +11,8 @@ changes): `docs/frontend-plan.md`.
 
 Vite, React, TypeScript (`strict`), Tailwind CSS (PostCSS, Autoprefixer), TanStack Router (hash
 history) and React Query, Zustand, Axios, i18next, Lucide icons, react-hot-toast,
-class-variance-authority + clsx + tailwind-merge (`cn()`), Vitest + Testing Library, ESLint
+class-variance-authority + clsx + tailwind-merge (`cn()`), openapi-typescript (API types),
+Swagger UI (`swagger-ui-dist`, the owner's API tab), Vitest + Testing Library, ESLint
 (typescript-eslint, react-hooks), Prettier.
 
 ## Layout
@@ -24,7 +25,9 @@ class-variance-authority + clsx + tailwind-merge (`cn()`), Vitest + Testing Libr
 | `web/src/components/ui/` | Base components: Button, Card, Field/Input/Select, Tabs, Chips, StatusBadge, Table, Spinner, EmptyState, ErrorState |
 | `web/src/components/shell/` | Top bar (menu by role, language switch, phone menu), footer |
 | `web/src/routes/` | Routes, typed query parameters, guards, the "screen is moving" placeholder |
-| `web/src/api/` | Axios client for `/v1`, React Query client and shared queries |
+| `web/src/api/` | Axios client for `/v1`, typed calls (`typed.ts`), generated types (`schema.d.ts`), React Query client and shared queries |
+| `web/src/features/admin/` | `#/admin` until W-6: the API tab (Swagger UI, lazy chunk) and the placeholder |
+| `web/src/test/api.ts` | `mockApi()`: typed /v1 mocks on the Axios adapter for tests |
 | `web/src/store/session.ts` | Zustand: token, role, site settings, language |
 | `web/src/i18n/` | i18next setup, `t`, `tp`, `date`, `dateTime`, `money`, `bytes`, `num` |
 
@@ -53,6 +56,7 @@ npm run typecheck
 npm run lint       # ESLint + Prettier check
 npm test           # Vitest
 npm run build      # web/dist
+npm run gen:api    # src/api/schema.d.ts from server/src/main/resources/openapi.yaml
 ```
 
 `npm run dev` needs the panel server with demo data: `./gradlew :server:sim` (port 4000; another
@@ -68,15 +72,57 @@ address via `JAGANET_DEV_SERVER=http://host:port npm run dev`).
   `settings.gradle.kts`.
 - `http/WebNext.kt` serves `/next/`: `index.html` with `no-cache` and `X-Robots-Tag: noindex`,
   `assets/*` (hashed names) with a one-year immutable cache. Tested in `WebNextTest`.
-- CI: `.github/workflows/web.yml` (typecheck, lint, test, build on changes in `web/**`);
-  `server.yml` also runs on `web/**`.
+- CI: `.github/workflows/web.yml` (API types up to date, typecheck, lint, test, build on changes
+  in `web/**` and `openapi.yaml`); `server.yml` also runs on `web/**`.
+- Chunks: `vendor` holds the libraries every screen needs; libraries of lazy screens (Swagger UI,
+  later `@hello-pangea/dnd`) are excluded from it (`vite.config.ts`) and land in their screen's
+  chunk. W-2: `vendor` 487 KB (159 KB gzip) before and after; Swagger UI is `ApiDocs-*.js`
+  1.5 MB (423 KB gzip) + `ApiDocs-*.css` 188 KB, downloaded only on `#/admin?tab=api`.
 
 ## Adding a screen
 
 1. Replace the placeholder of its route in `src/routes/router.tsx` with the screen component
    (keep `validateSearch` in sync with the parameters the old screen reads).
-2. Load data with React Query (`useQuery` + `getJson`, mutations invalidate their queries).
+2. Load data with React Query and the typed calls of `api/typed.ts` (`get("/me")`,
+   `post("/orders", { body })`, `get("/orders/{id}", { params: { id } })`); models by name:
+   `Schema<"MeRes">`. Mutations invalidate their queries. In tests, `mockApi()` from `test/api.ts`.
 3. Every visible text through `t()` / `tp()`.
+
+## API description (OpenAPI)
+
+`server/src/main/resources/openapi.yaml` describes all of `/v1` (OpenAPI 3.1): paths, methods,
+parameters, bodies and answers, the error format (`error.code`, `error.message`), Bearer sessions,
+the node token, tags `public`, `user`, `owner`, `telegram`, `node`. The owner gets it as
+`/v1/openapi.json` (everyone else: 404, since it lists the admin endpoints) and in the admin panel
+on `#/admin?tab=api` (Swagger UI; Try it out sends requests with the current session, or with the
+token typed into Authorize, such as a node token).
+
+**Why a hand-kept file and not generation from code.** The routes are plain Ktor `get`/`post`
+calls without annotations, and the answers are found only by reading the handlers; schema
+generators for `kotlinx.serialization` do not know the request/response direction (fields with
+defaults are always sent, nulls are left out) and need hand work for `JsonObject` answers. A file
+with strict tests gives the same guarantee more simply, and the schemas themselves are not written
+by hand: they come from the models (see below). `OpenApiTest` in `:server:test`:
+
+1. every `/v1` route of the Ktor routing tree is in the file and every path in the file exists
+   (a new route without a description fails the build);
+2. every component with `x-kotlin` equals the schema built from its `@Serializable` class
+   (`OpenApiSchemas`), with the direction from the file (reachable from a request body or not);
+3. real answers of the key endpoints (`/me`, `/site`, `/i18n/{lang}`, sign-in, account, orders,
+   server status, nodes, admin panel, errors) follow the schemas, strictly: an undocumented field
+   fails;
+4. `/v1/openapi.json` is for the owner only.
+
+**Changing the API.** Change the route and the model, then the file: a new path by hand (copy a
+neighbour), a new or changed model with the schema the dump prints:
+`OPENAPI_DUMP=classes.txt ./gradlew :server:test --tests '*OpenApiDumpTest*'` (lines
+`response|request|explicit <class>`, output `server/build/openapi-components.json`). Then
+`npm run gen:api` in `web/` and commit `web/src/api/schema.d.ts` (CI checks that it is current).
+
+`TypedResponsesTest` keeps the JSON of the answers that used to be built with `buildJsonObject`
+(`/v1/auth/telegram/config`, `/v1/telegram`, `/v1/telegram/login-link`, `/v1/telegram/link`,
+`/health`) the same: the same keys and types, the two Telegram answers still with explicit
+`null`s (`respondKeepingNulls`, `x-explicit-nulls` in the file).
 
 ## Adding a text
 

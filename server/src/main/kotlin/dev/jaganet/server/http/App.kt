@@ -74,10 +74,11 @@ import io.ktor.server.routing.routing
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import dev.jaganet.api.i18n.Lang
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonArray
-import kotlinx.serialization.json.add
+import io.ktor.http.ContentType
+import io.ktor.http.withCharset
+import io.ktor.server.response.respondText
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.serializer
 import kotlin.time.Duration.Companion.minutes
 
 /** All services wired together. */
@@ -135,6 +136,19 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
 @Serializable
 data class SetLangReq(val lang: String)
 
+/** GET /health: the panel is up, its mode and the VPN protocols it runs. */
+@Serializable
+data class HealthRes(val ok: Boolean, val mode: String, val protocols: List<String>)
+
+/**
+ * For responses that always had their null fields (they were built with buildJsonObject): the API's
+ * JSON otherwise leaves nulls out (explicitNulls = false), and clients may tell "null" from "missing".
+ */
+@PublishedApi internal val keepingNulls = Json(Protocols.json) { explicitNulls = true }
+
+suspend inline fun <reified T> ApplicationCall.respondKeepingNulls(value: T) =
+    respondText(keepingNulls.encodeToString(serializer<T>(), value), ContentType.Application.Json.withCharset(Charsets.UTF_8))
+
 private val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
 private val SIX = Regex("^\\d{6}$")
 /** Sign-in endpoints: 10 a minute per address (1000 in tests). */
@@ -186,11 +200,7 @@ fun Application.jaganet(s: Services) {
         ownerLoginLink(s)
         nodeFiles()
         get("/health") {
-            call.respond(buildJsonObject {
-                put("ok", true)
-                put("mode", ctx.cfg.mode.name.lowercase())
-                putJsonArray("protocols") { ctx.drivers.ids().forEach { add(it) } }
-            })
+            call.respond(HealthRes(ok = true, mode = ctx.cfg.mode.name.lowercase(), protocols = ctx.drivers.ids().toList()))
         }
 
         route("/v1") {
@@ -330,6 +340,7 @@ fun Application.jaganet(s: Services) {
             salesApi(s)
             telegramWebApi(s)
             supportApi(s)
+            with(OpenApi) { openApiDocument(s) }
             get("/admin/overview") {
                 call.owner()
                 call.respond(s.admin.overview(call.apiLang()))

@@ -1,4 +1,4 @@
-# CI for the new website (web/, React + Vite, docs/WEB-FRONTEND.md): typecheck, lint, tests, build.
+# CI for the new website (web/, React + Vite, docs/WEB-FRONTEND.md): API types, typecheck, lint, tests, build.
 # No secrets, no deploys.
 name: web
 
@@ -6,11 +6,13 @@ on:
   pull_request:
     paths:
       - "web/**"
+      - "server/src/main/resources/openapi.yaml"
       - ".github/workflows/web.yml"
   push:
     branches: [claude/adoring-brown-s8fqex]
     paths:
       - "web/**"
+      - "server/src/main/resources/openapi.yaml"
       - ".github/workflows/web.yml"
   workflow_dispatch:
 
@@ -40,6 +42,11 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - run: npm ci
+      # src/api/schema.d.ts is generated from server/src/main/resources/openapi.yaml: it must be current.
+      - name: API types are up to date (npm run gen:api)
+        run: |
+          npm run gen:api
+          git diff --exit-code -- src/api/schema.d.ts || { echo "::error::Run 'npm run gen:api' in web/ and commit src/api/schema.d.ts"; exit 1; }
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test

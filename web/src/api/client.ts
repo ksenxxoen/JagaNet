@@ -51,6 +51,3 @@ export function createApi(): AxiosInstance {
 }
 
 export const api = createApi();
-
-/** GET /v1<path> and the body. */
-export const getJson = async <T>(path: string): Promise<T> => (await api.get<T>(path)).data;

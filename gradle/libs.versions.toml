@@ -18,6 +18,7 @@ angusMail = "2.0.3"
 jsch = "2.27.3"
 sshd = "2.16.0"
 nodeGradle = "7.1.0"
+snakeyamlEngine = "2.10"
 
 [libraries]
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
@@ -51,6 +52,7 @@ angus-mail = { module = "org.eclipse.angus:angus-mail", version.ref = "angusMail
 qrcodegen = { module = "io.nayuki:qrcodegen", version.ref = "qrcodegen" }
 jsch = { module = "com.github.mwiede:jsch", version.ref = "jsch" }
 sshd-core = { module = "org.apache.sshd:sshd-core", version.ref = "sshd" }
+snakeyaml-engine = { module = "org.snakeyaml:snakeyaml-engine", version.ref = "snakeyamlEngine" }
 logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 
 compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose" }

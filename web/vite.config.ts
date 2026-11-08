@@ -19,8 +19,14 @@ export default defineConfig({
     emptyOutDir: true,
     assetsDir: "assets",
     sourcemap: false,
+    // Swagger UI (~1.5 MB, the owner's API tab only) is the one large chunk, and it is lazy.
+    chunkSizeWarningLimit: 1600,
     // Libraries change less often than the app: a separate file stays cached between releases.
-    rolldownOptions: { output: { codeSplitting: { groups: [{ name: "vendor", test: /node_modules/ }] } } },
+    // Libraries of lazy screens stay out of it, in their screens' chunks: Swagger UI (owner's API
+    // tab) and, from W-7, @hello-pangea/dnd (node order). Guests never download them.
+    rolldownOptions: {
+      output: { codeSplitting: { groups: [{ name: "vendor", test: /node_modules[\\/](?!swagger-ui-dist|@hello-pangea)/ }] } },
+    },
   },
   server: {
     port: 5173,

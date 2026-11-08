@@ -23,6 +23,12 @@
 в `services/Control*.kt`, `Analytics.kt`, `Nodes.kt`. Решается в W-2, обратно совместимо (те же
 поля и имена).
 
+Итог W-2: `buildJsonObject` в ответах был только в `TelegramWeb.kt` (4 ответа) и `/health`; они
+стали классами. В `Control*.kt` и `Analytics.kt` ответы уже были классами (`JsonObject` там только
+в поле `details` журнала и во внутренних расчётах). `GET /v1/admin/nodes/{id}/balancer` отдаёт
+фрагмент конфигурации Xray (`JsonObject`), это свободный JSON по своей природе; он описан в
+OpenAPI как объект и не менялся.
+
 ## 2. Архитектура
 
 ### 2.1. Слои
@@ -135,6 +141,13 @@ goober. Для сайта это допустимо, для мини-прило�
 пишутся в `docs/WEB-FRONTEND.md` в W-2. Копия для фронтенда не нужна: `gen:api` читает тот же
 файл из `server/src/main/resources/`.
 
+**Решение W-2:** как рекомендовано, плюс третий тест: каждая схема компонента с `x-kotlin`
+совпадает со схемой, построенной из `@Serializable`-класса (`OpenApiSchemas` в тестах), так что
+модели и файл не расходятся; схемы для новых моделей печатает `OpenApiDumpTest`. Проверка ответов
+строгая (незадокументированное поле — ошибка), валидатор свой, маленький, под подмножество JSON
+Schema, которое использует файл (без новой зависимости). `/v1/openapi.json` отдаётся только
+владельцу, всем остальным 404. Подробности в `docs/WEB-FRONTEND.md`, раздел «API description».
+
 ### 2.5. Состояние и сессия
 
 - Zustand-стор `session` (есть): `token`, `role`, `site`, `lang`. В W-9 он становится фабрикой
@@ -189,7 +202,7 @@ goober. Для сайта это допустимо, для мини-прило�
 | Этап | Содержание | Уточнения плана |
 | --- | --- | --- |
 | W-1 #118 | Каркас, сборка, CI, `/next/`, этот план | готово в PR #129 |
-| W-2 #119 | OpenAPI, `schema.d.ts`, `api/typed.ts`, Swagger UI | способ OpenAPI — раздел 2.4; заменить `buildJsonObject` в ответах `/v1` на классы; сузить `vendor`-чанк |
+| W-2 #119 | OpenAPI, `schema.d.ts`, `api/typed.ts`, Swagger UI | способ OpenAPI — раздел 2.4; заменить `buildJsonObject` в ответах `/v1` на классы; сузить `vendor`-чанк. Сделано; `test/api.ts` (`mockApi`) уже есть, W-3 использует его |
 | W-3 #120 | Лендинг, вход, `#/login`, `#/app-login` | + `layout/`, `Form`/`useSaveForm`, `useApiMutation`, `api/keys.ts`, `entries/site.tsx`, правило ESLint для `features/` |
 | W-4 #121 | Кабинет | + `Modal`/`ConfirmDialog` (из W-6), `CopyButton`, `QrCanvas`, `AppLinks`, `usePolling` |
 | W-5 #122 | Рефералы, приглашения, поддержка | + `PeriodPicker`, `SearchBox`, `usePersistedSearch` |
@@ -212,7 +225,7 @@ goober. Для сайта это допустимо, для мини-прило�
 | --- | --- | --- |
 | W-1 | Раздача `/next/` | `http/WebNext.kt` (сделано) |
 | W-2 | `/v1/openapi.json` только владельцу; `openapi.yaml`; тест соответствия маршрутов | `App.kt`, новый `http/OpenApi.kt` |
-| W-2 | Типизированные ответы вместо `buildJsonObject` (те же поля) | `TelegramWeb.kt`, `services/Control*.kt`, `Analytics.kt`, `Nodes.kt` |
+| W-2 | Типизированные ответы вместо `buildJsonObject` (те же поля) | `TelegramWeb.kt`, `/health` в `App.kt` (в `Control*.kt`, `Analytics.kt`, `Nodes.kt` замен не понадобилось, см. раздел 1) |
 | W-7 | По необходимости `PUT /v1/admin/nodes/order` (массовая смена `sortOrder` в одной транзакции) | `AdminApi.kt` / `ControlApi.kt`, `services/Nodes.kt` |
 | W-9 | Раздача мини-приложения из сборки `web/` на `/tg/app-next`, `/tg/open-next` с тем же шаблоном (`{{lang}}`, `{{bot}}`, `{{t:…}}`) и `MINIAPP_CSP` | `http/MiniApp.kt`, `WebNext.kt` |
 | W-10 | `WEB_UI=new|legacy`, редиректы превью | `Config.kt`, `Web.kt`, `MiniApp.kt` |
