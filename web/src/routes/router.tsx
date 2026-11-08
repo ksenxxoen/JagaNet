@@ -1,7 +1,7 @@
 /**
  * Every route of the website with hash history (#/account?order=…), the same addresses as app.js.
- * Moved screens load lazily by section (landing, sign-in); the rest are placeholders until their
- * sub-tasks of the epic move them (W-4…W-8).
+ * Moved screens load lazily by section (landing, sign-in, account); the rest are placeholders until
+ * their sub-tasks of the epic move them (W-5…W-8).
  */
 import {
   createHashHistory,
@@ -18,13 +18,14 @@ import { Shell } from "@/components/shell/Shell";
 import { Spinner } from "@/components/ui";
 import { useSession } from "@/store/session";
 import { requireOwner, requireSignIn, type RouterContext } from "./guards";
-import { AccountPlaceholder, Placeholder } from "./Placeholder";
+import { Placeholder } from "./Placeholder";
 import { AdminScreen } from "@/features/admin/AdminScreen";
 import { parseSearch, pick, stringifySearch } from "./search";
 import type { QueryClient } from "@tanstack/react-query";
 
 const landing = () => import("@/features/public/Landing");
 const auth = () => import("@/features/auth");
+const accountScreen = () => import("@/features/account");
 const LazyLanding = lazy(() => landing().then((m) => ({ default: m.Landing })));
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
@@ -74,7 +75,7 @@ const account = createRoute({
   path: "/account",
   validateSearch: pick("order", "id"),
   beforeLoad: ({ location }) => requireSignIn(`#${location.href}`),
-  component: AccountPlaceholder,
+  component: lazyRouteComponent(accountScreen, "Account"),
 });
 
 const referrals = createRoute({

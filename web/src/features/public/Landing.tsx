@@ -14,9 +14,10 @@ import { notify } from "@/lib/notify";
 import { rich } from "@/lib/rich";
 import { scrollToAnchor } from "@/lib/anchors";
 import { startCheckout } from "@/lib/checkout";
+import { appCards } from "@/lib/apps";
 import type { Schema } from "@/api/typed";
 import { Icon, type IconName } from "./icons";
-import { devicesLine, period, pricedTariffs, type PricedTariff } from "./pricing";
+import { devicesLine, period, pricedTariffs, type PricedTariff } from "@/lib/pricing";
 import "./landing.css";
 
 type SiteInfo = Schema<"SiteInfo">;
@@ -272,37 +273,27 @@ function HeroVisual() {
 }
 
 function Downloads({ site }: { site: Partial<SiteInfo> }) {
-  const { t } = useI18n();
-  const soon = (
-    <button type="button" className={btn("secondary")} disabled>
-      {t("Coming soon")}
-    </button>
-  );
-  const card = (ic: IconName, title: string, text: string, button: ReactNode) => (
-    <div key={title} className="app-card rounded-panel border border-line bg-surface shadow-sm">
-      <div className="tile-ic">
-        <Icon name={ic} />
-      </div>
-      <h3>{title}</h3>
-      <p>{text}</p>
-      {button}
-    </div>
-  );
-  const link = (href: string, text: string, external = false) => (
-    <a className={btn("secondary")} href={href} {...(external ? { rel: "noreferrer" } : {})}>
-      {text}
-    </a>
-  );
   return (
     <Tiles
       className="apps"
-      items={[
-        card("android", "Android", t("The Boop app."), site.androidAppUrl ? link(site.androidAppUrl, t("Download for Android")) : soon),
-        card("phone", "iPhone", t("The Boop app for iOS."), site.iosAppUrl ? link(site.iosAppUrl, t("Download on the App Store")) : soon),
-        site.telegramBotUrl
-          ? card("plane", "Telegram", t("Buy your key right in Telegram."), link(site.telegramBotUrl, t("Open the bot")))
-          : card("shield", "AmneziaVPN", t("Works with your Boop key."), link("https://amnezia.org/downloads", t("Get AmneziaVPN"), true)),
-      ]}
+      items={appCards(site).map((c) => (
+        <div key={c.title} className="app-card rounded-panel border border-line bg-surface shadow-sm">
+          <div className="tile-ic">
+            <Icon name={c.icon} />
+          </div>
+          <h3>{c.title}</h3>
+          <p>{c.text}</p>
+          {c.href ? (
+            <a className={btn("secondary")} href={c.href} {...(c.external ? { rel: "noreferrer" } : {})}>
+              {c.label}
+            </a>
+          ) : (
+            <button type="button" className={btn("secondary")} disabled>
+              {c.label}
+            </button>
+          )}
+        </div>
+      ))}
     />
   );
 }

@@ -8,3 +8,5 @@ export { EmptyState, ErrorState, Spinner } from "./States";
 export { CodeInput, codeDigits } from "./CodeInput";
 export { Form, FormError } from "./Form";
 export { Notice } from "./Notice";
+export { Modal, ConfirmDialog, type ConfirmOptions } from "./Modal";
+export { CopyButton } from "./CopyButton";

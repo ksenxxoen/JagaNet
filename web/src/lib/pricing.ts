@@ -1,4 +1,4 @@
-/** Pricing math of the landing page (pricedTariffs() in app.js): prices per month and savings, computed, never typed in. */
+/** Pricing math of the landing page and the account (pricedTariffs() in app.js): prices per month and savings, computed, never typed in. */
 import { tp } from "@/i18n";
 import type { Schema } from "@/api/typed";
 
