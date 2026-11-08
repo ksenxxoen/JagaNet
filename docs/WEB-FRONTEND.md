@@ -4,6 +4,9 @@ The website is moving from plain JS without a build (`server/src/main/resources/
 app in `web/` (epic #117). Until the switch (W-10) the new site is a **preview on `/next/`**
 (`noindex`); `/`, `/tg/app`, `/k/…` and the API stay as they are.
 
+The development plan (stages, module layout, shared UI kit, API layer, migration and backend
+changes): `docs/frontend-plan.md`.
+
 ## Stack
 
 Vite, React, TypeScript (`strict`), Tailwind CSS (PostCSS, Autoprefixer), TanStack Router (hash
