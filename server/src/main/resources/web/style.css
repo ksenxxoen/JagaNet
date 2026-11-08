@@ -842,3 +842,13 @@ form.rename input { flex: 1; max-width: 320px; }
 .sx-facts dd { margin: 2px 0 0; font-size: 14px; overflow-wrap: anywhere; }
 .sx-btns { display: flex; flex-wrap: wrap; gap: 8px; }
 .sx-s { font-size: 14px; font-weight: 500; }
+.sx-detail .st-ev { grid-template-columns: 190px minmax(0, 1fr); }
+.sx-detail .st-evt { white-space: normal; }
+.sx-controls button.chip { border: 0; background: transparent; font-family: inherit; cursor: pointer; }
+.sx-controls button.chip.on { background: var(--surface); }
+.sx-s { margin-left: 8px; }
+@media (max-width: 700px) {
+  /* The open card stays as wide as the screen while the list scrolls sideways. */
+  .sx-detail .st-detail { position: sticky; left: 0; box-sizing: border-box; width: calc(100vw - 34px); max-width: 100%; }
+  .sx-detail > td { overflow: hidden; }
+}
