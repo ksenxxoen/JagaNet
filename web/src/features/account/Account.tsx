@@ -7,12 +7,13 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
 import { meQuery, plansQuery, siteQuery } from "@/api/queries";
+import { CommunityCard, useCommunityUrl } from "@/components/Community";
 import { Page, PageHeader } from "@/components/layout";
 import { Button, ErrorState, Notice, Spinner } from "@/components/ui";
 import { useSignOut } from "@/hooks/useSignOut";
 import { useI18n } from "@/i18n";
 import { useSession, type SiteInfo } from "@/store/session";
-import { AppsSection, CommunityCard } from "./Apps";
+import { AppsSection } from "./Apps";
 import { KeysSection } from "./Keys";
 import { OrderNotice } from "./OrderNotice";
 import { PaymentsSection } from "./Payments";
@@ -26,6 +27,7 @@ export function Account() {
   const token = useSession((s) => s.token);
   const { signOut, pending } = useSignOut();
   const site = useQuery(siteQuery);
+  const community = useCommunityUrl();
   const [me, keyList, plans, pays] = useQueries({ queries: [meQuery(token), keysQuery, plansQuery, paymentsQuery] });
 
   const all = [me, keyList, plans, pays];
@@ -56,7 +58,7 @@ export function Account() {
       <KeysSection data={keyList.data} isPro={isPro} />
       <AppsSection site={s} />
       <TelegramCard />
-      {s.communityUrl ? <CommunityCard url={s.communityUrl} /> : null}
+      {community ? <CommunityCard url={community} /> : null}
       <PaymentsSection payments={pays.data.payments} />
     </Page>
   );

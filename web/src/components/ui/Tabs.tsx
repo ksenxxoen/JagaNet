@@ -69,3 +69,30 @@ export function Chips<K extends string>({
     </div>
   );
 }
+
+export interface LinkTabItem {
+  href: string;
+  label: string;
+  on: boolean;
+}
+
+/** nav.tabs: the same row as Tabs, but each tab is a link to its address (a section split over routes). */
+export function LinkTabs({ items, label, className }: { items: LinkTabItem[]; label: string; className?: string }) {
+  return (
+    <nav aria-label={label} className={cn("mb-4 flex gap-1 overflow-x-auto border-b border-line", className)}>
+      {items.map((x) => (
+        <a
+          key={x.href}
+          href={x.href}
+          aria-current={x.on ? "page" : undefined}
+          className={cn(
+            "-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-semibold no-underline hover:no-underline",
+            x.on ? "border-primary text-ink-heading" : "border-transparent text-muted hover:text-ink-heading",
+          )}
+        >
+          {x.label}
+        </a>
+      ))}
+    </nav>
+  );
+}

@@ -67,7 +67,7 @@ describe("route guards", () => {
     fakeApi(null);
     const router = open("/support");
     await waitFor(() => expect(router.state.location.pathname).toBe("/support"));
-    expect(await screen.findByRole("heading", { level: 1, name: "Support" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Contact support" })).toBeInTheDocument();
   });
 
   it("numbers in the query stay strings", async () => {

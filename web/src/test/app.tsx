@@ -115,3 +115,102 @@ export const accountRoutes = (over: { me?: Schema<"MeRes">; keys?: Schema<"KeysR
     invites: false,
   },
 });
+
+/** /v1/me of the owner. */
+export const ownerMe = (): Schema<"MeRes"> => {
+  const m = me();
+  return { ...m, user: { ...m.user, role: "owner", email: "owner@b.c" } };
+};
+
+export const funnel = (over: Partial<Schema<"Funnel">> = {}): Schema<"Funnel"> => ({
+  clicks: 40,
+  visitors: 30,
+  signups: 10,
+  paidUsers: 4,
+  purchases: 5,
+  revenue: [{ minor: 120000, currency: "RUB" }],
+  ...over,
+});
+
+export const referralLink = (over: Partial<Schema<"ReferralLink">> = {}): Schema<"ReferralLink"> => ({
+  id: "main",
+  name: "Main link",
+  code: "ALEX",
+  main: true,
+  webUrl: "https://boop.example/r/ALEX",
+  telegramUrl: "https://t.me/boop_bot?start=ref_ALEX",
+  createdAt: "2026-01-01T00:00:00Z",
+  funnel: funnel(),
+  ...over,
+});
+
+export const referralStats = (over: Partial<Schema<"ReferralStatsRes">> = {}): Schema<"ReferralStatsRes"> => ({
+  period: "30d",
+  totals: funnel(),
+  days: [
+    { day: "2026-11-01", clicks: 3, signups: 1, paid: 0 },
+    { day: "2026-11-02", clicks: 5, signups: 2, paid: 1 },
+  ],
+  links: [referralLink(), referralLink({ id: "l2", name: "Instagram", code: "ALEX-INSTA", main: false, telegramUrl: undefined })],
+  sources: [{ key: "direct", count: 7 }],
+  channels: [{ key: "website", count: 3 }],
+  recent: [
+    { who: "f***@mail.ru", linkName: "Main link", joinedAt: "2026-11-02T10:00:00Z", channel: "website", status: "active", purchases: 1 },
+  ],
+  rewardDays: 0,
+  daysEarned: 14,
+  ...over,
+});
+
+export const adminReferrals = (): Schema<"AdminReferralsRes"> => ({
+  period: "30d",
+  totals: funnel(),
+  days: [],
+  sources: [],
+  channels: [],
+  topReferrers: [{ email: "partner@b.c", links: 2, funnel: funnel() }],
+});
+
+export const inviteRes = (over: Partial<Schema<"InviteRes">> = {}): Schema<"InviteRes"> => ({
+  enabled: true,
+  code: "ALEX",
+  webUrl: "https://boop.example/r/ALEX",
+  telegramUrl: "https://t.me/boop_bot?start=ref_ALEX",
+  rewardDays: 14,
+  condition: "first_payment",
+  inviteeDays: 7,
+  invited: 3,
+  paid: 1,
+  daysEarned: 14,
+  rewards: [{ at: "2026-11-02T10:00:00Z", who: "f***@mail.ru", days: 14, status: "granted", kind: "inviter" }],
+  ...over,
+});
+
+export const adminReward = (over: Partial<Schema<"AdminReward">> = {}): Schema<"AdminReward"> => ({
+  id: "rw1",
+  createdAt: "2026-11-02T10:00:00Z",
+  userId: "u1",
+  userEmail: "a@b.c",
+  referrerEmail: "a@b.c",
+  inviteeId: "u2",
+  inviteeEmail: "friend@b.c",
+  kind: "inviter",
+  reason: "first_payment",
+  days: 14,
+  status: "granted",
+  suspicion: "same_ip",
+  notifiedVia: "telegram",
+  ...over,
+});
+
+export const adminRewards = (over: Partial<Schema<"AdminReferralRewardsRes">> = {}): Schema<"AdminReferralRewardsRes"> => ({
+  settings: { days: 14, condition: "first_payment", inviteeDays: 7, monthlyCap: 10 },
+  granted: 1,
+  daysGranted: 14,
+  capped: 0,
+  cancelled: 0,
+  suspicious: 1,
+  top: [{ userId: "u1", email: "a@b.c", invited: 3, paid: 1, rewards: 1, days: 14, suspicious: 1 }],
+  rewards: [adminReward()],
+  ...over,
+});

@@ -1,7 +1,7 @@
 /**
  * Every route of the website with hash history (#/account?order=…), the same addresses as app.js.
- * Moved screens load lazily by section (landing, sign-in, account); the rest are placeholders until
- * their sub-tasks of the epic move them (W-5…W-8).
+ * Moved screens load lazily by section (landing, sign-in, account, referrals, invite, support); the
+ * rest are placeholders until their sub-tasks of the epic move them (W-6…W-8).
  */
 import {
   createHashHistory,
@@ -26,6 +26,9 @@ import type { QueryClient } from "@tanstack/react-query";
 const landing = () => import("@/features/public/Landing");
 const auth = () => import("@/features/auth");
 const accountScreen = () => import("@/features/account");
+const referralsScreen = () => import("@/features/referrals");
+const inviteScreen = () => import("@/features/invite");
+const supportScreen = () => import("@/features/support");
 const LazyLanding = lazy(() => landing().then((m) => ({ default: m.Landing })));
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
@@ -83,7 +86,7 @@ const referrals = createRoute({
   path: "/referrals",
   validateSearch: pick("period", "view"),
   beforeLoad: ({ location }) => requireSignIn(`#${location.href}`),
-  component: () => <Placeholder title={t("Referral program")} />,
+  component: lazyRouteComponent(referralsScreen, "Referrals"),
 });
 
 const invite = createRoute({
@@ -91,11 +94,11 @@ const invite = createRoute({
   path: "/invite",
   validateSearch: pick("view", "suspicious"),
   beforeLoad: ({ location }) => requireSignIn(`#${location.href}`),
-  component: () => <Placeholder title={t("Invite a friend")} />,
+  component: lazyRouteComponent(inviteScreen, "Invite"),
 });
 
 // Support works without signing in.
-const support = createRoute({ getParentRoute: () => rootRoute, path: "/support", component: () => <Placeholder title={t("Support")} /> });
+const support = createRoute({ getParentRoute: () => rootRoute, path: "/support", component: lazyRouteComponent(supportScreen, "Support") });
 
 const status = createRoute({
   getParentRoute: () => rootRoute,
