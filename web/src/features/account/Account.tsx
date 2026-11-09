@@ -18,7 +18,7 @@ import { KeysSection } from "./Keys";
 import { OrderNotice } from "./OrderNotice";
 import { PaymentsSection } from "./Payments";
 import { BuyCard, YourPlan } from "./PlanCards";
-import { keysQuery, paymentsQuery } from "./queries";
+import { keysQuery, paymentsQuery } from "@/api/account";
 import { TelegramCard } from "./TelegramCard";
 
 export function Account() {

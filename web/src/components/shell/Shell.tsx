@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Outlet } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { Toaster } from "react-hot-toast";
 import { meQuery, siteQuery } from "@/api/queries";
+import { Toaster } from "@/components/ui/Toaster";
 import { handleAnchorClick } from "@/lib/anchors";
 import { useSession } from "@/store/session";
 import { Footer } from "./Footer";
@@ -35,10 +35,7 @@ export function Shell() {
         <Outlet />
       </main>
       <Footer />
-      <Toaster
-        position="bottom-center"
-        toastOptions={{ className: "!bg-surface !text-ink-heading !shadow !border !border-line !rounded-ctl !text-sm" }}
-      />
+      <Toaster />
     </>
   );
 }

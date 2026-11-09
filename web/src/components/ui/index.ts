@@ -10,5 +10,6 @@ export { Form, FormError } from "./Form";
 export { Notice } from "./Notice";
 export { Modal, ConfirmDialog, type ConfirmOptions } from "./Modal";
 export { CopyButton } from "./CopyButton";
+export { Toaster } from "./Toaster";
 export { KpiGrid, KpiTile, type KpiItem } from "./Kpi";
 export { Level } from "./Level";

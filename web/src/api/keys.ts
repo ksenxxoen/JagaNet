@@ -8,9 +8,12 @@ export const keys = {
   me: (token?: string | null) => (token === undefined ? (["me"] as const) : (["me", token] as const)),
   site: () => ["site"] as const,
   plans: () => ["billing", "plans"] as const,
+  /** Is the Windows app published (/v1/app/desktop)? */
+  desktop: () => ["app", "desktop"] as const,
   account: {
     all: ["account"] as const,
     keys: () => ["account", "keys"] as const,
+    devices: () => ["account", "devices"] as const,
     payments: () => ["account", "payments"] as const,
     telegram: () => ["account", "telegram"] as const,
     order: (id: string) => ["account", "order", id] as const,
@@ -20,6 +23,8 @@ export const keys = {
     stats: (period: string) => ["referrals", "stats", period] as const,
     admin: (period: string) => ["referrals", "admin", period] as const,
     invite: () => ["referrals", "invite"] as const,
+    /** GET /referrals: the person's own invite link (the mini app's profile). */
+    mine: () => ["referrals", "mine"] as const,
     rewards: (suspicious: boolean) => ["referrals", "rewards", suspicious] as const,
     rewardsAll: ["referrals", "rewards"] as const,
   },
