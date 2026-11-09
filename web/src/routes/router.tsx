@@ -119,7 +119,7 @@ const analytics = createRoute({
 const admin = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin",
-  validateSearch: pick("tab", "id", "from", "to", "status", "q", "period"),
+  validateSearch: pick("tab", "id", "from", "to", "status", "q", "period", "user", "server", "sort", "page"),
   beforeLoad: ({ context, location }) => requireOwner(context, `#${location.href}`),
   component: AdminScreen,
 });

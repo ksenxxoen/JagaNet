@@ -24,6 +24,18 @@ export const keys = {
     rewardsAll: ["referrals", "rewards"] as const,
   },
   support: () => ["support"] as const,
+  admin: {
+    all: ["admin"] as const,
+    dashboard: () => ["admin", "dashboard"] as const,
+    users: (q: string) => ["admin", "users", q] as const,
+    usersAll: ["admin", "users"] as const,
+    user: (id: string) => ["admin", "user", id] as const,
+    payments: (filter: Record<string, string>) => ["admin", "payments", filter] as const,
+    paymentsAll: ["admin", "payments"] as const,
+    finance: (period: string) => ["admin", "finance", period] as const,
+    audit: (user: string) => ["admin", "audit", user] as const,
+    auditAll: ["admin", "audit"] as const,
+  },
   auth: {
     all: ["auth"] as const,
     telegramConfig: () => ["auth", "telegram", "config"] as const,

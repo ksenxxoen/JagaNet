@@ -1,17 +1,33 @@
-import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
+import { ChevronDown } from "lucide-react";
+import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
 const control =
-  "h-ctl w-full rounded-ctl border border-line-strong bg-surface px-3 text-[15px] text-ink-heading placeholder:text-faint " +
-  "hover:border-faint focus:border-focus focus:outline-none focus:ring-[3px] focus:ring-focus/25 read-only:bg-subtle";
+  "w-full rounded-ctl border border-line-strong bg-surface px-3 text-[15px] text-ink-heading placeholder:text-faint " +
+  "hover:border-faint focus:border-focus focus:outline-none focus:ring-[3px] focus:ring-focus/25";
 
+// :read-only also matches every <select> (it is never "read-write"), so the grey read-only
+// background is for text fields only.
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(({ className, ...props }, ref) => (
-  <input ref={ref} className={cn(control, className)} {...props} />
+  <input ref={ref} className={cn(control, "h-ctl read-only:bg-subtle", className)} {...props} />
 ));
 Input.displayName = "Input";
 
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(({ className, ...props }, ref) => (
+  <textarea ref={ref} className={cn(control, "resize-y py-2.5 leading-[22px] read-only:bg-subtle", className)} {...props} />
+));
+Textarea.displayName = "Textarea";
+
+/**
+ * A select as in style.css: the surface background and a small chevron on the right (an icon, not
+ * a data: image, so it works under the mini app's CSP). `className` goes to the wrapper (width,
+ * margins); the select fills it.
+ */
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(({ className, ...props }, ref) => (
-  <select ref={ref} className={cn(control, "cursor-pointer appearance-none pr-9", className)} {...props} />
+  <span className={cn("relative block w-full", className)}>
+    <select ref={ref} className={cn(control, "h-ctl cursor-pointer appearance-none bg-surface pr-9")} {...props} />
+    <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-faint" />
+  </span>
 ));
 Select.displayName = "Select";
 

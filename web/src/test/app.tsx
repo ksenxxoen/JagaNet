@@ -214,3 +214,162 @@ export const adminRewards = (over: Partial<Schema<"AdminReferralRewardsRes">> = 
   rewards: [adminReward()],
   ...over,
 });
+
+/* ---------------- admin panel (W-6) ---------------- */
+
+export const ctlUserRow = (over: Partial<Schema<"CtlUserRow">> = {}): Schema<"CtlUserRow"> => ({
+  id: "u2",
+  email: "anna@example.com",
+  role: "user",
+  createdAt: "2026-02-01T10:00:00Z",
+  state: "active",
+  tariffName: "Pro",
+  accessUntil: "2026-12-01T00:00:00Z",
+  blocked: false,
+  devices: 2,
+  online: false,
+  ips24h: 1,
+  sharing: false,
+  ...over,
+});
+
+export const ctlServer = (over: Partial<Schema<"CtlServer">> = {}): Schema<"CtlServer"> => ({
+  id: "de1",
+  name: "Germany 1",
+  countryCode: "DE",
+  protocols: ["amneziawg", "vless"],
+  state: "online",
+  remote: true,
+  peers: 12,
+  maxPeers: 250,
+  online: 4,
+  traffic24h: 5_000_000_000,
+  lastReportAt: "2026-11-08T10:00:00Z",
+  agentVersion: "1.4.0",
+  ...over,
+});
+
+const rub = (minor: number) => [{ minor, currency: "RUB" }];
+
+export const ctlDashboard = (over: Partial<Schema<"CtlDashboard">> = {}): Schema<"CtlDashboard"> => ({
+  usersTotal: 120,
+  usersActive: 80,
+  usersExpiring3d: 3,
+  usersBlocked: 2,
+  newUsers24h: 5,
+  newUsers7d: 20,
+  onlineDevices: 30,
+  onlineUsers: 25,
+  servers: [ctlServer()],
+  revenueToday: rub(30000),
+  revenueWeek: rub(120000),
+  revenueMonth: rub(450000),
+  paidOrdersMonth: 15,
+  newPayersMonth: 6,
+  sharingThreshold: 5,
+  sharing: [ctlUserRow({ id: "u3", email: "share@example.com", ips24h: 9, sharing: true })],
+  expiring: [],
+  ...over,
+});
+
+export const ctlDevice = (over: Partial<Schema<"CtlDevice">> = {}): Schema<"CtlDevice"> => ({
+  id: "dev1",
+  name: "Pixel",
+  kind: "device",
+  platform: "android",
+  createdAt: "2026-03-01T10:00:00Z",
+  protocol: "amneziawg",
+  serverId: "de1",
+  serverName: "Germany 1",
+  online: false,
+  lastSeenAt: "2026-11-01T10:00:00Z",
+  lastIp: "203.0.113.5",
+  lastIpAt: "2026-11-01T10:00:00Z",
+  ips24h: [],
+  traffic24h: 1_000_000,
+  trafficTotal: 9_000_000,
+  rekeyPending: false,
+  suspended: false,
+  ...over,
+});
+
+export const ctlPayment = (over: Partial<Schema<"CtlPayment">> = {}): Schema<"CtlPayment"> => ({
+  id: "o1",
+  createdAt: "2026-11-01T10:00:00Z",
+  paidAt: "2026-11-01T10:00:00Z",
+  userId: "u2",
+  email: "anna@example.com",
+  product: "Pro",
+  amount: { minor: 30000, currency: "RUB" },
+  channel: "web",
+  provider: "yookassa",
+  status: "paid",
+  ...over,
+});
+
+export const ctlUserCard = (
+  over: Partial<Schema<"CtlUserCard">> = {},
+  user: Partial<Schema<"CtlUserRow">> = {},
+): Schema<"CtlUserCard"> => ({
+  user: ctlUserRow({ note: "VIP", ...user }),
+  lang: "ru",
+  startedAt: "2026-11-01T00:00:00Z",
+  deviceLimit: 5,
+  usageThisMonth: 0,
+  subscriptions: [
+    {
+      id: "s1",
+      source: "order",
+      kind: "order",
+      tariffName: "Pro",
+      startedAt: "2026-11-01T00:00:00Z",
+      expiresAt: "2026-12-01T00:00:00Z",
+      status: "active",
+      renewal: false,
+      amount: { minor: 30000, currency: "RUB" },
+    },
+  ],
+  payments: [ctlPayment()],
+  devices: [ctlDevice(), ctlDevice({ id: "vl1", name: "Boop VPN", kind: "vless", platform: "key", uuid: "1111-2222" })],
+  ips24h: [{ ip: "203.0.113.5", lastSeen: "2026-11-01T10:00:00Z" }],
+  devicesActive24h: 1,
+  sharingThreshold: 5,
+  referrals: 0,
+  audit: [],
+  tariffs: [
+    { id: "m1", name: "Pro 1 month", status: "active" },
+    { id: "m12", name: "Pro 12 months", status: "active" },
+  ],
+  ...over,
+});
+
+export const ctlTotals = (over: Partial<Schema<"CtlTotals">> = {}): Schema<"CtlTotals"> => ({
+  revenueToday: rub(30000),
+  revenueWeek: rub(120000),
+  revenueMonth: rub(450000),
+  revenue: rub(30000),
+  paidCount: 1,
+  pendingCount: 0,
+  cancelledCount: 0,
+  newPayers: 1,
+  ...over,
+});
+
+export const finance = (over: Partial<Schema<"FinanceRes">> = {}): Schema<"FinanceRes"> => ({
+  period: "30d",
+  revenue: rub(60000),
+  paidOrders: 2,
+  newSubscriptions: 1,
+  renewals: 1,
+  activeSubscribers: 10,
+  mrr: rub(300000),
+  byChannel: [{ key: "web", count: 2 }],
+  byProduct: [{ key: "Pro", count: 2 }],
+  days: [
+    { day: "2026-11-01", revenue: rub(30000), orders: 1, newSubscriptions: 1, renewals: 0 },
+    { day: "2026-11-02", revenue: rub(30000), orders: 1, newSubscriptions: 0, renewals: 1 },
+  ],
+  recent: [{ at: "2026-11-02T10:00:00Z", email: "anna@example.com", product: "Pro", amount: rub(30000)[0], channel: "web", renewal: true }],
+  unpaidOrders: 2,
+  ...over,
+});
