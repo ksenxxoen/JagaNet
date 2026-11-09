@@ -173,4 +173,4 @@ and 2 German forms. `./gradlew :server:test --tests '*I18nTest'` checks it.
 ## Screenshots
 
 `docs/screenshots/web-next/`: the shell on desktop and phone, ru and de; `w3/` … `w7/`: the old and
-the new screens of each sub-task (`*-old.png`, `*-new.png`, desktop and phone).
+the new screens of each sub-task (`*-old.png`, `*-new.png`, desktop and phone); `w8/`: the status page (summary, a node's card, the main server's card) and the analytics (servers, users, a server, a person), desktop and phone, taken on `:server:sim` demo data.
