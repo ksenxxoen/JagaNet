@@ -1,35 +1,31 @@
 /**
  * #/admin (admin() in app.js), for the owner only (the route's guard: guests sign in first, other
  * people go to #/account). The title, the tabs in the order of ADMIN_TABS plus API, and the
- * chosen tab (?tab=, unknown → dashboard). Every tab is its own lazy chunk. Tabs that have not
- * moved yet (W-7) lead to the current website's admin panel and are marked so; opened here by
- * address they show the "moving" note with the same link.
+ * chosen tab (?tab=, unknown → dashboard). Every tab is its own lazy chunk, so guests and users
+ * never download the admin panel and each tab loads alone.
  */
 import { useSearch } from "@tanstack/react-router";
-import { ExternalLink } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { Page, PageHeader } from "@/components/layout";
 import { LinkTabs, Spinner } from "@/components/ui";
 import { useI18n } from "@/i18n";
-import { legacyTab } from "./common";
 import { ADMIN_TABS, adminTab, type AdminTab } from "./tabs";
-import { NotMoved } from "./NotMoved";
 
-// Separate chunks: guests and users never download the admin panel, and each tab loads alone.
-const ApiDocs = lazy(() => import("./api/ApiDocs"));
-const Dashboard = lazy(() => import("./dashboard/Dashboard"));
-const Users = lazy(() => import("./users/Users"));
-const Payments = lazy(() => import("./payments/Payments"));
-const Money = lazy(() => import("./money/Money"));
-const Audit = lazy(() => import("./audit/Audit"));
-
-const PANES: Partial<Record<AdminTab, React.ComponentType>> = {
-  dashboard: Dashboard,
-  users: Users,
-  payments: Payments,
-  money: Money,
-  audit: Audit,
-  api: ApiDocs,
+const PANES: Record<AdminTab, React.ComponentType> = {
+  dashboard: lazy(() => import("./dashboard/Dashboard")),
+  users: lazy(() => import("./users/Users")),
+  payments: lazy(() => import("./payments/Payments")),
+  money: lazy(() => import("./money/Money")),
+  plans: lazy(() => import("./plans/Plans")),
+  nodes: lazy(() => import("./nodes/Nodes")),
+  failures: lazy(() => import("./failures/Failures")),
+  reports: lazy(() => import("./reports/Reports")),
+  testers: lazy(() => import("./testers/Testers")),
+  email: lazy(() => import("./settings/Email")),
+  alerts: lazy(() => import("./settings/Alerts")),
+  modes: lazy(() => import("./settings/Modes")),
+  audit: lazy(() => import("./audit/Audit")),
+  api: lazy(() => import("./api/ApiDocs")),
 };
 
 export function AdminScreen() {
@@ -43,23 +39,11 @@ export function AdminScreen() {
       <PageHeader title={t("Admin panel")} />
       <LinkTabs
         label={t("Admin panel")}
-        items={ADMIN_TABS.map((x) =>
-          x.moved
-            ? { link: { to: "/admin", search: { tab: x.key } }, label: t(x.label), on: x.key === tab }
-            : {
-                href: legacyTab(x.key),
-                label: t(x.label),
-                on: x.key === tab,
-                after: (
-                  <>
-                    <ExternalLink aria-hidden="true" className="size-3.5" />
-                    <span className="sr-only">, {t("on the current website")}</span>
-                  </>
-                ),
-              },
-        )}
+        items={ADMIN_TABS.map((x) => ({ link: { to: "/admin", search: { tab: x.key } }, label: t(x.label), on: x.key === tab }))}
       />
-      <Suspense fallback={<Spinner className="py-16" label={t("Loading")} />}>{Pane ? <Pane /> : <NotMoved tab={tab} />}</Suspense>
+      <Suspense fallback={<Spinner className="py-16" label={t("Loading")} />}>
+        <Pane key={tab} />
+      </Suspense>
     </Page>
   );
 }

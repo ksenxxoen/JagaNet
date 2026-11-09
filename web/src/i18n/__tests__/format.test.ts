@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fill, formatBytes, formatDate, formatMoney, pluralForm } from "../format";
+import { fill, formatBits, formatBytes, formatDate, formatMoney, formatPercent, formatWhen, pluralForm } from "../format";
 
 describe("tp plural rules (same as app.js)", () => {
   const ru = "{n} день|{n} дня|{n} дней";
@@ -60,5 +60,27 @@ describe("bytes", () => {
     expect(formatBytes("en", 820_000_000)).toBe("820 MB");
     expect(formatBytes("de", 2_000)).toBe("2 KB");
     expect(formatBytes("en", 12)).toBe("12 B");
+  });
+});
+
+describe("bits, percent and short times (bits(), percent(), shortDate() in app.js)", () => {
+  it("bits per second in the language's units", () => {
+    expect(formatBits("ru", 12_500_000)).toBe("13 Мбит/с");
+    expect(formatBits("en", 1_200_000_000)).toBe("1.2 Gbit/s");
+    expect(formatBits("de", 850_000)).toBe("850 Kbit/s");
+    expect(formatBits("en", null)).toBe("0");
+  });
+
+  it("percent with the decimal separator", () => {
+    expect(formatPercent("ru", 2.5)).toBe("2,5%");
+    expect(formatPercent("en", 42)).toBe("42%");
+    expect(formatPercent("en", undefined)).toBe("0%");
+  });
+
+  it("a time of today is the clock, another day has the short date", () => {
+    const now = new Date(2026, 2, 5, 18, 0);
+    expect(formatWhen("en", new Date(2026, 2, 5, 9, 7).toISOString(), now)).toBe("09:07");
+    expect(formatWhen("ru", new Date(2026, 2, 4, 23, 30).toISOString(), now)).toBe("4.03 23:30");
+    expect(formatWhen("de", new Date(2026, 2, 4, 23, 30).toISOString(), now)).toBe("4.3. 23:30");
   });
 });

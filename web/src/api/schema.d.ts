@@ -1007,6 +1007,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/nodes/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * The order of the nodes (sort_order 0, 10, 20… in one transaction)
+         * @description Owner only: 401 without a session, 403 for other users.
+         */
+        put: operations["putAdminNodesOrder"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/nodes/{id}/maintenance": {
         parameters: {
             query?: never;
@@ -2887,6 +2907,9 @@ export interface components {
         };
         NodeMaintenanceReq: {
             maintenance?: boolean;
+        };
+        NodeOrderReq: {
+            ids: string[];
         };
         NodePeer: {
             publicKey: string;
@@ -5024,6 +5047,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminNode"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    putAdminNodesOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeOrderReq"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminNodesRes"];
                 };
             };
             default: components["responses"]["Error"];

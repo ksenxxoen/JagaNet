@@ -23,11 +23,12 @@ export default defineConfig({
     chunkSizeWarningLimit: 1600,
     // Libraries change less often than the app: a separate file stays cached between releases.
     // Libraries of lazy screens stay out of it, in their screens' chunks: Swagger UI (owner's API
-    // tab), qrcode (the account, later the mini app) and, from W-7, @hello-pangea/dnd (node order).
+    // tab), qrcode (the account, later the mini app) and, from W-7, @hello-pangea/dnd with its own
+    // libraries (redux, react-redux, raf-schd, css-box-model, tiny-invariant: the node order).
     // Guests never download them.
     rolldownOptions: {
       output: {
-        codeSplitting: { groups: [{ name: "vendor", test: /node_modules[\\/](?!swagger-ui-dist|@hello-pangea|qrcode|dijkstrajs|pngjs)/ }] },
+        codeSplitting: { groups: [{ name: "vendor", test: /node_modules[\\/](?!swagger-ui-dist|@hello-pangea|redux|react-redux|raf-schd|css-box-model|tiny-invariant|qrcode|dijkstrajs|pngjs)/ }] },
       },
     },
   },

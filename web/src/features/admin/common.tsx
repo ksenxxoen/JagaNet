@@ -1,7 +1,7 @@
 /**
  * What the admin tabs share (the top of control.js and the helpers of app.js): state and status
  * labels, the payment channels, platform names, "last seen", the log details as text, links to a
- * user's card, and the user list of the dashboard and the users tab.
+ * user's card, the node states, and the user list of the dashboard and the users tab.
  */
 import { Link } from "@tanstack/react-router";
 import type { Schema } from "@/api/typed";
@@ -70,6 +70,19 @@ export const NODE_STATES: Record<string, Badge> = {
   disabled: ["neutral", "Turned off"],
 };
 
+/** What the owner tells the apps about a node (issue #10); "ok" shows nothing in the list. */
+export const NODE_STATUSES: Record<string, Badge> = {
+  ok: ["ok", "Works normally"],
+  degraded: ["warn", "Unstable"],
+  blocked: ["danger", "Blocked in some networks"],
+  maintenance: ["neutral", "Maintenance"],
+};
+export const INSTALL_STATES: Record<string, Badge> = {
+  running: ["warn", "Installing"],
+  done: ["ok", "Installed"],
+  failed: ["danger", "Install failed"],
+};
+
 /** A state as text with its dot; an unknown key is shown as it is. */
 export function StateBadge({ pair, fallback }: { pair: Badge | undefined; fallback?: string }) {
   if (!pair) return fallback ? <Level>{fallback}</Level> : null;
@@ -123,9 +136,6 @@ export function UserLink({ id, children }: { id: string; children: React.ReactNo
     </Link>
   );
 }
-
-/** The current website's address of an admin tab that has not moved yet. */
-export const legacyTab = (tab: string) => `/#/admin?tab=${encodeURIComponent(tab)}`;
 
 /** ctlUserRows(): e-mail or Telegram, state, plan, until, devices, addresses in 24 hours. */
 export function UserTable({

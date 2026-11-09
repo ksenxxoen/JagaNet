@@ -60,3 +60,52 @@ export function Field({
     </div>
   );
 }
+
+/** A checkbox with its label on the right (label.toggle in style.css) and an optional line under it. */
+export function Checkbox({
+  checked,
+  onChange,
+  disabled,
+  hint,
+  hintTone = "muted",
+  className,
+  children,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  hint?: ReactNode;
+  /** "danger" for a warning such as "Anyone can sign in to any account". */
+  hintTone?: "muted" | "danger";
+  className?: string;
+  children: ReactNode;
+}) {
+  const id = useId();
+  return (
+    <div className={cn("mb-4", className)}>
+      <label
+        htmlFor={id}
+        className={cn(
+          "flex items-start gap-2.5 text-[15px] leading-5 text-ink-heading",
+          disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer",
+        )}
+      >
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          aria-describedby={hint ? `${id}-hint` : undefined}
+          onChange={(e) => onChange(e.target.checked)}
+          className="mt-0.5 size-4 flex-none accent-[var(--primary)]"
+        />
+        <span>{children}</span>
+      </label>
+      {hint ? (
+        <p id={`${id}-hint`} className={cn("mb-0 ml-[26px] mt-1 text-[13px]", hintTone === "danger" ? "text-danger-text" : "text-muted")}>
+          {hint}
+        </p>
+      ) : null}
+    </div>
+  );
+}

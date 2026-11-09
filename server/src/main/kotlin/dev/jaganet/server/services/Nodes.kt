@@ -194,6 +194,9 @@ private const val CASCADE_ADDRESS = "0.0.0.0"
 private val HOST = Regex("^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$")
 private val USER = Regex("^[a-z_][a-z0-9_.-]{0,31}$")
 private const val LOG_LIMIT = 64 * 1024
+/** PUT /admin/nodes/order: at most this many nodes, sort_order 0, 10, 20… (within the ±100 000 of the number field). */
+private const val MAX_ORDER = 1000
+private const val ORDER_STEP = 10
 private val ANSI = Regex("\u001B\\[[0-9;]*[A-Za-z]")
 private val IPV4 = Regex("^(25[0-5]|2[0-4]\\d|1?\\d?\\d)(\\.(25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}$")
 
@@ -284,6 +287,24 @@ class Nodes(private val ctx: Ctx) {
             "INSERT INTO node_events (server_id, ts, kind, args) VALUES (?,?,?,?)",
             id, at, kind, Jsonb(JsonObject(args.mapValues { JsonPrimitive(it.value) }).toString()),
         )
+    }
+
+    /**
+     * Issue #124: the order of the locations (drag and drop in the admin panel). The listed nodes get
+     * sort_order 0, 10, 20… in one transaction, so two quick moves never leave a half-saved order;
+     * the gaps leave room for the number field. Nodes left out keep their sort_order.
+     */
+    suspend fun reorder(ids: List<String>): List<AdminNode> {
+        val clean = ids.map { it.trim() }
+        if (clean.isEmpty() || clean.size > MAX_ORDER || clean.any { it.isEmpty() } || clean.toSet().size != clean.size) {
+            throw badRequest("Some values are out of range")
+        }
+        ctx.db.tx { sql ->
+            clean.forEachIndexed { i, id ->
+                if (sql.exec("UPDATE servers SET sort_order=? WHERE id=?", i * ORDER_STEP, id) == 0) throw notFound("Node not found")
+            }
+        }
+        return list()
     }
 
     /**
