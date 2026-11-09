@@ -28,7 +28,14 @@ export default defineConfig({
     // Guests never download them.
     rolldownOptions: {
       output: {
-        codeSplitting: { groups: [{ name: "vendor", test: /node_modules[\\/](?!swagger-ui-dist|@hello-pangea|redux|react-redux|raf-schd|css-box-model|tiny-invariant|qrcode|dijkstrajs|pngjs)/ }] },
+        codeSplitting: {
+          groups: [
+            {
+              name: "vendor",
+              test: /node_modules[\\/](?!swagger-ui-dist|@hello-pangea|redux|react-redux|raf-schd|css-box-model|tiny-invariant|qrcode|dijkstrajs|pngjs)/,
+            },
+          ],
+        },
       },
     },
   },
