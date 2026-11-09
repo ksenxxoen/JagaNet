@@ -1,9 +1,9 @@
 import type { HTMLAttributes, TdHTMLAttributes, ThHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
-/** A table that scrolls sideways on phones; numbers use tabular figures. */
+/** A table that scrolls sideways on phones; numbers use tabular figures. Relative, so a visually hidden heading stays inside the scroll box instead of widening the page. */
 export const Table = ({ className, ...props }: HTMLAttributes<HTMLTableElement>) => (
-  <div className="overflow-x-auto rounded-panel border border-line bg-surface">
+  <div className="relative overflow-x-auto rounded-panel border border-line bg-surface">
     <table className={cn("w-full border-collapse text-sm tnum", className)} {...props} />
   </div>
 );

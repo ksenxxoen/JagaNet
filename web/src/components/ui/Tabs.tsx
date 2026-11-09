@@ -86,7 +86,7 @@ export interface LinkTabItem {
 /** nav.tabs: the same row as Tabs, but each tab is a link to its address (a section split over routes). */
 export function LinkTabs({ items, label, className }: { items: LinkTabItem[]; label: string; className?: string }) {
   return (
-    <nav aria-label={label} className={cn("mb-4 flex gap-1 overflow-x-auto border-b border-line", className)}>
+    <nav aria-label={label} className={cn("relative mb-4 flex gap-1 overflow-x-auto border-b border-line", className)}>
       {items.map((x) => {
         const style = cn(
           "-mb-px inline-flex items-center gap-1 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-semibold no-underline hover:no-underline",
