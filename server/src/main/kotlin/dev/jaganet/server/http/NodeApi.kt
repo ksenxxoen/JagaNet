@@ -6,6 +6,7 @@ import dev.jaganet.api.MoveDevicesRes
 import dev.jaganet.api.NodeReq
 import dev.jaganet.api.NodeSshReq
 import dev.jaganet.api.NodeMaintenanceReq
+import dev.jaganet.api.NodeOrderReq
 import dev.jaganet.api.NodeStatusReq
 import dev.jaganet.api.OkRes
 import dev.jaganet.api.Role
@@ -60,6 +61,8 @@ fun Route.nodeApi(s: Services) {
     post("/admin/devices/{id}/rekey") { call.owner(); s.tunnels.requestRekey(call.parameters["id"]!!); call.respond(OkRes()) }
     get("/admin/analytics/users/{id}") { call.owner(); call.respond(s.analytics.user(call.parameters["id"]!!, call.request.queryParameters["period"])) }
     post("/admin/nodes") { call.owner(); call.respond(s.nodes.create(call.receive<NodeReq>())) }
+    // Issue #124: the whole order at once (drag and drop in the admin panel), one transaction.
+    put("/admin/nodes/order") { call.owner(); call.respond(AdminNodesRes(s.nodes.reorder(call.receive<NodeOrderReq>().ids), s.ctx.cfg.vlessBalancer)) }
     put("/admin/nodes/{id}") { call.owner(); call.respond(s.nodes.update(call.parameters["id"]!!, call.receive<NodeReq>())) }
     // What the apps are told about a node: ok / degraded / blocked / maintenance and a note.
     put("/admin/nodes/{id}/maintenance") { call.owner(); call.respond(s.nodes.setMaintenance(call.parameters["id"]!!, call.receive<NodeMaintenanceReq>().maintenance)) }

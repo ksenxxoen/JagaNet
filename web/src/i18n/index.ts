@@ -11,7 +11,20 @@ import LanguageDetector from "i18next-browser-languagedetector";
 import HttpBackend from "i18next-http-backend";
 import { initReactI18next, useTranslation } from "react-i18next";
 import { store } from "@/lib/storage";
-import { fill, formatBytes, formatDate, formatDateTime, formatMoney, formatNum, isLang, pluralForm, type Lang } from "./format";
+import {
+  fill,
+  formatBits,
+  formatBytes,
+  formatDate,
+  formatDateTime,
+  formatMoney,
+  formatNum,
+  formatPercent,
+  formatWhen,
+  isLang,
+  pluralForm,
+  type Lang,
+} from "./format";
 
 export { LANGS, localDay, type Lang } from "./format";
 
@@ -100,9 +113,12 @@ export const dateTime = (iso: string | null | undefined) => formatDateTime(curre
 export const money = (minor: number | null | undefined, currency: string) => formatMoney(currentLang(), minor, currency);
 export const bytes = (b: number) => formatBytes(currentLang(), b);
 export const num = (v: number, digits?: number) => formatNum(currentLang(), v, digits);
+export const bits = (bps: number | null | undefined) => formatBits(currentLang(), bps);
+export const percent = (v: number | null | undefined) => formatPercent(currentLang(), v);
+export const when = (iso: string) => formatWhen(currentLang(), iso);
 
 /** Re-renders the component when the language or its texts change; returns the helpers. */
 export function useI18n() {
   const { i18n: inst } = useTranslation();
-  return { t, tp, date, dateTime, money, bytes, num, lang: (isLang(inst.language) ? inst.language : "ru") as Lang };
+  return { t, tp, date, dateTime, money, bytes, num, bits, percent, when, lang: (isLang(inst.language) ? inst.language : "ru") as Lang };
 }

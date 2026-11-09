@@ -73,6 +73,30 @@ export function formatNum(lang: Lang, v: number, digits = v < 10 && !Number.isIn
   return lang === "en" ? s : s.replace(".", ",");
 }
 
+/** Bits per second: "850 Kbit/s", "12,5 Мбит/с", "1,2 Gbit/s" (bits() in app.js). */
+export function formatBits(lang: Lang, bps: number | null | undefined): string {
+  if (bps == null) return "0";
+  const u = lang === "ru" ? ["Кбит/с", "Мбит/с", "Гбит/с"] : ["Kbit/s", "Mbit/s", "Gbit/s"];
+  if (bps >= 1e9) return `${formatNum(lang, bps / 1e9)} ${u[2]}`;
+  if (bps >= 1e6) return `${formatNum(lang, bps / 1e6)} ${u[1]}`;
+  return `${formatNum(lang, bps / 1e3)} ${u[0]}`;
+}
+
+/** "12%" with the language's decimal separator (percent() in app.js). */
+export const formatPercent = (lang: Lang, v: number | null | undefined) => (v == null ? "0%" : `${formatNum(lang, v)}%`);
+
+/** "5.3." or "05.03" without the year (shortDate() in app.js), from a local day "2026-03-05". */
+export function formatShortDate(lang: Lang, day: string): string {
+  const [, m, d] = day.split("-").map(Number);
+  return lang === "de" ? `${d}.${m}.` : `${d}.${String(m).padStart(2, "0")}`;
+}
+
+/** Today: the time; another day: the short date and the time ("seen" times of nodes and keys). */
+export function formatWhen(lang: Lang, iso: string, now = new Date()): string {
+  const day = localDay(iso);
+  return day === localDay(now.toISOString()) ? clock(iso) : `${formatShortDate(lang, day)} ${clock(iso)}`;
+}
+
 /** Same units as the apps (Format.bytes): "1,5 ГБ", "820 MB". */
 export function formatBytes(lang: Lang, b: number): string {
   const u = (x: "B" | "KB" | "MB" | "GB" | "TB") => (lang === "ru" ? { B: "Б", KB: "КБ", MB: "МБ", GB: "ГБ", TB: "ТБ" }[x] : x);

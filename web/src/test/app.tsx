@@ -373,3 +373,116 @@ export const finance = (over: Partial<Schema<"FinanceRes">> = {}): Schema<"Finan
   unpaidOrders: 2,
   ...over,
 });
+
+/* ---------------- admin panel, part 2 (W-7) ---------------- */
+
+export const adminSettings = (over: Partial<Schema<"AdminSettingsRes">> = {}): Schema<"AdminSettingsRes"> => ({
+  plans: { freeMonthlyGb: 10, freeDeviceLimit: 1, freeSpeedMbps: 0, freeDays: 0 },
+  smtp: { host: "smtp.example.com", port: 587, user: "mailer", from: "Boop <no-reply@example.com>", security: "starttls" },
+  smtpHasPassword: true,
+  alerts: { emails: ["owner@b.c"], telegramChats: [123456789] },
+  modes: { showSignInCodes: false, testPayments: false },
+  network: { channelMbps: 1000 },
+  notice: { text: "Planned work" },
+  paymentsConnected: false,
+  botEnabled: true,
+  ...over,
+});
+
+export const adminTariff = (over: Partial<Schema<"AdminTariff">> = {}): Schema<"AdminTariff"> => ({
+  id: "m1",
+  name: "Pro 1 month",
+  durationValue: 1,
+  durationUnit: "months",
+  priceRubMinor: 29900,
+  priceEurMinor: 499,
+  deviceLimit: 5,
+  sort: 1,
+  status: "active",
+  sold: 12,
+  activeNow: 7,
+  createdAt: "2026-01-01T00:00:00Z",
+  ...over,
+});
+
+export const adminNode = (over: Partial<Schema<"AdminNode">> = {}): Schema<"AdminNode"> => ({
+  id: "de1",
+  name: "Germany 1",
+  city: "Nuremberg",
+  countryCode: "DE",
+  remote: true,
+  state: "online",
+  active: true,
+  maxPeers: 250,
+  peers: 12,
+  online: 4,
+  endpoint: "203.0.113.10:51821",
+  protocols: ["amneziawg"],
+  lastReportAt: "2026-11-08T10:00:00Z",
+  cpu: 0.12,
+  rxBps: 12_500_000,
+  txBps: 2_000_000,
+  createdAt: "2026-01-01T00:00:00Z",
+  status: "ok",
+  sortOrder: 0,
+  inSubscription: true,
+  maintenance: false,
+  ...over,
+});
+
+export const vlessNode = (over: Partial<Schema<"AdminNode">> = {}): Schema<"AdminNode"> =>
+  adminNode({
+    id: "fi1",
+    name: "Finland 1",
+    city: "Helsinki",
+    countryCode: "FI",
+    protocols: ["vless"],
+    peers: 0,
+    sortOrder: 10,
+    vless: {
+      host: "fi1.vpn.example.com",
+      sni: "fi1.vpn.example.com",
+      publicKey: "PUBKEY",
+      shortIds: ["a1b2"],
+      fingerprint: "chrome",
+      transports: [
+        { type: "tcp", port: 443, tag: "vision-in", flow: "xtls-rprx-vision" },
+        { type: "xhttp", port: 8443, tag: "xh-in", flow: "", path: "/p", mode: "auto" },
+      ],
+    },
+    ...over,
+  });
+
+export const testAccount = (over: Partial<Schema<"TestAccount">> = {}): Schema<"TestAccount"> => ({
+  id: "ta1",
+  name: "Igor + Tanya",
+  email: "test-1@test.invalid",
+  devices: 2,
+  expiresAt: "2026-12-01T10:00:00Z",
+  keys: ["https://boop.example/k/key-a", "https://boop.example/k/key-b"],
+  createdAt: "2026-11-01T10:00:00Z",
+  vpnKeys: ["vpn://AAAA", "vpn://BBBB"],
+  activity: [
+    { lastSeenAt: "2026-11-02T10:00:00Z", rxBytes: 1_000_000, txBytes: 500_000 },
+    { rxBytes: 0, txBytes: 0 },
+  ],
+  ...over,
+});
+
+export const diagnosticsSummary = (over: Partial<Schema<"DiagnosticsSummary">> = {}): Schema<"DiagnosticsSummary"> => ({
+  id: "r1",
+  at: "2026-11-02T10:00:00Z",
+  userId: "u2",
+  email: "anna@example.com",
+  deviceName: "Pixel",
+  platform: "android",
+  appVersion: "1.4.0",
+  osVersion: "Android 15",
+  state: "problem",
+  problem: "no_handshake",
+  serverId: "de1",
+  serverName: "Germany 1",
+  country: "auto",
+  hasComment: true,
+  ...over,
+});

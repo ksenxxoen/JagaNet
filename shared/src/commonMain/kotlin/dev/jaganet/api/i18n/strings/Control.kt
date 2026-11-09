@@ -137,11 +137,30 @@ internal val controlStrings: List<S> = listOf(
     S("This device has no key to reissue", "У этого устройства нет ключа для перевыпуска", "Dieses Gerät hat keinen Schlüssel zum Neuausstellen"),
     S("Dates look like 2026-10-31", "Дата в виде 2026-10-31", "Datum im Format 2026-10-31"),
     S("Unknown status", "Неизвестный статус", "Unbekannter Status"),
-    // The new website's admin panel (web/, W-6): tables with pages, breadcrumbs, tabs still on the old site
+    // The new website's admin panel (web/, W-6): tables with pages, breadcrumbs
     S("Pages", "Страницы", "Seiten"),
     S("Previous page", "Предыдущая страница", "Vorherige Seite"),
     S("Next page", "Следующая страница", "Nächste Seite"),
     S("Page {n} of {m}", "Страница {n} из {m}", "Seite {n} von {m}"),
     S("Breadcrumbs", "Навигация по разделу", "Navigationspfad"),
-    S("on the current website", "на текущем сайте", "auf der aktuellen Website"),
+    // The new website's admin panel, part 2 (web/, W-7): plans, the order of nodes
+    S(
+        "Take this plan off sale? People who bought it keep their access.",
+        "Снять тариф с продажи? У тех, кто его купил, доступ останется.",
+        "Diesen Tarif aus dem Verkauf nehmen? Wer ihn gekauft hat, behält den Zugang.",
+    ),
+    S(
+        "The order of the locations in the Boop apps and subscriptions. Drag a node or use the arrows.",
+        "Порядок локаций в приложениях Boop и подписках. Перетащите ноду или используйте стрелки.",
+        "Die Reihenfolge der Standorte in den Boop-Apps und Abos. Ziehe einen Knoten oder nutze die Pfeile.",
+    ),
+    S("Not in subscriptions", "Не в подписках", "Nicht in Abos"),
+    S("Drag {name}", "Перетащить {name}", "{name} ziehen"),
+    S("Move up: {name}", "Выше: {name}", "Nach oben: {name}"),
+    S("Move down: {name}", "Ниже: {name}", "Nach unten: {name}"),
+    S(
+        "Press space to pick it up, the arrow keys to move it, space to put it down and Escape to cancel.",
+        "Нажмите пробел, чтобы взять, стрелки, чтобы передвинуть, пробел, чтобы отпустить, и Escape для отмены.",
+        "Drücke die Leertaste zum Aufnehmen, die Pfeiltasten zum Verschieben, die Leertaste zum Ablegen und Escape zum Abbrechen.",
+    ),
 )

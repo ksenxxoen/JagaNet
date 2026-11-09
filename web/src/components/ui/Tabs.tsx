@@ -73,13 +73,13 @@ export function Chips<K extends string>({
 }
 
 export interface LinkTabItem {
-  /** A plain address ("#/invite?view=admin", "/#/admin?tab=nodes")… */
+  /** A plain address ("#/invite?view=admin")… */
   href?: string;
   /** …or a route of this site, followed by the router (the admin tabs). */
   link?: { to: string; search?: Record<string, string> };
   label: string;
   on: boolean;
-  /** Something after the label: the admin panel marks tabs still on the current website. */
+  /** Something after the label (an icon, a count). */
   after?: ReactNode;
 }
 

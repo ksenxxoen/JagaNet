@@ -39,7 +39,7 @@ describe("#/admin: the owner only", () => {
 });
 
 describe("#/admin tabs", () => {
-  it("the tabs in the old order plus API; unknown ?tab= is the dashboard; tabs not moved yet open the current site", async () => {
+  it("the tabs in the old order plus API; unknown ?tab= is the dashboard; every tab works here", async () => {
     mockApi({ ...owner, "GET /admin/control/dashboard": ctlDashboard() });
     renderApp("/admin?tab=nope");
     const nav = await tabNav();
@@ -51,19 +51,19 @@ describe("#/admin tabs", () => {
       "Users",
       "Payments",
       "Finance",
-      "Plans, on the current website",
-      "Nodes, on the current website",
-      "Connection failures, on the current website",
-      "Problem reports, on the current website",
-      "Test accounts, on the current website",
-      "E-mail, on the current website",
-      "Alerts, on the current website",
-      "Test modes, on the current website",
+      "Plans",
+      "Nodes",
+      "Connection failures",
+      "Problem reports",
+      "Test accounts",
+      "E-mail",
+      "Alerts",
+      "Test modes",
       "Admin log",
       "API",
     ]);
     expect(within(nav).getByRole("link", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
-    expect(within(nav).getByRole("link", { name: /^Nodes/ })).toHaveAttribute("href", "/#/admin?tab=nodes");
+    expect(within(nav).getByRole("link", { name: "Nodes" })).toHaveAttribute("href", "/admin?tab=nodes");
     expect(within(nav).getByRole("link", { name: "Users" })).toHaveAttribute("href", "/admin?tab=users");
 
     // The dashboard: numbers, servers, possible sharing.
@@ -99,13 +99,6 @@ describe("#/admin tabs", () => {
     expect(await screen.findByText("Extended")).toBeInTheDocument();
     expect(screen.getByText("days 30")).toBeInTheDocument();
     expect(within(await tabNav()).getByRole("link", { name: "Admin log" })).toHaveAttribute("aria-current", "page");
-  });
-
-  it("a tab not moved yet, opened by address, links to the same tab of the current site", async () => {
-    mockApi(owner);
-    renderApp("/admin?tab=failures&server=de1");
-    expect(await screen.findByText("This screen is moving to the new website")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open on the current website" })).toHaveAttribute("href", "/#/admin?tab=failures&server=de1");
   });
 
   it("the sharing threshold is saved with a toast", async () => {

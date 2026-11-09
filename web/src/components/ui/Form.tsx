@@ -1,4 +1,4 @@
-import type { FormEvent, FormHTMLAttributes, ReactNode } from "react";
+import type { FormEvent, FormHTMLAttributes, ReactNode, Ref } from "react";
 import { cn } from "@/lib/cn";
 
 /**
@@ -15,6 +15,8 @@ export function Form({
   ...props
 }: Omit<FormHTMLAttributes<HTMLFormElement>, "onSubmit"> & {
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
+  /** The form element (React 19 passes it as a prop), e.g. for reportValidity(). */
+  ref?: Ref<HTMLFormElement>;
   error?: ReactNode;
   pending?: boolean;
   children: ReactNode;

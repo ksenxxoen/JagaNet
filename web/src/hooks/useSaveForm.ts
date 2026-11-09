@@ -14,9 +14,13 @@ export function useSaveForm<TData = unknown, TVars = void>(options: ApiMutationO
   const mutation = useApiMutation<TData, TVars>({ toastError: false, ...options });
   const { mutateAsync } = mutation;
 
-  /** Builds the request (an Error thrown here is shown under the form) and sends it. Resolves with the answer, or undefined after an error. */
+  /**
+   * Builds the request (an Error thrown here is shown under the form), asks `ask` if given (a
+   * confirm dialog: false sends nothing) and sends it. Resolves with the answer, or undefined after
+   * an error or a "no".
+   */
   const save = useCallback(
-    async (build: () => TVars): Promise<TData | undefined> => {
+    async (build: () => TVars, ask?: (vars: TVars) => Promise<boolean> | boolean): Promise<TData | undefined> => {
       setError(null);
       let vars: TVars;
       try {
@@ -25,6 +29,7 @@ export function useSaveForm<TData = unknown, TVars = void>(options: ApiMutationO
         setError(e instanceof Error ? e.message : String(e));
         return undefined;
       }
+      if (ask && !(await ask(vars))) return undefined;
       try {
         return await mutateAsync(vars);
       } catch (e) {

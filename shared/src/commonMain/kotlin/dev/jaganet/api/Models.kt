@@ -1141,6 +1141,13 @@ data class AdminNodesRes(
     val vlessBalancer: Boolean = false,
 )
 
+/**
+ * PUT /admin/nodes/order (issue #124): the nodes in their new order, first on top. The listed nodes
+ * get sort_order 0, 10, 20… in one transaction; nodes left out keep theirs.
+ */
+@Serializable
+data class NodeOrderReq(val ids: List<String>)
+
 /** PUT /admin/nodes/{id}/maintenance (issue #115). */
 @Serializable
 data class NodeMaintenanceReq(val maintenance: Boolean = false)

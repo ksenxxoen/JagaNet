@@ -29,3 +29,23 @@ export const financeQuery = (period: "7d" | "30d" | "90d" | "all") =>
 
 export const auditQuery = (user: string) =>
   queryOptions({ queryKey: keys.admin.audit(user), queryFn: () => get("/admin/control/audit", { query: user ? { user } : {} }) });
+
+export const settingsQuery = queryOptions({ queryKey: keys.admin.settings(), queryFn: () => get("/admin/settings") });
+
+export const tariffsQuery = queryOptions({ queryKey: keys.admin.tariffs(), queryFn: () => get("/admin/tariffs") });
+
+export const nodesQuery = queryOptions({ queryKey: keys.admin.nodes(), queryFn: () => get("/admin/nodes") });
+
+export const testersQuery = queryOptions({ queryKey: keys.admin.testers(), queryFn: () => get("/admin/test-accounts") });
+
+export const failuresQuery = (server: string, user: string) =>
+  queryOptions({
+    queryKey: keys.admin.failures(server, user),
+    queryFn: () => get("/admin/connection-failures", { query: { ...(server ? { server } : {}), ...(user ? { user } : {}) } }),
+  });
+
+export const reportsQuery = (user: string) =>
+  queryOptions({ queryKey: keys.admin.reports(user), queryFn: () => get("/admin/diagnostics", { query: user ? { user } : {} }) });
+
+export const reportQuery = (id: string) =>
+  queryOptions({ queryKey: keys.admin.report(id), queryFn: () => get("/admin/diagnostics/{id}", { params: { id } }) });

@@ -136,6 +136,7 @@ class ApiClient(
     suspend fun createNode(req: NodeReq): NodeInstallRes = post("admin/nodes", req)
     suspend fun updateNode(id: String, req: NodeReq): AdminNode = put("admin/nodes/$id", req)
     suspend fun setNodeStatus(id: String, req: NodeStatusReq): AdminNode = put("admin/nodes/$id/status", req)
+    suspend fun reorderNodes(ids: List<String>): AdminNodesRes = put("admin/nodes/order", NodeOrderReq(ids))
     suspend fun newNodeToken(id: String): NodeInstallRes = post("admin/nodes/$id/token", OkRes())
     suspend fun installNode(id: String, req: NodeSshReq): NodeInstall = post("admin/nodes/$id/install", req)
     suspend fun nodeInstall(id: String): NodeInstall = get("admin/nodes/$id/install")

@@ -3,6 +3,7 @@
  * who may share a subscription, people whose access ends in 3 days, and the sharing threshold.
  */
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { keys } from "@/api/keys";
 import { put, type Schema } from "@/api/typed";
@@ -12,7 +13,7 @@ import { Section } from "@/components/layout";
 import { buttonVariants, ErrorState, Field, Input, KpiGrid, Spinner } from "@/components/ui";
 import { useI18n } from "@/i18n";
 import { revenueText } from "@/lib/funnel";
-import { legacyTab, NODE_STATES, StateBadge, UserTable } from "../common";
+import { NODE_STATES, StateBadge, UserTable } from "../common";
 import { dashboardQuery } from "../queries";
 
 export default function Dashboard() {
@@ -42,9 +43,9 @@ export default function Dashboard() {
       <Section
         title={t("Servers")}
         actions={
-          <a className={buttonVariants({ variant: "secondary" })} href={legacyTab("nodes")}>
+          <Link to="/admin" search={{ tab: "nodes" }} className={buttonVariants({ variant: "secondary" })}>
             {t("Nodes")}
-          </a>
+          </Link>
         }
       >
         <Servers servers={d.servers} />

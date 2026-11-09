@@ -119,6 +119,31 @@ class NodeTest {
         assertEquals(ErrorCode.BAD_REQUEST, assertFailsWith<AppError> { services.nodes.register(t, NodeRegisterReq("1.2.3", 51821, "amneziawg")) }.code)
     }
 
+    @Test fun `the whole node order is saved at once and the old per-node field still works`() = harness {
+        val owner = signIn("owner@test.dev").api
+        assertEquals("FORBIDDEN", code { signIn("a@example.com").api.reorderNodes(listOf("n1")) })
+        val a = owner.createNode(NodeReq("A", "Y", "DE")).node.id
+        val b = owner.createNode(NodeReq("B", "Y", "DE", sortOrder = 5)).node.id
+        val main = owner.adminNodes().nodes.first { !it.remote }.id
+
+        // Listed nodes get 0, 10, 20 in the given order; the answer is the fresh list.
+        val res = owner.reorderNodes(listOf(b, main, a))
+        assertEquals(mapOf(b to 0, main to 10, a to 20), res.nodes.associate { it.id to it.sortOrder })
+        // A node left out keeps its number.
+        owner.reorderNodes(listOf(a, b))
+        assertEquals(mapOf(a to 0, b to 10, main to 10), owner.adminNodes().nodes.associate { it.id to it.sortOrder })
+
+        // Nothing, duplicates and unknown ids are refused, and an unknown id changes nothing.
+        assertEquals("BAD_REQUEST", code { owner.reorderNodes(emptyList()) })
+        assertEquals("BAD_REQUEST", code { owner.reorderNodes(listOf(a, a)) })
+        assertEquals("NOT_FOUND", code { owner.reorderNodes(listOf(b, "nope")) })
+        assertEquals(0, owner.adminNodes().nodes.first { it.id == a }.sortOrder)
+
+        // The number field of the node form keeps working (older admin pages).
+        owner.updateNode(a, NodeReq("A", "Y", "DE", sortOrder = 42))
+        assertEquals(42, owner.adminNodes().nodes.first { it.id == a }.sortOrder)
+    }
+
     @Test fun `the admin panel installs a node over SSH by itself`() = harness {
         val owner = signIn("owner@test.dev").api
         val id = owner.createNode(NodeReq("Germany 1", "Nuremberg", "DE")).node.id

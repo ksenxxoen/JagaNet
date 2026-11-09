@@ -1068,6 +1068,24 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/AdminNode'}
         default: {$ref: '#/components/responses/Error'}
+  /v1/admin/nodes/order:
+    put:
+      tags: [owner]
+      summary: The order of the nodes (sort_order 0, 10, 20… in one transaction)
+      operationId: putAdminNodesOrder
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NodeOrderReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminNodesRes'}
+        default: {$ref: '#/components/responses/Error'}
   /v1/admin/nodes/{id}/maintenance:
     put:
       tags: [owner]
@@ -3330,6 +3348,14 @@ components:
       properties:
         maintenance: {type: boolean}
       x-kotlin: dev.jaganet.api.NodeMaintenanceReq
+    NodeOrderReq:
+      type: object
+      properties:
+        ids:
+          type: array
+          items: {type: string}
+      required: [ids]
+      x-kotlin: dev.jaganet.api.NodeOrderReq
     NodePeer:
       type: object
       properties:

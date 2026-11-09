@@ -27,7 +27,7 @@ Swagger UI (`swagger-ui-dist`, the owner's API tab), Vitest + Testing Library, E
 | `web/src/components/AppLinks.tsx` | "Add to Happ / v2RayTun" import buttons and where to get the apps (the site opens the link, the mini app passes its own `open`) |
 | `web/src/components/layout/` | Page, PageHeader (title, line, actions), Section, Toolbar, ReferralTabs (the owner's tabs of `#/referrals` and `#/invite`) |
 | `web/src/components/PeriodPicker.tsx`, `SearchBox.tsx` | Period chips (`PERIOD_KEYS`, `periods()`) and a search field that writes `?q=` after a 300 ms pause |
-| `web/src/components/admin/` | `DataTable` (columns, sorting by a click on the heading, pages of 50 rows, the empty, error and loading states; `inUrl` keeps `?sort=` and `?page=` in the address), `SettingsForm` (a settings card with "Save": locked while saving, "Saved" toast, the server's message under it; replaces `saveWith`) |
+| `web/src/components/admin/` | `DataTable` (columns, sorting by a click on the heading, pages of 50 rows, the empty, error and loading states; `inUrl` keeps `?sort=` and `?page=` in the address), `SettingsForm` (a settings card with "Save": locked while saving, "Saved" toast, the server's message under it; replaces `saveWith`); `SortableList` (`@hello-pangea/dnd`: drag a row, the keyboard on its handle, or the "Move up" / "Move down" buttons; the parent saves the new order). `SettingsForm` also takes `ask` (a question before sending), `actions` (more buttons) and `success` |
 | `web/src/components/Breadcrumbs.tsx`, `KeyValueList.tsx` | "Users › a@b.c" above a card; label and value pairs of a card (`.kv`) |
 | `web/src/components/charts/` | `DayBars` (daily bars, one or two series, hover tooltip), `BarList` (horizontal bars of a breakdown) |
 | `web/src/components/Community.tsx` | The Telegram group (`site.communityUrl`): the account's card and the support page's link, `useCommunityUrl()` |
@@ -42,11 +42,11 @@ Swagger UI (`swagger-ui-dist`, the owner's API tab), Vitest + Testing Library, E
 | `web/src/features/referrals/` | `#/referrals` (`?period=`, owner's `?view=all`): funnel, charts by day, links (copy, rename, archive, new), sources, people invited; the whole program with the top partners (lazy chunk) |
 | `web/src/features/invite/` | `#/invite`: invite links, the rule, rewards; owner's `?view=admin` (`?suspicious=1`): rules form, top inviters, rewards with the anti-fraud flag, cancelling (lazy chunk) |
 | `web/src/features/support/` | `#/support`: the form for guests and signed-in people, "unavailable" state, the Telegram group (lazy chunk) |
-| `web/src/features/admin/` | `#/admin` (owner only): the tabs in the order of `ADMIN_TABS` plus API, `?tab=` (unknown → dashboard), each tab a lazy chunk. Moved: `dashboard`, `users` (`?q=` search, `?id=` card with all actions), `payments` (`?from=`, `?to=`, `?status=`, `?q=`, CSV), `money` (`?period=`, remembered as `finPeriod`), `audit` (`?user=`), `api` (Swagger UI). The other tabs (W-7) link to the current website's admin panel |
+| `web/src/features/admin/` | `#/admin` (owner only): the tabs in the order of `ADMIN_TABS` plus API, `?tab=` (unknown → dashboard), each tab a lazy chunk: `dashboard`, `users` (`?q=` search, `?id=` card with all actions), `payments` (`?from=`, `?to=`, `?status=`, `?q=`, CSV), `money` (`?period=`, remembered as `finPeriod`), `plans` (plans for new purchases, the plan form, Free plan), `nodes` (install progress, install command, the note for everyone, the node list, the node forms: details, balancer of a cascade entry, status in the apps, maintenance, moving devices, install over SSH or a new command; the order of locations by dragging, `PUT /v1/admin/nodes/order`), `failures` (`?server=`, `?user=`), `reports` (`?user=`, one report on `?id=`), `testers` (pasted rows, CSV, give, delete), `email`, `alerts`, `modes`, `audit` (`?user=`), `api` (Swagger UI). Nothing links to the current website's admin panel any more |
 | `web/src/test/api.ts` | `mockApi()`: typed /v1 mocks on the Axios adapter for tests |
-| `web/src/test/app.tsx` | `renderApp(path)`: the whole site on memory history; fixtures (`siteInfo`, `session`, `plans`, `me`, `ownerMe`, `vlessKey`, `accessKey`, `accountRoutes`, referral and invite answers) |
+| `web/src/test/app.tsx` | `renderApp(path)`: the whole site on memory history; fixtures (`siteInfo`, `session`, `plans`, `me`, `ownerMe`, `vlessKey`, `accessKey`, `accountRoutes`, referral and invite answers); admin fixtures (`ctl*`, `adminSettings`, `adminTariff`, `adminNode`, `vlessNode`, `testAccount`, `diagnosticsSummary`) |
 | `web/src/store/session.ts` | Zustand: token, role, site settings, language |
-| `web/src/i18n/` | i18next setup, `t`, `tp`, `date`, `dateTime`, `money`, `bytes`, `num` |
+| `web/src/i18n/` | i18next setup, `t`, `tp`, `date`, `dateTime`, `money`, `bytes`, `num`, `bits`, `percent`, `when` (the time today, else the short date and the time) |
 
 ## Rules carried over from the old site
 
@@ -104,6 +104,10 @@ address via `JAGANET_DEV_SERVER=http://host:port npm run dev`).
   W-6: one chunk per admin tab: `Dashboard-*.js` 4.3 KB (1.8 KB gzip), `Users-*.js` 14 KB (4.5 KB gzip,
   with `DataTable` and the shared admin helpers), `Payments-*.js` 4.2 KB, `Money-*.js` 2.9 KB, `Audit-*.js`
   1.1 KB; `vendor` 496 KB (162 KB gzip).
+  W-7: `Plans-*.js` 7.5 KB (2.7 KB gzip), `Nodes-*.js` 118 KB (36 KB gzip, with `@hello-pangea/dnd`
+  and its redux, react-redux, raf-schd, css-box-model and tiny-invariant, all kept out of `vendor`),
+  `Failures-*.js` 3.5 KB, `Reports-*.js` 4.9 KB, `Testers-*.js` 6.4 KB, `Email-*.js` 3.5 KB,
+  `Alerts-*.js` 2.6 KB, `Modes-*.js` 1.2 KB; `vendor` unchanged (496 KB, 162 KB gzip).
 
 ## Screen boundaries
 
@@ -164,5 +168,5 @@ and 2 German forms. `./gradlew :server:test --tests '*I18nTest'` checks it.
 
 ## Screenshots
 
-`docs/screenshots/web-next/`: the shell on desktop and phone, ru and de; `w3/`, `w4/`, `w5/`, `w6/`: the old and
+`docs/screenshots/web-next/`: the shell on desktop and phone, ru and de; `w3/` … `w7/`: the old and
 the new screens of each sub-task (`*-old.png`, `*-new.png`, desktop and phone).
