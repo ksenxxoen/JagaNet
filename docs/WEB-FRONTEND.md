@@ -168,5 +168,5 @@ and 2 German forms. `./gradlew :server:test --tests '*I18nTest'` checks it.
 
 ## Screenshots
 
-`docs/screenshots/web-next/`: the shell on desktop and phone, ru and de; `w3/`, `w4/`, `w5/`, `w6/`: the old and
+`docs/screenshots/web-next/`: the shell on desktop and phone, ru and de; `w3/` … `w7/`: the old and
 the new screens of each sub-task (`*-old.png`, `*-new.png`, desktop and phone).
