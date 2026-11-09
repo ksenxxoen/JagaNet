@@ -22,6 +22,10 @@ import java.security.MessageDigest
  * The files are read once. Their links carry ?v=<hash of their content>, so a new release is loaded
  * at once while the files themselves are cached for long. Scripts: our own and Telegram's
  * telegram-web-app.js, nothing else (Content-Security-Policy). Off (404) unless TELEGRAM_MINIAPP=1.
+ *
+ * The new mini app (web/, React; epic #117, W-9) is a preview on /tg/app-next and /tg/open-next:
+ * its pages (web-next/miniapp.html, tg-open.html) are templates with the same {{lang}}, {{bot}} and
+ * {{t:…}}, served with the same switch, headers and CSP; their files live in /ui/assets (WebNext.kt).
  */
 private object MiniAppFiles {
     private fun res(name: String): ByteArray = MiniAppFiles::class.java.getResource("/web/tg/$name")!!.readBytes()
@@ -33,6 +37,9 @@ private object MiniAppFiles {
     val version: String by lazy {
         MessageDigest.getInstance("SHA-256").digest(js + openJs + css).take(6).joinToString("") { "%02x".format(it) }
     }
+    /** The new mini app's templates, null when the server is built without web/. Read once. */
+    val nextHtml: String? by lazy { WebNext.read("miniapp.html")?.let { String(it) } }
+    val nextOpenHtml: String? by lazy { WebNext.read("tg-open.html")?.let { String(it) } }
     private val TEXT = Regex("""\{\{t:([^}]+)}}""")
 
     /** The page with its version and bot filled in, and its {{t:English}} texts (the "open via bot" screen) in [lang]. */
@@ -76,6 +83,22 @@ fun Route.miniAppPage(s: Services) {
         call.respondText(MiniAppFiles.page(call.pageLang(), null, MiniAppFiles.openHtml), ContentType.Text.Html.withCharset(Charsets.UTF_8))
     }
     get("/tg/app.css") { call.asset(MiniAppFiles.css, ContentType.Text.CSS) }
+
+    // The new mini app (preview): the same template filling, switch, headers and caching as above.
+    get("/tg/app-next") {
+        if (!on()) throw notFound("The Telegram mini app is off")
+        val template = MiniAppFiles.nextHtml ?: throw notFound("The new mini app is not built into this server")
+        call.miniAppHeaders()
+        call.response.header(HttpHeaders.CacheControl, "no-cache")
+        call.respondText(MiniAppFiles.page(call.pageLang(), s.bot?.username, template), ContentType.Text.Html.withCharset(Charsets.UTF_8))
+    }
+    get("/tg/open-next") {
+        if (!on()) throw notFound("The Telegram mini app is off")
+        val template = MiniAppFiles.nextOpenHtml ?: throw notFound("The new mini app is not built into this server")
+        call.miniAppHeaders()
+        call.response.header(HttpHeaders.CacheControl, "no-store")
+        call.respondText(MiniAppFiles.page(call.pageLang(), null, template), ContentType.Text.Html.withCharset(Charsets.UTF_8))
+    }
 }
 
 private suspend fun ApplicationCall.asset(bytes: ByteArray, type: ContentType) {

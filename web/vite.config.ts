@@ -2,7 +2,7 @@
 import { fileURLToPath, URL } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import { miniappBundle, noAxiosCookies } from "./build/plugins";
+import { miniappBundle, noAxiosCookies } from "./build/plugins.ts";
 
 /**
  * Three pages from one build, all with assets under /ui/assets/ (hashed names, cached for a year):

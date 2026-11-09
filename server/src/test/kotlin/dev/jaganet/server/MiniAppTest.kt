@@ -8,6 +8,7 @@ import dev.jaganet.api.Protocols
 import dev.jaganet.api.TunnelProvisionReq
 import dev.jaganet.api.WireGuard
 import dev.jaganet.api.i18n.I18n
+import dev.jaganet.server.http.MINIAPP_CSP
 import dev.jaganet.server.telegram.TelegramAccounts
 import dev.jaganet.server.telegram.TelegramBot
 import dev.jaganet.server.telegram.TelegramConfig
@@ -194,6 +195,8 @@ class MiniAppTest {
         harness(mapOf("TELEGRAM_BOT_TOKEN" to token)) {
             assertEquals(HttpStatusCode.ServiceUnavailable, webapp(sign(fields(504, clock))).status)
             assertEquals(HttpStatusCode.NotFound, b.createClient {}.get("/tg/app").status)
+            assertEquals(HttpStatusCode.NotFound, b.createClient {}.get("/tg/app-next").status)
+            assertEquals(HttpStatusCode.NotFound, b.createClient {}.get("/tg/open-next").status)
         }
         harness(mapOf("TELEGRAM_MINIAPP" to "1")) {
             assertEquals(HttpStatusCode.ServiceUnavailable, webapp(sign(fields(504, clock))).status)
@@ -318,12 +321,93 @@ class MiniAppTest {
     @Test fun `the mini app's texts are translated and keep the house style`() {
         val known = I18n.all.map { it.en }.toSet()
         val dir = File("src/main/resources/web/tg")
-        val texts = dir.listFiles()!!.filter { it.extension == "html" }.flatMap { f -> Regex("""\{\{t:([^}]+)}}""").findAll(f.readText()).map { it.groupValues[1] }.toList() }
+        // The old pages and the new templates (web/miniapp.html, web/tg-open.html).
+        val pages = dir.listFiles()!!.filter { it.extension == "html" } + listOf(File("../web/miniapp.html"), File("../web/tg-open.html"))
+        val texts = pages.flatMap { f -> Regex("""\{\{t:([^}]+)}}""").findAll(f.readText()).map { it.groupValues[1] }.toList() }
+        assertTrue(texts.count { it == "Open Boop in Telegram" } == 2, texts.toString())
         assertTrue(texts.isNotEmpty())
         assertTrue(texts.all { it in known }, (texts - known).toString())
         // The token stays in memory: never in localStorage, sessionStorage or cookies.
         val js = File(dir, "app.js").readText()
         for (bad in listOf("localStorage", "sessionStorage", "document.cookie")) assertFalse(bad in js, bad)
+    }
+
+    /* ---------------- the new mini app (web/, preview on /tg/app-next, #126) ---------------- */
+
+    @Test fun `GET tg app-next serves the new mini app with the same template and CSP`() = harness(on) {
+        val c = b.createClient {}
+        val old = c.get("/tg/app")
+        val r = c.get("/tg/app-next")
+        assertEquals(HttpStatusCode.OK, r.status)
+        val html = r.bodyAsText()
+        // The same CSP, headers and caching as /tg/app; Telegram's script first, then ours from /ui/assets.
+        assertEquals(old.headers["Content-Security-Policy"], r.headers["Content-Security-Policy"])
+        assertEquals(MINIAPP_CSP, r.headers["Content-Security-Policy"])
+        assertEquals("nosniff", r.headers["X-Content-Type-Options"])
+        assertEquals("no-referrer", r.headers["Referrer-Policy"])
+        assertEquals("noindex", r.headers["X-Robots-Tag"])
+        assertEquals("no-cache", r.headers["Cache-Control"])
+        assertTrue(html.indexOf("https://telegram.org/js/telegram-web-app.js") in 0 until html.indexOf("/ui/assets/miniapp-"), html)
+        assertTrue("""<html lang="ru" data-bot="">""" in html, html)
+        assertTrue("Откройте Boop в Telegram" in html, html)
+        assertFalse("{{" in html, html)
+        // No inline scripts or styles: every <script> has a src, no style attributes or <style>.
+        assertFalse(Regex("""<script(?![^>]*\bsrc=)[^>]*>""").containsMatchIn(html), html)
+        assertFalse(Regex("""<style[\s>]|\sstyle=""").containsMatchIn(html), html)
+        assertFalse("data:" in html, html)
+        for (asset in Regex("""/ui/assets/[\w.-]+\.(js|css)""").findAll(html).map { it.value }.toSet()) {
+            val a = c.get(asset)
+            assertEquals(HttpStatusCode.OK, a.status, asset)
+            assertTrue("immutable" in a.headers["Cache-Control"]!!, asset)
+        }
+        assertTrue("Öffne Boop in Telegram" in c.get("/tg/app-next?lang=de").bodyAsText())
+
+        val open = c.get("/tg/open-next")
+        assertEquals(HttpStatusCode.OK, open.status)
+        assertEquals(MINIAPP_CSP, open.headers["Content-Security-Policy"])
+        assertEquals("no-store", open.headers["Cache-Control"])
+        val openHtml = open.bodyAsText()
+        assertTrue(Regex("""/ui/assets/tg-open-[\w-]+\.js""").containsMatchIn(openHtml), openHtml)
+        assertTrue("Открываем приложение" in openHtml, openHtml)
+        assertFalse("{{" in openHtml, openHtml)
+        assertFalse(Regex("""<script(?![^>]*\bsrc=)[^>]*>""").containsMatchIn(openHtml), openHtml)
+
+        // The old mini app is unchanged.
+        assertTrue(Regex("""/tg/app\.js\?v=[0-9a-f]{12}""").containsMatchIn(old.bodyAsText()))
+    }
+
+    @Test fun `the bot's name goes into the new mini app's page`() = harness(on) {
+        TelegramBot(services, NumberedTelegram()).also { services.bot = it; it.username = "boop_test_bot" }
+        assertTrue("""data-bot="boop_test_bot"""" in b.createClient {}.get("/tg/app-next").bodyAsText())
+    }
+
+    /** Every JS file the page loads, following static and dynamic imports between the built files. */
+    private fun builtJs(page: String): Map<String, String> {
+        fun res(path: String) = MiniAppTest::class.java.classLoader.getResourceAsStream("web-next/$path")?.use { String(it.readBytes()) }
+        val html = res(page) ?: error("web-next/$page is not built")
+        val ref = Regex("""(?:/ui/assets/|\./)([\w.-]+\.js)""")
+        val out = linkedMapOf<String, String>()
+        val queue = ArrayDeque(ref.findAll(html).map { it.groupValues[1] }.toList())
+        while (queue.isNotEmpty()) {
+            val f = queue.removeFirst()
+            if (f in out) continue
+            val js = res("assets/$f") ?: continue
+            out[f] = js
+            queue.addAll(ref.findAll(js).map { it.groupValues[1] })
+        }
+        return out
+    }
+
+    @Test fun `the new mini app's built files have no web storage, no cookies and none of the website's screens`() {
+        for (page in listOf("miniapp.html", "tg-open.html")) {
+            val files = builtJs(page)
+            assertTrue(files.keys.any { it.startsWith(page.substringBefore(".html") + "-") }, files.keys.toString())
+            for ((f, js) in files) for (bad in listOf("localStorage", "sessionStorage", "document.cookie")) assertFalse(bad in js, "$page: $f has $bad")
+            // The website's libraries and lazy screens stay out (admin, status, analytics, Swagger UI, the router).
+            assertTrue(files.keys.none { Regex("""^(vendor|ApiDocs|Nodes|status|analytics|Dashboard|Landing|site)-""").containsMatchIn(it) }, files.keys.toString())
+        }
+        // The QR code is drawn on canvas in the mini app: no data: images in its scripts.
+        assertTrue(builtJs("miniapp.html").values.none { "data:image" in it })
     }
 
     /* ---------------- the bot ---------------- */
