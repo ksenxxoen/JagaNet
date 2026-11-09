@@ -95,7 +95,8 @@ object OpenApiSchemas {
         val base: JsonObject = when {
             d.isInline -> ref(d.getElementDescriptor(0))
             isJson(d) -> when (d.serialName.removeSuffix("?").substringAfterLast('.')) {
-                "JsonObject" -> obj("type" to JsonPrimitive("object"))
+                // Free JSON: any keys (so the generated TypeScript type is Record<string, unknown>).
+                "JsonObject" -> obj("type" to JsonPrimitive("object"), "additionalProperties" to JsonPrimitive(true))
                 "JsonArray" -> obj("type" to JsonPrimitive("array"))
                 else -> obj()
             }

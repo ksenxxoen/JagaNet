@@ -13,7 +13,7 @@ import { initReactI18next, useTranslation } from "react-i18next";
 import { store } from "@/lib/storage";
 import { fill, formatBytes, formatDate, formatDateTime, formatMoney, formatNum, isLang, pluralForm, type Lang } from "./format";
 
-export { LANGS, type Lang } from "./format";
+export { LANGS, localDay, type Lang } from "./format";
 
 export const i18n: I18n = i18next.createInstance();
 

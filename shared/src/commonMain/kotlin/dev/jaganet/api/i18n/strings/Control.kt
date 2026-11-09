@@ -137,4 +137,11 @@ internal val controlStrings: List<S> = listOf(
     S("This device has no key to reissue", "У этого устройства нет ключа для перевыпуска", "Dieses Gerät hat keinen Schlüssel zum Neuausstellen"),
     S("Dates look like 2026-10-31", "Дата в виде 2026-10-31", "Datum im Format 2026-10-31"),
     S("Unknown status", "Неизвестный статус", "Unbekannter Status"),
+    // The new website's admin panel (web/, W-6): tables with pages, breadcrumbs, tabs still on the old site
+    S("Pages", "Страницы", "Seiten"),
+    S("Previous page", "Предыдущая страница", "Vorherige Seite"),
+    S("Next page", "Следующая страница", "Nächste Seite"),
+    S("Page {n} of {m}", "Страница {n} из {m}", "Seite {n} von {m}"),
+    S("Breadcrumbs", "Навигация по разделу", "Navigationspfad"),
+    S("on the current website", "на текущем сайте", "auf der aktuellen Website"),
 )

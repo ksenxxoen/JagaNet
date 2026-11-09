@@ -2280,7 +2280,9 @@ export interface components {
             userId?: string;
             userEmail?: string;
             action: string;
-            details: Record<string, never>;
+            details: {
+                [key: string]: unknown;
+            };
         };
         CtlAuditRes: {
             entries: components["schemas"]["CtlAudit"][];
@@ -3526,13 +3528,17 @@ export interface components {
             dns: string[];
             /** Format: int32 */
             mtu: number;
-            params: Record<string, never>;
+            params: {
+                [key: string]: unknown;
+            };
             notice?: string;
         };
         TunnelProvisionReq: {
             protocol: string;
             serverId?: string | null;
-            clientParams?: Record<string, never>;
+            clientParams?: {
+                [key: string]: unknown;
+            };
         };
         TunnelState: {
             config?: components["schemas"]["TunnelConfig"];

@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { Button, CodeInput, codeDigits, Form, FormError, Notice } from "..";
+import { Button, CodeInput, codeDigits, Form, FormError, Input, Notice, Select } from "..";
 
 function Code({ onComplete }: { onComplete?: (c: string) => void }) {
   const [v, setV] = useState("");
@@ -73,5 +73,24 @@ describe("Notice", () => {
     );
     expect(screen.getByRole("alert")).toHaveTextContent("Payments are off");
     expect(screen.getByRole("status")).toHaveTextContent("Signed in");
+  });
+});
+
+describe("Select", () => {
+  it("has the surface background, not the read-only grey of text fields, and a chevron", () => {
+    render(
+      <>
+        <Select aria-label="Plan" className="sm:max-w-xs">
+          <option>Pro</option>
+        </Select>
+        <Input aria-label="Name" readOnly />
+      </>,
+    );
+    const select = screen.getByRole("combobox", { name: "Plan" });
+    expect(select.className).not.toMatch(/read-only:bg-subtle/);
+    expect(select.className).toMatch(/bg-surface/);
+    expect(select.parentElement).toHaveClass("sm:max-w-xs");
+    expect(select.parentElement!.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("textbox", { name: "Name" }).className).toMatch(/read-only:bg-subtle/);
   });
 });

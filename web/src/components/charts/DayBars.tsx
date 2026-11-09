@@ -48,11 +48,14 @@ export function DayBars<K extends string, D extends { day: string } & Record<K, 
   title,
   days,
   series,
+  format = String,
   className,
 }: {
   title: string;
   days: D[];
   series: BarSeries<K>[];
+  /** A value in the tooltip (money on the finance tab); the number itself by default. */
+  format?: (v: number) => string;
   className?: string;
 }) {
   const { date, lang } = useI18n();
@@ -133,7 +136,7 @@ export function DayBars<K extends string, D extends { day: string } & Record<K, 
             <b className="text-ink-heading">{date(tip.day)}</b>
             {series.map((s) => (
               <div key={s.key}>
-                {s.label} {tip[s.key]}
+                {s.label} {format(tip[s.key])}
               </div>
             ))}
           </div>

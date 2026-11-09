@@ -39,8 +39,8 @@ export default function ApiDocs() {
   }, [spec.data]);
 
   return (
-    <div className="mx-auto w-full max-w-page px-4 py-10 sm:px-6">
-      <h1 className="mb-2 text-[30px] font-extrabold leading-tight tracking-tight">{t("API")}</h1>
+    <div>
+      <h2 className="mb-2 mt-0 text-[22px] leading-snug">{t("API")}</h2>
       <p className="mb-6 text-muted">{t("Every /v1 endpoint of the panel. Requests from Try it out are sent with your session.")}</p>
       {spec.isPending && <Spinner className="mx-auto my-16" label={t("Loading")} />}
       {spec.isError && <ErrorState error={spec.error} onRetry={() => void spec.refetch()} />}
