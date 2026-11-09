@@ -191,6 +191,10 @@ class OpenApiTest {
         val nodeToken = node.command.substringAfter("NODE_TOKEN=").substringBefore(' ')
         services.nodes.register(nodeToken, dev.jaganet.server.services.NodeRegisterReq("203.0.113.7", 51821, "amneziawg"))
         answers(get, "/v1/admin/servers/overview", token = owner)
+        // An open card: the node's history, inbounds and events are in the answer too (the status page, W-8).
+        val open = answers(get, "/v1/admin/servers/overview", "/v1/admin/servers/overview?range=7d&open=${node.node.id}", token = owner)
+        val card = open.jsonObject["servers"]!!.jsonArray.map { it.jsonObject }.single { it["id"]!!.jsonPrimitive.content == node.node.id }
+        assertTrue(listOf("history", "inbounds", "events").all { it in card }, "an open card has its history, inbounds and events: $card")
         answers(get, "/v1/admin/monitor", token = owner)
         answers(get, "/v1/admin/nodes", token = owner)
         answers(get, "/v1/admin/overview", token = owner)
@@ -199,6 +203,11 @@ class OpenApiTest {
         answers(get, "/v1/admin/control/dashboard", token = owner)
         answers(get, "/v1/admin/payments", token = owner)
         answers(get, "/v1/admin/analytics", token = owner)
+        answers(get, "/v1/admin/analytics", "/v1/admin/analytics?period=24h", token = owner)
+        answers(get, "/v1/admin/analytics/servers/{id}", "/v1/admin/analytics/servers/${node.node.id}?period=30d", token = owner)
+        answers(get, "/v1/admin/analytics/users", "/v1/admin/analytics/users?period=90d&q=user", token = owner)
+        val userId = session.jsonObject["user"]!!.jsonObject["id"]!!.jsonPrimitive.content
+        answers(get, "/v1/admin/analytics/users/{id}", "/v1/admin/analytics/users/$userId", token = owner)
         answers(get, "/v1/admin/tariffs", token = owner)
         answers(get, "/v1/admin/referrals", token = owner)
         answers(get, "/v1/admin/referral-rewards", token = owner)

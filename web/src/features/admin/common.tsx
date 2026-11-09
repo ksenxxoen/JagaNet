@@ -97,9 +97,7 @@ export const payChannel = (k: string) =>
     k
   ] ?? k;
 
-const PLATFORMS: Record<string, string> = { android: "Android", ios: "iPhone", windows: "Windows", macos: "macOS", linux: "Linux" };
-/** platformName() in app.js. */
-export const platformName = (p: string) => PLATFORMS[p] ?? (p === "desktop" ? t("Computer") : p === "key" ? t("VPN key") : p);
+export { platformName } from "@/lib/platforms";
 
 /** seenText() in app.js: "online" in the last 3 minutes, else the time, or "never". */
 export function seen(at: string | null | undefined, now = Date.now()) {

@@ -45,6 +45,18 @@ export const keys = {
     reports: (user: string) => ["admin", "reports", user] as const,
     report: (id: string) => ["admin", "report", id] as const,
   },
+  status: {
+    all: ["status"] as const,
+    /** /admin/servers/overview for the range, with the charts of the open servers (ids joined by commas). */
+    overview: (range: string, open: string) => ["status", "overview", range, open] as const,
+  },
+  analytics: {
+    all: ["analytics"] as const,
+    overview: (period: string) => ["analytics", "overview", period] as const,
+    server: (id: string, period: string) => ["analytics", "server", id, period] as const,
+    users: (period: string, q: string) => ["analytics", "users", period, q] as const,
+    user: (id: string, period: string) => ["analytics", "user", id, period] as const,
+  },
   auth: {
     all: ["auth"] as const,
     telegramConfig: () => ["auth", "telegram", "config"] as const,

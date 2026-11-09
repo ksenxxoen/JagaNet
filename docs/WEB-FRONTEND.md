@@ -29,13 +29,13 @@ Swagger UI (`swagger-ui-dist`, the owner's API tab), Vitest + Testing Library, E
 | `web/src/components/PeriodPicker.tsx`, `SearchBox.tsx` | Period chips (`PERIOD_KEYS`, `periods()`) and a search field that writes `?q=` after a 300 ms pause |
 | `web/src/components/admin/` | `DataTable` (columns, sorting by a click on the heading, pages of 50 rows, the empty, error and loading states; `inUrl` keeps `?sort=` and `?page=` in the address), `SettingsForm` (a settings card with "Save": locked while saving, "Saved" toast, the server's message under it; replaces `saveWith`); `SortableList` (`@hello-pangea/dnd`: drag a row, the keyboard on its handle, or the "Move up" / "Move down" buttons; the parent saves the new order). `SettingsForm` also takes `ask` (a question before sending), `actions` (more buttons) and `success` |
 | `web/src/components/Breadcrumbs.tsx`, `KeyValueList.tsx` | "Users › a@b.c" above a card; label and value pairs of a card (`.kv`) |
-| `web/src/components/charts/` | `DayBars` (daily bars, one or two series, hover tooltip), `BarList` (horizontal bars of a breakdown) |
+| `web/src/components/charts/` | `DayBars` (bars by day or another bucket, one or two series grouped or `stacked`, own captions and axis format, hover tooltip), `BarList` (horizontal bars of a breakdown), `LineChart` (lines over time, one or two series, breaks on missing reports, hover and keyboard values: a slider over the points), `Sparkline` (a tiny trend line for a list row), `useWidth`, `ChartLegend` |
 | `web/src/components/Community.tsx` | The Telegram group (`site.communityUrl`): the account's card and the support page's link, `useCommunityUrl()` |
-| `web/src/hooks/` | `useApiMutation` (toast, server message, invalidation), `useSaveForm` (locked form, error under it), `useSignOut`, `useConfirm` (confirm() as a promise with the dialog), `useCopy` (clipboard, then execCommand, then prompt; toast), `usePolling` (ask again until the answer is final, paused on a hidden tab), `usePersistedSearch` (a setting in the address, remembered under the old site's localStorage key) |
+| `web/src/hooks/` | `useApiMutation` (toast, server message, invalidation), `useSaveForm` (locked form, error under it), `useSignOut`, `useConfirm` (confirm() as a promise with the dialog), `useCopy` (clipboard, then execCommand, then prompt; toast), `usePolling` (ask again until the answer is final, paused on a hidden tab), `usePersistedSearch` (a setting in the address, remembered under the old site's localStorage key), `useVisible` (the tab is shown: automatic refreshes ask with `refetchInterval: visible ? … : false`) |
 | `web/src/components/shell/` | Top bar (menu by role, language switch, phone menu), footer |
-| `web/src/routes/` | Routes, typed query parameters, guards, the "screen is moving" placeholder |
+| `web/src/routes/` | Routes, typed query parameters, guards |
 | `web/src/api/` | Axios client for `/v1`, typed calls (`typed.ts`), generated types (`schema.d.ts`), query keys (`keys.ts`), React Query client and shared queries |
-| `web/src/lib/` | `cn`, `notify`, `storage`, `download` (save a CSV), `anchors` (landing sections), `checkout` (buy a plan), `rich` (texts with links), `navigate`, `pricing` (prices per month, savings), `apps` (the app cards of the landing page and the account), `links` (import links for Happ / v2RayTun, the `/tg/open` check, `withLang`, VLESS locations), `qr` (QR matrix and pixels), `funnel` (referral funnel numbers as text: `pct`, `revenueText`, `sourceName`, `channelName`, `funnelTiles`) |
+| `web/src/lib/` | `cn`, `notify`, `storage`, `download` (save a CSV), `anchors` (landing sections), `checkout` (buy a plan), `rich` (texts with links), `navigate`, `pricing` (prices per month, savings), `apps` (the app cards of the landing page and the account), `links` (import links for Happ / v2RayTun, the `/tg/open` check, `withLang`, VLESS locations), `qr` (QR matrix and pixels), `funnel` (referral funnel numbers as text: `pct`, `revenueText`, `sourceName`, `channelName`, `funnelTiles`), `platforms` (`platformName`) |
 | `web/src/features/public/` | `#/` landing page (lazy chunk with its own `landing.css`, ported from `style.css`) |
 | `web/src/features/auth/` | `#/signin`, `#/login?token=`, `#/app-login?id=`, the Telegram Login Widget (lazy chunk) |
 | `web/src/features/account/` | `#/account` (`?order=`): plan, buying, the order status, VPN keys with QR, devices, apps and the sign-in code, Telegram, payments (lazy chunk) |
@@ -43,8 +43,10 @@ Swagger UI (`swagger-ui-dist`, the owner's API tab), Vitest + Testing Library, E
 | `web/src/features/invite/` | `#/invite`: invite links, the rule, rewards; owner's `?view=admin` (`?suspicious=1`): rules form, top inviters, rewards with the anti-fraud flag, cancelling (lazy chunk) |
 | `web/src/features/support/` | `#/support`: the form for guests and signed-in people, "unavailable" state, the Telegram group (lazy chunk) |
 | `web/src/features/admin/` | `#/admin` (owner only): the tabs in the order of `ADMIN_TABS` plus API, `?tab=` (unknown → dashboard), each tab a lazy chunk: `dashboard`, `users` (`?q=` search, `?id=` card with all actions), `payments` (`?from=`, `?to=`, `?status=`, `?q=`, CSV), `money` (`?period=`, remembered as `finPeriod`), `plans` (plans for new purchases, the plan form, Free plan), `nodes` (install progress, install command, the note for everyone, the node list, the node forms: details, balancer of a cascade entry, status in the apps, maintenance, moving devices, install over SSH or a new command; the order of locations by dragging, `PUT /v1/admin/nodes/order`), `failures` (`?server=`, `?user=`), `reports` (`?user=`, one report on `?id=`), `testers` (pasted rows, CSV, give, delete), `email`, `alerts`, `modes`, `audit` (`?user=`), `api` (Swagger UI). Nothing links to the current website's admin panel any more |
+| `web/src/features/status/` | `#/status` (owner only, `?range=` remembered as `monRange`, `?q=` search): the summary, one row a server (problems first, filter by state, search by name), a card per row (why this status, the agent's report, inbounds, charts, event log, maintenance flag; the main server's checks and monitoring charts), alerts and notifications; refreshed every 15 seconds while the tab is shown (lazy chunk). The rules are pure functions in `model.ts` |
+| `web/src/features/analytics/` | `#/analytics` (owner only, `?period=` remembered as `anPeriod`): servers, users (`?view=users`, `?q=`), a server (`?server=`) and a person (`?user=`, with the device dialog: rename, move, new key) with breadcrumbs; traffic bars with BitTorrent on top (lazy chunk) |
 | `web/src/test/api.ts` | `mockApi()`: typed /v1 mocks on the Axios adapter for tests |
-| `web/src/test/app.tsx` | `renderApp(path)`: the whole site on memory history; fixtures (`siteInfo`, `session`, `plans`, `me`, `ownerMe`, `vlessKey`, `accessKey`, `accountRoutes`, referral and invite answers); admin fixtures (`ctl*`, `adminSettings`, `adminTariff`, `adminNode`, `vlessNode`, `testAccount`, `diagnosticsSummary`) |
+| `web/src/test/app.tsx` | `renderApp(path)`: the whole site on memory history; fixtures (`siteInfo`, `session`, `plans`, `me`, `ownerMe`, `vlessKey`, `accessKey`, `accountRoutes`, referral and invite answers); admin fixtures (`ctl*`, `adminSettings`, `adminTariff`, `adminNode`, `vlessNode`, `testAccount`, `diagnosticsSummary`); status and analytics fixtures (`overviewServer`, `serversOverview`, `trafficSplit`, `analyticsServer`, `analyticsUser`, `trafficPoints`) |
 | `web/src/store/session.ts` | Zustand: token, role, site settings, language |
 | `web/src/i18n/` | i18next setup, `t`, `tp`, `date`, `dateTime`, `money`, `bytes`, `num`, `bits`, `percent`, `when` (the time today, else the short date and the time) |
 
@@ -108,6 +110,8 @@ address via `JAGANET_DEV_SERVER=http://host:port npm run dev`).
   and its redux, react-redux, raf-schd, css-box-model and tiny-invariant, all kept out of `vendor`),
   `Failures-*.js` 3.5 KB, `Reports-*.js` 4.9 KB, `Testers-*.js` 6.4 KB, `Email-*.js` 3.5 KB,
   `Alerts-*.js` 2.6 KB, `Modes-*.js` 1.2 KB; `vendor` unchanged (496 KB, 162 KB gzip).
+  W-8: `status-*.js` 28 KB (9.6 KB gzip, with `LineChart` and `Sparkline`), `analytics-*.js` 13 KB
+  (3.8 KB gzip); no chart library, `vendor` unchanged (496 KB, 162 KB gzip).
 
 ## Screen boundaries
 
@@ -169,4 +173,4 @@ and 2 German forms. `./gradlew :server:test --tests '*I18nTest'` checks it.
 ## Screenshots
 
 `docs/screenshots/web-next/`: the shell on desktop and phone, ru and de; `w3/` … `w7/`: the old and
-the new screens of each sub-task (`*-old.png`, `*-new.png`, desktop and phone).
+the new screens of each sub-task (`*-old.png`, `*-new.png`, desktop and phone); `w8/`: the status page (summary, a node's card, the main server's card) and the analytics (servers, users, a server, a person), desktop and phone, taken on `:server:sim` demo data.
