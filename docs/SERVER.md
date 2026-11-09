@@ -32,6 +32,28 @@ The control plane and the VPN node can share one Linux machine to start.
    systemd (`infra/jaganet.service`). It needs `CAP_NET_ADMIN` to call `awg`/`wg`.
 5. Put it behind HTTPS (Caddy, nginx) and set `PUBLIC_URL`.
 
+### Website and mini app: new or old (`WEB_UI`)
+
+Every jar carries both interfaces: the new one (React, `web/`, docs/WEB-FRONTEND.md) and the old
+one (`server/src/main/resources/web/`). `WEB_UI` picks which one the main addresses serve:
+
+| `WEB_UI` | `/`, `/index.html` | `/tg/app`, `/tg/open` | `/next/`, `/tg/app-next`, `/tg/open-next` |
+| --- | --- | --- | --- |
+| `new` (default, also when unset) | new website | new mini app | lead to `/`, `/tg/app`, `/tg/open`, keeping `?…` and `#…` |
+| `legacy` | old website | old mini app | the new interface as a preview (`noindex`) |
+
+- **Rollback:** set `WEB_UI=legacy` in the server's environment file and restart the service. No
+  rebuild and no new release; going back is `WEB_UI=new` (or removing the line) and a restart.
+- Any other value stops the server at start ("WEB_UI must be "new" or "legacy""), so a mistyped
+  rollback cannot pass unnoticed.
+- In both modes the old files (`/app.js`, `/style.css`, `/control.js`, `/tg/app.js`, `/tg/app.css`,
+  `/tg/open.js`…) stay served, so tabs opened before a switch keep working, and the server's own
+  pages (`/k/…`, the test checkout, `/privacy`, `/terms`) look the same.
+- The session survives a switch either way: both websites keep it in `localStorage` under the
+  same keys (`token`, `lang`, `ref`…); the mini app signs in with Telegram each time.
+- The mini app's switch (`TELEGRAM_MINIAPP`), its CSP and caching are the same in both modes.
+- A jar built without `web/` (the new interface missing) serves the old one and logs a warning.
+
 `PROTOCOLS=amneziawg,wireguard,vless` sets which drivers run and their preference order. A server
 whose environment file still says `amneziawg,wireguard` serves no VLESS nodes: add `vless` (last).
 

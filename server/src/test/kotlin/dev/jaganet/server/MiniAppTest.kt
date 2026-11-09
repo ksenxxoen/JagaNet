@@ -50,6 +50,8 @@ class MiniAppTest {
     private val token = "123456:TEST-token"
     private val on = mapOf("TELEGRAM_BOT_TOKEN" to token, "TELEGRAM_MINIAPP" to "1")
     private val onHttps = on + ("PUBLIC_URL" to "https://boop.example")
+    /** The old mini app on /tg/app (WEB_UI=legacy, the rollback); the default is the new one (W-10, #127). */
+    private val onLegacy = on + ("WEB_UI" to "legacy")
 
     /* ---------------- signing initData the way Telegram does (independent of the server's code) ---------------- */
 
@@ -288,7 +290,7 @@ class MiniAppTest {
 
     /* ---------------- the page ---------------- */
 
-    @Test fun `GET tg app serves the page with its CSP`() = harness(on) {
+    @Test fun `WEB_UI=legacy - GET tg app serves the old page with its CSP`() = harness(onLegacy) {
         val c = b.createClient {}
         val r = c.get("/tg/app")
         assertEquals(HttpStatusCode.OK, r.status)
@@ -332,16 +334,16 @@ class MiniAppTest {
         for (bad in listOf("localStorage", "sessionStorage", "document.cookie")) assertFalse(bad in js, bad)
     }
 
-    /* ---------------- the new mini app (web/, preview on /tg/app-next, #126) ---------------- */
+    /* ---------------- the new mini app (web/; /tg/app with WEB_UI=new, the preview /tg/app-next with legacy; #126, #127) ---------------- */
 
-    @Test fun `GET tg app-next serves the new mini app with the same template and CSP`() = harness(on) {
+    /** The new mini app's page and /tg/open on [app] and [open]: the template filled, the same CSP, headers and caching as the old page. */
+    private suspend fun Harness.assertNewMiniApp(app: String, open: String, oldCsp: String?) {
         val c = b.createClient {}
-        val old = c.get("/tg/app")
-        val r = c.get("/tg/app-next")
+        val r = c.get(app)
         assertEquals(HttpStatusCode.OK, r.status)
         val html = r.bodyAsText()
         // The same CSP, headers and caching as /tg/app; Telegram's script first, then ours from /ui/assets.
-        assertEquals(old.headers["Content-Security-Policy"], r.headers["Content-Security-Policy"])
+        assertEquals(oldCsp, r.headers["Content-Security-Policy"])
         assertEquals(MINIAPP_CSP, r.headers["Content-Security-Policy"])
         assertEquals("nosniff", r.headers["X-Content-Type-Options"])
         assertEquals("no-referrer", r.headers["Referrer-Policy"])
@@ -360,25 +362,78 @@ class MiniAppTest {
             assertEquals(HttpStatusCode.OK, a.status, asset)
             assertTrue("immutable" in a.headers["Cache-Control"]!!, asset)
         }
-        assertTrue("Öffne Boop in Telegram" in c.get("/tg/app-next?lang=de").bodyAsText())
+        assertTrue("Öffne Boop in Telegram" in c.get("$app?lang=de").bodyAsText())
 
-        val open = c.get("/tg/open-next")
-        assertEquals(HttpStatusCode.OK, open.status)
-        assertEquals(MINIAPP_CSP, open.headers["Content-Security-Policy"])
-        assertEquals("no-store", open.headers["Cache-Control"])
-        val openHtml = open.bodyAsText()
+        val o = c.get(open)
+        assertEquals(HttpStatusCode.OK, o.status)
+        assertEquals(MINIAPP_CSP, o.headers["Content-Security-Policy"])
+        assertEquals("no-store", o.headers["Cache-Control"])
+        val openHtml = o.bodyAsText()
         assertTrue(Regex("""/ui/assets/tg-open-[\w-]+\.js""").containsMatchIn(openHtml), openHtml)
         assertTrue("Открываем приложение" in openHtml, openHtml)
         assertFalse("{{" in openHtml, openHtml)
         assertFalse(Regex("""<script(?![^>]*\bsrc=)[^>]*>""").containsMatchIn(openHtml), openHtml)
-
-        // The old mini app is unchanged.
-        assertTrue(Regex("""/tg/app\.js\?v=[0-9a-f]{12}""").containsMatchIn(old.bodyAsText()))
     }
 
-    @Test fun `the bot's name goes into the new mini app's page`() = harness(on) {
-        TelegramBot(services, NumberedTelegram()).also { services.bot = it; it.username = "boop_test_bot" }
-        assertTrue("""data-bot="boop_test_bot"""" in b.createClient {}.get("/tg/app-next").bodyAsText())
+    /** The old mini app's files: served in both modes, so a tab opened before the switch keeps working. */
+    private suspend fun Harness.assertOldFilesServed() {
+        val c = b.createClient {}
+        for (f in listOf("/tg/app.js", "/tg/app.css", "/tg/open.js")) {
+            val r = c.get(f)
+            assertEquals(HttpStatusCode.OK, r.status, f)
+            assertEquals(MINIAPP_CSP, r.headers["Content-Security-Policy"], f)
+        }
+        val noFollow = b.createClient { followRedirects = false }
+        assertEquals("/tg/app", noFollow.get("/tg/app.html").headers["Location"])
+        assertEquals("/tg/open", noFollow.get("/tg/open.html").headers["Location"])
+    }
+
+    @Test fun `WEB_UI=new - tg app and tg open serve the new mini app with the old CSP`() = harness(on) {
+        assertNewMiniApp("/tg/app", "/tg/open", MINIAPP_CSP)
+        assertOldFilesServed()
+        assertFalse("/tg/app.js" in b.createClient {}.get("/tg/app").bodyAsText())
+    }
+
+    @Test fun `WEB_UI=new - the preview addresses lead to the main ones under the same CSP`() = harness(on) {
+        val c = b.createClient { followRedirects = false }
+        for ((preview, main) in listOf("/tg/app-next" to "/tg/app", "/tg/open-next" to "/tg/open")) {
+            val r = c.get(preview)
+            assertEquals(HttpStatusCode.OK, r.status, preview)
+            assertEquals(MINIAPP_CSP, r.headers["Content-Security-Policy"], preview)
+            assertEquals("no-store", r.headers["Cache-Control"], preview)
+            val html = r.bodyAsText()
+            // Our own script (allowed by script-src 'self'), no inline code; it keeps #/pay and Telegram's #tgWebAppData.
+            assertTrue("""<script src="/ui/to-main.js"></script>""" in html, html)
+            assertFalse(Regex("""<script(?![^>]*\bsrc=)[^>]*>""").containsMatchIn(html), html)
+            assertTrue("""<a href="$main">""" in html, html)
+        }
+        assertTrue(""""/tg/app-next": "/tg/app"""" in c.get("/ui/to-main.js").bodyAsText())
+    }
+
+    @Test fun `WEB_UI=legacy - tg app-next is the new mini app's preview with the same template and CSP`() = harness(onLegacy) {
+        val oldCsp = b.createClient {}.get("/tg/app").headers["Content-Security-Policy"]
+        assertNewMiniApp("/tg/app-next", "/tg/open-next", oldCsp)
+        assertOldFilesServed()
+        // The old mini app is on /tg/app.
+        assertTrue(Regex("""/tg/app\.js\?v=[0-9a-f]{12}""").containsMatchIn(b.createClient {}.get("/tg/app").bodyAsText()))
+    }
+
+    @Test fun `every mini app address is 404 while the mini app is off, in both modes`() {
+        for (env in listOf(mapOf("TELEGRAM_BOT_TOKEN" to token), mapOf("TELEGRAM_BOT_TOKEN" to token, "WEB_UI" to "legacy"))) harness(env) {
+            val c = b.createClient { followRedirects = false }
+            for (path in listOf("/tg/app", "/tg/open", "/tg/app-next", "/tg/open-next")) assertEquals(HttpStatusCode.NotFound, c.get(path).status, "$env $path")
+        }
+    }
+
+    @Test fun `the bot's name goes into the new mini app's page`() {
+        harness(on) {
+            TelegramBot(services, NumberedTelegram()).also { services.bot = it; it.username = "boop_test_bot" }
+            assertTrue("""data-bot="boop_test_bot"""" in b.createClient {}.get("/tg/app").bodyAsText())
+        }
+        harness(onLegacy) {
+            TelegramBot(services, NumberedTelegram()).also { services.bot = it; it.username = "boop_test_bot" }
+            assertTrue("""data-bot="boop_test_bot"""" in b.createClient {}.get("/tg/app-next").bodyAsText())
+        }
     }
 
     /** Every JS file the page loads, following static and dynamic imports between the built files. */

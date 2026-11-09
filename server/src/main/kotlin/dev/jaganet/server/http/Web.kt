@@ -105,10 +105,13 @@ fun Route.salesApi(s: Services) {
     get("/orders/{id}") { call.respond(s.payments.getFor(call.principal(s).user.id, call.parameters["id"]!!)) }
 }
 
-/** The website (static files in resources/web), key links and the test checkout. */
+/**
+ * The website (WEB_UI picks the new build or the old static files in resources/web for /, see WebNext.kt;
+ * the old files stay served in both modes), key links and the test checkout.
+ */
 fun Route.website(s: Services) {
+    webPages(s)
     staticResources("/", "web")
-    webNextPreview()
     referralRedirect(s)
 
     get("/download/android") {

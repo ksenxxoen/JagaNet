@@ -23,9 +23,12 @@ import java.security.MessageDigest
  * at once while the files themselves are cached for long. Scripts: our own and Telegram's
  * telegram-web-app.js, nothing else (Content-Security-Policy). Off (404) unless TELEGRAM_MINIAPP=1.
  *
- * The new mini app (web/, React; epic #117, W-9) is a preview on /tg/app-next and /tg/open-next:
- * its pages (web-next/miniapp.html, tg-open.html) are templates with the same {{lang}}, {{bot}} and
- * {{t:…}}, served with the same switch, headers and CSP; their files live in /ui/assets (WebNext.kt).
+ * The new mini app (web/, React; epic #117, W-9): its pages (web-next/miniapp.html, tg-open.html) are
+ * templates with the same {{lang}}, {{bot}} and {{t:…}}, served with the same switch, headers and CSP;
+ * their files live in /ui/assets (WebNext.kt). WEB_UI (W-10) picks which one /tg/app and /tg/open serve:
+ * new (default) the new pages, with /tg/app-next and /tg/open-next leading there; legacy the old pages,
+ * with the new ones as the preview on /tg/app-next and /tg/open-next. The old files (/tg/app.js, app.css,
+ * open.js) are served in both modes, so open tabs keep working.
  */
 private object MiniAppFiles {
     private fun res(name: String): ByteArray = MiniAppFiles::class.java.getResource("/web/tg/$name")!!.readBytes()
@@ -55,7 +58,7 @@ const val MINIAPP_CSP = "default-src 'self'; script-src 'self' https://telegram.
     "connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; " +
     "frame-ancestors https://web.telegram.org https://*.web.telegram.org"
 
-private fun ApplicationCall.miniAppHeaders() {
+internal fun ApplicationCall.miniAppHeaders() {
     response.header("Content-Security-Policy", MINIAPP_CSP)
     response.header("X-Content-Type-Options", "nosniff")
     response.header("Referrer-Policy", "no-referrer")
@@ -64,41 +67,49 @@ private fun ApplicationCall.miniAppHeaders() {
 
 fun Route.miniAppPage(s: Services) {
     fun on() = s.ctx.cfg.telegram.miniApp
-    get("/tg/app") {
+    val newUi = WebNext.newUi(s)
+
+    suspend fun ApplicationCall.app(template: String) {
         if (!on()) throw notFound("The Telegram mini app is off")
-        call.miniAppHeaders()
-        call.response.header(HttpHeaders.CacheControl, "no-cache")
-        call.respondText(MiniAppFiles.page(call.pageLang(), s.bot?.username), ContentType.Text.Html.withCharset(Charsets.UTF_8))
+        miniAppHeaders()
+        response.header(HttpHeaders.CacheControl, "no-cache")
+        respondText(MiniAppFiles.page(pageLang(), s.bot?.username, template), ContentType.Text.Html.withCharset(Charsets.UTF_8))
     }
-    // The template itself is never served raw.
+    // Hands an import link (happ://, v2raytun://) from the mini app to the app: Telegram opens only web links outside.
+    suspend fun ApplicationCall.open(template: String) {
+        if (!on()) throw notFound("The Telegram mini app is off")
+        miniAppHeaders()
+        response.header(HttpHeaders.CacheControl, "no-store")
+        respondText(MiniAppFiles.page(pageLang(), null, template), ContentType.Text.Html.withCharset(Charsets.UTF_8))
+    }
+    fun next() = MiniAppFiles.nextHtml ?: throw notFound("The new mini app is not built into this server")
+    fun nextOpen() = MiniAppFiles.nextOpenHtml ?: throw notFound("The new mini app is not built into this server")
+
+    if (newUi) {
+        get("/tg/app") { call.app(next()) }
+        get("/tg/open") { call.open(nextOpen()) }
+        // The preview's addresses (saved links, the bot's old buttons) lead to the main ones, keeping the fragment.
+        get("/tg/app-next") {
+            if (!on()) throw notFound("The Telegram mini app is off")
+            call.toMain("/tg/app", miniApp = true)
+        }
+        get("/tg/open-next") {
+            if (!on()) throw notFound("The Telegram mini app is off")
+            call.toMain("/tg/open", miniApp = true)
+        }
+    } else {
+        get("/tg/app") { call.app(MiniAppFiles.html) }
+        get("/tg/open") { call.open(MiniAppFiles.openHtml) }
+        // The new mini app as the preview: the same template filling, switch, headers and caching.
+        get("/tg/app-next") { call.app(next()) }
+        get("/tg/open-next") { call.open(nextOpen()) }
+    }
+    // The templates themselves are never served raw. The old files stay for tabs opened before a switch.
     get("/tg/app.html") { call.respondRedirect("/tg/app") }
+    get("/tg/open.html") { call.respondRedirect("/tg/open") }
     get("/tg/app.js") { call.asset(MiniAppFiles.js, ContentType.Text.JavaScript) }
     get("/tg/open.js") { call.asset(MiniAppFiles.openJs, ContentType.Text.JavaScript) }
-    get("/tg/open.html") { call.respondRedirect("/tg/open") }
-    // Hands an import link (happ://, v2raytun://) from the mini app to the app: Telegram opens only web links outside.
-    get("/tg/open") {
-        if (!on()) throw notFound("The Telegram mini app is off")
-        call.miniAppHeaders()
-        call.response.header(HttpHeaders.CacheControl, "no-store")
-        call.respondText(MiniAppFiles.page(call.pageLang(), null, MiniAppFiles.openHtml), ContentType.Text.Html.withCharset(Charsets.UTF_8))
-    }
     get("/tg/app.css") { call.asset(MiniAppFiles.css, ContentType.Text.CSS) }
-
-    // The new mini app (preview): the same template filling, switch, headers and caching as above.
-    get("/tg/app-next") {
-        if (!on()) throw notFound("The Telegram mini app is off")
-        val template = MiniAppFiles.nextHtml ?: throw notFound("The new mini app is not built into this server")
-        call.miniAppHeaders()
-        call.response.header(HttpHeaders.CacheControl, "no-cache")
-        call.respondText(MiniAppFiles.page(call.pageLang(), s.bot?.username, template), ContentType.Text.Html.withCharset(Charsets.UTF_8))
-    }
-    get("/tg/open-next") {
-        if (!on()) throw notFound("The Telegram mini app is off")
-        val template = MiniAppFiles.nextOpenHtml ?: throw notFound("The new mini app is not built into this server")
-        call.miniAppHeaders()
-        call.response.header(HttpHeaders.CacheControl, "no-store")
-        call.respondText(MiniAppFiles.page(call.pageLang(), null, template), ContentType.Text.Html.withCharset(Charsets.UTF_8))
-    }
 }
 
 private suspend fun ApplicationCall.asset(bytes: ByteArray, type: ContentType) {

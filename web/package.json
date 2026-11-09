@@ -11,7 +11,7 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "gen:api": "openapi-typescript ../server/src/main/resources/openapi.yaml -o src/api/schema.d.ts",
-    "test:browser": "node e2e/miniapp-csp.mjs"
+    "test:browser": "node e2e/miniapp-csp.mjs && node e2e/site-links.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "18.0.1",
