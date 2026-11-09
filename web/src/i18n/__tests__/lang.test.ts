@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { currentLang, i18n, initI18n, pickLang, setLang, t, tp } from "..";
+import { currentLang, i18n, initI18n, setLang, t, tp } from "..";
+import { pickLang } from "../site";
 
 const dict: Record<string, Record<string, string>> = {
   ru: { "Sign in": "Войти", "{n} day|{n} days": "{n} день|{n} дня|{n} дней", "Hi {name}": "Привет, {name}" },

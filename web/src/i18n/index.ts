@@ -3,14 +3,14 @@
  * shared/.../i18n/strings), English needs no download. Placeholders are {name} as in the old site,
  * plurals are "a|b|c" strings picked by tp() with the ru/de/en rules from app.js.
  *
- * Language order: ?lang= → saved (localStorage "lang") → browser language → ru.
- * setLang() saves the choice and writes the "lang" cookie like setLang() in app.js.
+ * The website picks the language with pickLang() from i18n/site.ts (?lang= → saved → browser → ru)
+ * and remembers a change there (localStorage "lang" and the "lang" cookie, like setLang() in app.js),
+ * registered with onLangChange(). The mini app passes the account's language and remembers nothing.
+ * This module itself touches no web storage, so the mini app's bundle has none.
  */
 import i18next, { type i18n as I18n } from "i18next";
-import LanguageDetector from "i18next-browser-languagedetector";
 import HttpBackend from "i18next-http-backend";
 import { initReactI18next, useTranslation } from "react-i18next";
-import { store } from "@/lib/storage";
 import {
   fill,
   formatBits,
@@ -30,29 +30,17 @@ export { LANGS, localDay, type Lang } from "./format";
 
 export const i18n: I18n = i18next.createInstance();
 
-/** First supported language from the detector (query, saved, browser), else ru. */
-export function pickLang(): Lang {
-  // With languageUtils present the detector returns every candidate, not just the first one.
-  const services = { languageUtils: { getBestMatchFromCodes: () => undefined } } as unknown as ConstructorParameters<
-    typeof LanguageDetector
-  >[0];
-  const detector = new LanguageDetector(services, {
-    order: ["querystring", "localStorage", "navigator"],
-    lookupQuerystring: "lang",
-    lookupLocalStorage: "lang",
-    caches: [],
-  });
-  let found: string | string[] | undefined;
-  try {
-    found = detector.detect();
-  } catch {
-    found = undefined;
-  }
-  const list = (Array.isArray(found) ? found : found ? [found] : []).map((x) => x.toLowerCase().split("-")[0]);
-  return list.find(isLang) ?? "ru";
+/** Called with every language set (the website saves it); nothing by default. */
+let remember: (lang: Lang) => void = () => {};
+export function onLangChange(fn: (lang: Lang) => void) {
+  remember = fn;
 }
 
-export async function initI18n(lang: Lang = pickLang()) {
+/** The website names the tab "Boop VPN" in the language; the mini app keeps its page's title. */
+let setsTitle = true;
+
+export async function initI18n(lang: Lang, { title = true }: { title?: boolean } = {}) {
+  setsTitle = title;
   if (!i18n.isInitialized) {
     await i18n
       .use(HttpBackend)
@@ -86,15 +74,10 @@ export const currentLang = (): Lang => (isLang(i18n.language) ? i18n.language : 
 
 export async function setLang(code: string) {
   const lang: Lang = isLang(code) ? code : "ru";
-  store.set("lang", lang);
-  try {
-    document.cookie = `lang=${lang}; path=/; max-age=31536000; samesite=lax`;
-  } catch {
-    /* no cookies: the saved choice is enough */
-  }
+  remember(lang);
   document.documentElement.lang = lang;
   if (i18n.isInitialized) await i18n.changeLanguage(lang);
-  document.title = t("Boop VPN");
+  if (setsTitle) document.title = t("Boop VPN");
 }
 
 /** The translated text with {placeholders} filled (before the texts load: the English one, filled too). */

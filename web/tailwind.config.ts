@@ -1,15 +1,18 @@
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
+import { dark, light } from "./src/styles/tokens";
 
 /**
  * Theme from the website's tokens (server/src/main/resources/web/style.css, docs/DESIGN.md).
- * Every color is a CSS variable defined in src/index.css for the light and the dark theme, so the
- * classes below (bg-paper, text-ink, border-line…) follow prefers-color-scheme like the old site.
+ * Every color is a CSS variable from src/styles/tokens.ts for the light and the dark theme, so the
+ * classes below (bg-paper, text-ink, border-line…) follow prefers-color-scheme like the old site,
+ * or <html data-scheme> where the mini app sets it from Telegram.
  * Names follow docs/DESIGN.md: paper, surface, ink, muted, line*, primary*, green*, warn*.
  */
 const v = (name: string) => `var(--${name})`;
 
 export default {
-  content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  content: ["./*.html", "./src/**/*.{ts,tsx}"],
   darkMode: "media",
   theme: {
     extend: {
@@ -30,6 +33,8 @@ export default {
         warn: { DEFAULT: v("warning"), tint: v("warning-tint"), text: v("warning-text") },
         danger: { DEFAULT: v("danger"), tint: v("danger-tint"), text: v("danger-text") },
         neutral: { tint: v("neutral-tint"), text: v("neutral-text") },
+        /** Group headings; the mini app takes Telegram's section_header_text_color. */
+        section: "var(--section-head, var(--muted))",
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
@@ -39,7 +44,17 @@ export default {
       boxShadow: { sm: v("shadow-sm"), DEFAULT: v("shadow"), lg: v("shadow-lg") },
       height: { ctl: "40px" },
       maxWidth: { page: "1200px" },
+      keyframes: { "toast-in": { from: { opacity: "0", transform: "translateY(8px)" }, to: { opacity: "1", transform: "none" } } },
+      animation: { "toast-in": "toast-in 160ms ease-out" },
     },
   },
-  plugins: [],
+  plugins: [
+    plugin(({ addBase }) =>
+      addBase({
+        ":root": light,
+        "@media (prefers-color-scheme: dark)": { ':root:not([data-scheme="light"])': dark },
+        ':root[data-scheme="dark"]': dark,
+      }),
+    ),
+  ],
 } satisfies Config;

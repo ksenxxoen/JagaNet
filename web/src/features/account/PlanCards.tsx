@@ -2,18 +2,14 @@
 import { useState } from "react";
 import type { Schema } from "@/api/typed";
 import { Button, Card, CardHeader, StatusBadge } from "@/components/ui";
-import { t as tr, useI18n } from "@/i18n";
+import { useI18n } from "@/i18n";
 import { startCheckout } from "@/lib/checkout";
 import { notify } from "@/lib/notify";
-import { period, pricedTariffs } from "@/lib/pricing";
+import { dataText, period, pricedTariffs } from "@/lib/pricing";
 import type { SiteInfo } from "@/store/session";
 
 type Me = Schema<"MeRes">;
 type Tariff = Schema<"Tariff">;
-
-/** "10 GB a month", or "Unlimited data" (dataText() in app.js). */
-export const dataText = (bytes: number | null | undefined) =>
-  bytes == null ? tr("Unlimited data") : tr("{n} GB a month", { n: Math.round(bytes / 1e9) });
 
 function Kv({ k, v }: { k: string; v: string }) {
   return (

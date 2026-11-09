@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import jsQR from "jsqr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "@/lib/navigate";
-import { ORDER_POLL_MS } from "../OrderNotice";
+import { ORDER_POLL_MS } from "@/hooks/useOrder";
 import { useSession } from "@/store/session";
 import { apiError, mockApi, resetApi } from "@/test/api";
 import { accessKey, accountRoutes, me, renderApp, siteInfo, vlessKey } from "@/test/app";

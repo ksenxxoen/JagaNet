@@ -11,7 +11,7 @@ import { Button, buttonVariants, Card, CardHeader } from "@/components/ui";
 import { useApiMutation } from "@/hooks/useApiMutation";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useI18n } from "@/i18n";
-import { telegramQuery } from "./queries";
+import { telegramQuery } from "@/api/account";
 
 export function TelegramCard() {
   const { t } = useI18n();

@@ -1,0 +1,10 @@
+/* The mini app on top of the website's styles (src/index.css): Telegram's safe area under the tabs. */
+:root {
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--tg-safe-area-inset-bottom, 0px));
+}
+html,
+body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overflow-x: hidden;
+}

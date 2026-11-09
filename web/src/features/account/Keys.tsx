@@ -5,7 +5,8 @@
  */
 import { useState } from "react";
 import { keys } from "@/api/keys";
-import { del, patch, post, type Schema } from "@/api/typed";
+import { deleteDevice, deviceChanges, renameDevice } from "@/api/account";
+import { post, type Schema } from "@/api/typed";
 import { AppLinks } from "@/components/AppLinks";
 import { QrCanvas } from "@/components/qr/QrCanvas";
 import { Button, buttonVariants, Card, CopyButton, Form, Input, Notice } from "@/components/ui";
@@ -76,7 +77,7 @@ function RenameForm({ k, onDone }: { k: AccessKey; onDone: () => void }) {
   const { t } = useI18n();
   const [name, setName] = useState(k.name);
   const form = useSaveForm({
-    mutationFn: (body: { name: string }) => patch("/devices/{id}", { params: { id: k.id }, body }),
+    mutationFn: (body: { name: string }) => renameDevice(k.id, body.name),
     invalidate: [keys.account.keys()],
     onSuccess: () => onDone(),
   });
@@ -151,9 +152,9 @@ export function KeysSection({ data, isPro }: { data: KeysRes; isPro: boolean }) 
   const { t } = useI18n();
   const token = useSession((s) => s.token);
   const { confirm, dialog } = useConfirm();
-  const changed = [keys.account.keys(), keys.me(token)];
+  const changed = deviceChanges(token);
   const create = useApiMutation({ mutationFn: () => post("/keys"), invalidate: changed });
-  const remove = useApiMutation({ mutationFn: (id: string) => del("/keys/{id}", { params: { id } }), invalidate: changed });
+  const remove = useApiMutation({ mutationFn: (id: string) => deleteDevice(id, true), invalidate: changed });
 
   const onDelete = async (k: AccessKey) => {
     const yes = await confirm({ title: t("Delete this key? Apps using it will stop connecting."), confirm: t("Delete"), danger: true });

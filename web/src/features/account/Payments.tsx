@@ -2,20 +2,10 @@
 import type { Schema } from "@/api/typed";
 import { Section } from "@/components/layout";
 import { Table, Td, Th } from "@/components/ui";
-import { t as tr, useI18n } from "@/i18n";
+import { useI18n } from "@/i18n";
+import { paymentSource, paymentTitle } from "@/lib/payments";
 
 type Payment = Schema<"Payment">;
-
-export const sourceName = (source: string): string =>
-  ({
-    web: tr("Website"),
-    telegram: "Telegram",
-    app: tr("Boop app"),
-    apple: "App Store",
-    google: "Google Play",
-    referral: tr("Invite reward"),
-    dev: tr("Simulation"),
-  })[source] ?? source;
 
 export function PaymentsSection({ payments }: { payments: Payment[] }) {
   const { t, date } = useI18n();
@@ -33,9 +23,9 @@ export function PaymentsSection({ payments }: { payments: Payment[] }) {
         <tbody>
           {payments.map((x) => (
             <tr key={x.id}>
-              <Td>{x.productId === "referral" ? t("Invite reward") : x.tariffName || "Pro"}</Td>
+              <Td>{paymentTitle(x)}</Td>
               <Td>{t("{from} to {to}", { from: date(x.startedAt), to: date(x.expiresAt) })}</Td>
-              <Td>{sourceName(x.source)}</Td>
+              <Td>{paymentSource(x.source)}</Td>
             </tr>
           ))}
         </tbody>

@@ -14,11 +14,32 @@ const features = readdirSync(new URL("./src/features", import.meta.url), { withF
   .filter((d) => d.isDirectory())
   .map((d) => d.name);
 
+/**
+ * The website's own modules: web storage, the router, the language detector, buying from the
+ * website. The mini app and the UI kit never import them (its bundle has no web storage, and the
+ * build checks that too: vite/plugins.ts).
+ */
+const siteOnly = [
+  {
+    group: [
+      "@/lib/storage",
+      "@/lib/checkout",
+      "@/i18n/site",
+      "@tanstack/react-router",
+      "@/routes/*",
+      "@/components/shell/*",
+      "@/components/LinkTabs",
+    ],
+    message: "A website-only module (web storage, the router): the mini app and the UI kit do without it.",
+  },
+];
+
 const otherScreens = (own) => ({
   "no-restricted-imports": [
     "error",
     {
       patterns: [
+        ...(own === "miniapp" ? siteOnly : []),
         {
           group: ["@/features/*", `!@/features/${own}`, `!@/features/${own}/**`],
           message: "A screen does not import another screen: move the shared part to components/, hooks/ or lib/.",
@@ -51,4 +72,19 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    files: ["src/components/ui/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            ...siteOnly,
+            { group: ["@/features/*", "**/features/*"], message: "Shared modules do not import screens; the router does." },
+          ],
+        },
+      ],
+    },
+  },
+  { files: ["src/entries/{miniapp,tg-open}.{ts,tsx}"], rules: { "no-restricted-imports": ["error", { patterns: siteOnly }] } },
 );
