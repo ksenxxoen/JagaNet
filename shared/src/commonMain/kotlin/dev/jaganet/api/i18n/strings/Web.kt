@@ -182,11 +182,8 @@ internal val webStrings: List<S> = listOf(
     S("Stable connection", "Стабильная работа", "Stabile Verbindung"),
     S("High speed", "Высокая скорость", "Hohe Geschwindigkeit"),
     S("Scan the QR code above in the app, paste the key for AmneziaVPN or import the {file} file.", "Отсканируйте QR-код выше в приложении, вставьте ключ для AmneziaVPN или импортируйте файл {file}.", "Scanne den QR-Code oben in der App, füge den Schlüssel für AmneziaVPN ein oder importiere die Datei {file}."),
-    // The new website (web/, preview on /next/): the shell and screens that are still moving.
+    // The new website (web/, preview on /next/): the shell.
     S("Loading", "Загрузка", "Wird geladen"),
-    S("This screen is moving to the new website", "Этот экран переносится на новый сайт", "Dieser Bereich zieht auf die neue Website um"),
-    S("Until then it works on the current website.", "Пока он работает на текущем сайте.", "Bis dahin funktioniert er auf der aktuellen Website."),
-    S("Open on the current website", "Открыть на текущем сайте", "Auf der aktuellen Website öffnen"),
     // The admin panel's API tab (Swagger UI, owner only).
     S("API", "API", "API"),
     S("API documentation", "Документация API", "API-Dokumentation"),

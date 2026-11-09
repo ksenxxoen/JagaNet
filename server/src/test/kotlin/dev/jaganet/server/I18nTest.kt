@@ -25,7 +25,7 @@ class I18nTest {
         assertTrue(web.any { it.extension == "tsx" } && web.any { it.extension == "ts" }, "web/src has no .ts/.tsx files to check")
         // The key regex finds calls in TSX, including inside JSX braces.
         assertEquals(listOf("Sign in", "{n} day|{n} days"), keyCall.findAll("""<a>{t("Sign in")}</a>{tp(n, "{n} day|{n} days")}""").map { it.groupValues[1] }.toList())
-        assertTrue(web.flatMap { keysIn(it) }.contains("This screen is moving to the new website"))
+        assertTrue(web.flatMap { keysIn(it) }.contains("Why this status"))
     }
 
     /** t("…"), tp(n, "…"), and server errors: notFound("…"), badRequest("…"), AppError(…, "…"), translate(…, "…"). */

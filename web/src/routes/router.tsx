@@ -1,7 +1,7 @@
 /**
  * Every route of the website with hash history (#/account?order=…), the same addresses as app.js.
- * Moved screens load lazily by section (landing, sign-in, account, referrals, invite, support); the
- * rest are placeholders until their sub-tasks of the epic move them (W-6…W-8).
+ * Every screen loads lazily by section (landing, sign-in, account, referrals, invite, support,
+ * status, analytics); the admin panel's tabs load lazily inside AdminScreen.
  */
 import {
   createHashHistory,
@@ -13,12 +13,10 @@ import {
   type RouterHistory,
 } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
-import { t } from "@/i18n";
 import { Shell } from "@/components/shell/Shell";
 import { Spinner } from "@/components/ui";
 import { useSession } from "@/store/session";
 import { requireOwner, requireSignIn, type RouterContext } from "./guards";
-import { Placeholder } from "./Placeholder";
 import { AdminScreen } from "@/features/admin/AdminScreen";
 import { parseSearch, pick, stringifySearch } from "./search";
 import type { QueryClient } from "@tanstack/react-query";
@@ -29,6 +27,8 @@ const accountScreen = () => import("@/features/account");
 const referralsScreen = () => import("@/features/referrals");
 const inviteScreen = () => import("@/features/invite");
 const supportScreen = () => import("@/features/support");
+const statusScreen = () => import("@/features/status");
+const analyticsScreen = () => import("@/features/analytics");
 const LazyLanding = lazy(() => landing().then((m) => ({ default: m.Landing })));
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
@@ -103,17 +103,17 @@ const support = createRoute({ getParentRoute: () => rootRoute, path: "/support",
 const status = createRoute({
   getParentRoute: () => rootRoute,
   path: "/status",
-  validateSearch: pick("range"),
+  validateSearch: pick("range", "q"),
   beforeLoad: ({ context, location }) => requireOwner(context, `#${location.href}`),
-  component: () => <Placeholder title={t("Server status")} />,
+  component: lazyRouteComponent(statusScreen, "Status"),
 });
 
 const analytics = createRoute({
   getParentRoute: () => rootRoute,
   path: "/analytics",
-  validateSearch: pick("period", "server", "user", "view", "q"),
+  validateSearch: pick("period", "server", "user", "view", "q", "sort", "page"),
   beforeLoad: ({ context, location }) => requireOwner(context, `#${location.href}`),
-  component: () => <Placeholder title={t("Analytics")} />,
+  component: lazyRouteComponent(analyticsScreen, "Analytics"),
 });
 
 const admin = createRoute({

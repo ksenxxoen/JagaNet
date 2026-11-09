@@ -486,3 +486,112 @@ export const diagnosticsSummary = (over: Partial<Schema<"DiagnosticsSummary">> =
   hasComment: true,
   ...over,
 });
+
+/** A node of the status page (/admin/servers/overview): working, reported a minute before `now`. */
+export const overviewServer = (over: Partial<Schema<"OverviewServer">> = {}): Schema<"OverviewServer"> => ({
+  id: "de-1",
+  name: "de-1",
+  displayName: "Germany 1",
+  city: "Frankfurt",
+  countryCode: "DE",
+  host: "de1.example.test",
+  protocols: ["vless"],
+  remote: true,
+  active: true,
+  state: "online",
+  status: "ok",
+  health: "ok",
+  issues: [],
+  peers: 40,
+  maxPeers: 200,
+  online: 12,
+  cpu: 0.25,
+  memUsed: 1_000_000_000,
+  memTotal: 4_000_000_000,
+  diskFree: 30_000_000_000,
+  diskTotal: 40_000_000_000,
+  rxBps: 12_500_000,
+  txBps: 2_000_000,
+  lastReportAt: "2026-11-09T11:59:00Z",
+  agentVersion: "1.4.0",
+  traffic24h: 52_000_000_000,
+  spark: [1, 2, null, 4],
+  maintenance: false,
+  inSubscription: true,
+  sortOrder: 0,
+  ...over,
+});
+
+/** The status page's answer at 2026-11-09 12:00 UTC: the main server with its checks, and the given nodes. */
+export const serversOverview = (over: Partial<Schema<"ServersOverviewRes">> = {}): Schema<"ServersOverviewRes"> => ({
+  now: "2026-11-09T12:00:00Z",
+  range: "24h",
+  balancer: false,
+  main: {
+    host: "panel.example.test",
+    cpu: 0.1,
+    memUsed: 2e9,
+    memTotal: 8e9,
+    diskFree: 50e9,
+    diskTotal: 100e9,
+    mailReady: true,
+    botEnabled: true,
+    measuredAt: "2026-11-09T11:59:30Z",
+  },
+  monitor: {
+    overall: "ok",
+    checks: [
+      { key: "db", level: "ok", message: "Responds", args: {} },
+      { key: "https", level: "ok", message: "Responds", args: {} },
+    ],
+    network: { monthRxBytes: 0, monthTxBytes: 0 },
+    series: [],
+    alerts: [],
+    notify: { emails: ["owner@example.test"], emailReady: true, telegramChats: 1 },
+  },
+  servers: [overviewServer()],
+  rules: { silentMinutes: 3, hotPercent: 90 },
+  ...over,
+});
+
+export const trafficSplit = (over: Partial<Schema<"TrafficSplit">> = {}): Schema<"TrafficSplit"> => ({
+  down: 8_000_000_000,
+  up: 2_000_000_000,
+  torrentDown: 1_000_000_000,
+  torrentUp: 0,
+  ...over,
+});
+
+export const analyticsServer = (over: Partial<Schema<"AnalyticsServer">> = {}): Schema<"AnalyticsServer"> => ({
+  id: "de-1",
+  name: "Germany 1",
+  city: "Frankfurt",
+  countryCode: "DE",
+  active: true,
+  remote: true,
+  devices: 10,
+  activeDevices: 6,
+  users: 5,
+  online: 3,
+  traffic: trafficSplit(),
+  classes: "ok",
+  ...over,
+});
+
+export const analyticsUser = (over: Partial<Schema<"AnalyticsUser">> = {}): Schema<"AnalyticsUser"> => ({
+  id: "u7",
+  name: "Anna",
+  email: "anna@example.test",
+  plan: "pro",
+  devices: 3,
+  activeDevices: 2,
+  servers: ["Germany 1"],
+  traffic: trafficSplit(),
+  lastSeenAt: "2026-11-08T10:00:00Z",
+  ...over,
+});
+
+export const trafficPoints = (): Schema<"TrafficPoint">[] => [
+  { ts: "2026-11-07T00:00:00Z", down: 3e9, up: 1e9, torrent: 5e8 },
+  { ts: "2026-11-08T00:00:00Z", down: 5e9, up: 1e9, torrent: 5e8 },
+];
