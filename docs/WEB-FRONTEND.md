@@ -171,7 +171,7 @@ styles in the HTML (Vite writes files only), toasts without goober (`react-hot-t
 the QR code on `<canvas>`, widths through CSSOM (React's `style` prop, which the CSP allows), no
 external fonts (system fonts; the website keeps Inter). Checked three times:
 
-1. the build (`build/plugins.ts`): prints every file the mini app and `/tg/open` load with sizes
+1. the build (`vite/plugins.ts`): prints every file the mini app and `/tg/open` load with sizes
    and fails on `localStorage`, `sessionStorage`, `document.cookie`, a website module (other
    screens, the router, the language detector, admin, charts, Swagger UI), a `data:` URL in their
    CSS, or an inline script or style in their HTML. Axios's XSRF cookie helper is replaced with a

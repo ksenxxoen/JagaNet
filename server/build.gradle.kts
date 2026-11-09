@@ -80,7 +80,7 @@ val buildWeb = tasks.register<com.github.gradle.node.npm.task.NpmTask>("buildWeb
     dependsOn(tasks.named("npmInstall"))
     npmCommand.set(listOf("run", "build"))
     inputs.dir(webDir.dir("src"))
-    inputs.dir(webDir.dir("build"))
+    inputs.dir(webDir.dir("vite"))
     inputs.files(
         webDir.files("index.html", "miniapp.html", "tg-open.html", "package.json", "package-lock.json", "vite.config.ts", "tailwind.config.ts", "postcss.config.js", "tsconfig.json"),
     )

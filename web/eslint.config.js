@@ -17,7 +17,7 @@ const features = readdirSync(new URL("./src/features", import.meta.url), { withF
 /**
  * The website's own modules: web storage, the router, the language detector, buying from the
  * website. The mini app and the UI kit never import them (its bundle has no web storage, and the
- * build checks that too: build/plugins.ts).
+ * build checks that too: vite/plugins.ts).
  */
 const siteOnly = [
   {
