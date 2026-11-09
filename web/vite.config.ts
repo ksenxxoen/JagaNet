@@ -7,12 +7,12 @@ import { miniappBundle, noAxiosCookies } from "./vite/plugins.ts";
 /**
  * Three pages from one build, all with assets under /ui/assets/ (hashed names, cached for a year):
  *
- *   - index.html: the website, served by the panel on /next/ (preview, docs/WEB-FRONTEND.md);
- *   - miniapp.html: the Telegram mini app, a template the panel fills and serves on /tg/app-next;
- *   - tg-open.html: /tg/open-next, hands an import link from the mini app to the app.
+ *   - index.html: the website, served by the panel on / (WEB_UI=new; the preview /next/ with WEB_UI=legacy);
+ *   - miniapp.html: the Telegram mini app, a template the panel fills and serves on /tg/app (/tg/app-next with WEB_UI=legacy);
+ *   - tg-open.html: /tg/open (/tg/open-next), hands an import link from the mini app to the app.
  *
- * The HTML is served where it belongs; the assets are the same for every address, so switching
- * addresses later (W-10) needs no rebuild. `npm run dev` proxies /v1 and the server pages to a
+ * The HTML is served where it belongs; the assets are the same for every address, so the panel's
+ * WEB_UI switch (W-10, docs/WEB-FRONTEND.md) changes addresses without a rebuild. `npm run dev` proxies /v1 and the server pages to a
  * local server (`./gradlew :server:sim`, port 4000 by default; JAGANET_DEV_SERVER overrides it).
  */
 const backend = process.env.JAGANET_DEV_SERVER ?? "http://localhost:4000";

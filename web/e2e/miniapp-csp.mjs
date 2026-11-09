@@ -1,202 +1,20 @@
-// The mini app in a real browser under its real CSP (issue #126): `npm run test:browser` after `npm run build`.
+// The mini app in a real browser under its real CSP (issues #126, #127): `npm run test:browser` after `npm run build`.
 //
-// A small server plays the panel: /tg/app-next and /tg/open-next are the built templates filled like
-// MiniApp.kt does ({{lang}}, {{bot}}, {{t:…}}), with MINIAPP_CSP read from MiniApp.kt itself; /ui/assets
-// are the built files; /v1 answers with demo data (no real hosts, keys or people) and /v1/i18n/<lang>
-// with the texts from shared/.../i18n/strings. Telegram's script is replaced by a stand-in Telegram.WebApp.
+// The panel with WEB_UI=new is played by panel.mjs: /tg/app and /tg/open are the built templates with
+// MINIAPP_CSP; /tg/app-next and /tg/open-next lead there. Telegram's script is replaced by a stand-in
+// Telegram.WebApp.
 //
-// Fails on any CSP violation, page error or failed request, checks that the QR code is drawn and a toast
-// shows; with --screenshots writes every screen (light and dark, phone width) to docs/screenshots/web-next/w9/.
-import { readFileSync, readdirSync, mkdirSync, existsSync } from "node:fs";
-import { createServer } from "node:http";
-import { dirname, extname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+// Fails on any CSP violation, page error or failed request, checks that the QR code is drawn, a toast
+// shows, import links go through /tg/open, and the bot's buttons (#/pay, #/devices) and the preview's
+// addresses open the right screen; with --screenshots writes every screen (light and dark, phone width)
+// to docs/screenshots/web-next/w9/.
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { chromium } from "playwright";
+import { SUB, root, startPanel } from "./panel.mjs";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const root = join(here, "..", "..");
-const dist = join(here, "..", "dist");
 const shots = process.argv.includes("--screenshots") ? join(root, "docs", "screenshots", "web-next", "w9") : null;
-
-/* ---------------- what the panel serves ---------------- */
-
-const miniAppKt = readFileSync(join(root, "server/src/main/kotlin/dev/jaganet/server/http/MiniApp.kt"), "utf8");
-const csp = [...miniAppKt.matchAll(/const val MINIAPP_CSP = ([\s\S]*?)\n\n/g)][0][1]
-  .match(/"((?:[^"\\]|\\.)*)"/g)
-  .map((s) => JSON.parse(s))
-  .join("");
-if (!csp.includes("script-src 'self' https://telegram.org") || !csp.includes("style-src 'self'")) throw new Error(`Unexpected CSP: ${csp}`);
-
-/** en → [ru, de] from the shared strings (S("en", "ru", "de")). */
-const strings = new Map();
-const stringsDir = join(root, "shared/src/commonMain/kotlin/dev/jaganet/api/i18n/strings");
-const q = String.raw`"((?:[^"\\]|\\.)*)"`;
-const S = new RegExp(String.raw`S\(\s*${q}\s*,\s*${q}\s*,\s*${q}`, "g");
-for (const f of readdirSync(stringsDir)) {
-  for (const m of readFileSync(join(stringsDir, f), "utf8").matchAll(S)) {
-    const [en, ru, de] = [m[1], m[2], m[3]].map((x) => JSON.parse(`"${x}"`));
-    strings.set(en, { ru, de });
-  }
-}
-const dict = (lang) => Object.fromEntries([...strings].map(([en, v]) => [en, v[lang]]));
-const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const fill = (template, lang, bot) =>
-  template
-    .replaceAll("{{lang}}", lang)
-    .replaceAll("{{bot}}", esc(bot))
-    .replace(/\{\{t:([^}]+)}}/g, (_, en) => esc((lang === "en" ? en : strings.get(en)?.[lang]) ?? en));
-
-const SUB = "https://boop.example.com/k/demo-subscription/vless";
-const demo = {
-  "/me": {
-    user: { id: "u1", email: "tg424242@telegram.invalid", role: "user", createdAt: "2026-01-10T00:00:00Z" },
-    entitlement: {
-      plan: "pro",
-      tariffName: "Pro 3",
-      expiresAt: "2027-02-01T00:00:00Z",
-      autoRenew: false,
-      deviceLimit: 5,
-      freeEnded: false,
-    },
-    usage: { periodStart: "2026-11-01T00:00:00Z", bytesUsed: 0, devicesUsed: 2 },
-  },
-  "/keys": {
-    keys: [],
-    vless: {
-      id: "v1",
-      name: "Boop VPN",
-      active: true,
-      links: ["vless://demo@de.example.com:443?type=tcp#Boop%20Germany", "vless://demo@nl.example.com:443?type=tcp#Boop%20Netherlands"],
-      subscriptionUrl: SUB,
-      pageUrl: "https://boop.example.com/k/demo-subscription",
-      qrUrl: "https://boop.example.com/k/demo-subscription/vless/0.png",
-    },
-  },
-  "/devices": {
-    limit: 5,
-    devices: [
-      {
-        id: "d1",
-        name: "Pixel 8",
-        platform: "android",
-        protocol: "amneziawg",
-        online: true,
-        isCurrent: false,
-        createdAt: "2026-02-01T00:00:00Z",
-        outsideLimit: false,
-      },
-      {
-        id: "d2",
-        name: "MacBook",
-        platform: "desktop",
-        protocol: "amneziawg",
-        online: false,
-        lastSeenAt: "2026-11-07T18:00:00Z",
-        isCurrent: false,
-        createdAt: "2026-03-01T00:00:00Z",
-        outsideLimit: false,
-      },
-    ],
-  },
-  "/billing/plans": {
-    paymentsEnabled: true,
-    free: { deviceLimit: 1, monthlyDataLimitBytes: 10000000000 },
-    tariffs: [
-      { id: "m1", name: "Pro", durationValue: 1, durationUnit: "months", priceMinor: 30000, currency: "RUB", deviceLimit: 5 },
-      { id: "m3", name: "Pro 3", durationValue: 3, durationUnit: "months", priceMinor: 81000, currency: "RUB", deviceLimit: 5 },
-      { id: "m12", name: "Pro 12", durationValue: 12, durationUnit: "months", priceMinor: 270000, currency: "RUB", deviceLimit: 5 },
-    ],
-  },
-  "/site": {
-    testPayments: true,
-    paymentsEnabled: true,
-    emailSignIn: true,
-    testCodes: false,
-    referralsPublic: false,
-    inviteRewardDays: 7,
-    communityUrl: "https://t.me/boop_demo_group",
-    androidAppUrl: "https://boop.example.com/download/android",
-  },
-  "/telegram": {
-    linked: true,
-    username: "demo_user",
-    notify: true,
-    telegramOnly: true,
-    botUrl: "https://t.me/boop_demo_bot",
-    bot: "boop_demo_bot",
-    lang: "ru",
-    invites: true,
-  },
-  "/me/payments": {
-    payments: [
-      {
-        id: "p1",
-        productId: "m3",
-        source: "telegram",
-        startedAt: "2026-11-01T00:00:00Z",
-        expiresAt: "2027-02-01T00:00:00Z",
-        status: "active",
-        tariffName: "Pro 3",
-      },
-      {
-        id: "p2",
-        productId: "referral",
-        source: "referral",
-        startedAt: "2026-10-20T00:00:00Z",
-        expiresAt: "2026-10-27T00:00:00Z",
-        status: "expired",
-      },
-    ],
-  },
-  "/support": { available: true },
-  "/referrals": {
-    code: "DEMO",
-    invited: 4,
-    subscribed: 1,
-    rewardDays: 7,
-    daysEarned: 7,
-    shareUrl: "https://boop.example.com/r/DEMO",
-    telegramUrl: "https://t.me/boop_demo_bot?start=ref_DEMO",
-    rewardCondition: "payment",
-  },
-};
-
-const types = { ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png" };
-const server = createServer((req, res) => {
-  const url = new URL(req.url, "http://localhost");
-  const page = { "/tg/app-next": "miniapp.html", "/tg/open-next": "tg-open.html" }[url.pathname];
-  const send = (status, body, type, headers = {}) => {
-    res.writeHead(status, { "Content-Type": type, ...headers });
-    res.end(body);
-  };
-  if (page) {
-    const lang = url.searchParams.get("lang") ?? "ru";
-    return send(200, fill(readFileSync(join(dist, page), "utf8"), lang, "boop_demo_bot"), "text/html; charset=utf-8", {
-      "Content-Security-Policy": csp,
-      "Cache-Control": "no-cache",
-    });
-  }
-  if (url.pathname.startsWith("/ui/assets/")) {
-    const file = join(dist, "assets", url.pathname.slice("/ui/assets/".length));
-    if (!existsSync(file)) return send(404, "Not found", "text/plain");
-    return send(200, readFileSync(file), types[extname(file)] ?? "application/octet-stream");
-  }
-  if (url.pathname === "/favicon.svg")
-    return send(200, readFileSync(join(root, "server/src/main/resources/web/favicon.svg")), types[".svg"]);
-  if (url.pathname.startsWith("/v1/")) {
-    const path = url.pathname.slice(3);
-    const json = (body) => send(200, JSON.stringify(body), "application/json");
-    if (path.startsWith("/i18n/")) return json(dict(path.split("/")[2]));
-    if (path === "/auth/telegram/webapp") return json({ token: "demo-token", deviceId: "d0", user: demo["/me"].user });
-    if (path === "/app/desktop") return send(404, JSON.stringify({ error: { code: "not_found", message: "No" } }), "application/json");
-    if (req.method !== "GET") return json({ ok: true });
-    if (path in demo) return json(demo[path]);
-    return send(404, JSON.stringify({ error: { code: "not_found", message: path } }), "application/json");
-  }
-  send(404, "Not found", "text/plain");
-});
-await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const origin = `http://127.0.0.1:${server.address().port}`;
+const { origin, close } = await startPanel();
 
 /* ---------------- Telegram's stand-in ---------------- */
 
@@ -250,7 +68,7 @@ const problems = [];
 const browser = await chromium.launch();
 if (shots) mkdirSync(shots, { recursive: true });
 
-async function open(scheme, path, { telegram = true } = {}) {
+async function open(scheme, path, { telegram = true, waitUntil = "load" } = {}) {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: shots ? 2 : 1,
@@ -277,7 +95,7 @@ async function open(scheme, path, { telegram = true } = {}) {
   page.on("requestfailed", (r) => {
     if (!/^(happ|v2raytun):/.test(r.url())) problems.push(`${scheme} ${path}: request failed ${r.url()}`);
   });
-  await page.goto(origin + path);
+  await page.goto(origin + path, { waitUntil });
   return { page, context };
 }
 
@@ -289,9 +107,11 @@ const shot = async (page, name) => {
 };
 
 const TABS = { devices: "Устройства", pay: "Оплата", support: "Поддержка", profile: "Профиль" };
+/** The heading of each tab's screen, as seen after a tap on the tab (light run). */
+const headings = {};
 
 for (const scheme of ["light", "dark"]) {
-  const { page, context } = await open(scheme, "/tg/app-next");
+  const { page, context } = await open(scheme, "/tg/app");
   await page.getByRole("heading", { name: "Привет, Алекс" }).waitFor();
   await shot(page, `home-${scheme}`);
 
@@ -313,39 +133,71 @@ for (const scheme of ["light", "dark"]) {
   await shot(page, `toast-${scheme}`);
   await page.getByRole("button", { name: /Добавить в Happ/ }).click();
   const opened = await page.evaluate(() => window.__opened);
-  if (!opened.some((u) => u.includes("/tg/open-next#happ%3A%2F%2Fadd%2F")))
-    problems.push(`${scheme}: Happ import did not go through /tg/open-next: ${opened}`);
+  // From /tg/app the import goes through /tg/open (not the preview's /tg/open-next), the secret in the fragment.
+  if (!opened.some((u) => u.startsWith(`${origin}/tg/open#happ%3A%2F%2Fadd%2F`)))
+    problems.push(`${scheme}: Happ import did not go through /tg/open: ${opened}`);
 
   // Let the toast go before the next screens are taken.
   await page.waitForTimeout(2500);
   for (const [name, tab] of Object.entries(TABS)) {
     await page.getByRole("navigation").getByRole("button", { name: tab }).click();
     await page.locator("main h1").first().waitFor();
+    headings[name] ??= (await page.locator("main h1").first().textContent())?.trim();
     await page.waitForTimeout(150);
     await shot(page, `${name}-${scheme}`);
   }
-  await violations(page, `${scheme} /tg/app-next`);
+  await violations(page, `${scheme} /tg/app`);
   await context.close();
 
   // Outside Telegram: the template's own screen, no API calls.
-  const outside = await open(scheme, "/tg/app-next", { telegram: false });
+  const outside = await open(scheme, "/tg/app", { telegram: false });
   await outside.page.getByRole("heading", { name: "Откройте Boop в Telegram" }).waitFor();
   await shot(outside.page, `outside-${scheme}`);
   await violations(outside.page, `${scheme} outside`);
   await outside.context.close();
 
-  // /tg/open-next with a link that is not allowed: the warning, nothing opened.
-  const bad = await open(scheme, "/tg/open-next#" + encodeURIComponent("javascript:alert(1)"));
+  // /tg/open with a link that is not allowed: the warning, nothing opened.
+  const bad = await open(scheme, "/tg/open#" + encodeURIComponent("javascript:alert(1)"));
   await bad.page.getByText("Эта ссылка не работает", { exact: false }).waitFor();
   await shot(bad.page, `open-bad-${scheme}`);
-  await violations(bad.page, `${scheme} /tg/open-next`);
+  await violations(bad.page, `${scheme} /tg/open`);
   await bad.context.close();
 }
 
+/* ---------------- addresses: the bot's buttons and the preview's old links (W-10) ---------------- */
+
+const screenAt = async (path, expected) => {
+  const { page, context } = await open("light", path);
+  const h1 = page.locator("main h1").first();
+  await h1.waitFor();
+  const text = (await h1.textContent())?.trim();
+  if (text !== expected) problems.push(`${path}: the screen is "${text}", not "${expected}"`);
+  await violations(page, path);
+  const url = page.url();
+  await context.close();
+  return url;
+};
+// The bot's buttons: "Open Boop" at payment and at devices.
+for (const screen of ["pay", "devices"]) await screenAt(`/tg/app#/${screen}`, headings[screen]);
+// A saved preview link lands on the main address with its fragment (the screen, Telegram's launch data).
+const landed = await screenAt("/tg/app-next#/pay", headings.pay);
+if (landed !== `${origin}/tg/app#/pay`) problems.push(`/tg/app-next#/pay landed on ${landed}`);
+{
+  const link = "#" + encodeURIComponent("happ://add/" + SUB);
+  // /tg/open hands the link to the app at once, so the page never finishes loading in a browser without Happ.
+  const { page, context } = await open("light", "/tg/open-next" + link, { waitUntil: "commit" });
+  await page.waitForURL(`${origin}/tg/open${link}`, { waitUntil: "commit" });
+  await page.locator("#go").waitFor({ state: "attached" });
+  await violations(page, "/tg/open-next");
+  await context.close();
+}
+
 await browser.close();
-server.close();
+close();
 if (problems.length) {
   console.error(`The mini app in the browser:\n  ${problems.join("\n  ")}`);
   process.exit(1);
 }
-console.log(`The mini app in the browser: no CSP violations, QR drawn, toasts shown${shots ? `, screenshots in ${shots}` : ""}.`);
+console.log(
+  `The mini app in the browser: no CSP violations, QR drawn, toasts shown, the bot's and the preview's addresses open their screens${shots ? `, screenshots in ${shots}` : ""}.`,
+);

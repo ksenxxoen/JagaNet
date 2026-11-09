@@ -1,9 +1,10 @@
 # New website (web/): React + TypeScript
 
 The website is moving from plain JS without a build (`server/src/main/resources/web/`) to a React
-app in `web/` (epic #117). Until the switch (W-10) the new site is a **preview on `/next/`**
-(`noindex`) and the new Telegram mini app a preview on **`/tg/app-next`** (with `/tg/open-next`);
-`/`, `/tg/app`, `/tg/open`, `/k/…` and the API stay as they are.
+app in `web/` (epic #117). Since W-10 (#127) the panel serves the new website on **`/`** and the new
+Telegram mini app on **`/tg/app`** (with `/tg/open`), unless `WEB_UI=legacy` (see "Switching and
+rollback" below). The old files stay in the jar until W-11; `/k/…`, the server's own pages and the
+API are the same in both modes.
 
 The development plan (stages, module layout, shared UI kit, API layer, migration and backend
 changes): `docs/frontend-plan.md`.
@@ -21,7 +22,7 @@ Swagger UI (`swagger-ui-dist`, the owner's API tab), Vitest + Testing Library, E
 
 | Path | What |
 | --- | --- |
-| `web/index.html` | The website's page: meta tags as the old `index.html`, plus `noindex` for the preview |
+| `web/index.html` | The website's page: meta tags as the old `index.html` (indexed on `/`; the preview on `/next/` gets `X-Robots-Tag: noindex` from the server) |
 | `web/miniapp.html`, `web/tg-open.html` | The mini app's and `/tg/open`'s pages: templates the server fills (`{{lang}}`, `{{bot}}`, `{{t:…}}`), with the static splash and "Open Boop in Telegram" screens |
 | `web/src/entries/site.tsx` | Start of the website: the localStorage session, saves `?ref=`, picks and loads the language, mounts the router |
 | `web/src/entries/miniapp.tsx`, `tg-open.ts` | Start of the mini app (memory session, theme, sign-in, first screen) and of `/tg/open` (no React) |
@@ -86,7 +87,9 @@ npm run typecheck
 npm run lint       # ESLint + Prettier check
 npm test           # Vitest
 npm run build      # web/dist (prints what the mini app loads and checks its rules)
-npm run test:browser # the mini app in Chromium under MINIAPP_CSP, after the build (--screenshots: docs/screenshots/web-next/w9/)
+npm run test:browser # after the build: the mini app in Chromium under MINIAPP_CSP, then every link of the server and the bot on the website
+node e2e/miniapp-csp.mjs --screenshots # the mini app's screens: docs/screenshots/web-next/w9/
+node e2e/site-links.mjs --screenshots  # the website's addresses: docs/screenshots/web-next/w10/
 npm run gen:api    # src/api/schema.d.ts from server/src/main/resources/openapi.yaml
 ```
 
@@ -102,12 +105,12 @@ address via `JAGANET_DEV_SERVER=http://host:port npm run dev`).
   outputs, so an unchanged `web/` is not rebuilt. The Node download repository is declared in
   `settings.gradle.kts`.
 - One build, three pages, one base: every file is in `/ui/assets/*` (hashed names). `http/WebNext.kt`
-  serves `/ui/assets/*` with a one-year immutable cache (nothing else under `/ui/`, so the
-  templates are never served raw) and `/next/` (`index.html` with `no-cache` and
-  `X-Robots-Tag: noindex`). `http/MiniApp.kt` serves `/tg/app-next` and `/tg/open-next` from
-  `miniapp.html` and `tg-open.html`. Because the pages only reference `/ui/assets`, the switch in
-  W-10 serves the same HTML on other addresses without a rebuild. Tested in `WebNextTest` and
-  `MiniAppTest`.
+  serves `/ui/assets/*` with a one-year immutable cache (nothing else under `/ui/` but the panel's
+  own `/ui/to-main.js`, so the templates are never served raw) and `index.html` with `no-cache`
+  on `/` (or on `/next/` with `X-Robots-Tag: noindex` while `WEB_UI=legacy`). `http/MiniApp.kt`
+  serves `miniapp.html` and `tg-open.html` on `/tg/app` and `/tg/open` (or `/tg/app-next` and
+  `/tg/open-next`). Because the pages only reference `/ui/assets`, the switch serves the same HTML on
+  other addresses without a rebuild. Tested in `WebNextTest` and `MiniAppTest` in both modes.
 - CI: `.github/workflows/web.yml` (API types up to date, typecheck, lint, test, build on changes
   in `web/**` and `openapi.yaml`); `server.yml` also runs on `web/**`.
 - Chunks (W-9): `core` holds the libraries the mini app shares with the website (React, React
@@ -140,7 +143,7 @@ address via `JAGANET_DEV_SERVER=http://host:port npm run dev`).
 
 ## Telegram mini app
 
-`/tg/app-next` (preview; `/tg/app` stays the old one until W-10) is `features/miniapp/` on the
+`/tg/app` (`/tg/app-next` while `WEB_UI=legacy`) is `features/miniapp/` on the
 same stack and UI kit as the website. What it keeps from `tg/app.js`:
 
 - **Sign-in.** `POST /v1/auth/telegram/webapp` with `Telegram.WebApp.initData`; the token only in
@@ -179,12 +182,40 @@ external fonts (system fonts; the website keeps Inter). Checked three times:
 2. `MiniAppTest`: the served pages (template filled, same CSP and headers as `/tg/app`, 404 while
    the mini app is off) and every JS file they load, followed through the imports in the jar;
 3. `npm run test:browser` (`e2e/miniapp-csp.mjs`, CI job `miniapp-browser` in `web.yml`): Chromium
-   opens the built pages with the CSP from `MiniApp.kt`, a stand-in `Telegram.WebApp` and demo API
-   answers, goes through every screen in light and dark and fails on any CSP violation, page
-   error or failed request; the QR code must be drawn and a toast shown.
+   opens the built pages on `/tg/app` and `/tg/open` with the CSP from `MiniApp.kt`, a stand-in
+   `Telegram.WebApp` and demo API answers (`e2e/panel.mjs` plays the panel with `WEB_UI=new`), goes
+   through every screen in light and dark and fails on any CSP violation, page error or failed
+   request; the QR code must be drawn, a toast shown, an import link must go through `/tg/open#…`,
+   the bot's `/tg/app#/pay` and `#/devices` must open their screens and `/tg/app-next#…` must land
+   on `/tg/app#…`.
 
 ESLint keeps the website's modules (`lib/storage`, `lib/checkout`, `i18n/site`, the router, the
 shell) out of `features/miniapp/`, the mini app's entries and `components/ui/`.
+
+## Switching and rollback (W-10)
+
+`WEB_UI` in the server's environment (`Config.kt`, docs/SERVER.md) picks the interface of `/`,
+`/tg/app` and `/tg/open`: `new` (default) or `legacy` (the old pages). Rollback is
+`WEB_UI=legacy` and a restart of the service, no rebuild.
+
+- **Old tabs.** The old files (`/app.js`, `/style.css`, `/tg/app.js`…) are served in both modes,
+  so a tab opened before the switch keeps working until it is reloaded.
+- **Previews.** With `WEB_UI=new`, `/next/`, `/tg/app-next` and `/tg/open-next` answer with a
+  page that loads `/ui/to-main.js` (`server/src/main/resources/web-switch/`): it replaces the
+  address with `/`, `/tg/app` or `/tg/open`, keeping `?query` and `#fragment` (the fragment, such
+  as `#/pay` or Telegram's `#tgWebAppData=…`, never reaches the server, so this happens on the
+  client). It is our own file, so the mini app's CSP allows it. With `WEB_UI=legacy` the previews
+  work as before, so the new interface can be looked at after a rollback.
+- **Session.** The website reads the old site's `localStorage` keys, so people stay signed in
+  (Vitest `store/__tests__/legacy-session.test.ts`, browser `e2e/site-links.mjs`).
+- **Links.** Every address the server and the bot hand out opens its screen of the new interface:
+  `WebNextTest` follows the real links (sign-in link, app sign-in, the checkout's way back,
+  `/support`, `/r/<code>`, the monitor's `#/status`, the bot's `#/invite`, `#/referrals`,
+  `/tg/app#/pay`, `#/devices`) to a page of the new build that has the route;
+  `e2e/site-links.mjs` opens them in Chromium (`/#/login?token=`, `/#/app-login?id=`,
+  `/#/account`, `/#/account?order=`, `/#/status`, `/#/support`, `#/invite`, `#/referrals`,
+  `/r/<code>` → `?ref=`, `/support`, `?lang=`, `/next/#…`) and checks the screen.
+- **CI.** `web.yml` job `miniapp-browser` runs both browser tests; `server.yml` runs `:server:test`.
 
 ## Screen boundaries
 
@@ -246,4 +277,4 @@ and 2 German forms. `./gradlew :server:test --tests '*I18nTest'` checks it.
 ## Screenshots
 
 `docs/screenshots/web-next/`: the shell on desktop and phone, ru and de; `w3/` … `w7/`: the old and
-the new screens of each sub-task (`*-old.png`, `*-new.png`, desktop and phone); `w8/`: the status page (summary, a node's card, the main server's card) and the analytics (servers, users, a server, a person), desktop and phone, taken on `:server:sim` demo data; `w9/`: every screen of the mini app in light and dark at phone width (`npm run test:browser -- --screenshots`, a stand-in `Telegram.WebApp` and demo answers).
+the new screens of each sub-task (`*-old.png`, `*-new.png`, desktop and phone); `w8/`: the status page (summary, a node's card, the main server's card) and the analytics (servers, users, a server, a person), desktop and phone, taken on `:server:sim` demo data; `w9/`: every screen of the mini app in light and dark at phone width (`node e2e/miniapp-csp.mjs --screenshots`, a stand-in `Telegram.WebApp` and demo answers); `w10/`: the main addresses with `WEB_UI=new` (landing, sign-in link, app sign-in, account with the old session, the order's way back, invite, support, status, referrals; `node e2e/site-links.mjs --screenshots`, demo answers).
