@@ -12,7 +12,7 @@ import { dark, light } from "./src/styles/tokens";
 const v = (name: string) => `var(--${name})`;
 
 export default {
-  content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  content: ["./*.html", "./src/**/*.{ts,tsx}"],
   darkMode: "media",
   theme: {
     extend: {
@@ -33,6 +33,8 @@ export default {
         warn: { DEFAULT: v("warning"), tint: v("warning-tint"), text: v("warning-text") },
         danger: { DEFAULT: v("danger"), tint: v("danger-tint"), text: v("danger-text") },
         neutral: { tint: v("neutral-tint"), text: v("neutral-text") },
+        /** Group headings; the mini app takes Telegram's section_header_text_color. */
+        section: "var(--section-head, var(--muted))",
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
@@ -50,7 +52,7 @@ export default {
     plugin(({ addBase }) =>
       addBase({
         ":root": light,
-        '@media (prefers-color-scheme: dark)': { ':root:not([data-scheme="light"])': dark },
+        "@media (prefers-color-scheme: dark)": { ':root:not([data-scheme="light"])': dark },
         ':root[data-scheme="dark"]': dark,
       }),
     ),

@@ -2,7 +2,7 @@
  * The owner's tabs of the referral section (ownerTabs in app.js, invOwnerTabs in invite.js): own
  * links, the whole program and the invite rewards. Two screens share them, so they live here.
  */
-import { LinkTabs } from "@/components/ui";
+import { LinkTabs } from "@/components/LinkTabs";
 import { useI18n } from "@/i18n";
 
 export type ReferralTab = "mine" | "all" | "rewards";

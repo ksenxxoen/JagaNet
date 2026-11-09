@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="{{lang}}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Boop</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <main class="mx-auto flex max-w-[480px] flex-col items-center gap-3 px-4 pb-10 pt-16 text-center">
+      <img src="/favicon.svg" alt="" width="72" height="72" class="rounded-2xl" />
+      <h1 class="m-0 text-2xl">{{t:Opening the app}}</h1>
+      <p class="m-0 text-muted">{{t:If the app didn't open, tap the button. No app yet? Install it first.}}</p>
+      <a
+        id="go"
+        href="#"
+        hidden
+        class="mt-2 inline-flex h-[52px] w-full items-center justify-center rounded-xl bg-primary px-6 text-base font-semibold text-white no-underline shadow-sm hover:bg-primary-hover"
+        >{{t:Open the app}}</a
+      >
+      <p id="bad" class="m-0 text-warn-text" hidden>{{t:This link doesn't work. Go back to Telegram and try again.}}</p>
+      <p class="m-0 text-[13px] text-muted">
+        <a href="https://www.happ.su/main/" rel="noreferrer">Happ</a>, <a href="https://v2raytun.com/" rel="noreferrer">v2RayTun</a>
+      </p>
+    </main>
+    <script type="module" src="/src/entries/tg-open.ts"></script>
+  </body>
+</html>

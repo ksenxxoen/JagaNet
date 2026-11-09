@@ -13,7 +13,10 @@ import { usePolling } from "./usePolling";
 
 export const ORDER_POLL_MS = 4000;
 
-export function useOrder(id: string | null, { interval = ORDER_POLL_MS, since, maxAge }: { interval?: number; since?: number; maxAge?: number } = {}) {
+export function useOrder(
+  id: string | null,
+  { interval = ORDER_POLL_MS, since, maxAge }: { interval?: number; since?: number; maxAge?: number } = {},
+) {
   const qc = useQueryClient();
   const token = useSession((s) => s.token);
   const order = usePolling({

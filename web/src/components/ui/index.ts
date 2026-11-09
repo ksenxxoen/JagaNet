@@ -1,7 +1,8 @@
+/** The UI kit: shared by the website and the mini app, so nothing here imports the router or web storage. */
 export { Button, buttonVariants, type ButtonProps } from "./Button";
 export { Card, CardHeader } from "./Card";
 export { Checkbox, Field, Input, Select, Textarea } from "./Field";
-export { Chips, LinkTabs, Tabs, type LinkTabItem, type TabItem } from "./Tabs";
+export { Chips, Tabs, type TabItem } from "./Tabs";
 export { StatusBadge } from "./StatusBadge";
 export { Table, Td, Th } from "./Table";
 export { EmptyState, ErrorState, Spinner } from "./States";

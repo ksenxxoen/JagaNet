@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="{{lang}}" data-bot="{{bot}}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Boop</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- Served by the panel on /tg/app-next (http/MiniApp.kt) with MINIAPP_CSP: Telegram's script, then ours only. -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  </head>
+  <body>
+    <div id="root">
+      <div class="grid min-h-screen place-items-center">
+        <div class="flex flex-col items-center gap-4">
+          <img src="/favicon.svg" alt="" width="56" height="56" class="rounded-2xl" />
+          <span class="flex gap-1.5" role="presentation">
+            <i class="block size-2 animate-pulse rounded-full bg-primary motion-reduce:animate-none"></i>
+            <i class="block size-2 animate-pulse rounded-full bg-primary [animation-delay:150ms] motion-reduce:animate-none"></i>
+            <i class="block size-2 animate-pulse rounded-full bg-primary [animation-delay:300ms] motion-reduce:animate-none"></i>
+          </span>
+        </div>
+      </div>
+    </div>
+    <section id="outside" class="mx-auto flex max-w-[480px] flex-col items-center gap-3 px-4 pb-10 pt-16 text-center" hidden>
+      <img src="/favicon.svg" alt="" width="72" height="72" class="rounded-2xl" />
+      <h1 class="m-0 text-2xl">{{t:Open Boop in Telegram}}</h1>
+      <p class="m-0 text-muted">{{t:This page works inside our Telegram bot. Open the bot and tap Open.}}</p>
+      <a
+        id="botlink"
+        href="#"
+        class="mt-2 inline-flex h-[52px] w-full items-center justify-center rounded-xl bg-primary px-6 text-base font-semibold text-white no-underline shadow-sm hover:bg-primary-hover"
+        >{{t:Open the bot}}</a
+      >
+      <a href="/" class="text-link">{{t:Go to the website}}</a>
+    </section>
+    <script type="module" src="/src/entries/miniapp.tsx"></script>
+  </body>
+</html>

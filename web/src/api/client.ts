@@ -53,7 +53,7 @@ export function createApi(): AxiosInstance {
       // Sign-in itself (/auth/…) is never renewed: its 401 is the answer.
       if (status === 401 && onUnauthorized.renew && config && !config._renewed && !config.url?.startsWith("/auth/")) {
         config._renewed = true;
-        let renewed = false;
+        let renewed: boolean;
         try {
           renewed = await onUnauthorized.renew();
         } catch {

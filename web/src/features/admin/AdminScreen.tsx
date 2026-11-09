@@ -7,7 +7,8 @@
 import { useSearch } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { Page, PageHeader } from "@/components/layout";
-import { LinkTabs, Spinner } from "@/components/ui";
+import { LinkTabs } from "@/components/LinkTabs";
+import { Spinner } from "@/components/ui";
 import { useI18n } from "@/i18n";
 import { ADMIN_TABS, adminTab, type AdminTab } from "./tabs";
 
