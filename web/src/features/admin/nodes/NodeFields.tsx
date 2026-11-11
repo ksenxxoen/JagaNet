@@ -1,4 +1,4 @@
-/** The fields of a node (nodeFields(), locationFields(), vlessFields() in app.js), for the new and the edit form. */
+/** The fields of a node, for the new and the edit form. */
 import { Field, Input, Select } from "@/components/ui";
 import { useI18n } from "@/i18n";
 import { XHTTP_MODES, type NodeValues, type VlessValues } from "./nodeForm";

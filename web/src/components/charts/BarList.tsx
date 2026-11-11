@@ -1,4 +1,4 @@
-/** Horizontal bars for small breakdowns: where clicks come from, sign-up channels (breakdown() in app.js). */
+/** Horizontal bars for small breakdowns: where clicks come from, sign-up channels. */
 import { Card, CardHeader } from "@/components/ui";
 import { useI18n } from "@/i18n";
 

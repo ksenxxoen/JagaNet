@@ -1,5 +1,5 @@
 /**
- * #/admin (admin() in app.js), for the owner only (the route's guard: guests sign in first, other
+ * #/admin, for the owner only (the route's guard: guests sign in first, other
  * people go to #/account). The title, the tabs in the order of ADMIN_TABS plus API, and the
  * chosen tab (?tab=, unknown → dashboard). Every tab is its own lazy chunk, so guests and users
  * never download the admin panel and each tab loads alone.

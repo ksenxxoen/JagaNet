@@ -1,5 +1,5 @@
 /**
- * The test accounts tab (testersPane() in app.js): new accounts from rows pasted from a table, the
+ * The test accounts tab: new accounts from rows pasted from a table, the
  * list with each key's last connection, the table for Excel, giving an account's keys to a
  * registered user (with suggestions as you type) and deleting an account. Both ask first.
  */

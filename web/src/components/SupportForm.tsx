@@ -1,5 +1,5 @@
 /**
- * The form to support (support.js; the e-mail form of the mini app's support screen): e-mail,
+ * The form to support (#/support and the e-mail form of the mini app's support screen): e-mail,
  * subject, message, the optional name, and the hidden "website" field, the honeypot the server
  * checks. After sending, the form gives way to the answer.
  */

@@ -1,5 +1,5 @@
 /**
- * Signing out (the "Sign out" button of the account in app.js): the server forgets the session
+ * Signing out: the server forgets the session
  * (an error there does not keep the person signed in), the token and the cached data of the
  * person (/me and the account) are dropped, and the landing page opens.
  */

@@ -1,5 +1,5 @@
 /**
- * What the mini app keeps while it is open (in memory, like tg/app.js): the screen, the chosen
+ * What the mini app keeps while it is open (in memory only): the screen, the chosen
  * tariff and the order being paid. The order outlives a visit to another screen: back on the
  * payment screen, the waiting screen shows again.
  */

@@ -50,8 +50,6 @@ class MiniAppTest {
     private val token = "123456:TEST-token"
     private val on = mapOf("TELEGRAM_BOT_TOKEN" to token, "TELEGRAM_MINIAPP" to "1")
     private val onHttps = on + ("PUBLIC_URL" to "https://boop.example")
-    /** The old mini app on /tg/app (WEB_UI=legacy, the rollback); the default is the new one (W-10, #127). */
-    private val onLegacy = on + ("WEB_UI" to "legacy")
 
     /* ---------------- signing initData the way Telegram does (independent of the server's code) ---------------- */
 
@@ -288,113 +286,91 @@ class MiniAppTest {
         assertEquals("tg510@telegram.invalid", client().redeemLoginLink(LinkLoginReq(link.substringAfter("token="), DeviceInfo("Website", Platform.OTHER))).user.email)
     }
 
-    /* ---------------- the page ---------------- */
+    /* ---------------- the page (web/miniapp.html and web/tg-open.html, built into the jar; #126, #127, #128) ---------------- */
 
-    @Test fun `WEB_UI=legacy - GET tg app serves the old page with its CSP`() = harness(onLegacy) {
+    private val inlineScript = Regex("""<script(?![^>]*\bsrc=)[^>]*>""")
+
+    @Test fun `GET tg app and tg open serve the mini app with its CSP`() = harness(on) {
         val c = b.createClient {}
         val r = c.get("/tg/app")
         assertEquals(HttpStatusCode.OK, r.status)
         val html = r.bodyAsText()
-        assertTrue("https://telegram.org/js/telegram-web-app.js" in html)
-        assertTrue(Regex("""/tg/app\.js\?v=[0-9a-f]{12}""").containsMatchIn(html), html)
-        assertTrue("Откройте Boop в Telegram" in html, html)
-        assertFalse("{{" in html, html)
+        // MINIAPP_CSP and the same headers on every mini app page; Telegram's script first, then ours from /ui/assets.
         val csp = r.headers["Content-Security-Policy"]!!
+        assertEquals(MINIAPP_CSP, csp)
         assertTrue("script-src 'self' https://telegram.org;" in csp, csp)
-        assertTrue("default-src 'self'" in csp && "style-src 'self';" in csp && "frame-ancestors https://web.telegram.org" in csp, csp)
-        assertEquals("nosniff", r.headers["X-Content-Type-Options"])
-        val v = Regex("""app\.js\?v=([0-9a-f]+)""").find(html)!!.groupValues[1]
-        val js = c.get("/tg/app.js?v=$v")
-        assertEquals(HttpStatusCode.OK, js.status)
-        assertTrue("immutable" in js.headers["Cache-Control"]!!)
-        assertTrue("initData" in js.bodyAsText())
-        assertEquals("no-cache", c.get("/tg/app.js").headers["Cache-Control"])
-        assertEquals(HttpStatusCode.OK, c.get("/tg/app.css?v=$v").status)
-        // The raw template is never served.
-        assertEquals("/tg/app", b.createClient { followRedirects = false }.get("/tg/app.html").headers["Location"])
-        val open = c.get("/tg/open")
-        assertEquals(HttpStatusCode.OK, open.status)
-        assertEquals("no-store", open.headers["Cache-Control"])
-        assertTrue("/tg/open.js?v=$v" in open.bodyAsText())
-        // German when asked.
-        assertTrue("Öffne Boop in Telegram" in c.get("/tg/app?lang=de").bodyAsText())
-    }
-
-    @Test fun `the mini app's texts are translated and keep the house style`() {
-        val known = I18n.all.map { it.en }.toSet()
-        val dir = File("src/main/resources/web/tg")
-        // The old pages and the new templates (web/miniapp.html, web/tg-open.html).
-        val pages = dir.listFiles()!!.filter { it.extension == "html" } + listOf(File("../web/miniapp.html"), File("../web/tg-open.html"))
-        val texts = pages.flatMap { f -> Regex("""\{\{t:([^}]+)}}""").findAll(f.readText()).map { it.groupValues[1] }.toList() }
-        assertTrue(texts.count { it == "Open Boop in Telegram" } == 2, texts.toString())
-        assertTrue(texts.isNotEmpty())
-        assertTrue(texts.all { it in known }, (texts - known).toString())
-        // The token stays in memory: never in localStorage, sessionStorage or cookies.
-        val js = File(dir, "app.js").readText()
-        for (bad in listOf("localStorage", "sessionStorage", "document.cookie")) assertFalse(bad in js, bad)
-    }
-
-    /* ---------------- the new mini app (web/; /tg/app with WEB_UI=new, the preview /tg/app-next with legacy; #126, #127) ---------------- */
-
-    /** The new mini app's page and /tg/open on [app] and [open]: the template filled, the same CSP, headers and caching as the old page. */
-    private suspend fun Harness.assertNewMiniApp(app: String, open: String, oldCsp: String?) {
-        val c = b.createClient {}
-        val r = c.get(app)
-        assertEquals(HttpStatusCode.OK, r.status)
-        val html = r.bodyAsText()
-        // The same CSP, headers and caching as /tg/app; Telegram's script first, then ours from /ui/assets.
-        assertEquals(oldCsp, r.headers["Content-Security-Policy"])
-        assertEquals(MINIAPP_CSP, r.headers["Content-Security-Policy"])
+        assertTrue("default-src 'self'" in csp && "style-src 'self';" in csp && "img-src 'self';" in csp && "frame-ancestors https://web.telegram.org" in csp, csp)
+        assertFalse("unsafe-inline" in csp || "data:" in csp, csp)
         assertEquals("nosniff", r.headers["X-Content-Type-Options"])
         assertEquals("no-referrer", r.headers["Referrer-Policy"])
         assertEquals("noindex", r.headers["X-Robots-Tag"])
-        assertEquals("no-cache", r.headers["Cache-Control"])
         assertTrue(html.indexOf("https://telegram.org/js/telegram-web-app.js") in 0 until html.indexOf("/ui/assets/miniapp-"), html)
         assertTrue("""<html lang="ru" data-bot="">""" in html, html)
-        assertTrue("Откройте Boop в Telegram" in html, html)
         assertFalse("{{" in html, html)
-        // No inline scripts or styles: every <script> has a src, no style attributes or <style>.
-        assertFalse(Regex("""<script(?![^>]*\bsrc=)[^>]*>""").containsMatchIn(html), html)
+        // No inline scripts or styles: every <script> has a src, no style attributes or <style>, no data: URLs.
+        assertFalse(inlineScript.containsMatchIn(html), html)
         assertFalse(Regex("""<style[\s>]|\sstyle=""").containsMatchIn(html), html)
         assertFalse("data:" in html, html)
-        for (asset in Regex("""/ui/assets/[\w.-]+\.(js|css)""").findAll(html).map { it.value }.toSet()) {
-            val a = c.get(asset)
-            assertEquals(HttpStatusCode.OK, a.status, asset)
-            assertTrue("immutable" in a.headers["Cache-Control"]!!, asset)
-        }
-        assertTrue("Öffne Boop in Telegram" in c.get("$app?lang=de").bodyAsText())
 
-        val o = c.get(open)
+        val o = c.get("/tg/open")
         assertEquals(HttpStatusCode.OK, o.status)
         assertEquals(MINIAPP_CSP, o.headers["Content-Security-Policy"])
-        assertEquals("no-store", o.headers["Cache-Control"])
+        assertEquals("noindex", o.headers["X-Robots-Tag"])
         val openHtml = o.bodyAsText()
         assertTrue(Regex("""/ui/assets/tg-open-[\w-]+\.js""").containsMatchIn(openHtml), openHtml)
-        assertTrue("Открываем приложение" in openHtml, openHtml)
         assertFalse("{{" in openHtml, openHtml)
-        assertFalse(Regex("""<script(?![^>]*\bsrc=)[^>]*>""").containsMatchIn(openHtml), openHtml)
-    }
+        assertFalse(inlineScript.containsMatchIn(openHtml), openHtml)
+        assertFalse("data:" in openHtml, openHtml)
 
-    /** The old mini app's files: served in both modes, so a tab opened before the switch keeps working. */
-    private suspend fun Harness.assertOldFilesServed() {
-        val c = b.createClient {}
-        for (f in listOf("/tg/app.js", "/tg/app.css", "/tg/open.js")) {
-            val r = c.get(f)
-            assertEquals(HttpStatusCode.OK, r.status, f)
-            assertEquals(MINIAPP_CSP, r.headers["Content-Security-Policy"], f)
-        }
+        // The raw templates are never served; the old mini app's files are gone (W-11).
         val noFollow = b.createClient { followRedirects = false }
         assertEquals("/tg/app", noFollow.get("/tg/app.html").headers["Location"])
         assertEquals("/tg/open", noFollow.get("/tg/open.html").headers["Location"])
+        for (gone in listOf("/tg/app.js", "/tg/app.css", "/tg/open.js", "/miniapp.html", "/tg-open.html", "/ui/miniapp.html", "/ui/tg-open.html")) {
+            assertEquals(HttpStatusCode.NotFound, c.get(gone).status, gone)
+        }
     }
 
-    @Test fun `WEB_UI=new - tg app and tg open serve the new mini app with the old CSP`() = harness(on) {
-        assertNewMiniApp("/tg/app", "/tg/open", MINIAPP_CSP)
-        assertOldFilesServed()
-        assertFalse("/tg/app.js" in b.createClient {}.get("/tg/app").bodyAsText())
+    @Test fun `the mini app's pages are never cached and its files carry their version in the name`() = harness(on) {
+        val c = b.createClient {}
+        for ((page, cache) in listOf("/tg/app" to "no-cache", "/tg/open" to "no-store")) {
+            val r = c.get(page)
+            // The page itself is always fresh, so a release is loaded at once...
+            assertEquals(cache, r.headers["Cache-Control"], page)
+            val assets = Regex("""/ui/assets/[\w.-]+\.(js|css)""").findAll(r.bodyAsText()).map { it.value }.toSet()
+            assertTrue(assets.any { it.endsWith(".js") }, "$page: $assets")
+            for (asset in assets) {
+                // ...and its files, named by their content (like ?v=<hash> before), are cached for a year.
+                assertTrue(Regex("""-[\w-]{8,}\.(js|css)$""").containsMatchIn(asset), asset)
+                val a = c.get(asset)
+                assertEquals(HttpStatusCode.OK, a.status, asset)
+                assertEquals("public, max-age=31536000, immutable", a.headers["Cache-Control"], asset)
+                assertEquals("nosniff", a.headers["X-Content-Type-Options"], asset)
+                assertTrue((if (asset.endsWith(".js")) "javascript" else "text/css") in a.headers["Content-Type"]!!, asset)
+            }
+        }
+        // A file of another release is not there (404), never an old copy under a new name.
+        assertEquals(HttpStatusCode.NotFound, c.get("/ui/assets/miniapp-00000000.js").status)
     }
 
-    @Test fun `WEB_UI=new - the preview addresses lead to the main ones under the same CSP`() = harness(on) {
+    @Test fun `the mini app's texts are translated and keep the house style`() = harness(on) {
+        val known = I18n.all.map { it.en }.toSet()
+        val pages = listOf(File("../web/miniapp.html"), File("../web/tg-open.html"))
+        val texts = pages.flatMap { f -> Regex("""\{\{t:([^}]+)}}""").findAll(f.readText()).map { it.groupValues[1] }.toList() }
+        assertTrue("Open Boop in Telegram" in texts && "Opening the app" in texts, texts.toString())
+        assertTrue(texts.all { it in known }, (texts - known).toString())
+        val bad = texts.flatMap { en -> I18n.all.filter { it.en == en }.flatMap { listOf(it.en, it.ru, it.de) } }
+            .filter { s -> s.any { it in "—–·" } || " - " in s || s.count { it == ':' } > 1 }
+        assertTrue(bad.isEmpty(), bad.toString())
+        // Filled in on the server, in the page's language: Russian by default, ?lang= otherwise.
+        val c = b.createClient {}
+        assertTrue("Откройте Boop в Telegram" in c.get("/tg/app").bodyAsText())
+        assertTrue("Öffne Boop in Telegram" in c.get("/tg/app?lang=de").bodyAsText())
+        assertTrue("""<html lang="en"""" in c.get("/tg/app?lang=en").bodyAsText())
+        assertTrue("Открываем приложение" in c.get("/tg/open").bodyAsText())
+    }
+
+    @Test fun `the preview addresses lead to the main ones under the same CSP`() = harness(on) {
         val c = b.createClient { followRedirects = false }
         for ((preview, main) in listOf("/tg/app-next" to "/tg/app", "/tg/open-next" to "/tg/open")) {
             val r = c.get(preview)
@@ -404,42 +380,26 @@ class MiniAppTest {
             val html = r.bodyAsText()
             // Our own script (allowed by script-src 'self'), no inline code; it keeps #/pay and Telegram's #tgWebAppData.
             assertTrue("""<script src="/ui/to-main.js"></script>""" in html, html)
-            assertFalse(Regex("""<script(?![^>]*\bsrc=)[^>]*>""").containsMatchIn(html), html)
+            assertFalse(inlineScript.containsMatchIn(html), html)
             assertTrue("""<a href="$main">""" in html, html)
         }
         assertTrue(""""/tg/app-next": "/tg/app"""" in c.get("/ui/to-main.js").bodyAsText())
     }
 
-    @Test fun `WEB_UI=legacy - tg app-next is the new mini app's preview with the same template and CSP`() = harness(onLegacy) {
-        val oldCsp = b.createClient {}.get("/tg/app").headers["Content-Security-Policy"]
-        assertNewMiniApp("/tg/app-next", "/tg/open-next", oldCsp)
-        assertOldFilesServed()
-        // The old mini app is on /tg/app.
-        assertTrue(Regex("""/tg/app\.js\?v=[0-9a-f]{12}""").containsMatchIn(b.createClient {}.get("/tg/app").bodyAsText()))
+    @Test fun `every mini app address is 404 while the mini app is off`() = harness(mapOf("TELEGRAM_BOT_TOKEN" to token)) {
+        val c = b.createClient { followRedirects = false }
+        for (path in listOf("/tg/app", "/tg/open", "/tg/app-next", "/tg/open-next")) assertEquals(HttpStatusCode.NotFound, c.get(path).status, path)
     }
 
-    @Test fun `every mini app address is 404 while the mini app is off, in both modes`() {
-        for (env in listOf(mapOf("TELEGRAM_BOT_TOKEN" to token), mapOf("TELEGRAM_BOT_TOKEN" to token, "WEB_UI" to "legacy"))) harness(env) {
-            val c = b.createClient { followRedirects = false }
-            for (path in listOf("/tg/app", "/tg/open", "/tg/app-next", "/tg/open-next")) assertEquals(HttpStatusCode.NotFound, c.get(path).status, "$env $path")
-        }
-    }
-
-    @Test fun `the bot's name goes into the new mini app's page`() {
-        harness(on) {
-            TelegramBot(services, NumberedTelegram()).also { services.bot = it; it.username = "boop_test_bot" }
-            assertTrue("""data-bot="boop_test_bot"""" in b.createClient {}.get("/tg/app").bodyAsText())
-        }
-        harness(onLegacy) {
-            TelegramBot(services, NumberedTelegram()).also { services.bot = it; it.username = "boop_test_bot" }
-            assertTrue("""data-bot="boop_test_bot"""" in b.createClient {}.get("/tg/app-next").bodyAsText())
-        }
+    @Test fun `the bot's name goes into the mini app's page`() = harness(on) {
+        TelegramBot(services, NumberedTelegram()).also { services.bot = it; it.username = "boop_test_bot" }
+        assertTrue("""data-bot="boop_test_bot"""" in b.createClient {}.get("/tg/app").bodyAsText())
     }
 
     /** Every JS file the page loads, following static and dynamic imports between the built files. */
     private fun builtJs(page: String): Map<String, String> {
-        fun res(path: String) = MiniAppTest::class.java.classLoader.getResourceAsStream("web-next/$path")?.use { String(it.readBytes()) }
-        val html = res(page) ?: error("web-next/$page is not built")
+        fun res(path: String) = MiniAppTest::class.java.classLoader.getResourceAsStream("web-ui/$path")?.use { String(it.readBytes()) }
+        val html = res(page) ?: error("web-ui/$page is not built")
         val ref = Regex("""(?:/ui/assets/|\./)([\w.-]+\.js)""")
         val out = linkedMapOf<String, String>()
         val queue = ArrayDeque(ref.findAll(html).map { it.groupValues[1] }.toList())
@@ -453,10 +413,11 @@ class MiniAppTest {
         return out
     }
 
-    @Test fun `the new mini app's built files have no web storage, no cookies and none of the website's screens`() {
+    @Test fun `the mini app's built files have no web storage, no cookies and none of the website's screens`() {
         for (page in listOf("miniapp.html", "tg-open.html")) {
             val files = builtJs(page)
             assertTrue(files.keys.any { it.startsWith(page.substringBefore(".html") + "-") }, files.keys.toString())
+            // The token stays in memory: never in localStorage, sessionStorage or cookies.
             for ((f, js) in files) for (bad in listOf("localStorage", "sessionStorage", "document.cookie")) assertFalse(bad in js, "$page: $f has $bad")
             // The website's libraries and lazy screens stay out (admin, status, analytics, Swagger UI, the router).
             assertTrue(files.keys.none { Regex("""^(vendor|ApiDocs|Nodes|status|analytics|Dashboard|Landing|site)-""").containsMatchIn(it) }, files.keys.toString())

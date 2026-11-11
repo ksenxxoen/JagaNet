@@ -1,5 +1,5 @@
 /**
- * The admin log tab (ctlAudit() in control.js): the latest 500 actions of the admins, ?user= for
+ * The admin log tab: the latest 500 actions of the admins, ?user= for
  * one person (an e-mail or an id; the links from a card and from the bot use it).
  */
 import { useQuery } from "@tanstack/react-query";

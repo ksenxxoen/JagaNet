@@ -2,7 +2,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
-/** .btn from style.css: main (solid primary), secondary, ghost, danger; small, normal, large. */
+/** A button: main (solid primary), secondary, ghost, danger; small, normal, large. */
 export const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-ctl font-semibold transition-colors no-underline hover:no-underline " +
     "disabled:cursor-not-allowed disabled:border disabled:border-line disabled:bg-subtle disabled:text-faint disabled:shadow-none [&_svg]:size-[18px]",

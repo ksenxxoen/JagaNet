@@ -203,6 +203,7 @@ process behind the Wintun adapter (desktop/ARCHITECTURE.md, "VLESS+Reality").
 | Stats | `services/Stats.kt` | Day/week/month buckets, time protected, sessions, per-device split |
 | Owner | `services/Admin.kt` | MRR, conversion, new/cancelled subs, server capacity and warnings |
 | Data | `resources/db/migration/` | Flyway SQL migrations |
+| Web | `http/WebUi.kt`, `http/MiniApp.kt`, `http/Web.kt`, `http/SupportWeb.kt` | The web interface built from `web/` (React + TypeScript, Vite; docs/WEB-FRONTEND.md) into `resources/web-ui`: the website on `/`, the Telegram mini app on `/tg/app` and `/tg/open`, files in `/ui/assets/`. Server-rendered pages (`/k/…`, payment, `/privacy`, `/terms`) with `resources/web/pages.css` |
 
 **Privacy by design.** The server stores byte counts per device per hour and session start/end
 times. It never stores destinations, DNS queries or user IPs (a problem report the person sends

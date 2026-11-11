@@ -1,4 +1,4 @@
-/** The admin tabs in the order of ADMIN_TABS in app.js, plus the API tab of the new site (W-2). All of them work here (W-7). */
+/** The admin tabs in their order, the API tab (W-2) last. */
 export const ADMIN_TABS = [
   { key: "dashboard", label: "Dashboard" },
   { key: "users", label: "Users" },
@@ -18,5 +18,5 @@ export const ADMIN_TABS = [
 
 export type AdminTab = (typeof ADMIN_TABS)[number]["key"];
 
-/** ?tab= → the tab; anything unknown is the dashboard (admin() in app.js). */
+/** ?tab= → the tab; anything unknown is the dashboard. */
 export const adminTab = (tab: string | undefined): AdminTab => ADMIN_TABS.find((x) => x.key === tab)?.key ?? "dashboard";

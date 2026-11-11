@@ -1,5 +1,5 @@
 /**
- * #/login?token=… (login() in app.js): the one-time sign-in link from an e-mail or the Telegram
+ * #/login?token=…: the one-time sign-in link from an e-mail or the Telegram
  * bot. The link is used once; afterwards the account opens in place of it, so the used token does
  * not stay in the browser history.
  */

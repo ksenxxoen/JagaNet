@@ -9,7 +9,7 @@ import { portFor } from "../settings/Email";
 import { modesBody } from "../settings/Modes";
 import { parseTesters, testersCsv } from "../testers/testers";
 
-describe("nodeBody (nodeBody() in app.js)", () => {
+describe("nodeBody", () => {
   it("a new node: trimmed fields, upper-case country, defaults", () => {
     const v = { ...nodeValues(), name: " Germany 2 ", city: "Berlin", countryCode: "de", hostname: " ", sortOrder: "" };
     expect(nodeBody(v)).toEqual({

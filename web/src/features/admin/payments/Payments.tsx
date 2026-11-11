@@ -1,5 +1,5 @@
 /**
- * The payments tab (ctlPayments() in control.js): revenue tiles, the filter (?from=, ?to=,
+ * The payments tab: revenue tiles, the filter (?from=, ?to=,
  * ?status=, ?q= for an e-mail or an order id), the totals of the chosen period, the list (the
  * latest 500) and the CSV with all of them.
  */

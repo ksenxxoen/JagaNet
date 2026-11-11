@@ -1,5 +1,5 @@
 /**
- * The design tokens (docs/DESIGN.md; copied from server/src/main/resources/web/style.css), light
+ * The design tokens (docs/DESIGN.md; carried over from the old website's stylesheet), light
  * and dark, in one place for every entry. tailwind.config.ts puts them on :root:
  *
  *   - the website follows prefers-color-scheme, as the old site did;

@@ -1,5 +1,5 @@
 /**
- * Telegram's colors on our tokens (applyTheme() in tg/app.js): the page looks like the chat it
+ * Telegram's colors on our tokens: the page looks like the chat it
  * was opened from, in light and dark. <html data-scheme> picks the light or dark token set
  * (src/styles/tokens.ts), then the chat's colors replace the neutral ones. Set through CSSOM
  * (style.setProperty), which the CSP allows; there are no inline style attributes.

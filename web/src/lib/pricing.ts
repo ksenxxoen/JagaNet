@@ -1,4 +1,4 @@
-/** Pricing math of the landing page and the account (pricedTariffs() in app.js): prices per month and savings, computed, never typed in. */
+/** Pricing math of the landing page and the account: prices per month and savings, computed, never typed in. */
 import { t, tp } from "@/i18n";
 import type { Schema } from "@/api/typed";
 
@@ -46,6 +46,6 @@ export const period = (x: Pick<Tariff, "durationUnit" | "durationValue">) =>
 /** "1 устройство", "До 5 устройств". */
 export const devicesLine = (n: number) => (n === 1 ? tp(n, "{n} device|{n} devices") : tp(n, "Up to {n} device|Up to {n} devices"));
 
-/** "10 GB a month", or "Unlimited data" (dataText() in app.js and tg/app.js). */
+/** "10 GB a month", or "Unlimited data". */
 export const dataText = (bytes: number | null | undefined) =>
   bytes == null ? t("Unlimited data") : t("{n} GB a month", { n: Math.round(bytes / 1e9) });

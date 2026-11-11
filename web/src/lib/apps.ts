@@ -1,5 +1,5 @@
 /**
- * The app cards of the landing page and the account (downloads() in app.js): Android, iPhone,
+ * The app cards of the landing page and the account: Android, iPhone,
  * and Telegram when the bot is set, else AmneziaVPN. Each screen draws them its own way; what is
  * offered and where it leads is decided here once.
  */

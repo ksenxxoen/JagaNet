@@ -1,5 +1,5 @@
 /**
- * The mini app (tg/app.js on the new stack): a top bar, the screen, the bottom tabs and the toasts.
+ * The mini app: a top bar, the screen, the bottom tabs and the toasts.
  * Screens switch in memory like before (no router: the mini app is one page and its bundle stays
  * small); Telegram's Back button leads home from every other screen.
  */

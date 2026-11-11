@@ -1,5 +1,5 @@
 /**
- * The alerts tab (alertsPane() in app.js): who gets server alerts (e-mails and Telegram chats, with
+ * The alerts tab: who gets server alerts (e-mails and Telegram chats, with
  * warnings when mail or the bot is off) and the server channel (speed and monthly traffic).
  */
 import { Link } from "@tanstack/react-router";

@@ -79,8 +79,8 @@ internal val miniAppStrings: List<S> = listOf(
     S("If the app didn't open, tap the button. No app yet? Install it first.", "Если приложение не открылось, нажмите кнопку. Нет приложения? Сначала установите его.", "Falls die App nicht aufgeht, tippe auf den Button. Noch keine App? Installiere sie zuerst."),
     S("Open the app", "Открыть приложение", "App öffnen"),
     S("This link doesn't work. Go back to Telegram and try again.", "Эта ссылка не работает. Вернитесь в Telegram и попробуйте ещё раз.", "Dieser Link funktioniert nicht. Geh zurück zu Telegram und versuch es noch einmal."),
-    // The new mini app's preview (/tg/app-next) on a server built without web/
-    S("The new mini app is not built into this server", "Новое мини-приложение не встроено в этот сервер", "Die neue Mini-App ist nicht in diesen Server eingebaut"),
+    // The mini app (/tg/app) on a server built without web/
+    S("The mini app is not built into this server", "Мини-приложение не встроено в этот сервер", "Die Mini-App ist nicht in diesen Server eingebaut"),
     // The bot
     S("Open Boop", "Открыть Boop", "Boop öffnen"),
     S("A new device was connected to your subscription, {name}.", "К вашей подписке подключено новое устройство, {name}.", "Ein neues Gerät wurde mit deinem Abo verbunden, {name}."),

@@ -1,6 +1,5 @@
 /**
- * The referral funnel's numbers as text (pct, revenueText, sourceName, channelName and
- * funnelTiles() in app.js): the referral program now, the analytics later (W-8).
+ * The referral funnel's numbers as text: the referral program now, the analytics later (W-8).
  */
 import type { Schema } from "@/api/typed";
 import type { KpiItem } from "@/components/ui/Kpi";

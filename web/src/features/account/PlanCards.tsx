@@ -1,4 +1,4 @@
-/** "Your plan" and "Choose a plan" / "Extend" (the two cards at the top of account() in app.js). */
+/** "Your plan" and "Choose a plan" / "Extend". */
 import { useState } from "react";
 import type { Schema } from "@/api/typed";
 import { Button, Card, CardHeader, StatusBadge } from "@/components/ui";

@@ -1,5 +1,5 @@
 /**
- * Bars in SVG (dayChart() and trafficChart() in app.js): one series as plain bars, two as grouped
+ * Bars in SVG: one series as plain bars, two as grouped
  * bars with a legend, or stacked (`stacked`: BitTorrent on top of the rest in the analytics). One
  * axis with a round top, a quiet grid, a tooltip with the bar's values on hover or focus. Drawn at
  * the real width, so the labels keep their size on phones. Bars are by day by default; `label` and

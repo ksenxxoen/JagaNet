@@ -14,15 +14,25 @@ import kotlin.test.assertTrue
  */
 class I18nTest {
     private val root = File("..").canonicalFile
-    private val sources: List<File> = listOf("composeApp/src", "server/src/main", "shared/src/commonMain", "web/src")
-        .flatMap { File(root, it).walk().filter { f -> f.isFile && f.extension in EXTENSIONS }.toList() }
-        .filterNot { "/i18n/strings/" in it.path }
-        // The new website's tests use made-up texts on purpose.
+
+    /** Kotlin of the apps, the server and the shared code, and the web interface (web/src, .ts and .tsx). */
+    private val sources: List<File> = (listOf("composeApp/src", "server/src/main", "shared/src/commonMain").flatMap { files(it, KOTLIN) } + files("web/src", WEB))
+        .filterNot { "/i18n/strings/" in it.invariantSeparatorsPath }
+        // The web interface's tests use made-up texts on purpose.
         .filterNot { f -> f.invariantSeparatorsPath.let { "/web/src/" in it && ("/__tests__/" in it || "/web/src/test/" in it) } }
 
-    @Test fun `the new website is scanned`() {
+    private fun files(dir: String, extensions: Set<String>) =
+        File(root, dir).walk().filter { f -> f.isFile && f.extension in extensions }.toList()
+
+    @Test fun `the web interface is scanned and the old one is gone`() {
         val web = sources.filter { "/web/src/" in it.invariantSeparatorsPath }
         assertTrue(web.any { it.extension == "tsx" } && web.any { it.extension == "ts" }, "web/src has no .ts/.tsx files to check")
+        assertTrue(sources.all { it.extension in KOTLIN + WEB }, "only .kt, .ts and .tsx are scanned")
+        // The old website's scripts (resources/web, removed in W-11, #128) must not come back: the texts live in web/src.
+        // The server keeps one script, to-main.js (the preview addresses' redirect), and it has no texts.
+        val serverJs = File(root, "server/src/main").walk().filter { it.isFile && it.extension == "js" }.toList()
+        assertEquals(listOf("to-main.js"), serverJs.map { it.name }, "Scripts in server/src/main (the web interface lives in web/)")
+        assertTrue(serverJs.none { keyCall.containsMatchIn(it.readText()) })
         // The key regex finds calls in TSX, including inside JSX braces.
         assertEquals(listOf("Sign in", "{n} day|{n} days"), keyCall.findAll("""<a>{t("Sign in")}</a>{tp(n, "{n} day|{n} days")}""").map { it.groupValues[1] }.toList())
         assertTrue(web.flatMap { keysIn(it) }.contains("Why this status"))
@@ -79,8 +89,8 @@ class I18nTest {
 
     private companion object {
         const val BANNED = "—–·"
-        /** Kotlin, the old website (.js) and the new one (web/src, .ts and .tsx). */
-        val EXTENSIONS = setOf("kt", "js", "ts", "tsx")
+        val KOTLIN = setOf("kt")
+        val WEB = setOf("ts", "tsx")
         fun styleProblem(s: String): String? = when {
             s.any { it in BANNED } -> "long dash or ·"
             " - " in s -> "a hyphen used as a dash"

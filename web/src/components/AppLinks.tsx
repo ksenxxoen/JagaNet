@@ -1,6 +1,5 @@
 /**
- * "Add to Happ", "Add to v2RayTun": one tap hands the subscription to the app (connect() in
- * tg/app.js), with links to get the apps. The website opens the import link itself; the mini app
+ * "Add to Happ", "Add to v2RayTun": one tap hands the subscription to the app, with links to get the apps. The website opens the import link itself; the mini app
  * passes `open` that goes through /tg/open (Telegram opens only web links outside).
  */
 import { ChevronRight, Zap } from "lucide-react";

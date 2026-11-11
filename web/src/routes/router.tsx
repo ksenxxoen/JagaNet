@@ -1,5 +1,5 @@
 /**
- * Every route of the website with hash history (#/account?order=…), the same addresses as app.js.
+ * Every route of the website with hash history (#/account?order=…), the same addresses as the old site.
  * Every screen loads lazily by section (landing, sign-in, account, referrals, invite, support,
  * status, analytics); the admin panel's tabs load lazily inside AdminScreen.
  */
@@ -34,7 +34,7 @@ const LazyLanding = lazy(() => landing().then((m) => ({ default: m.Landing })));
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: Shell,
   // "#features" and other landing anchors are not routes, and neither is anything unknown: both
-  // show the landing page (render() in app.js), which then scrolls to the anchor.
+  // show the landing page, which then scrolls to the anchor.
   notFoundComponent: () => (
     <Suspense fallback={<Spinner />}>
       <LazyLanding />
@@ -45,7 +45,7 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
 
 const home = createRoute({ getParentRoute: () => rootRoute, path: "/", component: lazyRouteComponent(landing, "Landing") });
 
-/** Sign-in screens with a session: the account, as signin() in app.js. */
+/** Sign-in screens with a session: the account. */
 const signedOutOnly = () => {
   if (useSession.getState().token) throw redirect({ to: "/account" });
 };

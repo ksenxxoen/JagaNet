@@ -7,13 +7,12 @@ import { miniappBundle, noAxiosCookies } from "./vite/plugins.ts";
 /**
  * Three pages from one build, all with assets under /ui/assets/ (hashed names, cached for a year):
  *
- *   - index.html: the website, served by the panel on / (WEB_UI=new; the preview /next/ with WEB_UI=legacy);
- *   - miniapp.html: the Telegram mini app, a template the panel fills and serves on /tg/app (/tg/app-next with WEB_UI=legacy);
- *   - tg-open.html: /tg/open (/tg/open-next), hands an import link from the mini app to the app.
+ *   - index.html: the website, served by the panel on / (http/WebUi.kt);
+ *   - miniapp.html: the Telegram mini app, a template the panel fills and serves on /tg/app (http/MiniApp.kt);
+ *   - tg-open.html: /tg/open, hands an import link from the mini app to the app.
  *
- * The HTML is served where it belongs; the assets are the same for every address, so the panel's
- * WEB_UI switch (W-10, docs/WEB-FRONTEND.md) changes addresses without a rebuild. `npm run dev` proxies /v1 and the server pages to a
- * local server (`./gradlew :server:sim`, port 4000 by default; JAGANET_DEV_SERVER overrides it).
+ * The panel puts the build into its jar as web-ui/ (docs/WEB-FRONTEND.md). `npm run dev` proxies /v1, the server pages
+ * and their files (pages.css, favicon.svg) to a local server (`./gradlew :server:sim`, port 4000 by default; JAGANET_DEV_SERVER overrides it).
  */
 const backend = process.env.JAGANET_DEV_SERVER ?? "http://localhost:4000";
 const page = (name: string) => fileURLToPath(new URL(name, import.meta.url));
@@ -65,7 +64,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: Object.fromEntries(
-      ["/v1", "/favicon.svg", "/privacy", "/terms", "/k", "/r", "/download"].map((p) => [p, { target: backend, changeOrigin: true }]),
+      ["/v1", "/favicon.svg", "/pages.css", "/privacy", "/terms", "/k", "/r", "/download", "/pay"].map((p) => [
+        p,
+        { target: backend, changeOrigin: true },
+      ]),
     ),
   },
   test: {

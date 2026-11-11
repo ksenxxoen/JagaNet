@@ -1,5 +1,5 @@
 /**
- * #/support (support.js): the form to support for guests and signed-in people (their e-mail is
+ * #/support: the form to support for guests and signed-in people (their e-mail is
  * filled in when it is a real one), "temporarily unavailable" when /v1/support says so, the
  * Telegram group from the site settings. After sending, the form gives way to the answer.
  */

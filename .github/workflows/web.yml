@@ -8,8 +8,8 @@ on:
       - "web/**"
       - "server/src/main/resources/openapi.yaml"
       - "server/src/main/kotlin/dev/jaganet/server/http/MiniApp.kt"
-      - "server/src/main/kotlin/dev/jaganet/server/http/WebNext.kt"
-      - "server/src/main/resources/web-switch/**"
+      - "server/src/main/kotlin/dev/jaganet/server/http/WebUi.kt"
+      - "server/src/main/resources/web-redirect/**"
       - ".github/workflows/web.yml"
   push:
     branches: [claude/adoring-brown-s8fqex]
@@ -17,8 +17,8 @@ on:
       - "web/**"
       - "server/src/main/resources/openapi.yaml"
       - "server/src/main/kotlin/dev/jaganet/server/http/MiniApp.kt"
-      - "server/src/main/kotlin/dev/jaganet/server/http/WebNext.kt"
-      - "server/src/main/resources/web-switch/**"
+      - "server/src/main/kotlin/dev/jaganet/server/http/WebUi.kt"
+      - "server/src/main/resources/web-redirect/**"
       - ".github/workflows/web.yml"
   workflow_dispatch:
 
@@ -58,7 +58,7 @@ jobs:
       - run: npm test
       - run: npm run build
 
-  # In Chromium, against the panel with WEB_UI=new played by e2e/panel.mjs (W-10): the Telegram mini app under
+  # In Chromium, against the panel played by e2e/panel.mjs (W-10, W-11): the Telegram mini app under
   # MINIAPP_CSP (read from MiniApp.kt) with a stand-in Telegram.WebApp and demo API answers (no CSP violations,
   # no page errors, QR drawn, toasts shown, the bot's and the preview's addresses), then every link the server
   # and the bot hand out opens its screen of the new website, with a session saved by the old one.

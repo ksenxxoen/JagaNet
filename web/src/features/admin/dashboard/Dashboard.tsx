@@ -1,5 +1,5 @@
 /**
- * The dashboard tab (ctlDashboard() in control.js): users and money in numbers, the servers, people
+ * The dashboard tab: users and money in numbers, the servers, people
  * who may share a subscription, people whose access ends in 3 days, and the sharing threshold.
  */
 import { useQuery } from "@tanstack/react-query";

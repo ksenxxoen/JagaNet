@@ -1,4 +1,4 @@
-/** The mini app could not start (fatal() in tg/app.js): blocked, unavailable, too many requests, sign-in failed. */
+/** The mini app could not start: blocked, unavailable, too many requests, sign-in failed. */
 import { Lock } from "lucide-react";
 import { Button } from "@/components/ui";
 import { useI18n } from "@/i18n";

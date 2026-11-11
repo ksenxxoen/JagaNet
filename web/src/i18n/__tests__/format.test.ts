@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fill, formatBits, formatBytes, formatDate, formatMoney, formatPercent, formatWhen, pluralForm } from "../format";
 
-describe("tp plural rules (same as app.js)", () => {
+describe("tp plural rules (same as the old site)", () => {
   const ru = "{n} день|{n} дня|{n} дней";
   it.each([
     [1, "1 день"],
@@ -33,7 +33,7 @@ describe("fill", () => {
 });
 
 describe("money", () => {
-  it("formats like app.js", () => {
+  it("formats like the old site", () => {
     expect(formatMoney("ru", 30000, "RUB")).toBe("300 ₽");
     expect(formatMoney("ru", 250000, "RUB")).toBe("2 500 ₽");
     expect(formatMoney("ru", 12345, "RUB")).toBe("123,45 ₽");
@@ -46,7 +46,7 @@ describe("money", () => {
 });
 
 describe("date", () => {
-  it("formats like app.js", () => {
+  it("formats like the old site", () => {
     expect(formatDate("ru", "2026-03-05")).toBe("5 марта 2026");
     expect(formatDate("de", "2026-03-05T10:00:00Z")).toBe("5. März 2026");
     expect(formatDate("en", "2026-12-31")).toBe("31 Dec 2026");
@@ -55,7 +55,7 @@ describe("date", () => {
 });
 
 describe("bytes", () => {
-  it("formats like app.js", () => {
+  it("formats like the old site", () => {
     expect(formatBytes("ru", 1_500_000_000)).toBe("1,5 ГБ");
     expect(formatBytes("en", 820_000_000)).toBe("820 MB");
     expect(formatBytes("de", 2_000)).toBe("2 KB");
@@ -63,7 +63,7 @@ describe("bytes", () => {
   });
 });
 
-describe("bits, percent and short times (bits(), percent(), shortDate() in app.js)", () => {
+describe("bits, percent and short times", () => {
   it("bits per second in the language's units", () => {
     expect(formatBits("ru", 12_500_000)).toBe("13 Мбит/с");
     expect(formatBits("en", 1_200_000_000)).toBe("1.2 Gbit/s");

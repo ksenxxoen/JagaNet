@@ -1,5 +1,5 @@
 /**
- * A data table for the admin panel, the status and the analytics (table.data in style.css): columns
+ * A data table for the admin panel, the status and the analytics: columns
  * with optional sorting (a click on the heading: ascending, then descending), pages of `pageSize`
  * rows, and the empty, error and loading states in the table's place.
  *
@@ -23,7 +23,7 @@ export interface Column<T> {
   cell: (row: T) => ReactNode;
   /** The value to sort by; a column without it is not sortable. */
   sort?: (row: T) => string | number | boolean | null | undefined;
-  /** Hidden on phones (.opt in style.css). */
+  /** Hidden on phones. */
   optional?: boolean;
   /** A tooltip for the heading ("Different IP addresses in 24 hours"). */
   title?: string;

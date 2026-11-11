@@ -1,5 +1,5 @@
 /**
- * Formatting helpers moved from app.js with the same output: plural forms, dates, money, bytes.
+ * Formatting helpers with the same output as the old site: plural forms, dates, money, bytes.
  * Pure functions of the language, so they are easy to test; components use the bound versions
  * from useI18n() / the i18n module.
  */
@@ -11,7 +11,7 @@ export const LANGS: ReadonlyArray<readonly [Lang, string]> = [
 ];
 export const isLang = (x: unknown): x is Lang => LANGS.some(([c]) => c === x);
 
-/** {name} placeholders; unknown ones stay as they are (fill() in app.js). */
+/** {name} placeholders; unknown ones stay as they are. */
 export const fill = (s: string, args?: Record<string, unknown>) =>
   s.replace(/\{(\w+)\}/g, (m, k: string) => (args && k in args ? String(args[k]) : m));
 
@@ -57,7 +57,7 @@ export const localDay = (iso: string) => {
 export const formatDateTime = (lang: Lang, iso: string | null | undefined) =>
   iso ? `${formatDate(lang, localDay(iso))} ${clock(iso)}` : "";
 
-/** Minor units to text: "300 ₽", "2,50 €", "$2.50" (money() in app.js). */
+/** Minor units to text: "300 ₽", "2,50 €", "$2.50". */
 export function formatMoney(lang: Lang, minor: number | null | undefined, currency: string): string {
   if (minor == null) return "";
   const sym = ({ USD: "$", EUR: "€", GBP: "£", RUB: "₽" } as Record<string, string>)[currency] || currency;
@@ -67,13 +67,13 @@ export function formatMoney(lang: Lang, minor: number | null | undefined, curren
   return currency === "RUB" && cents === "00" ? `${whole} ${sym}` : `${whole},${cents} ${sym}`;
 }
 
-/** 12.5 with the language's decimal separator; whole numbers from 10 up (num() in app.js). */
+/** 12.5 with the language's decimal separator; whole numbers from 10 up. */
 export function formatNum(lang: Lang, v: number, digits = v < 10 && !Number.isInteger(v) ? 1 : 0): string {
   const s = (Math.round(v * 10 ** digits) / 10 ** digits).toFixed(digits);
   return lang === "en" ? s : s.replace(".", ",");
 }
 
-/** Bits per second: "850 Kbit/s", "12,5 Мбит/с", "1,2 Gbit/s" (bits() in app.js). */
+/** Bits per second: "850 Kbit/s", "12,5 Мбит/с", "1,2 Gbit/s". */
 export function formatBits(lang: Lang, bps: number | null | undefined): string {
   if (bps == null) return "0";
   const u = lang === "ru" ? ["Кбит/с", "Мбит/с", "Гбит/с"] : ["Kbit/s", "Mbit/s", "Gbit/s"];
@@ -82,10 +82,10 @@ export function formatBits(lang: Lang, bps: number | null | undefined): string {
   return `${formatNum(lang, bps / 1e3)} ${u[0]}`;
 }
 
-/** "12%" with the language's decimal separator (percent() in app.js). */
+/** "12%" with the language's decimal separator. */
 export const formatPercent = (lang: Lang, v: number | null | undefined) => (v == null ? "0%" : `${formatNum(lang, v)}%`);
 
-/** "5.3." or "05.03" without the year (shortDate() in app.js), from a local day "2026-03-05". */
+/** "5.3." or "05.03" without the year, from a local day "2026-03-05". */
 export function formatShortDate(lang: Lang, day: string): string {
   const [, m, d] = day.split("-").map(Number);
   return lang === "de" ? `${d}.${m}.` : `${d}.${String(m).padStart(2, "0")}`;

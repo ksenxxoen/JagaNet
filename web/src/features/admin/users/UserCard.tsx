@@ -1,5 +1,5 @@
 /**
- * A user's card (ctlDrawCard() in control.js): the facts, the admin note, the actions (extend,
+ * A user's card: the facts, the admin note, the actions (extend,
  * free period, change the plan, block or unblock), devices and keys (reissue, remove), the
  * subscriptions, payments and the admin log about this person. The questions before the dangerous
  * actions are the old confirm() texts, in the site's dialog. After an action the card shows the

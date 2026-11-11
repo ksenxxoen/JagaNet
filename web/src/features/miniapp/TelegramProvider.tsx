@@ -122,7 +122,7 @@ export function useTelegramEvent(event: string, fn: () => void) {
 
 /**
  * confirm(question, okText) as a promise: Telegram's popup with a destructive button (6.2+), else
- * the site's dialog (render `dialog`), as confirmBox() in tg/app.js used window.confirm.
+ * the site's dialog (render `dialog`) instead of window.confirm.
  */
 export function useTgConfirm() {
   const { tg, can } = useTelegram();

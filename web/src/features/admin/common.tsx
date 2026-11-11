@@ -1,5 +1,5 @@
 /**
- * What the admin tabs share (the top of control.js and the helpers of app.js): state and status
+ * What the admin tabs share: state and status
  * labels, the payment channels, platform names, "last seen", the log details as text, links to a
  * user's card, the node states, and the user list of the dashboard and the users tab.
  */
@@ -91,7 +91,7 @@ export function StateBadge({ pair, fallback }: { pair: Badge | undefined; fallba
 
 export const BLOCKED: Badge = ["danger", "Blocked"];
 
-/** payChannel() in app.js. */
+/** Where a payment was made: the website, Telegram or the app. */
 export const payChannel = (k: string) =>
   ({ web: t("Website"), telegram: "Telegram", app: t("Boop app"), apple: "App Store", google: "Google Play", dev: t("Test payments") })[
     k
@@ -99,7 +99,7 @@ export const payChannel = (k: string) =>
 
 export { platformName } from "@/lib/platforms";
 
-/** seenText() in app.js: "online" in the last 3 minutes, else the time, or "never". */
+/** When a device was last seen: "online" in the last 3 minutes, else the time, or "never". */
 export function seen(at: string | null | undefined, now = Date.now()) {
   if (!at) return <span className="text-muted">{t("never")}</span>;
   if (now - Date.parse(at) < 3 * 60_000) return <Level tone="ok">{t("online")}</Level>;

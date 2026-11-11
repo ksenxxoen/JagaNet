@@ -1,5 +1,5 @@
 /**
- * The status page's rules as pure functions (#115, stRows() and the rest in app.js): one row a
+ * The status page's rules as pure functions (#115): one row a
  * server with its state in words and a short reason, problems first, the filter and the search,
  * the summary line, "why this status" and the event texts. The screen only draws what these return.
  */

@@ -15,9 +15,10 @@ key is stored encrypted (AES-GCM, key derived from `AUTH_SECRET`). The link
 
 ## Website
 
-Static files in `server/src/main/resources/web/` (plain HTML/CSS/JS, no build step), served at `/`.
-The new React website is being built in `web/` and previewed on `/next/` (see `docs/WEB-FRONTEND.md`).
-Server-rendered pages: `/k/<token>` (key page), `/pay/test/<order>` (test checkout).
+React + TypeScript in `web/` (Vite, Tailwind; see `docs/WEB-FRONTEND.md`), built by Gradle into the
+jar and served at `/` (`http/WebUi.kt`), with hash routes (`#/account`, `#/admin`…) and its files in
+`/ui/assets/`. Server-rendered pages: `/k/<token>` (key page), `/pay/test/<order>` (test checkout),
+`/privacy`, `/terms`; they use `server/src/main/resources/web/pages.css` and `favicon.svg`.
 
 API (all under `/v1`, bearer token from the normal email sign-in):
 
@@ -30,7 +31,8 @@ API (all under `/v1`, bearer token from the normal email sign-in):
 A user can do everything in the bot without the website (issue #38): sign up, buy and renew,
 get the subscription link and QR code, manage devices, get reminders, talk to support, and sign
 in on the website. Code: `server/.../telegram/` (bot, accounts, transport), `http/TelegramWeb.kt`
-(website endpoints), `web/telegram.js` (Login Widget, linking card).
+(website endpoints), `web/src/features/auth/TelegramWidget.tsx` (Login Widget) and
+`web/src/features/account/TelegramCard.tsx` (linking card).
 
 Turn it on: create a bot with [@BotFather](https://t.me/BotFather), then on the server
 
@@ -145,9 +147,10 @@ How it works and why it is safe:
   in `Authorization: Bearer` (no cookies, so CSRF does not apply). All sessions of the mini app share
   one service device per user (`devices.service = 'tg_miniapp'`): it never gets a tunnel, never counts
   toward the device limit and is not listed anywhere as a device.
-- **Page.** `server/src/main/resources/web/tg/` (`app.html`, `app.js`, `app.css`), served by
-  `http/MiniApp.kt` with `?v=<hash>` cache busting and a Content-Security-Policy that allows scripts
-  from this site and `https://telegram.org` only. It follows the chat's theme (light and dark).
+- **Page.** `web/miniapp.html` and `web/src/features/miniapp/` (React, built with the website),
+  a template filled and served by `http/MiniApp.kt` (never cached; its files in `/ui/assets/` carry a
+  content hash in their names and are cached for a year) with a Content-Security-Policy that allows
+  scripts from this site and `https://telegram.org` only, no inline code and no `data:` images. It follows the chat's theme (light and dark).
   Import into Happ and v2RayTun goes through `/tg/open#<link>` in the browser, because Telegram opens
   only web links outside; the link stays in the URL fragment and never reaches the server.
 - **New device notice.** When a Boop app connects a new device (`POST /v1/tunnel`) or a new key is made

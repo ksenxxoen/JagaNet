@@ -1,7 +1,7 @@
 /**
  * A screen setting kept in the address (?period=30d) and remembered in localStorage under the old
  * site's key (refPeriod, anPeriod, monRange…): the address wins over the saved value, the saved
- * value over the default, and whatever is shown is saved again (as referrals() in app.js does).
+ * value over the default, and whatever is shown is saved again.
  * Setting it changes only that parameter; the rest of the address stays.
  *
  *   const [period, setPeriod] = usePersistedSearch("period", "refPeriod", "30d", ["7d", "30d", "90d", "all"]);

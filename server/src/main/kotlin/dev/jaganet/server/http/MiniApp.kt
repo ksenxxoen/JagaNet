@@ -7,47 +7,31 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.withCharset
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.header
-import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
-import java.security.MessageDigest
 
 /**
- * The Telegram mini app (issue #87): one page, /tg/app, made of web/tg/app.html, app.js and app.css.
+ * The Telegram mini app (issue #87; on the new frontend since epic #117, W-9): /tg/app and /tg/open.
  * The page signs in with Telegram.WebApp.initData (POST /v1/auth/telegram/webapp), keeps the session
  * token in memory only and uses the same /v1 API as the website.
  *
- * The files are read once. Their links carry ?v=<hash of their content>, so a new release is loaded
- * at once while the files themselves are cached for long. Scripts: our own and Telegram's
- * telegram-web-app.js, nothing else (Content-Security-Policy). Off (404) unless TELEGRAM_MINIAPP=1.
- *
- * The new mini app (web/, React; epic #117, W-9): its pages (web-next/miniapp.html, tg-open.html) are
- * templates with the same {{lang}}, {{bot}} and {{t:…}}, served with the same switch, headers and CSP;
- * their files live in /ui/assets (WebNext.kt). WEB_UI (W-10) picks which one /tg/app and /tg/open serve:
- * new (default) the new pages, with /tg/app-next and /tg/open-next leading there; legacy the old pages,
- * with the new ones as the preview on /tg/app-next and /tg/open-next. The old files (/tg/app.js, app.css,
- * open.js) are served in both modes, so open tabs keep working.
+ * Its pages are templates from the web/ build (resources/web-ui/miniapp.html and tg-open.html, see
+ * WebUi.kt) with {{lang}}, {{bot}} and {{t:English}} texts, filled here and never cached; their files
+ * live in /ui/assets with a content hash in their names, cached for a year, so a release is loaded at once.
+ * Scripts: our own and Telegram's telegram-web-app.js, nothing else (Content-Security-Policy).
+ * Off (404) unless TELEGRAM_MINIAPP=1. /tg/app-next and /tg/open-next (the preview of W-9 and W-10)
+ * lead to /tg/app and /tg/open for saved links, keeping the fragment.
  */
 private object MiniAppFiles {
-    private fun res(name: String): ByteArray = MiniAppFiles::class.java.getResource("/web/tg/$name")!!.readBytes()
-    val html: String by lazy { String(res("app.html")) }
-    val openHtml: String by lazy { String(res("open.html")) }
-    val js: ByteArray by lazy { res("app.js") }
-    val openJs: ByteArray by lazy { res("open.js") }
-    val css: ByteArray by lazy { res("app.css") }
-    val version: String by lazy {
-        MessageDigest.getInstance("SHA-256").digest(js + openJs + css).take(6).joinToString("") { "%02x".format(it) }
-    }
-    /** The new mini app's templates, null when the server is built without web/. Read once. */
-    val nextHtml: String? by lazy { WebNext.read("miniapp.html")?.let { String(it) } }
-    val nextOpenHtml: String? by lazy { WebNext.read("tg-open.html")?.let { String(it) } }
+    /** The templates, null when the server is built without web/. Read once. */
+    val html: String? by lazy { WebUi.read("miniapp.html")?.let { String(it) } }
+    val openHtml: String? by lazy { WebUi.read("tg-open.html")?.let { String(it) } }
     private val TEXT = Regex("""\{\{t:([^}]+)}}""")
 
-    /** The page with its version and bot filled in, and its {{t:English}} texts (the "open via bot" screen) in [lang]. */
-    fun page(lang: dev.jaganet.api.i18n.Lang, bot: String?, template: String = html): String = template
-        .replace("{{v}}", version)
+    /** The page with its bot filled in, and its {{t:English}} texts (the "open via bot" screen) in [lang]. */
+    fun page(template: String, lang: dev.jaganet.api.i18n.Lang, bot: String?): String = template
         .replace("{{lang}}", lang.code)
         .replace("{{bot}}", esc(bot.orEmpty()))
         .replace(TEXT) { esc(I18n.tr(lang, it.groupValues[1])) }
@@ -67,54 +51,28 @@ internal fun ApplicationCall.miniAppHeaders() {
 
 fun Route.miniAppPage(s: Services) {
     fun on() = s.ctx.cfg.telegram.miniApp
-    val newUi = WebNext.newUi(s)
 
-    suspend fun ApplicationCall.app(template: String) {
+    suspend fun ApplicationCall.page(template: String?, bot: String?, cache: String) {
         if (!on()) throw notFound("The Telegram mini app is off")
+        val html = template ?: throw notFound("The mini app is not built into this server")
         miniAppHeaders()
-        response.header(HttpHeaders.CacheControl, "no-cache")
-        respondText(MiniAppFiles.page(pageLang(), s.bot?.username, template), ContentType.Text.Html.withCharset(Charsets.UTF_8))
+        response.header(HttpHeaders.CacheControl, cache)
+        respondText(MiniAppFiles.page(html, pageLang(), bot), ContentType.Text.Html.withCharset(Charsets.UTF_8))
     }
+
+    get("/tg/app") { call.page(MiniAppFiles.html, s.bot?.username, "no-cache") }
     // Hands an import link (happ://, v2raytun://) from the mini app to the app: Telegram opens only web links outside.
-    suspend fun ApplicationCall.open(template: String) {
+    get("/tg/open") { call.page(MiniAppFiles.openHtml, null, "no-store") }
+    // The preview's addresses (saved links, the bot's old buttons) lead to the main ones, keeping the fragment.
+    get("/tg/app-next") {
         if (!on()) throw notFound("The Telegram mini app is off")
-        miniAppHeaders()
-        response.header(HttpHeaders.CacheControl, "no-store")
-        respondText(MiniAppFiles.page(pageLang(), null, template), ContentType.Text.Html.withCharset(Charsets.UTF_8))
+        call.toMain("/tg/app", miniApp = true)
     }
-    fun next() = MiniAppFiles.nextHtml ?: throw notFound("The new mini app is not built into this server")
-    fun nextOpen() = MiniAppFiles.nextOpenHtml ?: throw notFound("The new mini app is not built into this server")
-
-    if (newUi) {
-        get("/tg/app") { call.app(next()) }
-        get("/tg/open") { call.open(nextOpen()) }
-        // The preview's addresses (saved links, the bot's old buttons) lead to the main ones, keeping the fragment.
-        get("/tg/app-next") {
-            if (!on()) throw notFound("The Telegram mini app is off")
-            call.toMain("/tg/app", miniApp = true)
-        }
-        get("/tg/open-next") {
-            if (!on()) throw notFound("The Telegram mini app is off")
-            call.toMain("/tg/open", miniApp = true)
-        }
-    } else {
-        get("/tg/app") { call.app(MiniAppFiles.html) }
-        get("/tg/open") { call.open(MiniAppFiles.openHtml) }
-        // The new mini app as the preview: the same template filling, switch, headers and caching.
-        get("/tg/app-next") { call.app(next()) }
-        get("/tg/open-next") { call.open(nextOpen()) }
+    get("/tg/open-next") {
+        if (!on()) throw notFound("The Telegram mini app is off")
+        call.toMain("/tg/open", miniApp = true)
     }
-    // The templates themselves are never served raw. The old files stay for tabs opened before a switch.
+    // The templates themselves are never served raw.
     get("/tg/app.html") { call.respondRedirect("/tg/app") }
     get("/tg/open.html") { call.respondRedirect("/tg/open") }
-    get("/tg/app.js") { call.asset(MiniAppFiles.js, ContentType.Text.JavaScript) }
-    get("/tg/open.js") { call.asset(MiniAppFiles.openJs, ContentType.Text.JavaScript) }
-    get("/tg/app.css") { call.asset(MiniAppFiles.css, ContentType.Text.CSS) }
-}
-
-private suspend fun ApplicationCall.asset(bytes: ByteArray, type: ContentType) {
-    miniAppHeaders()
-    val current = request.queryParameters["v"] == MiniAppFiles.version
-    response.header(HttpHeaders.CacheControl, if (current) "public, max-age=31536000, immutable" else "no-cache")
-    respondBytes(bytes, type.withCharset(Charsets.UTF_8))
 }

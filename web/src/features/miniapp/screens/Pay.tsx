@@ -1,5 +1,5 @@
 /**
- * Payment (pay(), startPayment(), payWaiting() in tg/app.js): the tariffs as a radio list (the
+ * Payment: the tariffs as a radio list (the
  * recommended one chosen), "Pay {price}" on Telegram's Main button (or a button on the page), the
  * payments made. Paying makes a Telegram order, opens its payment page in the browser and waits:
  * the order is asked every 3 seconds for 20 minutes (useOrder, shared with #/account?order=), at

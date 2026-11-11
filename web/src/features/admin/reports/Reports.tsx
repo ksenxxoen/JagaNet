@@ -1,5 +1,5 @@
 /**
- * The problem reports tab (reportsPane() and reportPane() in app.js): the reports the Boop apps
+ * The problem reports tab: the reports the Boop apps
  * send ("Сообщить о проблеме"), the latest 200 with a filter by user (?user=), and one report on
  * ?id= with every fact, the comment and the whole report text to copy.
  */

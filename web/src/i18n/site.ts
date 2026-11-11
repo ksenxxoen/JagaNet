@@ -1,7 +1,7 @@
 /**
  * The website's language choice (the mini app uses the account's language and none of this):
  * ?lang= → saved (localStorage "lang") → browser language → ru, and a change is saved and written
- * to the "lang" cookie like setLang() in app.js (the server's pages read the cookie).
+ * to the "lang" cookie (the server's pages read the cookie).
  */
 import LanguageDetector from "i18next-browser-languagedetector";
 import { store } from "@/lib/storage";

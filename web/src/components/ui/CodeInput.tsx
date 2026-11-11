@@ -6,7 +6,7 @@ import { Input } from "./Field";
 export const codeDigits = (text: string, length = 6) => text.replace(/\D/g, "").slice(0, length);
 
 /**
- * A one-time code of 6 digits (input.code in style.css): the number keyboard on phones, the code
+ * A one-time code of 6 digits: the number keyboard on phones, the code
  * from an SMS or e-mail suggested by the system (autocomplete="one-time-code"), pasted text with
  * spaces or dashes cleaned up. onComplete fires when the last digit is typed.
  */

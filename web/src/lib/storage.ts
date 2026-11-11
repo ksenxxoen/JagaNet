@@ -1,7 +1,7 @@
 /**
  * localStorage under the same keys as the old website (token, lang, ref, afterSignIn, returnTo,
  * monRange, anPeriod, refPeriod, finPeriod…), so switching sites keeps people signed in.
- * Like `store` in app.js: every access is guarded (private mode, blocked storage).
+ * Every access is guarded (private mode, blocked storage).
  */
 export const store = {
   get(key: string): string | null {

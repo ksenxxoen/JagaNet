@@ -1,4 +1,4 @@
-/** The mini app's screens and the first one (firstScreen() in tg/app.js). */
+/** The mini app's screens and the first one. */
 export const SCREENS = ["home", "devices", "pay", "support", "profile", "connect"] as const;
 export type Screen = (typeof SCREENS)[number];
 

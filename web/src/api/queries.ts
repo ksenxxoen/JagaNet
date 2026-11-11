@@ -23,5 +23,5 @@ export const meQuery = (token: string | null) =>
 
 export const siteQuery = queryOptions({ queryKey: keys.site(), queryFn: () => get("/site"), staleTime: 5 * 60_000 });
 
-/** Tariffs and the free plan: the landing page's prices (home() in app.js). */
+/** Tariffs and the free plan: the landing page's prices. */
 export const plansQuery = queryOptions({ queryKey: keys.plans(), queryFn: () => get("/billing/plans"), staleTime: 5 * 60_000 });

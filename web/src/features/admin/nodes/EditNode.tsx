@@ -1,5 +1,5 @@
 /**
- * A node's forms (openEdit() in app.js): its details, the Xray balancer of a cascade entry, what
+ * A node's forms: its details, the Xray balancer of a cascade entry, what
  * the apps are told about it, the maintenance flag (#115), moving all its devices to another node,
  * and, for a remote node, installing it on a server (or moving it to another one) over SSH or with
  * a new install command. The dangerous ones ask first, with the old questions.

@@ -1,9 +1,9 @@
 /**
- * One Axios client for /v1, like api() in app.js: Bearer token and Accept-Language on every
+ * One Axios client for /v1: Bearer token and Accept-Language on every
  * request; 401 forgets the token and opens #/signin; errors carry the server's error.message,
  * otherwise "Something went wrong". The token comes from the session store, so the mini app's
  * stays in memory. The mini app sets onUnauthorized.renew: an ended session (12 hours) signs in
- * again once with the same initData and the request is repeated (api() in tg/app.js).
+ * again once with the same initData and the request is repeated.
  */
 import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from "axios";
 import { currentLang, t } from "@/i18n";

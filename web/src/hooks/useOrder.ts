@@ -1,7 +1,7 @@
 /**
  * An order being paid, asked again every `interval` ms while it is pending (the payment service
  * may confirm a few seconds later), at most `maxAge` ms after `since` when given (the mini app
- * stops after 20 minutes, as tg/app.js did). Once it is paid, the plan, the keys, the devices and
+ * stops after 20 minutes). Once it is paid, the plan, the keys, the devices and
  * the payments are refreshed. Shared by #/account?order= and the mini app's payment screen.
  */
 import { useQueryClient } from "@tanstack/react-query";

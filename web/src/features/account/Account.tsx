@@ -1,5 +1,5 @@
 /**
- * #/account (account() in app.js and tgAccountCard() in telegram.js): the plan and buying it,
+ * #/account: the plan and buying it,
  * the order on ?order= (asked again until it is paid), the VPN keys, the apps and a sign-in code
  * for the Boop app, Telegram, the community group and the payments. "Sign out" in the heading.
  * ?id= is accepted as before and not used by the screen.

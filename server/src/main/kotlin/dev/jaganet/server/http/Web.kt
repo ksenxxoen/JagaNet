@@ -106,11 +106,11 @@ fun Route.salesApi(s: Services) {
 }
 
 /**
- * The website (WEB_UI picks the new build or the old static files in resources/web for /, see WebNext.kt;
- * the old files stay served in both modes), key links and the test checkout.
+ * The website (the React build, see WebUi.kt), the files of the server's own pages (resources/web:
+ * favicon.svg, pages.css), key links and the test checkout.
  */
 fun Route.website(s: Services) {
-    webPages(s)
+    webPages()
     staticResources("/", "web")
     referralRedirect(s)
 
@@ -291,7 +291,7 @@ internal class Pages(val lang: Lang) {
 <meta name="robots" content="noindex"><title>$title | Boop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"></head>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/pages.css"></head>
 <body><header class="top"><div class="top-in"><a class="logo" href="/"><img src="/favicon.svg" alt="">Boop</a>
 <nav class="nav"><span class="langs">${Lang.entries.joinToString("") { l -> """<a class="${if (l == lang) "on" else ""}" href="?lang=${l.code}" hreflang="${l.code}">${l.code.uppercase()}</a>""" }}</span></nav></div></header>
 <main class="narrow">$body</main></body></html>"""

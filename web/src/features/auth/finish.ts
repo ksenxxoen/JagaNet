@@ -1,6 +1,5 @@
 /**
- * What happens after a sign-in on the website (the end of signin() and onTelegramAuth in
- * app.js / telegram.js): the token is kept, a plan picked before signing in goes to payment,
+ * What happens after a sign-in on the website (by e-mail code, link or Telegram): the token is kept, a plan picked before signing in goes to payment,
  * otherwise the screen the person was going to ("returnTo") or the account opens.
  */
 import { startCheckout } from "@/lib/checkout";

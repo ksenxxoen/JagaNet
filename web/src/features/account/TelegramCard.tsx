@@ -1,5 +1,5 @@
 /**
- * Telegram on the account (tgAccountCard() in telegram.js): linked to whom, "Open the bot",
+ * Telegram on the account: linked to whom, "Open the bot",
  * "Unlink" for e-mail accounts; or "Link Telegram", which makes a one-time link, opens it and
  * shows "Open Telegram" in case the new tab was blocked. Nothing when the bot is not set up.
  */

@@ -19,7 +19,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
 Textarea.displayName = "Textarea";
 
 /**
- * A select as in style.css: the surface background and a small chevron on the right (an icon, not
+ * A select: the surface background and a small chevron on the right (an icon, not
  * a data: image, so it works under the mini app's CSP). `className` goes to the wrapper (width,
  * margins); the select fills it.
  */
@@ -61,7 +61,7 @@ export function Field({
   );
 }
 
-/** A checkbox with its label on the right (label.toggle in style.css) and an optional line under it. */
+/** A checkbox with its label on the right and an optional line under it. */
 export function Checkbox({
   checked,
   onChange,

@@ -1,5 +1,5 @@
 /**
- * Facts about one thing as label and value pairs (.kv in style.css): the user's card, later a
+ * Facts about one thing as label and value pairs: the user's card, later a
  * node's and a server's. Two columns, one on phones. An item with `value` null or undefined is
  * left out (as kv() of the problem report did), so a card lists only what it knows.
  */

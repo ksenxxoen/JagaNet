@@ -1,4 +1,4 @@
-/** A device's platform by name (platformName() in app.js): the admin panel's user card and the analytics. */
+/** A device's platform by name: the admin panel's user card and the analytics. */
 import { t } from "@/i18n";
 
 const PLATFORMS: Record<string, string> = { android: "Android", ios: "iPhone", windows: "Windows", macos: "macOS", linux: "Linux" };

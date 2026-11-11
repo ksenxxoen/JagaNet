@@ -1,5 +1,5 @@
 /**
- * A settings form of the admin panel (saveWith() in app.js): a card with the fields and "Save".
+ * A settings form of the admin panel: a card with the fields and "Save".
  * While it saves the form is locked; after success a "Saved" toast, the listed queries and the
  * public site settings are fetched again (the old saveWith() forgot `site` for the same reason:
  * sign-in and payment settings may have changed); a failure shows the server's message under

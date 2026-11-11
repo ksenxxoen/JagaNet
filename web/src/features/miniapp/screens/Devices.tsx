@@ -1,5 +1,5 @@
 /**
- * Devices and keys (devices() in tg/app.js): how many places the plan has, the devices counted in
+ * Devices and keys: how many places the plan has, the devices counted in
  * it with rename and delete, and the subscription key outside the limit (it opens the connection
  * screen). A device key (from "New key" on the website) is deleted as a key.
  */

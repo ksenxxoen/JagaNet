@@ -58,10 +58,10 @@ tasks.register<JavaExec>("awgParams") {
 tasks.test { useJUnitPlatform() }
 
 /*
- * The new website (web/, React + Vite, docs/WEB-FRONTEND.md). Gradle downloads its own Node, so
+ * The website (web/, React + Vite, docs/WEB-FRONTEND.md). Gradle downloads its own Node, so
  * `:server:build` and `:server:installDist` work without a system Node, including
- * JAGANET_SERVER_ONLY=1 in scripts/server/install.sh. The build lands in the jar as web-next/
- * and is served on /next/ and /tg/app-next with its files in /ui/assets (previews, WebNext.kt, MiniApp.kt).
+ * JAGANET_SERVER_ONLY=1 in scripts/server/install.sh. The build lands in the jar as web-ui/
+ * and is served on / and /tg/app with its files in /ui/assets (WebUi.kt, MiniApp.kt).
  */
 val webDir = rootProject.layout.projectDirectory.dir("web")
 
@@ -89,5 +89,5 @@ val buildWeb = tasks.register<com.github.gradle.node.npm.task.NpmTask>("buildWeb
 }
 
 tasks.processResources {
-    from(buildWeb) { into("web-next") }
+    from(buildWeb) { into("web-ui") }
 }

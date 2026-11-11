@@ -1,4 +1,4 @@
-/** Test accounts: rows pasted from a spreadsheet and the table for Excel (parseTesters(), testersCsv() in app.js). */
+/** Test accounts: rows pasted from a spreadsheet and the table for Excel. */
 import type { Schema } from "@/api/typed";
 import { date, localDay, t } from "@/i18n";
 

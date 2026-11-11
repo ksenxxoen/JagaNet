@@ -1,4 +1,4 @@
-/** The landing page's 24-grid stroke icons, drawn in currentColor (ICONS and svg.ic in app.js and style.css). */
+/** The landing page's 24-grid stroke icons, drawn in currentColor. */
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
