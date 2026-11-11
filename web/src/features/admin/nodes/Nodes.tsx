@@ -1,5 +1,5 @@
 /**
- * The nodes tab (nodesPane() in app.js): agent installs in progress, the install command after
+ * The nodes tab: agent installs in progress, the install command after
  * creating a node by hand, the note for everyone, the nodes with their state, devices, address
  * and load, a node's forms (new or "Edit"), and the order of the locations, by dragging (or the
  * arrows) instead of typing numbers; the number stays in the node form.

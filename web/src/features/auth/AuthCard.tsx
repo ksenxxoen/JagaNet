@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Card } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
-/** .signbox in style.css: the narrow card of the sign-in screens, with the Boop mark on #/signin. */
+/** The narrow card of the sign-in screens, with the Boop mark on #/signin. */
 export function AuthCard({
   title,
   mark = true,

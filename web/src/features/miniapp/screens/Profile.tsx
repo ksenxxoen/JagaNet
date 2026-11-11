@@ -1,5 +1,5 @@
 /**
- * Profile (profile() in tg/app.js): who is signed in, the language (saved on the account, the
+ * Profile: who is signed in, the language (saved on the account, the
  * texts switch at once), bot notifications, the invite link with sharing and its numbers, our
  * Telegram group, a one-time sign-in link for the website, the legal pages.
  */

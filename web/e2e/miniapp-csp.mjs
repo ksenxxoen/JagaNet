@@ -1,6 +1,6 @@
 // The mini app in a real browser under its real CSP (issues #126, #127): `npm run test:browser` after `npm run build`.
 //
-// The panel with WEB_UI=new is played by panel.mjs: /tg/app and /tg/open are the built templates with
+// The panel is played by panel.mjs: /tg/app and /tg/open are the built templates with
 // MINIAPP_CSP; /tg/app-next and /tg/open-next lead there. Telegram's script is replaced by a stand-in
 // Telegram.WebApp.
 //

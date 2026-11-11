@@ -2,7 +2,7 @@ package dev.jaganet.api.i18n.strings
 
 import dev.jaganet.api.i18n.S
 
-/** The website (server/src/main/resources/web/app.js). */
+/** The website (web/src). */
 internal val webStrings: List<S> = listOf(
     S("Boop VPN", "Boop VPN", "Boop VPN"),
     S("Please sign in again", "Пожалуйста, войдите снова", "Bitte melde dich erneut an"),

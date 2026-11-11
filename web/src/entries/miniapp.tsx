@@ -1,5 +1,5 @@
 /**
- * The Telegram mini app (/tg/app; /tg/app-next while the panel runs WEB_UI=legacy): the page is the server's template
+ * The Telegram mini app (/tg/app): the page is the server's template
  * (miniapp.html with {{lang}}, {{bot}}, {{t:…}}) under MINIAPP_CSP. Outside Telegram it shows the
  * page's own "Open Boop in Telegram" screen without a single request to the API; inside, it
  * signs in with initData and renders the app. The session lives in memory only.

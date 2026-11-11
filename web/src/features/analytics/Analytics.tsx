@@ -1,5 +1,5 @@
 /**
- * #/analytics (analytics() in app.js): the owner's traffic analytics. The period is ?period=
+ * #/analytics: the owner's traffic analytics. The period is ?period=
  * (remembered as anPeriod); the tabs "Servers" and "Users" (?view=users, searched with ?q=); a
  * server's page (?server=) and a person's (?user=) with breadcrumbs back to the list. Every view
  * shows the traffic in numbers, the bars by hour or day (BitTorrent on top of the rest) and a table.
@@ -97,7 +97,7 @@ function TrafficTiles({ s, extra }: { s: Split; extra: KpiItem[] }) {
   );
 }
 
-/** Bars by hour or day: BitTorrent on top of the rest (trafficChart() in app.js). */
+/** Bars by hour or day: BitTorrent on top of the rest. */
 function TrafficBars({ points, bucket }: { points: Schema<"TrafficPoint">[]; bucket: string }) {
   const { t, bytes, date, dateTime, lang } = useI18n();
   const hourly = bucket === "hour";
@@ -458,7 +458,7 @@ function UserView({ id, period }: { id: string; period: AnalyticsPeriod }) {
   );
 }
 
-/** Rename a device, move it to another server, or give an app a new key (the form under the devices in app.js). */
+/** Rename a device, move it to another server, or give an app a new key. */
 function DeviceDialog({
   device: d,
   userId,

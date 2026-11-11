@@ -26,7 +26,7 @@ export function EmptyState({ title, children, action }: { title: ReactNode; chil
   );
 }
 
-/** An error with the server's message and a retry button (the catch branch of render() in app.js). */
+/** An error with the server's message and a retry button. */
 export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   const message = error instanceof Error ? error.message : t("Something went wrong");
   return (

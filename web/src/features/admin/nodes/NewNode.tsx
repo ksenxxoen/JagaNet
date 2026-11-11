@@ -1,5 +1,5 @@
 /**
- * A new node (openNew() in app.js): its details and the server to install it on. "Create and
+ * A new node: its details and the server to install it on. "Create and
  * install" creates it and starts the install over SSH; if the install can't start, the node
  * exists already and its edit form opens with the address and the message. "Create, I'll install
  * by hand" creates it and shows the install command.

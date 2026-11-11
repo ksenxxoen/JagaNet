@@ -1,5 +1,5 @@
 /**
- * #/referrals (referrals() in app.js): the referral program for the owner, or for everyone with
+ * #/referrals: the referral program for the owner, or for everyone with
  * site.referralsPublic; others go to #/account. The period is ?period= (remembered as
  * "refPeriod"). Own view: the funnel, clicks and conversions by day, the links (copy, rename,
  * archive, a new one), where clicks come from and the people invited. The owner's ?view=all: the

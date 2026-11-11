@@ -1,15 +1,15 @@
-// What the panel serves with WEB_UI=new (W-10, #127), played by a small Node server for the browser tests
+// What the panel serves (Web.kt, WebUi.kt, MiniApp.kt), played by a small Node server for the browser tests
 // (miniapp-csp.mjs, site-links.mjs) after `npm run build`:
 //
 //   - / and /index.html: the website (dist/index.html); /tg/app and /tg/open: the mini app's templates filled like
 //     MiniApp.kt does ({{lang}}, {{bot}}, {{t:…}}) with MINIAPP_CSP read from MiniApp.kt itself;
 //   - /next/, /tg/app-next, /tg/open-next: the page that leads to the main address with the panel's own
-//     to-main.js (server/src/main/resources/web-switch), as WebNext.kt serves it;
+//     to-main.js (server/src/main/resources/web-redirect), as WebUi.kt serves it;
 //   - /r/<code> → /?ref=<code>, /support → /#/support (Web.kt, SupportWeb.kt);
 //   - /ui/assets: the built files; /v1: demo data (no real hosts, keys or people), /v1/i18n/<lang> the texts
 //     from shared/.../i18n/strings. Demo answers can be added or changed through `answers`.
 //
-// WebNextTest and MiniAppTest check that the real server serves the same pages on the same addresses.
+// WebUiTest and MiniAppTest check that the real server serves the same pages on the same addresses.
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, extname, join } from "node:path";
@@ -205,7 +205,7 @@ export async function startPanel() {
     ];
     if (preview) return send(200, toMain(preview), html, preview.startsWith("/tg/") ? { "Content-Security-Policy": csp } : {});
     if (url.pathname === "/ui/to-main.js")
-      return send(200, readFileSync(join(root, "server/src/main/resources/web-switch/to-main.js")), types[".js"]);
+      return send(200, readFileSync(join(root, "server/src/main/resources/web-redirect/to-main.js")), types[".js"]);
     if (url.pathname === "/support") return send(302, "", "text/plain", { Location: "/#/support" });
     const ref = url.pathname.match(/^\/r\/([\w-]+)$/);
     if (ref) {

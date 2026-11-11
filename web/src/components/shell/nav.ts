@@ -1,4 +1,4 @@
-/** Menu items by role and site settings (renderNav() in app.js). */
+/** Menu items by role and site settings. */
 import { t } from "@/i18n";
 import type { Role, SiteInfo } from "@/store/session";
 

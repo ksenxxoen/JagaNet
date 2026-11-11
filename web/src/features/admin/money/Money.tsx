@@ -1,5 +1,5 @@
 /**
- * The finance tab (adminMoney() in app.js): the period (?period=, remembered as "finPeriod",
+ * The finance tab: the period (?period=, remembered as "finPeriod",
  * 30 days by default), the money in numbers, revenue by day in each currency, new subscriptions
  * and renewals by day, subscriptions by channel and by plan, and the recent payments.
  */

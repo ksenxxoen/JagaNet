@@ -2,7 +2,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
-/** .notice from style.css: a line of state with a colored dot; ok, bad (warning), danger, info. */
+/** A notice: a line of state with a colored dot; ok, bad (warning), danger, info. */
 const notice = cva(
   "mb-4 flex items-start gap-3 rounded-xl border px-4 py-3.5 text-[15px] text-ink-heading before:mt-2 before:size-2 before:flex-none before:rounded-full",
   {

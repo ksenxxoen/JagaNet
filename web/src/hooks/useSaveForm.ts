@@ -1,5 +1,5 @@
 /**
- * A form that saves to the server (saveWith() in app.js): while it saves the form is locked,
+ * A form that saves to the server: while it saves the form is locked,
  * after success an optional toast and fresh queries, on failure the message under the form.
  * Checks before sending throw an Error from `build`, and that message is shown the same way.
  *

@@ -1,5 +1,5 @@
 /**
- * An open row of the status list (stCard() in app.js): why the server has its status, everything
+ * An open row of the status list: why the server has its status, everything
  * from the agent's last report, the inbounds with their users, charts of the chosen range in one
  * color with breaks where reports are missing, the event log with exact times, and the
  * maintenance flag (the same request as the button in the node's form). The main server (and a

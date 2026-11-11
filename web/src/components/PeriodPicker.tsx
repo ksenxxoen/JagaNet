@@ -1,6 +1,5 @@
 /**
- * The period chips of the referral program, analytics and server status (PERIODS and RANGES in
- * app.js). Controlled: the screen keeps the value with usePersistedSearch(), so it is in the
+ * The period chips of the referral program, analytics and server status. Controlled: the screen keeps the value with usePersistedSearch(), so it is in the
  * address and remembered.
  *
  *   const [period, setPeriod] = usePersistedSearch("period", "refPeriod", "30d", PERIOD_KEYS);

@@ -1,10 +1,10 @@
-# New website (web/): React + TypeScript
+# Website (web/): React + TypeScript
 
-The website is moving from plain JS without a build (`server/src/main/resources/web/`) to a React
-app in `web/` (epic #117). Since W-10 (#127) the panel serves the new website on **`/`** and the new
-Telegram mini app on **`/tg/app`** (with `/tg/open`), unless `WEB_UI=legacy` (see "Switching and
-rollback" below). The old files stay in the jar until W-11; `/k/…`, the server's own pages and the
-API are the same in both modes.
+The web interface is a React app in `web/` (epic #117): the panel serves the website on **`/`** and
+the Telegram mini app on **`/tg/app`** (with `/tg/open`). It replaced the old plain-JS website
+(`server/src/main/resources/web/`, no build step): switched over in W-10 (#127), the old files and
+the `WEB_UI` rollback switch removed in W-11 (#128). `/k/…`, the server's other own pages and the
+API are not part of it (see "Server pages" below).
 
 The development plan (stages, module layout, shared UI kit, API layer, migration and backend
 changes): `docs/frontend-plan.md`.
@@ -22,11 +22,11 @@ Swagger UI (`swagger-ui-dist`, the owner's API tab), Vitest + Testing Library, E
 
 | Path | What |
 | --- | --- |
-| `web/index.html` | The website's page: meta tags as the old `index.html` (indexed on `/`; the preview on `/next/` gets `X-Robots-Tag: noindex` from the server) |
+| `web/index.html` | The website's page with its meta tags (indexed, served on `/`) |
 | `web/miniapp.html`, `web/tg-open.html` | The mini app's and `/tg/open`'s pages: templates the server fills (`{{lang}}`, `{{bot}}`, `{{t:…}}`), with the static splash and "Open Boop in Telegram" screens |
 | `web/src/entries/site.tsx` | Start of the website: the localStorage session, saves `?ref=`, picks and loads the language, mounts the router |
 | `web/src/entries/miniapp.tsx`, `tg-open.ts` | Start of the mini app (memory session, theme, sign-in, first screen) and of `/tg/open` (no React) |
-| `web/src/styles/tokens.ts`, `index.css`, `tailwind.config.ts` | Design tokens from `style.css` (light and dark, one place for every page) as Tailwind colors: `paper`, `surface`, `ink`, `muted`, `line*`, `primary*`, `green*`, `warn*`, `danger*`, `section`; dark follows `prefers-color-scheme`, or `<html data-scheme>` where the mini app sets it |
+| `web/src/styles/tokens.ts`, `index.css`, `tailwind.config.ts` | The design tokens (docs/DESIGN.md; light and dark, one place for every page) as Tailwind colors: `paper`, `surface`, `ink`, `muted`, `line*`, `primary*`, `green*`, `warn*`, `danger*`, `section`; dark follows `prefers-color-scheme`, or `<html data-scheme>` where the mini app sets it |
 | `web/src/components/ui/` | Base components (no router, no web storage: the mini app uses them too): Button, Card, Field/Input/Select/Textarea, Tabs, Chips, StatusBadge, Table, Spinner, EmptyState, ErrorState, Notice, CodeInput (6 digits), Form/FormError, Modal/ConfirmDialog, CopyButton, KpiTile/KpiGrid (number tiles), Level (a state written out with a dot), Toaster (the toasts of `notify`) |
 | `web/src/components/LinkTabs.tsx` | Tabs that are links (router links for the admin tabs); outside `ui/` because it needs the router |
 | `web/src/components/SupportForm.tsx` | The support form (e-mail, subject, message, optional name, honeypot): `#/support` and the mini app |
@@ -43,7 +43,7 @@ Swagger UI (`swagger-ui-dist`, the owner's API tab), Vitest + Testing Library, E
 | `web/src/routes/` | Routes, typed query parameters, guards |
 | `web/src/api/` | Axios client for `/v1`, typed calls (`typed.ts`), generated types (`schema.d.ts`), query keys (`keys.ts`), React Query client and shared queries |
 | `web/src/lib/` | `cn`, `notify`, `storage`, `download` (save a CSV), `anchors` (landing sections), `checkout` (buy a plan), `rich` (texts with links), `navigate`, `pricing` (prices per month, savings), `apps` (the app cards of the landing page and the account), `links` (import links for Happ / v2RayTun, the `/tg/open` check, `withLang`, VLESS locations), `qr` (QR matrix and pixels), `funnel` (referral funnel numbers as text: `pct`, `revenueText`, `sourceName`, `channelName`, `funnelTiles`), `platforms` (`platformName`) |
-| `web/src/features/public/` | `#/` landing page (lazy chunk with its own `landing.css`, ported from `style.css`) |
+| `web/src/features/public/` | `#/` landing page (lazy chunk with its own `landing.css`, ported from the old site's stylesheet) |
 | `web/src/features/auth/` | `#/signin`, `#/login?token=`, `#/app-login?id=`, the Telegram Login Widget (lazy chunk) |
 | `web/src/features/account/` | `#/account` (`?order=`): plan, buying, the order status, VPN keys with QR, devices, apps and the sign-in code, Telegram, payments (lazy chunk) |
 | `web/src/features/referrals/` | `#/referrals` (`?period=`, owner's `?view=all`): funnel, charts by day, links (copy, rename, archive, new), sources, people invited; the whole program with the top partners (lazy chunk) |
@@ -64,10 +64,10 @@ Swagger UI (`swagger-ui-dist`, the owner's API tab), Vitest + Testing Library, E
 - **Addresses.** Hash routes (`#/account?order=…`), query parameters stay plain strings. Personal
   screens without a token open `#/signin` and remember `returnTo`; owner screens send everyone else
   to `#/account`.
-- **Session.** The same `localStorage` keys as `app.js` (`token`, `lang`, `ref`, `returnTo`,
+- **Session.** The same `localStorage` keys as the old site (`token`, `lang`, `ref`, `returnTo`,
   `monRange`, `anPeriod`…), raw strings, every access in try/catch (`lib/storage.ts`). Only the
   website's modules use it (`entries/site.tsx`, `i18n/site.ts`, `lib/checkout.ts`, the screens);
-  the mini app's token is in memory only, as in `tg/app.js`.
+  the mini app's token is in memory only, as in the old mini app.
 - **API errors.** 401 forgets the token and opens `#/signin` (the mini app signs in again once
   with `initData` and repeats the request); the message is `error.message` from the server, else
   "Something went wrong".
@@ -82,7 +82,7 @@ Swagger UI (`swagger-ui-dist`, the owner's API tab), Vitest + Testing Library, E
 ```sh
 cd web
 npm ci
-npm run dev        # http://localhost:5173/next/ with /v1 proxied to a local server
+npm run dev        # http://localhost:5173/ with /v1 proxied to a local server
 npm run typecheck
 npm run lint       # ESLint + Prettier check
 npm test           # Vitest
@@ -101,16 +101,14 @@ address via `JAGANET_DEV_SERVER=http://host:port npm run dev`).
 - `./gradlew :server:build` / `:server:installDist` build the site themselves: the node-gradle
   plugin downloads Node 22.23.4 (no system Node needed, also with `JAGANET_SERVER_ONLY=1` in
   `scripts/server/install.sh`), runs `npm ci` and `npm run build` (task `:server:buildWeb`), and
-  `processResources` puts `web/dist` into the jar as `web-next/`. The task declares its inputs and
+  `processResources` puts `web/dist` into the jar as `web-ui/`. The task declares its inputs and
   outputs, so an unchanged `web/` is not rebuilt. The Node download repository is declared in
   `settings.gradle.kts`.
-- One build, three pages, one base: every file is in `/ui/assets/*` (hashed names). `http/WebNext.kt`
+- One build, three pages, one base: every file is in `/ui/assets/*` (hashed names). `http/WebUi.kt`
   serves `/ui/assets/*` with a one-year immutable cache (nothing else under `/ui/` but the panel's
   own `/ui/to-main.js`, so the templates are never served raw) and `index.html` with `no-cache`
-  on `/` (or on `/next/` with `X-Robots-Tag: noindex` while `WEB_UI=legacy`). `http/MiniApp.kt`
-  serves `miniapp.html` and `tg-open.html` on `/tg/app` and `/tg/open` (or `/tg/app-next` and
-  `/tg/open-next`). Because the pages only reference `/ui/assets`, the switch serves the same HTML on
-  other addresses without a rebuild. Tested in `WebNextTest` and `MiniAppTest` in both modes.
+  on `/`. `http/MiniApp.kt` fills and serves `miniapp.html` and `tg-open.html` on `/tg/app` and
+  `/tg/open`. Tested in `WebUiTest` and `MiniAppTest`.
 - CI: `.github/workflows/web.yml` (API types up to date, typecheck, lint, test, build on changes
   in `web/**` and `openapi.yaml`); `server.yml` also runs on `web/**`.
 - Chunks (W-9): `core` holds the libraries the mini app shares with the website (React, React
@@ -143,8 +141,8 @@ address via `JAGANET_DEV_SERVER=http://host:port npm run dev`).
 
 ## Telegram mini app
 
-`/tg/app` (`/tg/app-next` while `WEB_UI=legacy`) is `features/miniapp/` on the
-same stack and UI kit as the website. What it keeps from `tg/app.js`:
+`/tg/app` is `features/miniapp/` on the same stack and UI kit as the website. What it kept from
+the old mini app:
 
 - **Sign-in.** `POST /v1/auth/telegram/webapp` with `Telegram.WebApp.initData`; the token only in
   memory (`memoryPersistence()`); an ended session (12 hours) signs in again once with the same
@@ -183,7 +181,7 @@ external fonts (system fonts; the website keeps Inter). Checked three times:
    the mini app is off) and every JS file they load, followed through the imports in the jar;
 3. `npm run test:browser` (`e2e/miniapp-csp.mjs`, CI job `miniapp-browser` in `web.yml`): Chromium
    opens the built pages on `/tg/app` and `/tg/open` with the CSP from `MiniApp.kt`, a stand-in
-   `Telegram.WebApp` and demo API answers (`e2e/panel.mjs` plays the panel with `WEB_UI=new`), goes
+   `Telegram.WebApp` and demo API answers (`e2e/panel.mjs` plays the panel), goes
    through every screen in light and dark and fails on any CSP violation, page error or failed
    request; the QR code must be drawn, a toast shown, an import link must go through `/tg/open#…`,
    the bot's `/tg/app#/pay` and `#/devices` must open their screens and `/tg/app-next#…` must land
@@ -192,30 +190,35 @@ external fonts (system fonts; the website keeps Inter). Checked three times:
 ESLint keeps the website's modules (`lib/storage`, `lib/checkout`, `i18n/site`, the router, the
 shell) out of `features/miniapp/`, the mini app's entries and `components/ui/`.
 
-## Switching and rollback (W-10)
+## Addresses of the switch (W-10, W-11)
 
-`WEB_UI` in the server's environment (`Config.kt`, docs/SERVER.md) picks the interface of `/`,
-`/tg/app` and `/tg/open`: `new` (default) or `legacy` (the old pages). Rollback is
-`WEB_UI=legacy` and a restart of the service, no rebuild.
+W-10 (#127) moved `/` and `/tg/app` to this interface with a rollback switch (`WEB_UI`); W-11 (#128)
+removed the old website, the old mini app and the switch once the owner confirmed the new interface
+in production. Going back now means deploying an older release (docs/SERVER.md).
 
-- **Old tabs.** The old files (`/app.js`, `/style.css`, `/tg/app.js`…) are served in both modes,
-  so a tab opened before the switch keeps working until it is reloaded.
-- **Previews.** With `WEB_UI=new`, `/next/`, `/tg/app-next` and `/tg/open-next` answer with a
-  page that loads `/ui/to-main.js` (`server/src/main/resources/web-switch/`): it replaces the
-  address with `/`, `/tg/app` or `/tg/open`, keeping `?query` and `#fragment` (the fragment, such
-  as `#/pay` or Telegram's `#tgWebAppData=…`, never reaches the server, so this happens on the
-  client). It is our own file, so the mini app's CSP allows it. With `WEB_UI=legacy` the previews
-  work as before, so the new interface can be looked at after a rollback.
-- **Session.** The website reads the old site's `localStorage` keys, so people stay signed in
-  (Vitest `store/__tests__/legacy-session.test.ts`, browser `e2e/site-links.mjs`).
-- **Links.** Every address the server and the bot hand out opens its screen of the new interface:
-  `WebNextTest` follows the real links (sign-in link, app sign-in, the checkout's way back,
+- **Previews.** `/next/`, `/tg/app-next` and `/tg/open-next` (saved links, the bot's old buttons)
+  answer with a page that loads `/ui/to-main.js` (`server/src/main/resources/web-redirect/`): it
+  replaces the address with `/`, `/tg/app` or `/tg/open`, keeping `?query` and `#fragment` (the
+  fragment, such as `#/pay` or Telegram's `#tgWebAppData=…`, never reaches the server, so this
+  happens on the client). It is our own file, so the mini app's CSP allows it.
+- **Session.** The website reads the old site's `localStorage` keys, so people signed in before the
+  switch stay signed in (Vitest `store/__tests__/legacy-session.test.ts`, browser `e2e/site-links.mjs`).
+- **Links.** Every address the server and the bot hand out opens its screen:
+  `WebUiTest` follows the real links (sign-in link, app sign-in, the checkout's way back,
   `/support`, `/r/<code>`, the monitor's `#/status`, the bot's `#/invite`, `#/referrals`,
-  `/tg/app#/pay`, `#/devices`) to a page of the new build that has the route;
+  `/tg/app#/pay`, `#/devices`) to a page of the build that has the route;
   `e2e/site-links.mjs` opens them in Chromium (`/#/login?token=`, `/#/app-login?id=`,
   `/#/account`, `/#/account?order=`, `/#/status`, `/#/support`, `#/invite`, `#/referrals`,
   `/r/<code>` → `?ref=`, `/support`, `?lang=`, `/next/#…`) and checks the screen.
 - **CI.** `web.yml` job `miniapp-browser` runs both browser tests; `server.yml` runs `:server:test`.
+
+## Server pages
+
+The key pages (`/k/<token>`), the test checkout and "payment received" pages (`Pages` in
+`http/Web.kt`) and `/privacy`, `/terms` (`http/SupportWeb.kt`) are rendered by the server, not by
+React. They use `server/src/main/resources/web/pages.css` (only the classes they use, the tokens of
+`src/styles/tokens.ts` with the same values, no gradients) and `favicon.svg`, both served from `/`.
+`WebUiTest` checks that every class these pages use has a rule and that the colors match the theme.
 
 ## Screen boundaries
 

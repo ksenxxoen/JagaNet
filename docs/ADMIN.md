@@ -19,7 +19,7 @@ On the server: `jaganet-admin` prints a one-time link (15 minutes) that signs th
 (`OWNER_EMAIL`) in on the website. The installer prints one at the end. It works only on the
 server itself (127.0.0.1, not through the web proxy).
 
-Website `#/admin` (owners only):
+Website `#/admin` (owners only; the React screens in `web/src/features/admin/`, docs/WEB-FRONTEND.md):
 
 - **Dashboard** (issue #39, the default tab): users in total and new in 24 hours, with access now
   (paid, gift, invite reward or admin grant; the owner not counted), blocked, ending in 3 days,

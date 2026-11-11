@@ -1,5 +1,5 @@
 /**
- * Home (home() in tg/app.js): a greeting, the plan card (state, until when, devices used), the
+ * Home: a greeting, the plan card (state, until when, devices used), the
  * notices, "Connect" or "Buy a subscription", how to connect, and the ways to devices, payment
  * and support.
  */

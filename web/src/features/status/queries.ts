@@ -1,4 +1,4 @@
-/** The status page's one request (stLoad() in app.js): everything for the list, plus the charts of the open servers. */
+/** The status page's one request: everything for the list, plus the charts of the open servers. */
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import { keys } from "@/api/keys";
 import { get } from "@/api/typed";

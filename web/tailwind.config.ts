@@ -3,7 +3,7 @@ import plugin from "tailwindcss/plugin";
 import { dark, light } from "./src/styles/tokens";
 
 /**
- * Theme from the website's tokens (server/src/main/resources/web/style.css, docs/DESIGN.md).
+ * Theme from the website's tokens (src/styles/tokens.ts, docs/DESIGN.md).
  * Every color is a CSS variable from src/styles/tokens.ts for the light and the dark theme, so the
  * classes below (bg-paper, text-ink, border-line…) follow prefers-color-scheme like the old site,
  * or <html data-scheme> where the mini app sets it from Telegram.

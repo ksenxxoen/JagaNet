@@ -1,10 +1,10 @@
 /**
  * Texts: the key is the English text, translations come from /v1/i18n/<lang> (built from
  * shared/.../i18n/strings), English needs no download. Placeholders are {name} as in the old site,
- * plurals are "a|b|c" strings picked by tp() with the ru/de/en rules from app.js.
+ * plurals are "a|b|c" strings picked by tp() with the ru/de/en rules of the old site.
  *
  * The website picks the language with pickLang() from i18n/site.ts (?lang= → saved → browser → ru)
- * and remembers a change there (localStorage "lang" and the "lang" cookie, like setLang() in app.js),
+ * and remembers a change there (localStorage "lang" and the "lang" cookie), with a listener
  * registered with onLangChange(). The mini app passes the account's language and remembers nothing.
  * This module itself touches no web storage, so the mini app's bundle has none.
  */
@@ -60,7 +60,7 @@ export async function initI18n(lang: Lang, { title = true }: { title?: boolean }
           prefix: "{",
           suffix: "}",
         },
-        // An unknown placeholder stays as it is, like fill() in app.js.
+        // An unknown placeholder stays as it is.
         missingInterpolationHandler: (_text: string, value: RegExpExecArray) => value[0],
         backend: { loadPath: (lngs: string[]) => `/v1/i18n/${lngs[0]}` },
         react: { useSuspense: false },

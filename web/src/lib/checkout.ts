@@ -1,5 +1,5 @@
 /**
- * Buying a plan (buy() in app.js): without a session the plan is remembered ("afterSignIn") and
+ * Buying a plan: without a session the plan is remembered ("afterSignIn") and
  * sign-in opens; after signing in the order is created and the payment page opens in the
  * person's language. Shared by the landing page, sign-in and (W-4) the account.
  */

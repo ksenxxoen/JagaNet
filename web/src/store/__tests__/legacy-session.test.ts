@@ -5,7 +5,7 @@ import { pickLang } from "@/i18n/site";
 import { store } from "@/lib/storage";
 import { createSessionStore, installSession, useSession } from "../session";
 
-// W-10: the new website replaces the old one on /. Someone signed in on the old site (app.js wrote
+// W-10: the new website replaces the old one on /. Someone signed in on the old site (it wrote
 // localStorage "token", "lang", "ref" as raw strings) opens the new one and is still signed in.
 afterEach(() => {
   api.defaults.adapter = undefined;
@@ -16,7 +16,7 @@ afterEach(() => {
 
 describe("a session saved by the old website", () => {
   it("is picked up by the new one without signing in again", async () => {
-    // Exactly what app.js leaves behind.
+    // Exactly what the old site left behind.
     localStorage.setItem("token", "old-site-token");
     localStorage.setItem("lang", "de");
     localStorage.setItem("ref", "FRIEND");

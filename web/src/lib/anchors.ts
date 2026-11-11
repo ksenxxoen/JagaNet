@@ -1,6 +1,5 @@
 /**
- * Landing page anchors (#features, #how, #pricing, #faq, #download), as isAnchor() and the
- * hashchange handler in app.js: they are sections, not routes. On the landing page a link to one
+ * Landing page anchors (#features, #how, #pricing, #faq, #download): they are sections, not routes. On the landing page a link to one
  * only scrolls there (smoothly, unless the person prefers reduced motion); from another screen the
  * link opens the landing page (the router's not-found route) and it scrolls there once drawn.
  */

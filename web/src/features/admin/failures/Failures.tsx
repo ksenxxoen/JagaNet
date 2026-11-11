@@ -1,5 +1,5 @@
 /**
- * The connection failures tab (failuresPane() in app.js): failures in the last 15 minutes per node,
+ * The connection failures tab: failures in the last 15 minutes per node,
  * the filter by node (?server=) and user (?user=, an e-mail or id), and the latest 200 failures the
  * Boop apps reported (kept 30 days).
  */
@@ -21,7 +21,7 @@ export const FAILURE_REASONS: Record<string, string> = {
   stale_handshake: "The handshake is too old",
   no_rx: "No incoming data",
 };
-/** NETWORK_KINDS in app.js. */
+/** The kinds of network a failure was reported from. */
 export const networkName = (k: string) =>
   ({ wifi: "Wi-Fi", ethernet: t("Cable"), mobile: t("Mobile network"), unknown: t("Unknown") })[k] ?? k;
 

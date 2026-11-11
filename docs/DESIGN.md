@@ -6,8 +6,9 @@ it screen by screen; screenshots of the running app come from `./gradlew :compos
 ## Design system
 
 The look follows GitLab's Pajamas design system, the same in the app, on the website and in
-the bot. App values live in `composeApp/.../theme/Theme.kt`, web values in
-`server/src/main/resources/web/style.css` (CSS variables). Screens use token names only.
+the bot. App values live in `composeApp/.../theme/Theme.kt`, web values in the Tailwind theme of
+the web interface (`web/src/styles/tokens.ts` and `web/tailwind.config.ts`, see "Website" below).
+Screens use token names only.
 
 | Token | Value | Use |
 |---|---|---|
@@ -34,13 +35,20 @@ the bot. App values live in `composeApp/.../theme/Theme.kt`, web values in
 
 ### Website (2026 redesign)
 
-The website no longer follows Pajamas: it is a marketing site first. Its tokens live on `:root` in
-`server/src/main/resources/web/style.css` with a light and a dark theme (`prefers-color-scheme`); the
-header comment there is the reference. In short: the Boop pink (`#ff4f79`) running into violet
+The website no longer follows Pajamas: it is a marketing site first. Its tokens are the Tailwind
+theme of the web interface (`web/`, docs/WEB-FRONTEND.md): `web/src/styles/tokens.ts` holds every
+color and shadow as a CSS variable with a light and a dark theme (`prefers-color-scheme`, or
+`<html data-scheme>` in the Telegram mini app), and `web/tailwind.config.ts` turns them into classes
+(`bg-paper`, `text-ink`, `border-line`, `bg-primary`, `text-muted`, `bg-green-tint`, `text-warn-text`…)
+with Inter, 10 px control corners (`rounded-ctl`), 16 px panels (`rounded-panel`) and 40 px controls
+(`h-ctl`). Screens use these classes only, never raw colors. The server's own pages (key pages
+`/k/…`, the test checkout, "payment received", `/privacy`, `/terms`) are not React: they use
+`server/src/main/resources/web/pages.css`, which repeats the tokens it needs with the same values
+(`WebUiTest` checks them against `tokens.ts`) and no gradients. In short: the Boop pink (`#ff4f79`) running into violet
 (`#7b61ff`) as the one signature gradient (main button, icon tiles, the recommended plan, one word of
 the headline), calm neutrals elsewhere, Inter 400 to 800 with heavy tight headlines, 10 px corners on
 controls and 16 to 24 px on cards, soft shadows, a dark hero and closing band in both themes, short
-motion that stops with `prefers-reduced-motion`. The landing page (`home()` in `app.js`): hero with
+motion that stops with `prefers-reduced-motion`. The landing page (`web/src/features/public/`): hero with
 the three pillars (high speed, low ping, data security) and a drawn app, the pillars in detail, how it
 works in three steps, pricing (price per month and saving against the monthly plan computed from the
 tariffs), apps, FAQ, closing call to action, footer with the legal pages and support.
@@ -50,7 +58,7 @@ tariffs), apps, FAQ, closing call to action, footer with the legal pages and sup
 What separates this from generated-looking design is that everything lines up:
 
 - A row of tiles is always full. The website picks the column count from the number of
-  tiles (`evenCols()` in `app.js`: up to 4 in a row, else 4, 3 or 2 that divides the count;
+  tiles (`evenCols()` in `web/src/features/public/Landing.tsx`: up to 4 in a row, else 4, 3 or 2 that divides the count;
   a short last row is centered).
 - Tiles in one row have one height and one structure: label, value, note line (kept even when
   empty). Plan cards share badge line, name, price, four lines of terms and a bottom button.

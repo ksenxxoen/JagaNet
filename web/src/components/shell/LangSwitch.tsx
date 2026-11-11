@@ -2,7 +2,7 @@ import { LANGS, setLang, useI18n } from "@/i18n";
 import { cn } from "@/lib/cn";
 import { useSession } from "@/store/session";
 
-/** RU / DE / EN, the current one pressed (.langs in style.css). */
+/** RU / DE / EN, the current one pressed. */
 export function LangSwitch({ className }: { className?: string }) {
   const { t, lang } = useI18n();
   const setLangState = useSession((s) => s.setLangState);

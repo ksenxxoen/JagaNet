@@ -1,5 +1,5 @@
 /*
- * The landing page (home() in app.js), ported from server/src/main/resources/web/style.css
+ * The landing page, ported from the old website's stylesheet (removed in W-11, #128)
  * ("Landing page" section and its phone rules), scoped under .lp so nothing leaks into other
  * screens. Loaded only with the landing chunk. The colors are the old site's tokens from
  * index.css; the dark bands use the same fixed colors as the old site in both themes.

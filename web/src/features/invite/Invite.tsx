@@ -1,5 +1,5 @@
 /**
- * #/invite (invite.js): the person's invite links, what an invite earns and the rewards received.
+ * #/invite: the person's invite links, what an invite earns and the rewards received.
  * The owner's ?view=admin: the rules, the top inviters, every reward with its anti-fraud flag
  * (?suspicious=1 shows only the flagged ones) and cancelling a reward. Statuses are written out.
  */
@@ -36,7 +36,7 @@ import { cn } from "@/lib/cn";
 import { who } from "@/lib/funnel";
 import { useSession } from "@/store/session";
 
-/** INV_STATUS, INV_SUSPICION, INV_NOTIFIED in invite.js: the texts (English keys) and the dot. */
+/** An invite's status, suspicion and notice: the texts (English keys) and the dot. */
 export const INV_STATUS: Record<string, ["ok" | "warn" | "neutral", string]> = {
   granted: ["ok", "Added"],
   capped: ["warn", "Monthly limit reached"],

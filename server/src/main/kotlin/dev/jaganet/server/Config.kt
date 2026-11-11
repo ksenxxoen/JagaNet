@@ -4,24 +4,6 @@ import dev.jaganet.api.i18n.Lang
 
 enum class Mode { PRODUCTION, SIMULATION, TEST }
 
-/**
- * Which website and mini app the panel serves on /, /tg/app and /tg/open (WEB_UI, epic #117, W-10).
- * NEW: the React build (web/, resources/web-next); LEGACY: the old pages (resources/web). Both are
- * in every jar, so going back is a change of the variable and a restart, no rebuild.
- */
-enum class WebUi {
-    NEW, LEGACY;
-
-    companion object {
-        /** Unset or blank = NEW. Anything other than "new" or "legacy" stops the server: a mistyped rollback must not pass unnoticed. */
-        fun of(v: String?): WebUi = when (v?.trim()?.lowercase()) {
-            null, "", "new" -> NEW
-            "legacy" -> LEGACY
-            else -> throw IllegalArgumentException("WEB_UI must be \"new\" or \"legacy\", not \"$v\"")
-        }
-    }
-}
-
 data class Plans(
     /** 0 = no data limit. */
     val freeMonthlyBytes: Long,
@@ -93,8 +75,6 @@ data class Config(
     val supportEmail: String? = null,
     /** "Invite a friend" rewards (issue #40): REFERRAL_* variables, then the admin panel. */
     val referralRewards: RewardRules = RewardRules(),
-    /** WEB_UI: the new website and mini app (default) or the old ones (rollback). */
-    val webUi: WebUi = WebUi.NEW,
 ) {
     companion object {
         fun load(env: Map<String, String> = System.getenv()): Config {
@@ -178,7 +158,6 @@ data class Config(
                 ),
                 trafficClassesFile = env["TRAFFIC_CLASSES_FILE"]?.takeIf { it.isNotBlank() } ?: "/run/boop/traffic.json",
                 speedLimitsFile = env["SPEED_LIMITS_FILE"]?.takeIf { it.isNotBlank() },
-                webUi = WebUi.of(env["WEB_UI"]),
             )
         }
     }

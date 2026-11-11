@@ -1,5 +1,5 @@
 /**
- * Copying a link (copyText() in app.js, copy() in tg/app.js): the clipboard API, else a hidden
+ * Copying a link: the clipboard API, else a hidden
  * textarea and execCommand (older browsers, Telegram on some phones), and as the last way the
  * browser's prompt with the text selected, as the old site did. A toast says it worked.
  */

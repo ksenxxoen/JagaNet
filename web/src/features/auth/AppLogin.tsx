@@ -1,5 +1,5 @@
 /**
- * #/app-login?id=… (appLogin() in app.js): the Boop app on a computer asks to be signed in to this
+ * #/app-login?id=…: the Boop app on a computer asks to be signed in to this
  * account. The screen shows the app's device name and the code the app shows; "Allow" signs it in.
  * Needs a session (the route guard opens sign-in and comes back here). The app itself polls the
  * server, this page does not need to.

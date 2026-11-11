@@ -5,7 +5,7 @@ import { Card } from "./Card";
 export interface KpiItem {
   label: string;
   value: ReactNode;
-  /** A line under the number; kept even when empty, so the tiles of a row line up (kpi() in app.js). */
+  /** A line under the number; kept even when empty, so the tiles of a row line up. */
   note?: ReactNode;
 }
 

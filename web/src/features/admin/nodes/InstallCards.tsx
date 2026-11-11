@@ -1,5 +1,5 @@
 /**
- * The progress of agent installs (installCard() in app.js): a card for every running install, and
+ * The progress of agent installs: a card for every running install, and
  * for a finished one until it is closed (the start time is remembered under "install:<node id>" as
  * on the old site, so a closed card stays closed there too). A running install is asked every 2
  * seconds (usePolling: stops when it ends, when the tab is hidden or left); when it ends the node

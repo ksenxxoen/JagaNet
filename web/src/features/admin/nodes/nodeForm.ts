@@ -1,7 +1,6 @@
 /**
- * The node form as data: the fields' values from a node, and the request from the values
- * (nodeFields(), nodeBody(), vlessBody(), sshFields(), sshBody() in app.js), kept apart from the
- * screen so the request is the same as the old site's and can be tested on its own.
+ * The node form as data: the fields' values from a node, and the request from the values, kept
+ * apart from the screen so the request stays the same as before and can be tested on its own.
  */
 import type { Schema } from "@/api/typed";
 import { t } from "@/i18n";
@@ -83,7 +82,7 @@ export function nodeValues(n?: Node): NodeValues {
 }
 
 /**
- * The VLESS part (vlessBody() in app.js): only what the apps need, never the Reality private key.
+ * The VLESS part: only what the apps need, never the Reality private key.
  * A transport's tag and flow stay as they were; a new one gets the defaults.
  */
 export function vlessBody(v: VlessValues, was?: Vless): Vless {
@@ -115,7 +114,7 @@ export function vlessBody(v: VlessValues, was?: Vless): Vless {
 }
 
 /**
- * The request (nodeBody() in app.js). The main server has no protocol choice (`local`), so it never
+ * The request. The main server has no protocol choice (`local`), so it never
  * sends VLESS settings; a VLESS node always sends them with its old tags and flows.
  */
 export function nodeBody(v: NodeValues, opts: { local?: boolean; was?: Node } = {}): NodeReq {
@@ -148,7 +147,7 @@ export interface SshValues {
 
 export const sshValues = (host = ""): SshValues => ({ host, port: "22", user: "root", password: "", privateKey: "" });
 
-/** sshBody() in app.js: a password or a private key is needed. */
+/** SSH access: a password or a private key is needed. */
 export function sshBody(v: SshValues): Schema<"NodeSshReq"> {
   const body = {
     host: v.host.trim(),

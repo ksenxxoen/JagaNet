@@ -1,5 +1,5 @@
 /**
- * #/status (status() in app.js, #115): the owner's server status. One request every 15 seconds
+ * #/status (#115): the owner's server status. One request every 15 seconds
  * while the page is shown (stopped on a hidden tab and when the page is left). On top the summary
  * "Total N, working X, problems Y, not responding Z"; then one row a server, problems first, with
  * the filter and the search by name; a click (or Enter) on a row opens its card with the full

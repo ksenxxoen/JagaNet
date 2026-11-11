@@ -1,5 +1,5 @@
 /**
- * Starting the mini app (start() in tg/app.js): sign in with Telegram.WebApp.initData, then the
+ * Starting the mini app: sign in with Telegram.WebApp.initData, then the
  * account's language. The session token lives only in the memory store; an ended session
  * (12 hours) signs in again once with the same initData (onUnauthorized.renew in api/client.ts).
  */

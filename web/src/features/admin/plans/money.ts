@@ -1,7 +1,7 @@
 /** Prices in the plan form: what people type in major units and what the API keeps in minor units. */
 import { currentLang } from "@/i18n";
 
-/** "299" or "4,99" → 29900 or 499 (toMinor() in app.js); NaN when it isn't a price. */
+/** "299" or "4,99" → 29900 or 499; NaN when it isn't a price. */
 export function toMinor(text: string): number {
   const s = String(text)
     .trim()

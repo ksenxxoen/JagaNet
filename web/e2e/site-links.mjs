@@ -1,5 +1,5 @@
 // Every address the panel and the bot hand out opens the right screen of the new website (W-10, #127):
-// `npm run test:browser` after `npm run build`. The panel with WEB_UI=new is played by panel.mjs.
+// `npm run test:browser` after `npm run build`. The panel is played by panel.mjs.
 //
 // The links: /#/login?token=, /#/app-login?id=, /#/account, /#/account?order=, /#/status, /#/support,
 // #/invite, #/referrals (the bot's statistics button, with ?lang=), /r/<code> → /?ref=, /support → /#/support,
@@ -121,7 +121,7 @@ async function visit(path, { session = null, lang = "ru-RU", allowed = [] } = {}
   await page.addInitScript((token) => {
     window.__csp = [];
     document.addEventListener("securitypolicyviolation", (e) => window.__csp.push(`${e.violatedDirective} ${e.blockedURI}`));
-    // Exactly what app.js leaves behind after signing in; only once, so signing out stays signed out.
+    // A session saved before the switch (the localStorage key "token", principle 7); only once, so signing out stays signed out.
     if (token && !sessionStorage.getItem("seeded")) {
       localStorage.setItem("token", token);
       sessionStorage.setItem("seeded", "1");

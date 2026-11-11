@@ -1,5 +1,5 @@
 /**
- * A line chart over time in SVG (lineChart() in app.js): one or two series, one y axis with a round
+ * A line chart over time in SVG: one or two series, one y axis with a round
  * top (or a fixed one, 100 for percentages), a quiet grid, time captions (clock times within two
  * days, dates beyond). A slot without a report (a null value) or a pause between two points (more
  * than three average steps) breaks the line instead of drawing across the gap. The values at a moment show on hover,

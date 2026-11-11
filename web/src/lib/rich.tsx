@@ -1,5 +1,5 @@
 /**
- * Texts with links inside, the way app.js writes them: t("I accept the {a}terms of use{end}") with
+ * Texts with links inside: t("I accept the {a}terms of use{end}") with
  * the tags filled by the screen. The translation keeps the {tag}…{end} markers (unknown
  * placeholders stay as they are), and rich() turns each marked part into the element given for
  * its tag; the rest stays plain text, so nothing is parsed as HTML.

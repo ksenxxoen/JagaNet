@@ -1,5 +1,5 @@
 /**
- * #/signin (signin() in app.js): e-mail → 6-digit code, with the terms and the privacy policy
+ * #/signin: e-mail → 6-digit code, with the terms and the privacy policy
  * accepted first; the test mode shows the code on screen; the referral code goes with the
  * sign-up; Telegram (the bot's one-time link and, when on, the Login Widget).
  */

@@ -1,5 +1,5 @@
 /**
- * Telegram.WebApp for the mini app (tg/app.js): what the page uses of it, the version checks
+ * Telegram.WebApp for the mini app: what the page uses of it, the version checks
  * (`can("6.1")`), haptics, and the ways out of the mini app:
  *
  *   - openLink: a web page in the browser (checkout, the website, key page, downloads);

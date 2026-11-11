@@ -39,7 +39,7 @@ export function Form({
   );
 }
 
-/** The message under a form (p.warn in style.css); nothing when there is no error. */
+/** The message under a form; nothing when there is no error. */
 export function FormError({ children, className }: { children?: ReactNode; className?: string }) {
   if (children == null || children === "" || children === false) return null;
   return (

@@ -10,47 +10,36 @@ import io.ktor.client.request.post
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import java.io.File
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The new website (issues #118, #126, #127): WEB_UI=new (default) serves it on /, WEB_UI=legacy the old
- * one with the new as the preview on /next/; files in /ui/assets; the old files stay served in both modes.
+ * The web interface (epic #117): the React build on / with its files in /ui/assets (#118, #127), the
+ * preview addresses of the switch leading to the main ones, the server's own pages with pages.css, and
+ * no trace of the old website (#128).
  */
-class WebNextTest {
-    private val legacy = mapOf("WEB_UI" to "legacy")
+class WebUiTest {
+    private fun isSite(html: String) = """<div id="root">""" in html && Regex("""/ui/assets/site-[\w-]+\.js""").containsMatchIn(html)
 
-    /** The old website's files: still served in both modes, so tabs opened before a switch keep working. */
-    private val oldFiles = listOf("/app.js", "/control.js", "/telegram.js", "/invite.js", "/support.js", "/style.css", "/favicon.svg")
-
-    private fun isNewSite(html: String) = """<div id="root">""" in html && Regex("""/ui/assets/site-[\w-]+\.js""").containsMatchIn(html)
-    private fun isOldSite(html: String) = """<script src="/app.js"></script>""" in html && "/ui/assets/" !in html
-
-    @Test fun `WEB_UI is new by default, legacy on request, and a typo stops the server`() {
-        assertEquals(WebUi.NEW, Config.load(mapOf("JAGANET_MODE" to "test")).webUi)
-        assertEquals(WebUi.NEW, Config.load(mapOf("JAGANET_MODE" to "test", "WEB_UI" to " New ")).webUi)
-        assertEquals(WebUi.LEGACY, Config.load(mapOf("JAGANET_MODE" to "test", "WEB_UI" to "legacy")).webUi)
-        assertEquals(WebUi.NEW, Config.load(mapOf("JAGANET_MODE" to "test", "WEB_UI" to "")).webUi)
-        assertFailsWith<IllegalArgumentException> { Config.load(mapOf("JAGANET_MODE" to "test", "WEB_UI" to "legasy")) }
-    }
-
-    @Test fun `WEB_UI=new serves the new website on the root, the old files stay`() = harness {
+    @Test fun `the website is served on the root`() = harness {
         val c = b.createClient {}
         val r = c.get("/")
         assertEquals(HttpStatusCode.OK, r.status)
         val html = r.bodyAsText()
-        assertTrue(isNewSite(html), html)
+        assertTrue(isSite(html), html)
         // The main page is indexed: no noindex in the page or the headers; never cached, so a release shows up at once.
         assertFalse("noindex" in html, html)
         assertNull(r.headers["X-Robots-Tag"])
         assertTrue("no-cache" in r.headers["Cache-Control"]!!, r.headers["Cache-Control"])
+        // The same page for every address the hash routes and query parameters live on (?lang=, ?ref=).
         assertEquals(html, c.get("/index.html").bodyAsText())
         assertEquals(html, c.get("/?lang=de").bodyAsText())
+        assertEquals(html, c.get("/?ref=FRIEND").bodyAsText())
 
         // Hashed assets under /ui/assets (the same for every page) with a long cache.
         val js = Regex("""/ui/assets/[\w.-]+\.js""").find(html)!!.value
@@ -60,14 +49,21 @@ class WebNextTest {
         assertTrue("javascript" in a.headers["Content-Type"]!!, a.headers["Content-Type"])
         val css = Regex("""/ui/assets/[\w.-]+\.css""").find(html)!!.value
         assertTrue("text/css" in c.get(css).headers["Content-Type"]!!)
-
-        for (f in oldFiles) assertEquals(HttpStatusCode.OK, c.get(f).status, f)
-        // The server's own pages (/privacy, the key and checkout pages) keep their stylesheet.
-        assertTrue("/style.css" in c.get("/privacy").bodyAsText())
+        assertEquals(HttpStatusCode.OK, c.get("/favicon.svg").status)
         assertNoRawFiles(c)
     }
 
-    @Test fun `WEB_UI=new sends the preview addresses to the main ones, keeping the fragment`() = harness {
+    @Test fun `the old website is gone`() = harness {
+        val c = b.createClient {}
+        for (f in listOf("/app.js", "/control.js", "/telegram.js", "/invite.js", "/support.js", "/style.css", "/tg/app.js", "/tg/app.css", "/tg/open.js")) {
+            assertEquals(HttpStatusCode.NotFound, c.get(f).status, f)
+        }
+        // Only the server pages' files stay in resources/web (no scripts, no pages of the old website).
+        val left = File("src/main/resources/web").walk().filter { it.isFile }.map { it.relativeTo(File("src/main/resources/web")).invariantSeparatorsPath }.toSet()
+        assertEquals(setOf("favicon.svg", "pages.css"), left)
+    }
+
+    @Test fun `the preview addresses lead to the main ones, keeping the fragment`() = harness {
         val c = b.createClient { followRedirects = false }
         for (path in listOf("/next", "/next/", "/next/index.html")) {
             val r = c.get(path)
@@ -85,25 +81,51 @@ class WebNextTest {
         val code = js.bodyAsText()
         for (pair in listOf(""""/next/": "/"""", """"/tg/app-next": "/tg/app"""", """"/tg/open-next": "/tg/open"""")) assertTrue(pair in code, code)
         assertTrue("location.replace(" in code && "location.search + location.hash" in code, code)
+        assertNoRawFiles(c)
     }
 
-    @Test fun `WEB_UI=legacy keeps the old website on the root and the new one as the preview`() = harness(legacy) {
-        val c = b.createClient {}
-        val old = c.get("/").bodyAsText()
-        assertTrue(isOldSite(old), old)
-        assertEquals(old, c.get("/index.html").bodyAsText())
-        for (f in oldFiles) assertEquals(HttpStatusCode.OK, c.get(f).status, f)
+    /* ---------------- the server's own pages (/k/…, payment, /privacy, /terms) ---------------- */
 
-        val r = c.get("/next/")
-        assertEquals(HttpStatusCode.OK, r.status)
-        val html = r.bodyAsText()
-        assertTrue(isNewSite(html), html)
-        assertTrue("no-cache" in r.headers["Cache-Control"]!!, r.headers["Cache-Control"])
-        assertEquals("noindex", r.headers["X-Robots-Tag"])
-        // /next without the slash and /next/index.html lead to the same page.
-        assertEquals("/next/", b.createClient { followRedirects = false }.get("/next").headers[HttpHeaders.Location])
-        assertEquals(html, c.get("/next/index.html").bodyAsText())
-        assertNoRawFiles(c)
+    @Test fun `the server's own pages keep their stylesheet and icon`() = harness(mapOf("PUBLIC_URL" to "https://boop.example")) {
+        val c = b.createClient {}
+        val css = c.get("/pages.css")
+        assertEquals(HttpStatusCode.OK, css.status)
+        assertTrue("text/css" in css.headers["Content-Type"]!!, css.headers["Content-Type"])
+        val rules = css.bodyAsText()
+        val u = signIn("pages@test.dev")
+        buy(u.api)
+        val key = u.api.createKey().pageUrl.substringAfter("https://boop.example")
+        val order = u.api.createOrder(CreateOrderReq(tariff(MONTH)))
+        for (page in listOf("/privacy", "/terms", key, "/pay/test/${order.id}")) {
+            val r = c.get(page)
+            assertEquals(HttpStatusCode.OK, r.status, page)
+            val html = r.bodyAsText()
+            assertTrue("""<link rel="stylesheet" href="/pages.css">""" in html, "$page: $html")
+            assertTrue("""<link rel="icon" href="/favicon.svg"""" in html, page)
+            // Every class the page uses has its rule in pages.css.
+            val classes = Regex("""class="([^"]*)"""").findAll(html).flatMap { it.groupValues[1].split(' ') }.filter { it.isNotBlank() }.toSet()
+            val missing = classes.filterNot { Regex("""\.${Regex.escape(it)}(?![\w-])""").containsMatchIn(rules) }
+            assertTrue(missing.isEmpty(), "$page: no rules for $missing")
+        }
+    }
+
+    @Test fun `pages css uses the colors of the Tailwind theme`() {
+        // web/src/styles/tokens.ts is the one source of the design tokens (docs/DESIGN.md); pages.css repeats the ones it needs.
+        val ts = File("../web/src/styles/tokens.ts").readText()
+        fun tokens(block: String) = Regex(""""(--[\w-]+)":\s*"([^"]+)"""").findAll(block).associate { it.groupValues[1] to it.groupValues[2] }
+        val light = tokens(ts.substringAfter("export const light").substringBefore("export const dark"))
+        val dark = tokens(ts.substringAfter("export const dark"))
+        val css = File("src/main/resources/web/pages.css").readText()
+        fun cssTokens(block: String) = Regex("""(--[\w-]+):\s*([^;]+);""").findAll(block).associate { it.groupValues[1] to it.groupValues[2].trim() }
+        val cssLight = cssTokens(css.substringAfter(":root {").substringBefore("}"))
+        val cssDark = cssTokens(css.substringAfter("prefers-color-scheme: dark").substringAfter(":root {").substringBefore("}"))
+        assertTrue(cssLight.size > 10 && cssDark.size > 10, "$cssLight $cssDark")
+        for ((name, value) in cssLight) light[name]?.let { assertEquals(it, value, "light $name") }
+        for ((name, value) in cssDark) dark[name]?.let { assertEquals(it, value, "dark $name") }
+        // Colors: only tokens of the theme, nothing of their own.
+        val own = (cssLight + cssDark).keys.filter { it !in light && it !in dark && !it.startsWith("--r-") && it !in setOf("--ctl", "--gap", "--page", "--font", "--mono") }
+        assertTrue(own.isEmpty(), "Tokens that are not in tokens.ts: $own")
+        assertFalse("gradient(" in css, "No gradients (docs/DESIGN.md)")
     }
 
     /** Nothing outside the build's assets, no folders, and the mini app's templates are never served raw. */
@@ -119,24 +141,24 @@ class WebNextTest {
 
     /* ---------------- every link the server and the bot make (W-10, item 3) ---------------- */
 
-    /** Every JS file of the new build, as text: the routes and screens the links need must be in it. */
+    /** Every JS file of the build, as text: the routes and screens the links need must be in it. */
     private val builtJs: String by lazy {
-        val loader = WebNextTest::class.java.classLoader
-        val index = loader.getResourceAsStream("web-next/index.html")!!.use { String(it.readBytes()) }
+        val loader = WebUiTest::class.java.classLoader
+        val index = loader.getResourceAsStream("web-ui/index.html")!!.use { String(it.readBytes()) }
         val seen = linkedSetOf<String>()
         val queue = ArrayDeque(Regex("""/ui/assets/([\w.-]+\.js)""").findAll(index).map { it.groupValues[1] }.toList())
         val out = StringBuilder()
         while (queue.isNotEmpty()) {
             val f = queue.removeFirst()
             if (!seen.add(f)) continue
-            val js = loader.getResourceAsStream("web-next/assets/$f")?.use { String(it.readBytes()) } ?: continue
+            val js = loader.getResourceAsStream("web-ui/assets/$f")?.use { String(it.readBytes()) } ?: continue
             out.append(js)
             queue.addAll(Regex("""(?:/ui/assets/|\./)([\w.-]+\.js)""").findAll(js).map { it.groupValues[1] })
         }
         out.toString()
     }
 
-    @Test fun `every link the server and the bot make opens the new interface`() = harness(
+    @Test fun `every link the server and the bot make opens its screen of the website`() = harness(
         mapOf("TELEGRAM_BOT_TOKEN" to "123456:TEST-token", "TELEGRAM_MINIAPP" to "1", "PUBLIC_URL" to "https://boop.example"),
     ) {
         val base = "https://boop.example"
@@ -175,12 +197,12 @@ class WebNextTest {
             val path = url.removePrefix(base).substringBefore('#').ifEmpty { "/" }
             val r = c.get(path)
             assertEquals(HttpStatusCode.OK, r.status, url)
-            assertTrue(isNewSite(r.bodyAsText()), "$url: not the new website")
-            // The fragment's route is one of the new website's routes.
-            assertTrue(Regex("""path:\s*["'`]${Regex.escape(route)}["'`]""").containsMatchIn(builtJs), "$url: the new website has no route $route")
+            assertTrue(isSite(r.bodyAsText()), "$url: not the website")
+            // The fragment's route is one of the website's routes.
+            assertTrue(Regex("""path:\s*["'`]${Regex.escape(route)}["'`]""").containsMatchIn(builtJs), "$url: the website has no route $route")
         }
 
-        // The bot's mini app buttons (#/pay, #/devices) open the new mini app on /tg/app.
+        // The bot's mini app buttons (#/pay, #/devices) open the mini app on /tg/app.
         for (screen in listOf("pay", "devices", null)) {
             val url = bot.miniAppUrl(screen)!!
             assertEquals("$base/tg/app" + (screen?.let { "#/$it" } ?: ""), url)

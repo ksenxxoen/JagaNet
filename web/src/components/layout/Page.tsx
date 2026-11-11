@@ -8,7 +8,7 @@ export function Page({ narrow, className, ...props }: HTMLAttributes<HTMLDivElem
   );
 }
 
-/** .head in style.css: the title and a line under it on the left, actions on the right (under it on phones). */
+/** The page heading: the title and a line under it on the left, actions on the right (under it on phones). */
 export function PageHeader({
   title,
   sub,

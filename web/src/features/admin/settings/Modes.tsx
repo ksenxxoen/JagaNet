@@ -1,5 +1,5 @@
 /**
- * The test modes tab (modesPane() in app.js): sign-in codes on screen and test payments, each with
+ * The test modes tab: sign-in codes on screen and test payments, each with
  * its warning, and a notice while one is on. Test payments can't be turned on while a real payment
  * service is connected: the box is off and locked, and saving always sends false then.
  */

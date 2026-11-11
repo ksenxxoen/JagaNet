@@ -1,5 +1,5 @@
 /**
- * SSH access to a fresh server (sshFields() in app.js). The values live only in the form's state:
+ * SSH access to a fresh server. The values live only in the form's state:
  * never in the address, storage or the query cache, and the form empties the password and the key
  * after sending.
  */

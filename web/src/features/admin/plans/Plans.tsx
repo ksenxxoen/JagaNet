@@ -1,5 +1,5 @@
 /**
- * The plans tab (plansPane() in app.js): the plans for new purchases (length, prices in rubles and
+ * The plans tab: the plans for new purchases (length, prices in rubles and
  * euros, devices, data, sold, in use, status), the form for a new or changed plan, and the Free
  * plan settings. Taking a plan off sale (hidden or archived) asks first; people who have it keep it.
  */

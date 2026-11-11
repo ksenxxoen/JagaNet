@@ -1,5 +1,5 @@
 /**
- * The landing page #/ (home() in app.js): hero, the apps it works in, the three pillars and the
+ * The landing page #/: hero, the apps it works in, the three pillars and the
  * extras, how it works, pricing from /v1/billing/plans, apps, questions, the closing call.
  * The anchors (#features, #how, #pricing, #faq, #download) are handled by useLandingAnchors().
  */
@@ -33,7 +33,7 @@ const btn = (look: "grad" | "secondary" | "ghost-light", large = false) =>
   );
 
 /**
- * Columns for a row of n tiles so that no row is left half empty (evenCols() in app.js):
+ * Columns for a row of n tiles so that no row is left half empty:
  * up to 4 in one row, else the largest of 4, 3, 2 that divides n (a short last row is centered).
  */
 export const evenCols = (n: number) => (n <= 4 ? Math.max(1, n) : ([4, 3, 2].find((c) => n % c === 0) ?? 4));
@@ -64,7 +64,7 @@ const SectionHead = ({ eyebrow, title, sub, extra }: { eyebrow?: string; title: 
   </div>
 );
 
-/** Fades sections in as they scroll into view (reveal() in app.js); everything shows at once with reduced motion. */
+/** Fades sections in as they scroll into view; everything shows at once with reduced motion. */
 function useReveal(root: React.RefObject<HTMLElement | null>, ready: boolean) {
   useEffect(() => {
     const el = root.current;

@@ -1,4 +1,4 @@
-/** The analytics' numbers as text and small parts (total, torrentCell, userName, planBadge… in app.js). */
+/** The analytics' numbers as text and small parts. */
 import type { Schema } from "@/api/typed";
 import { StatusBadge } from "@/components/ui";
 import { t } from "@/i18n";

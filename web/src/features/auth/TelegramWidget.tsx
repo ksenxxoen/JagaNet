@@ -1,5 +1,5 @@
 /**
- * The official Telegram Login Widget (tgWidget() in telegram.js), only when the owner turned it on
+ * The official Telegram Login Widget, only when the owner turned it on
  * (TELEGRAM_LOGIN_WIDGET=1, /v1/auth/telegram/config). Its script is added only then, so nobody
  * else downloads it.
  */
@@ -22,7 +22,7 @@ declare global {
 
 export const telegramConfigQuery = {
   queryKey: keys.auth.telegramConfig(),
-  // No config (an error) means no widget, as tgConf() in telegram.js.
+  // No config (an error) means no widget.
   queryFn: () => get("/auth/telegram/config").catch(() => ({ bot: null, widget: false, loginUrl: null })),
   staleTime: 10 * 60_000,
 };

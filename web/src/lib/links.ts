@@ -1,6 +1,6 @@
 /**
- * Import links that hand the VLESS subscription to an app in one tap (tg/app.js: connect()), and the
- * check /tg/open uses before it opens one (ALLOWED in tg/open.js). Shared by the account, the mini
+ * Import links that hand the VLESS subscription to an app in one tap, and the
+ * check /tg/open uses before it opens one. Shared by the account, the mini
  * app and /tg/open, so the list of apps and the check are in one place.
  */
 export const HAPP_URL = "https://www.happ.su/main/";

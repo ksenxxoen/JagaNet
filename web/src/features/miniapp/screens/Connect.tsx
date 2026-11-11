@@ -1,5 +1,5 @@
 /**
- * Connection (connect() in tg/app.js): the VLESS subscription with its QR code (drawn on canvas,
+ * Connection: the VLESS subscription with its QR code (drawn on canvas,
  * as on the website), the link to copy, one-tap import into Happ / v2RayTun through /tg/open, the
  * Boop apps, the key page. Without a VLESS key: the device keys with their QR codes; without any
  * key: "No key yet" and the way to buy.

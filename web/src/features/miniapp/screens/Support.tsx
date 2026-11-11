@@ -1,5 +1,5 @@
 /**
- * Support (support() in tg/app.js): writing in the bot first (the mini app closes so the chat is
+ * Support: writing in the bot first (the mini app closes so the chat is
  * in front), our Telegram group, and the e-mail form (the website's SupportForm without the name)
  * when the support mailbox is set up.
  */

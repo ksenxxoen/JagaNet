@@ -1,4 +1,4 @@
-/** Route guards: sign-in for personal screens, the owner for owner screens (as in app.js). */
+/** Route guards: sign-in for personal screens, the owner for owner screens. */
 import { redirect } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
 import { meQuery } from "@/api/queries";

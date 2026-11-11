@@ -1,5 +1,5 @@
 /**
- * The e-mail tab (emailPane() in app.js): whether mail works, the SMTP server (the password is
+ * The e-mail tab: whether mail works, the SMTP server (the password is
  * never shown, "saved" says one is kept; empty keeps it), turning mail off after a question, and a
  * test e-mail. The port follows the encryption while it is one of the usual ports.
  */

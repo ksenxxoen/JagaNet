@@ -1,4 +1,4 @@
-/** How a payment is named on the account and in the mini app (the payments list of app.js and tg/app.js). */
+/** How a payment is named on the account and in the mini app. */
 import type { Schema } from "@/api/typed";
 import { t } from "@/i18n";
 

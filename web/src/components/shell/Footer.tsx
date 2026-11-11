@@ -20,7 +20,7 @@ const A = ({ href, children, external }: { href: string; children: ReactNode; ex
   </a>
 );
 
-/** Footer: the brand, the product links, the account and help with the legal pages (renderFooter() in app.js). */
+/** Footer: the brand, the product links, the account and help with the legal pages. */
 export function Footer() {
   const { t } = useI18n();
   const signedIn = useSession((s) => !!s.token);

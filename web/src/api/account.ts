@@ -8,7 +8,7 @@ import { ApiError } from "./client";
 import { keys } from "./keys";
 import { del, get, patch } from "./typed";
 
-/** The website and the mini app run every protocol, so they ask for the VLESS key too (as app.js does). */
+/** The website and the mini app run every protocol, so they ask for the VLESS key too. */
 export const SUPPORTED_PROTOCOLS = "amneziawg,wireguard,vless";
 
 export const keysQuery = queryOptions({
@@ -23,10 +23,10 @@ export const devicesQuery = queryOptions({
 
 export const paymentsQuery = queryOptions({ queryKey: keys.account.payments(), queryFn: () => get("/me/payments") });
 
-/** Not an error when it fails on the website: the Telegram card is simply not shown (tgAccountCard() in telegram.js). */
+/** Not an error when it fails on the website: the Telegram card is simply not shown. */
 export const telegramQuery = queryOptions({ queryKey: keys.account.telegram(), queryFn: () => get("/telegram"), retry: false });
 
-/** A failed check counts as "not available", as support.js and tg/app.js do. */
+/** A failed check counts as "not available". */
 export const supportQuery = queryOptions({
   queryKey: keys.support(),
   queryFn: () => get("/support").catch(() => ({ available: false })),

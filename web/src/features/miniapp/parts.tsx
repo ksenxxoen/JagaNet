@@ -171,7 +171,7 @@ export function StateCard({
   );
 }
 
-/** A screen that could not load: the server's message and "Try again" (errorCard() in tg/app.js). */
+/** A screen that could not load: the server's message and "Try again". */
 export function ErrorCard({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   const { t } = useI18n();
   return (

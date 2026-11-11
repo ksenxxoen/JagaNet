@@ -1,5 +1,5 @@
 /**
- * The users tab (ctlUsers() in control.js): a search by e-mail, Telegram, key UUID, key link or IP
+ * The users tab: a search by e-mail, Telegram, key UUID, key link or IP
  * in ?q= (the newest users without it), and a user's card on ?id=.
  */
 import { useQuery } from "@tanstack/react-query";

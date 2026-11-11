@@ -1,7 +1,7 @@
 /**
  * Back from the payment page on #/account?order=<id>: "Payment received", or "Not paid yet" with
  * the way back to the payment. While the order is pending the screen keeps asking (useOrder);
- * once it is paid the plan and the keys are refreshed. A failed request shows nothing, as in app.js.
+ * once it is paid the plan and the keys are refreshed. A failed request shows nothing.
  */
 import { Notice } from "@/components/ui";
 import { useOrder } from "@/hooks/useOrder";

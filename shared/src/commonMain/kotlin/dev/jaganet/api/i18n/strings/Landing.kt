@@ -2,7 +2,7 @@ package dev.jaganet.api.i18n.strings
 
 import dev.jaganet.api.i18n.S
 
-/** The website's landing page, top bar and footer (server/src/main/resources/web/app.js, home()). */
+/** The website's landing page, top bar and footer (web/src/features/public, web/src/components/shell). */
 internal val landingStrings: List<S> = listOf(
     // Top bar and footer
     S("Features", "Возможности", "Funktionen"),
