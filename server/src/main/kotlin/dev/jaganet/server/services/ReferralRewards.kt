@@ -45,6 +45,8 @@ class ReferralRewards(
     private val referrals: Referrals,
     /** Sends a Telegram message; null when the bot is off. Throws when Telegram fails. */
     private val telegram: () -> (suspend (chat: Long, text: String) -> Unit)? = { null },
+    /** Called with the user whose days were given, after they are told: the bot updates their status card. */
+    private val changed: suspend (userId: String) -> Unit = {},
 ) {
     private val log = LoggerFactory.getLogger("referral-rewards")
 
@@ -164,6 +166,7 @@ class ReferralRewards(
                 "none"
             }
             ctx.db.run { it.exec("UPDATE referral_rewards SET notified_via=? WHERE id=?::uuid", via, r.str("id")) }
+            runCatching { changed(r.str("user_id")) }.onFailure { log.warn("reward: status card: ${it.message}") }
             if (via != "none") sent++
         }
         return sent

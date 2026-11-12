@@ -25,6 +25,8 @@ data class TelegramConfig(
     val miniAppUrl: String? = null,
     /** The project's Telegram group or channel (issue #91): buttons in the bot, the mini app and the website. Null = none. */
     val communityUrl: String? = null,
+    /** The status card in the chat (issue #140, Bot API 10.4 widgets): [WIDGET_OFF] (default), [WIDGET_OWNER] (the owner only) or [WIDGET_ALL]. */
+    val widget: String = WIDGET_OFF,
 ) {
     val webhook get() = mode == WEBHOOK
 
@@ -44,6 +46,9 @@ data class TelegramConfig(
         const val WEBHOOK = "webhook"
         const val WEBHOOK_PATH = "/telegram/webhook"
         const val MINIAPP_PATH = "/tg/app"
+        const val WIDGET_OFF = "off"
+        const val WIDGET_OWNER = "owner"
+        const val WIDGET_ALL = "all"
 
         fun load(env: Map<String, String>): TelegramConfig {
             fun v(k: String) = env[k]?.trim()?.takeIf { it.isNotEmpty() }
@@ -60,7 +65,16 @@ data class TelegramConfig(
                 miniApp = v("TELEGRAM_MINIAPP") == "1",
                 miniAppUrl = v("TELEGRAM_MINIAPP_URL")?.trimEnd('/'),
                 communityUrl = communityUrl(v("TELEGRAM_COMMUNITY_URL")),
+                widget = widget(v("TELEGRAM_WIDGET")),
             )
+        }
+
+        /** off, owner or all; anything else is off with a warning (never a crash). */
+        fun widget(raw: String?): String {
+            val v = raw?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return WIDGET_OFF
+            if (v in setOf(WIDGET_OFF, WIDGET_OWNER, WIDGET_ALL)) return v
+            org.slf4j.LoggerFactory.getLogger("telegram").warn("TELEGRAM_WIDGET ignored: it must be off, owner or all")
+            return WIDGET_OFF
         }
 
         /** Only https://t.me/... or https://telegram.me/...; anything else is ignored with a warning (never a crash). */

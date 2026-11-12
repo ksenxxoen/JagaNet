@@ -47,6 +47,8 @@ class NumberedTelegram : TelegramApi {
     val calls = mutableListOf<Pair<String, JsonObject>>()
     val uploads = mutableListOf<Pair<String, Upload>>()
     var down = false
+    /** Errors to throw for one method (sendWidget, editMessageWidgetData…), as Telegram would answer. */
+    val fail = mutableMapOf<String, TelegramException>()
     private var next = 100L
     fun sent(method: String) = calls.filter { it.first == method }.map { it.second }
     fun texts(chat: Long) = calls.filter { it.first == "sendMessage" && it.second["chat_id"]!!.jsonPrimitive.content == chat.toString() }
@@ -55,10 +57,11 @@ class NumberedTelegram : TelegramApi {
     override suspend fun call(method: String, params: JsonObject, upload: Upload?): JsonElement {
         if (down) throw TelegramException("$method: ConnectException", -1)
         calls += method to params
+        fail[method]?.let { throw it }
         upload?.let { uploads += method to it }
         return when (method) {
             "getMe" -> buildJsonObject { put("username", "boop_test_bot") }
-            "sendMessage", "sendPhoto", "sendDocument", "forwardMessage", "copyMessage" -> buildJsonObject { put("message_id", next++) }
+            "sendMessage", "sendPhoto", "sendDocument", "sendWidget", "forwardMessage", "copyMessage" -> buildJsonObject { put("message_id", next++) }
             else -> JsonObject(emptyMap())
         }
     }
@@ -526,5 +529,211 @@ class TelegramBotTest {
             assertEquals(community, client().site().communityUrl)
         }
         harness { assertNull(client().site().communityUrl) }
+    }
+
+    /* ---------------- the status card (issue #140) ---------------- */
+
+    private val cardOn = mapOf("TELEGRAM_WIDGET" to "all", "TELEGRAM_MINIAPP" to "1", "PUBLIC_URL" to "https://boop.example")
+
+    private fun JsonObject.data(): JsonObject = Json.parseToJsonElement(this["chat_data"]!!.jsonPrimitive.content).jsonObject
+
+    @Test fun `with TELEGRAM_WIDGET off the bot sends the text menu as before`() = harness(mapOf("TELEGRAM_MINIAPP" to "1", "PUBLIC_URL" to "https://boop.example")) {
+        assertEquals("off", TelegramConfig.load(emptyMap()).widget)
+        assertEquals("off", TelegramConfig.load(mapOf("TELEGRAM_WIDGET" to "yes")).widget)
+        assertEquals(listOf("message", "callback_query"), dev.jaganet.server.telegram.allowedUpdates(TelegramConfig.load(emptyMap())))
+        assertTrue("widget_query" in dev.jaganet.server.telegram.allowedUpdates(TelegramConfig.load(mapOf("TELEGRAM_WIDGET" to "all"))))
+        val tg = NumberedTelegram()
+        val bot = bot(tg)
+        bot.handle(tgMessage(601, "/start"))
+        bot.handle(tgMessage(601, "/status"))
+        bot.handle(tgCallback(601, "menu"))
+        assertTrue(tg.sent("sendWidget").isEmpty())
+        assertEquals(3, tg.sent("sendMessage").size)
+        val uid = userIdOfTelegram(601)!!
+        services.payments.markPaid(services.payments.create(uid, tariff(MONTH), dev.jaganet.server.services.Channel.WEB).id)
+        assertTrue(tg.sent("editMessageWidgetData").isEmpty())
+        assertEquals(0, count("SELECT count(*)::int AS n FROM telegram_widgets"))
+    }
+
+    @Test fun `start, menu and status send the card with a caption and the two buttons`() = harness(cardOn) {
+        val tg = NumberedTelegram()
+        val bot = bot(tg)
+        bot.handle(tgMessage(602, "/start"))
+        val card = tg.sent("sendWidget").single()
+        assertTrue(tg.sent("sendMessage").isEmpty())
+        assertTrue("Нет активной подписки" in card["caption"]!!.jsonPrimitive.content, card.toString())
+        assertEquals(listOf("📱 Открыть Boop" to "https://boop.example/tg/app", "💳 Купить подписку" to "pay"), card.buttons())
+        assertEquals("true", card["allow_queries"]!!.jsonPrimitive.content)
+        assertEquals("none", card.data()["st"]!!.jsonPrimitive.content)
+        val html = card["html"]!!.jsonPrimitive.content
+        assertTrue("Подписка активна" in html && "lang=\"ru\"" in html && "{{" !in html)
+
+        val uid = userIdOfTelegram(602)!!
+        services.payments.markPaid(services.payments.create(uid, tariff(MONTH), dev.jaganet.server.services.Channel.WEB).id)
+        bot.handle(tgMessage(602, "/status"))
+        val status = tg.sent("sendWidget").last()
+        assertTrue("Подписка активна до" in status["caption"]!!.jsonPrimitive.content && "Устройства" in status["caption"]!!.jsonPrimitive.content)
+        assertEquals("💳 Продлить" to "pay", status.buttons().last())
+        val d = status.data()
+        assertEquals("active", d["st"]!!.jsonPrimitive.content)
+        assertNotNull(d["exp"]); assertNotNull(d["from"])
+        assertEquals(2, d["dev"]!!.jsonArray.size)
+        // No subscription link and no keys in the card.
+        for (c in tg.sent("sendWidget")) assertFalse("/k/" in c.toString() || "vless" in c.toString().lowercase(), c.toString())
+        bot.handle(tgCallback(602, "menu"))
+        assertEquals(3, tg.sent("sendWidget").size)
+        // A new language: a new card in that language.
+        bot.handle(tgCallback(602, "lang:en"))
+        assertTrue("Subscription active" in tg.sent("sendWidget").last()["html"]!!.jsonPrimitive.content)
+        assertEquals(1, count("SELECT count(*)::int AS n FROM telegram_widgets"))
+    }
+
+    @Test fun `without the mini app the card keeps the whole menu under it`() = harness(mapOf("TELEGRAM_WIDGET" to "all")) {
+        val tg = NumberedTelegram()
+        bot(tg).handle(tgMessage(603, "/start"))
+        val b = tg.sent("sendWidget").single().buttons().map { it.second }
+        for (d in listOf("keys", "pay", "devices", "support")) assertTrue(d in b, "$d in $b")
+    }
+
+    @Test fun `TELEGRAM_WIDGET=owner shows the card to the owner only`() = harness(cardOn + ("TELEGRAM_WIDGET" to "owner")) {
+        val tg = NumberedTelegram()
+        val bot = bot(tg)
+        bot.handle(tgMessage(604, "/start"))
+        assertTrue(tg.sent("sendWidget").isEmpty())
+        ctx.db.run { it.exec("UPDATE users SET role='owner' WHERE telegram_id=604") }
+        bot.handle(tgMessage(604, "/start"))
+        assertEquals(1, tg.sent("sendWidget").size)
+    }
+
+    @Test fun `if sendWidget fails the text menu goes out`() = harness(cardOn) {
+        val tg = NumberedTelegram()
+        tg.fail["sendWidget"] = TelegramException("sendWidget: Bad Request: method not found", 400)
+        bot(tg).handle(tgMessage(605, "/start"))
+        assertEquals(1, tg.sent("sendWidget").size)
+        val menu = tg.sent("sendMessage").single()
+        assertTrue("keys" in menu.buttons().map { it.second })
+        assertEquals(0, count("SELECT count(*)::int AS n FROM telegram_widgets"))
+    }
+
+    @Test fun `payment, devices, admin changes and rewards update the last card in place`() = harness(cardOn) {
+        val tg = NumberedTelegram()
+        val bot = bot(tg)
+        bot.handle(tgMessage(606, "/start"))
+        bot.handle(tgMessage(606, "/start"))
+        val lastCard = 101L // the fake numbers messages from 100: the second card is the last one
+        val uid = userIdOfTelegram(606)!!
+        services.payments.markPaid(services.payments.create(uid, tariff(MONTH), dev.jaganet.server.services.Channel.WEB).id)
+        val edit = tg.sent("editMessageWidgetData").single()
+        assertEquals("606", edit["chat_id"]!!.jsonPrimitive.content)
+        assertEquals(lastCard.toString(), edit["message_id"]!!.jsonPrimitive.content)
+        assertEquals("active", edit.data()["st"]!!.jsonPrimitive.content)
+        // The edit is silent; the payment message still comes as a message.
+        assertTrue("Оплата получена" in tg.texts(606).last())
+
+        // A new key (device) and its removal.
+        val web = signIn("card@example.com")
+        ctx.db.run { it.exec("UPDATE users SET telegram_id=NULL WHERE id=?::uuid", uid) }
+        ctx.db.run { it.exec("UPDATE users SET telegram_id=606 WHERE email='card@example.com'") }
+        val webUid = userIdOfTelegram(606)!!
+        ctx.db.run { it.exec("UPDATE telegram_widgets SET user_id=?::uuid", webUid) }
+        buy(web.api)
+        val before = tg.sent("editMessageWidgetData").size
+        val key = web.api.createKey()
+        assertTrue(tg.sent("editMessageWidgetData").size > before)
+        val used = tg.sent("editMessageWidgetData").last().data()["dev"]!!.jsonArray[0].jsonPrimitive.content.toInt()
+        b.createClient {}.delete("/v1/keys/${key.id}") { header("Authorization", "Bearer ${web.session.token}") }
+        assertEquals(used - 1, tg.sent("editMessageWidgetData").last().data()["dev"]!!.jsonArray[0].jsonPrimitive.content.toInt())
+
+        // The admin extends the subscription.
+        val owner = signIn("owner@test.dev")
+        val n = tg.sent("editMessageWidgetData").size
+        val exp0 = tg.sent("editMessageWidgetData").last().data()["exp"]!!.jsonPrimitive.content
+        val res = b.createClient {}.post("/v1/admin/users/$webUid/extend") {
+            header("Authorization", "Bearer ${owner.session.token}"); contentType(ContentType.Application.Json); setBody("""{"days":5}""")
+        }
+        assertEquals(HttpStatusCode.OK, res.status, res.bodyAsText())
+        assertEquals(n + 1, tg.sent("editMessageWidgetData").size)
+        assertTrue(Instant.parse(tg.sent("editMessageWidgetData").last().data()["exp"]!!.jsonPrimitive.content) > Instant.parse(exp0))
+        // Every update has a newer revision.
+        val revs = tg.sent("editMessageWidgetData").map { it.data()["r"]!!.jsonPrimitive.content.toLong() }
+        assertEquals(revs.sorted(), revs)
+        assertEquals(revs.toSet().size, revs.size)
+    }
+
+    @Test fun `an unchanged card is not an error, a gone chat is marked, a deleted card is forgotten`() = harness(cardOn) {
+        val tg = NumberedTelegram()
+        val bot = bot(tg)
+        bot.handle(tgMessage(607, "/start"))
+        val uid = userIdOfTelegram(607)!!
+        tg.fail["editMessageWidgetData"] = TelegramException("editMessageWidgetData: Bad Request: message is not modified", 400)
+        assertTrue(bot.refreshWidget(uid))
+        tg.fail["editMessageWidgetData"] = TelegramException("editMessageWidgetData: Bad Request: message to edit not found", 400)
+        assertFalse(bot.refreshWidget(uid))
+        assertEquals(0, count("SELECT count(*)::int AS n FROM telegram_widgets"))
+
+        bot.handle(tgMessage(607, "/start"))
+        tg.fail["editMessageWidgetData"] = TelegramException("editMessageWidgetData: Forbidden: bot was blocked by the user", 403)
+        assertFalse(bot.refreshWidget(uid))
+        assertNotNull(ctx.db.run { it.one("SELECT tg_blocked_at FROM users WHERE id=?::uuid", uid) }!!["tg_blocked_at"])
+        // Telegram unreachable: the error goes to the caller (background work logs it), nothing else breaks.
+        ctx.db.run { it.exec("UPDATE users SET tg_blocked_at=NULL WHERE id=?::uuid", uid) }
+        tg.fail.remove("editMessageWidgetData")
+        tg.down = true
+        assertTrue(runCatching { bot.refreshWidget(uid) }.exceptionOrNull() is TelegramException)
+        val order = services.payments.create(uid, tariff(MONTH), dev.jaganet.server.services.Channel.WEB)
+        assertNotNull(services.payments.markPaid(order.id))
+    }
+
+    @Test fun `the card shows the end when the subscription ends, reminders stay separate messages`() = harness(cardOn) {
+        val tg = NumberedTelegram()
+        val bot = bot(tg)
+        bot.handle(tgMessage(608, "/start"))
+        val uid = userIdOfTelegram(608)!!
+        subscriptionUntil(uid, clock.plus(Duration.ofHours(20)))
+        bot.handle(tgMessage(608, "/start"))
+        assertEquals("active", tg.sent("sendWidget").last().data()["st"]!!.jsonPrimitive.content)
+        assertEquals(1, bot.remind())
+        assertTrue("Остался 1 день" in tg.texts(608).last(), tg.texts(608).last())
+        assertEquals(0, bot.expireWidgets())
+
+        clock = clock.plus(Duration.ofHours(21))
+        assertEquals(1, bot.expireWidgets())
+        val d = tg.sent("editMessageWidgetData").last().data()
+        assertEquals("ended", d["st"]!!.jsonPrimitive.content)
+        assertEquals(0, bot.expireWidgets())
+        assertEquals(1, bot.remind())
+        assertTrue("Подписка закончилась" in tg.texts(608).last())
+    }
+
+    @Test fun `the card asks for fresh data and gets it`() = harness(cardOn) {
+        val tg = NumberedTelegram()
+        val bot = bot(tg)
+        bot.handle(tgMessage(609, "/start"))
+        bot.handle(buildJsonObject {
+            put("update_id", 9001)
+            putJsonObject("widget_query") {
+                put("id", "wq1"); put("from", buildJsonObject { put("id", 609); put("is_bot", false); put("first_name", "T") })
+                putJsonObject("chat") { put("id", 609); put("type", "private") }
+                put("message_id", 100); put("chat_instance", "1"); put("data", "s")
+                putJsonObject("type") { put("type", "data") }
+            }
+        })
+        val answer = tg.sent("answerWidgetQuery").single()
+        assertEquals("wq1", answer["widget_query_id"]!!.jsonPrimitive.content)
+        assertEquals("none", Json.parseToJsonElement(answer["data"]!!.jsonPrimitive.content).jsonObject["st"]!!.jsonPrimitive.content)
+    }
+
+    @Test fun `the card's HTML is under 3800 bytes after zlib level 9 in every language`() {
+        for (lang in dev.jaganet.api.i18n.Lang.entries) {
+            val html = dev.jaganet.server.telegram.StatusWidget.html(lang).toByteArray()
+            val deflater = java.util.zip.Deflater(9)
+            deflater.setInput(html); deflater.finish()
+            val buf = ByteArray(65536)
+            val size = deflater.deflate(buf) // with the zlib header and checksum, as Python's zlib.compress counts
+            assertTrue(html.size <= 32768 && size < 3800, "$lang: ${html.size} bytes, $size compressed")
+            assertFalse("{{" in String(html))
+        }
+        val data = dev.jaganet.server.telegram.StatusWidget.chatData(dev.jaganet.server.telegram.StatusWidget.State("active", Instant.parse("2026-12-01T00:00:00Z"), Instant.parse("2026-11-01T00:00:00Z"), 2, 5), 17)
+        assertEquals("""{"v":1,"st":"active","exp":"2026-12-01T00:00:00Z","from":"2026-11-01T00:00:00Z","dev":[2,5],"r":17}""", data)
     }
 }

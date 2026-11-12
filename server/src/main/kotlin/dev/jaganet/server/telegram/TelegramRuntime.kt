@@ -29,8 +29,9 @@ import org.slf4j.LoggerFactory
 
 private val log = LoggerFactory.getLogger("telegram")
 
-/** Updates the bot asks Telegram for. */
-private val ALLOWED_UPDATES = listOf("message", "callback_query")
+/** Updates the bot asks Telegram for: with the status card on (issue #140) also the card's requests for fresh data. */
+fun allowedUpdates(cfg: TelegramConfig): List<String> =
+    listOf("message", "callback_query") + (if (cfg.widget != TelegramConfig.WIDGET_OFF) listOf("widget_query") else emptyList())
 
 /** The webhook's secret: TELEGRAM_WEBHOOK_SECRET, else derived from AUTH_SECRET (Telegram allows A-Z a-z 0-9 _ -). */
 fun webhookSecret(s: Services): String =
@@ -67,6 +68,8 @@ fun Application.startTelegramBot(s: Services) {
         delay(60_000)
         while (true) {
             runCatching { bot.remind() }.onSuccess { if (it > 0) log.info("Telegram reminders sent: {}", it) }.onFailure { log.warn("Telegram reminders: ${it.message}") }
+            // Status cards whose subscription has just ended show it (issue #140).
+            runCatching { bot.expireWidgets() }.onFailure { log.warn("Telegram status cards: ${it.message}") }
             delay(10 * 60_000L)
         }
     }
@@ -104,7 +107,7 @@ class TelegramRunner(private val bot: TelegramBot, private val api: TelegramApi,
             val updates = try {
                 api.call("getUpdates", buildJsonObject {
                     put("offset", offset); put("timeout", 50)
-                    putJsonArray("allowed_updates") { ALLOWED_UPDATES.forEach { add(it) } }
+                    putJsonArray("allowed_updates") { allowedUpdates(cfg).forEach { add(it) } }
                 }).jsonArray.also { bot.lastPollOk = s.ctx.now(); failures = 0 }
             } catch (e: CancellationException) {
                 throw e
@@ -137,7 +140,7 @@ class TelegramRunner(private val bot: TelegramBot, private val api: TelegramApi,
                 if (!set) {
                     api.call("setWebhook", buildJsonObject {
                         put("url", url); put("secret_token", secret)
-                        putJsonArray("allowed_updates") { ALLOWED_UPDATES.forEach { add(it) } }
+                        putJsonArray("allowed_updates") { allowedUpdates(cfg).forEach { add(it) } }
                     })
                     set = true
                     log.info("Telegram webhook set to {}", url)

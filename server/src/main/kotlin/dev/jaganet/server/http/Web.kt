@@ -88,7 +88,9 @@ fun Route.salesApi(s: Services) {
     }
     get("/keys/{id}/tunnel") { call.respond(s.keys.tunnel(call.principal(s).user.id, call.parameters["id"]!!)) }
     delete("/keys/{id}") {
-        s.keys.remove(call.principal(s).user.id, call.parameters["id"]!!)
+        val userId = call.principal(s).user.id
+        s.keys.remove(userId, call.parameters["id"]!!)
+        s.bot?.widgetChanged(userId)
         call.respond(OkRes())
     }
     post("/orders") {

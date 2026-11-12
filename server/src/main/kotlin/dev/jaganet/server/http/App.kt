@@ -104,9 +104,12 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
     val settings = Settings(ctx)
     val finance = Finance(ctx)
     /** "Invite a friend, get +14 days" (issue #40): rewards on the invited person's first payment. */
-    val referralRewards = dev.jaganet.server.services.ReferralRewards(ctx, referrals) {
-        bot?.let { b -> { chat: Long, text: String -> b.sendText(chat, text) } }
-    }
+    val referralRewards = dev.jaganet.server.services.ReferralRewards(
+        ctx, referrals,
+        telegram = { bot?.let { b -> { chat: Long, text: String -> b.sendText(chat, text) } } },
+        // The status card in Telegram shows the new end date (issue #140).
+        changed = { userId -> bot?.widgetChanged(userId) },
+    )
     val payments = Payments(ctx, billing, keys, tariffs, referralRewards)
     val site = Site(ctx)
     /** The website's support form: e-mail to SUPPORT_EMAIL (default OWNER_EMAIL), plus the bot's support chat. */
@@ -311,7 +314,9 @@ fun Application.jaganet(s: Services) {
                 call.respond(OkRes())
             }
             delete("/devices/{id}") {
-                s.tunnels.remove(call.principal(s), call.parameters["id"]!!)
+                val p = call.principal(s)
+                s.tunnels.remove(p, call.parameters["id"]!!)
+                s.bot?.widgetChanged(p.user.id)
                 call.respond(OkRes())
             }
             post("/devices/pairing-code") { call.respond(s.auth.createPairingCode(call.principal(s))) }
