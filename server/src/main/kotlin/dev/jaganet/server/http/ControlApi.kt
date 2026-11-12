@@ -45,15 +45,15 @@ fun Route.controlApi(s: Services) {
     get("/admin/users/{id}") { call.actor(); call.respond(s.control.card(call.id())) }
     post("/admin/users/{id}/extend") {
         val a = call.actor(); val b = call.receive<CtlDaysReq>()
-        call.respond(s.control.extend(a, call.id(), b.days, b.comment))
+        call.respond(s.control.extend(a, call.id(), b.days, b.comment).also { s.bot?.widgetChanged(call.id()) })
     }
     post("/admin/users/{id}/grant") {
         val a = call.actor(); val b = call.receive<CtlDaysReq>()
-        call.respond(s.control.grantFree(a, call.id(), b.days, b.tariffId, b.comment))
+        call.respond(s.control.grantFree(a, call.id(), b.days, b.tariffId, b.comment).also { s.bot?.widgetChanged(call.id()) })
     }
     post("/admin/users/{id}/plan") {
         val a = call.actor(); val b = call.receive<CtlPlanReq>()
-        call.respond(s.control.changePlan(a, call.id(), b.tariffId, b.comment))
+        call.respond(s.control.changePlan(a, call.id(), b.tariffId, b.comment).also { s.bot?.widgetChanged(call.id()) })
     }
     post("/admin/users/{id}/block") { val a = call.actor(); call.respond(s.control.block(a, call.id(), call.receive<CtlBlockReq>().reason)) }
     post("/admin/users/{id}/unblock") { val a = call.actor(); call.respond(s.control.unblock(a, call.id())) }
@@ -64,7 +64,7 @@ fun Route.controlApi(s: Services) {
     }
     delete("/admin/users/{id}/devices/{device}") {
         val a = call.actor()
-        call.respond(s.control.deleteDevice(a, call.id(), call.parameters["device"]!!.trim()))
+        call.respond(s.control.deleteDevice(a, call.id(), call.parameters["device"]!!.trim()).also { s.bot?.widgetChanged(call.id()) })
     }
 
     // ?from=2026-10-01&to=2026-10-31&status=paid|pending|cancelled&q=e-mail or order id

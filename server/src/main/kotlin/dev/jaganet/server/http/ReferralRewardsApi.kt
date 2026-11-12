@@ -47,6 +47,6 @@ fun Route.referralRewardsApi(s: Services) {
     }
     post("/admin/referral-rewards/{id}/cancel") {
         if (call.principal(s).user.role != Role.OWNER) throw forbidden()
-        call.respond(s.referralRewards.cancel(call.parameters["id"]!!))
+        call.respond(s.referralRewards.cancel(call.parameters["id"]!!).also { s.bot?.widgetChanged(it.userId) })
     }
 }

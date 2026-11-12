@@ -1,0 +1,33 @@
+<!doctype html><html lang="{{LANG}}"><head><meta charset="utf-8"><style>
+body{margin:0;padding:10px 12px max(10px,env(safe-area-inset-bottom))}
+#s{font-weight:600}
+#s:before{content:"";display:inline-block;width:.5em;height:.5em;border-radius:50%;margin-right:.45em;vertical-align:.1em;background:var(--tg-theme-hint-color)}
+.on #s:before{background:var(--tg-theme-button-color)}
+#d{font-size:1.75em;font-weight:700;line-height:1.2;margin-top:4px;font-variant-numeric:tabular-nums}
+.h{color:var(--tg-theme-hint-color);font-size:.9em}
+#b{height:6px;border-radius:3px;background:var(--tg-theme-secondary-bg-color);margin:10px 0 8px;overflow:hidden}
+#p{height:100%;width:0;border-radius:3px;background:var(--tg-theme-button-color)}
+.low #p{background:var(--tg-theme-destructive-text-color)}
+.low #d{color:var(--tg-theme-destructive-text-color)}
+[hidden]{display:none}
+</style></head><body><div id="c"><div id="s"></div><div id="d" hidden></div><div class="h" id="e"></div><div id="b" hidden><div id="p"></div></div><div class="h" id="v" hidden></div></div><script>
+var L={{L}},W=window.TelegramWidget,rv=-1,last=null;
+function $(i){return document.getElementById(i)}
+function put(i,t){var e=$(i);e.textContent=t||"";e.hidden=!t}
+function pl(n){var f=L.left.split("|"),i=n==1?0:1;if(L.lang=="ru"){var a=n%10,b=n%100;i=a==1&&b!=11?0:a>1&&a<5&&(b<12||b>14)?1:2}return f[Math.min(i,f.length-1)].replace("{n}",n)}
+function fd(t){try{return new Date(t).toLocaleDateString(L.lang,{day:"numeric",month:"long",year:"numeric"})}catch(x){return t.slice(0,10)}}
+function draw(raw){var d=null;try{d=JSON.parse(raw)}catch(x){}if(!d||d.v!=1||d.r<rv)return;rv=d.r;last=d;show()}
+function show(){var d=last;if(!d)return;var now=Date.now(),x=d.exp?Date.parse(d.exp):0,st=d.st,c=$("c");
+if(st=="active"&&x&&x<=now)st="ended";
+c.className="";$("b").hidden=true;put("d","");put("v","");
+if(st=="active"){c.className="on";put("s",L.on);
+if(x){var n=Math.max(1,Math.ceil((x-now)/864e5)),f=d.from?Date.parse(d.from):x-30*864e5;if(n<=3)c.className="on low";put("d",pl(n));put("e",L.until.replace("{date}",fd(d.exp)));
+$("p").style.width=Math.max(2,Math.min(100,(x-now)/Math.max(x-f,1)*100))+"%";$("b").hidden=false}
+else{put("d",L.inf);put("e","")}
+if(d.dev)put("v",L.dev.replace("{used}",d.dev[0]).replace("{limit}",d.dev[1]))}
+else if(st=="ended"){put("s",L.ended);put("e",x?L.endedOn.replace("{date}",fd(d.exp)):L.hint)}
+else{put("s",L.none);put("e",L.hint)}}
+function ask(){if(W&&W.request&&!W.isPreview&&!W.isForward)W.request("s").then(function(a){a&&a.result&&draw(a.result)},function(){})}
+if(W){draw(W.chatData);W.onEvent("chatDataChanged",function(){draw(W.chatData)});W.onEvent("activated",ask);ask();W.ready&&W.ready()}
+setInterval(show,6e4);
+</script></body></html>

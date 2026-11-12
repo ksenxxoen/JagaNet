@@ -54,6 +54,7 @@ curl -fsSL https://raw.githubusercontent.com/ksenxxoen/JagaNet/claude/adoring-br
 | `TELEGRAM_PROXY` | none | HTTP proxy for the Bot API, `host:port`. |
 | `TELEGRAM_MINIAPP` | off | `1` turns on the mini app (below). |
 | `TELEGRAM_MINIAPP_URL` | `$PUBLIC_URL/tg/app` | Where the mini app opens (https only). |
+| `TELEGRAM_WIDGET` | `off` | The status card in the chat (below): `off` (the text menu, as before), `owner` (only the owner gets the card), `all`. |
 | `TELEGRAM_COMMUNITY_URL` | empty | The project's Telegram group or channel (`https://t.me/...` or `https://telegram.me/...`; anything else is ignored with a warning in the log). When set: a «Наша группа в Telegram» button in the bot menu, `/help` and the support message, the `/community` command, a card in the mini app's Support tab and a row in its Profile, and a link in the website's footer and on `#/support`. Empty: none of these. It is also in `GET /v1/site` as `communityUrl`. |
 
 If Telegram can't be reached the bot retries with growing pauses (5 s up to 2 min); every call has
@@ -80,6 +81,25 @@ Commands: `/start` (menu), `/keys`, `/pay`, `/devices`, `/support`, `/help`, `/l
   (issue #33) is outside the limit and can't be deleted.
 - **Reminders.** 3 days and 1 day before the end, at the end (each once per end date), and on
   payment. "Notifications" turns them off; users who blocked the bot are skipped.
+- **Status card** (issue #140, `TELEGRAM_WIDGET`). With the flag on, `/start`, «Меню» and `/status`
+  send a compact card ([Bot API 10.4 HTML widget](https://core.telegram.org/bots/widgets), `sendWidget`)
+  instead of the text menu: «Подписка активна» / «Нет активной подписки» / «Подписка закончилась»,
+  «Осталось N дней» with the end date (the card counts the days itself), a bar of the time left
+  (accent colour at 3 days or less) and «Устройства N из M». Under it, an ordinary inline keyboard:
+  «Открыть Boop» (mini app) and «Продлить» / «Купить подписку»; without the mini app the whole menu
+  stays under the card. The caption is the same text as the text menu, so older Telegram apps show
+  the status too. If `sendWidget` fails, the text menu goes out instead.
+  The HTML (`resources/telegram/status-widget.html`, texts put in per language at sending,
+  `telegram/StatusWidget.kt`) never changes after sending, so a language change sends a new card.
+  The last card per user is in `telegram_widgets` (V27); it is updated in place, silently, with
+  `editMessageWidgetData` after a payment, an admin extension / gift / plan change / device removal,
+  an invite reward given or cancelled, a device added or removed, and when the subscription ends
+  (the reminders' 10-minute round). The 3-day and 1-day reminders stay separate messages, with a
+  notification. The card also asks the bot for fresh data when it comes on screen (`widget_query`,
+  answered with `answerWidgetQuery`), so an old card in the history shows the current status.
+  The card's data is not secret: no subscription link and no keys in it. Widgets work only in the
+  private chat with the bot in production. Rollback: `TELEGRAM_WIDGET=off` (cards already sent stay as
+  they are; V27 is additive, the SQL rollback is in `V27__telegram_widgets.sql`).
 - **Support.** "Support", then the next messages (30 minutes) are forwarded to the support chat
   with who wrote. The admin *replies* to the forwarded message and the answer goes to the user.
   In a group, the bot sees replies to its own messages even with privacy mode on.

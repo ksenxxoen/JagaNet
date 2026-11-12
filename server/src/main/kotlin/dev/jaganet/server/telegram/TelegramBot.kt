@@ -134,6 +134,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         lastPollOk = ctx.now()
         update["message"]?.jsonObject?.let { onMessage(it) }
         update["callback_query"]?.jsonObject?.let { onCallback(it) }
+        update["widget_query"]?.jsonObject?.let { onWidgetQuery(it) }
     }
 
     /* ---------------- messages ---------------- */
@@ -243,6 +244,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
             appendLine()
             append(if (until != null) "✅ " + u.t("Subscription active until {date}.", "date" to Format.date(until.toString(), u.lang)) else u.t("No active subscription."))
         }
+        if (sendCard(u, text, until != null)) return
         send(u, text, mainButtons(u, until != null))
     }
 
@@ -336,6 +338,8 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         val chat = row.longOrNull("telegram_id") ?: return
         val u = Who(order.userId, chat, Lang.of(row.strOrNull("lang")) ?: Lang.DEFAULT)
         val head = u.t("Payment received. Pro is active until {date}.", "date" to Format.date(until.toString(), u.lang))
+        // The status card first: its update is silent, the messages below come with a notification.
+        runCatching { refreshWidget(order.userId) }.onFailure { log.warn("telegram: status card after payment: ${it.message}") }
         try {
             when {
                 order.channel == Channel.TELEGRAM -> keysAction(u, head, key)
@@ -473,6 +477,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         if (devicesOf(u.userId).first.none { it.id == id }) return devicesAction(u, u.t("Device not found"))
         val head = try {
             s.tunnels.removeFor(u.userId, id)
+            widgetChanged(u.userId)
             "✅ " + u.t("Device deleted.")
         } catch (e: AppError) {
             translate(u.lang, e.message ?: "", e.args)
@@ -541,7 +546,10 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
     private suspend fun markBlocked(userId: String) = ctx.db.run { it.exec("UPDATE users SET tg_blocked_at=? WHERE id=?::uuid", ctx.now(), userId) }
 
     /** "A new device was connected" for [deviceId], in the background (the request that made the device never waits for Telegram). */
-    suspend fun deviceConnected(userId: String, deviceId: String) = background { notifyNewDevice(userId, deviceId) }
+    suspend fun deviceConnected(userId: String, deviceId: String) = background {
+        runCatching { refreshWidget(userId) }.onFailure { log.warn("telegram: status card: ${it.message}") }
+        notifyNewDevice(userId, deviceId)
+    }
 
     /**
      * "A new device was connected" (issue #87): once per device (telegram_device_notices), only for
@@ -731,13 +739,145 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
 
     private suspend fun statusAction(u: Who) {
         val pro = proUntil(u.userId)
-        if (pro == null) return send(u, u.t("No active subscription."), buyButtons(u) + openBoop(u, "pay") + backButtons(u))
+        if (pro == null) {
+            if (sendCard(u, u.t("No active subscription."), false)) return
+            return send(u, u.t("No active subscription."), buyButtons(u) + openBoop(u, "pay") + backButtons(u))
+        }
         val (devices, limit) = devicesOf(u.userId)
+        val text = u.t("Subscription active until {date}.", "date" to Format.date(pro.toString(), u.lang)) + "\n" + u.t("Devices {used} of {limit}", "used" to devices.size, "limit" to limit)
+        if (sendCard(u, text, true)) return
         send(
-            u,
-            u.t("Subscription active until {date}.", "date" to Format.date(pro.toString(), u.lang)) + "\n" + u.t("Devices {used} of {limit}", "used" to devices.size, "limit" to limit),
+            u, text,
             openBoop(u) + listOf(listOf(Btn("🔑 " + u.t("My keys and connection"), "keys")), listOf(Btn("💳 " + u.t("Extend"), "pay"), Btn("⬅️ " + u.t("Menu"), "menu"))),
         )
+    }
+
+    /* ---------------- status card (issue #140) ---------------- */
+
+    /** Whether [u] gets the status card instead of the text menu: TELEGRAM_WIDGET=all, or =owner and this is the owner. */
+    private suspend fun widgetFor(userId: String): Boolean = when (ctx.cfg.telegram.widget) {
+        TelegramConfig.WIDGET_ALL -> true
+        TelegramConfig.WIDGET_OWNER -> ctx.db.run { it.one("SELECT 1 FROM users WHERE id=?::uuid AND role='owner'", userId) } != null
+        else -> false
+    }
+
+    /** What the card of [userId] shows now. */
+    private suspend fun widgetState(userId: String): StatusWidget.State {
+        val now = ctx.now()
+        val (devices, limit) = devicesOf(userId)
+        return ctx.db.run { sql ->
+            val e = s.ent.entitlement(sql, userId)
+            if (e.plan == PlanId.PRO) {
+                StatusWidget.State(StatusWidget.ACTIVE, e.expiresAt?.let(Instant::parse), s.control.currentStart(sql, userId, now), devices.size, limit)
+            } else {
+                val ended = sql.one("SELECT max(expires_at) AS e FROM subscriptions WHERE user_id=?::uuid AND status='active' AND expires_at <= ?", userId, now)?.instantOrNull("e")
+                StatusWidget.State(if (ended != null) StatusWidget.ENDED else StatusWidget.NONE, ended, null, devices.size, limit)
+            }
+        }
+    }
+
+    /** "Open Boop" and "Extend" / "Buy" under the card. Without the mini app the whole menu stays, or there would be no way to the other screens. */
+    private suspend fun cardButtons(u: Who, active: Boolean): List<List<Btn>> {
+        if (miniAppUrl() == null) return mainButtons(u, active)
+        return openBoop(u) + listOf(listOf(Btn("💳 " + (if (active) u.t("Extend") else u.t("Buy a subscription")), "pay")))
+    }
+
+    /**
+     * Sends the status card with [caption] (what older Telegram apps show instead) when the card is on
+     * for this user, and remembers it as their last card. False when it is off or sendWidget failed:
+     * then the caller sends the text menu as before. A chat that is gone throws, as any message would.
+     */
+    private suspend fun sendCard(u: Who, caption: String, active: Boolean): Boolean {
+        if (!widgetFor(u.userId)) return false
+        val state = widgetState(u.userId)
+        val revision = ctx.now().toEpochMilli()
+        val result = try {
+            api.call("sendWidget", buildJsonObject {
+                put("chat_id", u.chat)
+                put("html", StatusWidget.html(u.lang))
+                put("chat_data", StatusWidget.chatData(state, revision))
+                put("caption", caption)
+                put("allow_queries", true)
+                put("reply_markup", keyboard(cardButtons(u, active)))
+            })
+        } catch (e: TelegramException) {
+            if (e.chatGone) throw e
+            log.warn("telegram: sendWidget failed, sending the text menu: ${e.message}")
+            return false
+        }
+        val messageId = messageId(result) ?: return true
+        ctx.db.run {
+            it.exec(
+                """INSERT INTO telegram_widgets (user_id, chat_id, message_id, revision, status, expires_at, sent_at, updated_at) VALUES (?::uuid,?,?,?,?,?,?,?)
+                    ON CONFLICT (user_id) DO UPDATE SET chat_id=EXCLUDED.chat_id, message_id=EXCLUDED.message_id, revision=EXCLUDED.revision,
+                      status=EXCLUDED.status, expires_at=EXCLUDED.expires_at, sent_at=EXCLUDED.sent_at, updated_at=EXCLUDED.updated_at""",
+                u.userId, u.chat, messageId, revision, state.status, state.expires, ctx.now(), ctx.now(),
+            )
+        }
+        return true
+    }
+
+    /** [refreshWidget] in the background: payments, admin changes, rewards and devices never wait for Telegram. */
+    suspend fun widgetChanged(userId: String) = background { refreshWidget(userId) }
+
+    /**
+     * Updates the user's last card in place (editMessageWidgetData: silent, no "edited" mark).
+     * Returns false when there is nothing to update. "Message is not modified" counts as done; a chat
+     * that is gone marks the user as having blocked the bot; a deleted card is forgotten.
+     */
+    suspend fun refreshWidget(userId: String): Boolean {
+        if (ctx.cfg.telegram.widget == TelegramConfig.WIDGET_OFF) return false
+        val row = ctx.db.run {
+            it.one("SELECT w.chat_id, w.message_id, w.revision FROM telegram_widgets w JOIN users u ON u.id = w.user_id WHERE w.user_id=?::uuid AND u.tg_blocked_at IS NULL", userId)
+        } ?: return false
+        val state = widgetState(userId)
+        val revision = maxOf(ctx.now().toEpochMilli(), row.long("revision") + 1)
+        try {
+            api.call("editMessageWidgetData", buildJsonObject {
+                put("chat_id", row.long("chat_id")); put("message_id", row.long("message_id"))
+                put("chat_data", StatusWidget.chatData(state, revision))
+            })
+        } catch (e: TelegramException) {
+            val msg = e.message.orEmpty()
+            when {
+                "message is not modified" in msg -> Unit
+                e.chatGone -> { markBlocked(userId); return false }
+                e.code == 400 && ("message to edit not found" in msg || "MESSAGE_ID_INVALID" in msg) -> {
+                    ctx.db.run { it.exec("DELETE FROM telegram_widgets WHERE user_id=?::uuid AND message_id=?", userId, row.long("message_id")) }
+                    return false
+                }
+                else -> throw e
+            }
+        }
+        ctx.db.run {
+            it.exec(
+                "UPDATE telegram_widgets SET revision=?, status=?, expires_at=?, updated_at=? WHERE user_id=?::uuid AND message_id=?",
+                revision, state.status, state.expires, ctx.now(), userId, row.long("message_id"),
+            )
+        }
+        return true
+    }
+
+    /** Cards that still say "active" after the end date: updated in the reminders' round. Returns how many. */
+    suspend fun expireWidgets(): Int {
+        if (ctx.cfg.telegram.widget == TelegramConfig.WIDGET_OFF) return 0
+        val due = ctx.db.run { it.query(
+                """SELECT w.user_id FROM telegram_widgets w JOIN users u ON u.id = w.user_id
+                    WHERE w.status='active' AND w.expires_at <= ? AND u.tg_blocked_at IS NULL ORDER BY w.expires_at LIMIT 200""",
+                ctx.now(),
+            ) }
+        var n = 0
+        for (r in due) if (refreshWidget(r.str("user_id"))) n++
+        return n
+    }
+
+    /** The card asks for fresh data when it comes on screen: the answer is the same chat data an update would write. */
+    private suspend fun onWidgetQuery(q: JsonObject) {
+        val id = q["id"]?.jsonPrimitive?.content ?: return
+        val tgId = q["from"]?.jsonObject?.get("id")?.jsonPrimitive?.longOrNull
+        val userId = tgId?.let { t -> ctx.db.run { it.one("SELECT id FROM users WHERE telegram_id=?", t) }?.str("id") }
+        val data = if (userId != null && q["data"]?.jsonPrimitive?.content == "s") StatusWidget.chatData(widgetState(userId), ctx.now().toEpochMilli()) else null
+        api.call("answerWidgetQuery", buildJsonObject { put("widget_query_id", id); data?.let { put("data", it) } })
     }
 
     /* ---------------- helpers ---------------- */

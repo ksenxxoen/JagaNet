@@ -140,4 +140,12 @@ internal val telegramBotStrings: List<S> = listOf(
     S("Unlink", "Отвязать", "Trennen"),
     S("Unlink Telegram from this account?", "Отвязать Telegram от этого аккаунта?", "Telegram von diesem Konto trennen?"),
     S("This account is blocked. To find out why, write to support.", "Аккаунт заблокирован. Чтобы узнать причину, напишите в поддержку.", "Dieses Konto ist gesperrt. Schreib dem Support, um den Grund zu erfahren."),
+    // The status card (issue #140)
+    S("Subscription active", "Подписка активна", "Abo aktiv"),
+    S("No active subscription", "Нет активной подписки", "Kein aktives Abo"),
+    S("Subscription has ended", "Подписка закончилась", "Abo abgelaufen"),
+    S("until {date}", "до {date}", "bis {date}"),
+    S("ended on {date}", "закончилась {date}", "abgelaufen am {date}"),
+    S("No end date", "Без срока", "Unbefristet"),
+    S("Choose a plan with the button below.", "Выберите тариф кнопкой ниже.", "Wähle unten einen Tarif."),
 )
