@@ -24,6 +24,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -69,6 +70,12 @@ class VlessSubscriptionClientsTest {
         assertEquals(Format.XRAY_JSON, VlessSubscription.format(null, "v2raytun/ios", on))
         assertEquals(Format.BASE64, VlessSubscription.format(null, "Happ/3.7.0", off))
         assertEquals(Format.BASE64, VlessSubscription.format(null, "v2RayTun/5", off))
+        // Regional direct routing: Happ (1.63.1+) and v2RayTun get the Xray configs even if VLESS_SUB_XRAY_JSON=0.
+        val regional = off.copy(regionalDirect = true)
+        assertEquals(Format.XRAY_JSON, VlessSubscription.format(null, "Happ/3.7.0/Android/1730000000", regional))
+        assertEquals(Format.XRAY_JSON, VlessSubscription.format(null, "v2RayTun/5", regional))
+        assertEquals(Format.BASE64, VlessSubscription.format(null, "Happ/1.63.0", regional))
+        assertEquals(Format.BASE64, VlessSubscription.format(null, "v2rayNG/1.10.5", regional))
         assertEquals(Format.BASE64, VlessSubscription.format(null, "v2rayNG/1.10.5", on))
         assertEquals(Format.BASE64, VlessSubscription.format(null, "HiddifyNext/2.5.7 (android) like ClashMeta v2ray sing-box", on))
         assertEquals(Format.SINGBOX, VlessSubscription.format(null, "SFA/1.12.4", on))
@@ -104,13 +111,18 @@ class VlessSubscriptionClientsTest {
 
     @Test fun `Happ and v2RayTun get Xray configs with remote DNS and the QUIC block`() = harness(mapOf("PUBLIC_URL" to "https://boop.example")) {
         val (token, uuid) = twoLocations()
-        for (res in listOf(sub(token, ua = "Happ/3.7.0/Android"), sub(token, ua = "v2RayTun/5.23.74"), sub(token, "?format=json", ua = "v2rayNG/1.10.5"))) {
+        val happUa = "Happ/3.7.0/Android"
+        val tunUa = "v2RayTun/5.23.74"
+        val other = "?format=json" to "v2rayNG/1.10.5"
+        for ((query, ua) in listOf("" to happUa, "" to tunUa, other)) {
+            val res = sub(token, query, ua)
             assertEquals(HttpStatusCode.OK, res.status)
             assertTrue(res.headers["Content-Type"]!!.startsWith("application/json"))
-            // The subscription's own headers stay; no routing profile with JSON.
+            // The subscription's own headers stay; Happ and v2RayTun also get a routing header consistent with the configs.
             assertTrue(res.headers["subscription-userinfo"]!!.startsWith("upload=0; download=0;"))
             assertEquals("3", res.headers["profile-update-interval"])
-            assertNull(res.headers["routing"])
+            if (VlessSubscription.client(ua) == VlessSubscription.Client.OTHER) assertNull(res.headers["routing"])
+            else assertNotNull(res.headers["routing"])
             val configs = Json.parseToJsonElement(res.bodyAsText()).jsonArray.map { it.jsonObject }
             // "Авто (лучший)", then the base64 list's links in its order and names.
             assertEquals(
@@ -201,6 +213,47 @@ class VlessSubscriptionClientsTest {
         // Without DNS servers Happ gets no profile; without the QUIC block v2RayTun gets no routing.
         assertNull(VlessSubscription.happRouting(SubscriptionOptions(dns = emptyList())))
         assertNull(VlessSubscription.v2rayTunRouting(SubscriptionOptions(blockQuic = false)))
+    }
+
+    @Test fun `with regional direct Happ and v2RayTun get Xray configs even when VLESS_SUB_XRAY_JSON=0`() = harness(
+        mapOf("VLESS_SUB_XRAY_JSON" to "0", "VLESS_SUB_REGIONAL_DIRECT" to "1"),
+    ) {
+        val (token, _) = twoLocations()
+        for (ua in listOf("Happ/3.7.0/Android", "Happ/4.8.0/Android/1", "v2RayTun/5.23.74")) {
+            val res = sub(token, ua = ua)
+            assertEquals(HttpStatusCode.OK, res.status)
+            assertTrue(res.headers["Content-Type"]!!.startsWith("application/json"), ua)
+            assertNotNull(res.headers["routing"], ua)
+            val configs = Json.parseToJsonElement(res.bodyAsText()).jsonArray.map { it.jsonObject }
+            assertEquals("Авто (лучший)", configs.first().str("remarks"))
+            for (c in configs) {
+                assertEquals(SubscriptionOptions.DEFAULT_DNS, c["dns"]!!.jsonObject.strs("servers"))
+                val routing = c["routing"]!!.jsonObject
+                assertEquals("IPIfNonMatch", routing.str("domainStrategy"))
+                val domains = routing.arr("rules").map { it["domain"]?.jsonArray?.map { d -> d.jsonPrimitive.content } ?: emptyList() }
+                val ips = routing.arr("rules").map { it["ip"]?.jsonArray?.map { d -> d.jsonPrimitive.content } ?: emptyList() }
+                assertTrue(domains.any { "domain:4pda.ru" in it })
+                assertTrue(routing.arr("rules").any { "domain:ru" in (it["domain"]?.jsonArray?.map { d -> d.jsonPrimitive.content } ?: emptyList()) && it.str("outboundTag") == "direct" })
+                assertTrue(ips.any { "geoip:ru" in it })
+            }
+            if (VlessSubscription.client(ua) == VlessSubscription.Client.HAPP) {
+                val profile = Json.parseToJsonElement(String(Base64.getDecoder().decode(res.headers["routing"]!!.removePrefix("happ://routing/onadd/")))).jsonObject
+                assertEquals("IPIfNonMatch", profile.str("DomainStrategy"))
+                assertTrue("domain:4pda.ru" in profile.strs("ProxySites"))
+                assertTrue("domain:ru" in profile.strs("DirectSites"))
+                assertTrue("geoip:ru" in profile.strs("DirectIp"))
+            } else {
+                val routing = Json.parseToJsonElement(String(Base64.getDecoder().decode(res.headers["routing"]!!))).jsonObject
+                assertEquals("IPIfNonMatch", routing.str("domainStrategy"))
+                assertTrue(routing.arr("rules").any { "domain:4pda.ru" in (it["domain"]?.jsonArray?.map { d -> d.jsonPrimitive.content } ?: emptyList()) })
+            }
+        }
+        // An old Happ still gets the links, with the same regional rules in the header.
+        val old = sub(token, ua = "Happ/1.62.0")
+        assertTrue(old.headers["Content-Type"]!!.startsWith("text/plain"))
+        val profile = Json.parseToJsonElement(String(Base64.getDecoder().decode(old.headers["routing"]!!.removePrefix("happ://routing/onadd/")))).jsonObject
+        assertEquals("IPIfNonMatch", profile.str("DomainStrategy"))
+        assertTrue("domain:ru" in profile.strs("DirectSites"))
     }
 
     @Test fun `sing-box and Clash profiles carry the remote DNS and the QUIC block`() = harness {

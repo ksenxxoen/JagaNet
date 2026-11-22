@@ -157,6 +157,11 @@ class RegionalRoutingTest {
         // The regional rules alone justify the header even without the QUIC block; without both there is none, as before.
         assertNotNull(VlessSubscription.v2rayTunRouting(on.copy(blockQuic = false)))
         assertNull(VlessSubscription.v2rayTunRouting(SubscriptionOptions(blockQuic = false)))
+        // The header helper used by the subscription route: Happ and v2RayTun only, same payload.
+        assertEquals(VlessSubscription.happRouting(on), VlessSubscription.routingHeader("Happ/4.8.0/Android/1", on))
+        assertEquals(VlessSubscription.v2rayTunRouting(on), VlessSubscription.routingHeader("v2RayTun/5.23.74", on))
+        assertNull(VlessSubscription.routingHeader("v2rayNG/1.10.5", on))
+        assertNull(VlessSubscription.routingHeader(null, on))
     }
 
     // ---- XHTTP tuning ----

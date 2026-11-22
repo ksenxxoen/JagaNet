@@ -209,14 +209,12 @@ fun Route.website(s: Services) {
         val options = s.ctx.cfg.vlessSub
         var format = VlessSubscription.format(call.request.queryParameters["format"], ua, options)
         if ((format == VlessSubscription.Format.SINGBOX || format == VlessSubscription.Format.CLASH) && !VlessSubscription.hasGroups(v.locations)) format = VlessSubscription.Format.BASE64
+        // Happ and v2RayTun get a `routing` header with both the links and the Xray configs, consistent with the rules in those configs.
+        if (format == VlessSubscription.Format.BASE64 || format == VlessSubscription.Format.XRAY_JSON) {
+            VlessSubscription.routingHeader(ua, options)?.let { call.response.header("routing", it) }
+        }
         when (format) {
             VlessSubscription.Format.BASE64 -> {
-                // Plain links: Happ and v2RayTun still get DNS or the QUIC block through their `routing` header (issue #59).
-                when (VlessSubscription.client(ua)) {
-                    VlessSubscription.Client.HAPP -> VlessSubscription.happRouting(options)
-                    VlessSubscription.Client.V2RAYTUN -> VlessSubscription.v2rayTunRouting(options)
-                    VlessSubscription.Client.OTHER -> null
-                }?.let { call.response.header("routing", it) }
                 call.respondText(VlessKeys.subscription(v.links), ContentType.Text.Plain)
             }
             VlessSubscription.Format.XRAY_JSON -> call.respondText(XrayConfigs.subscription(v.locations, lang, options), ContentType.Application.Json)
