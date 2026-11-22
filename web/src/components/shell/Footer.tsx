@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useI18n } from "@/i18n";
 import { useSession } from "@/store/session";
+import { PRIVACY_HREF, TERMS_HREF } from "@/lib/legal";
 import { anchors } from "./nav";
 
 const Col = ({ title, links }: { title: string; links: ReactNode[] }) => (
@@ -73,10 +74,10 @@ export function Footer() {
                 {t("Our Telegram group")}
               </A>
             ) : null,
-            <A href="/privacy" external>
+            <A href={PRIVACY_HREF} external>
               {t("Privacy policy")}
             </A>,
-            <A href="/terms" external>
+            <A href={TERMS_HREF} external>
               {t("Terms of use")}
             </A>,
           ]}

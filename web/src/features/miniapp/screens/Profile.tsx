@@ -14,6 +14,7 @@ import { Button, CopyButton, Input } from "@/components/ui";
 import { useApiMutation } from "@/hooks/useApiMutation";
 import { LANGS, setLang, useI18n, type Lang } from "@/i18n";
 import { cn } from "@/lib/cn";
+import { PRIVACY_HREF, TERMS_HREF } from "@/lib/legal";
 import { notify } from "@/lib/notify";
 import { useSession } from "@/store/session";
 import { ErrorCard, Group, Head, List, Panel, Row, RowIcon, Skeleton } from "../parts";
@@ -246,10 +247,10 @@ export function Profile() {
         </List>
       </Group>
       <p className="m-0 mt-6 flex justify-center gap-4 text-[13px]">
-        <button type="button" className="text-link" onClick={() => openLink("/privacy")}>
+        <button type="button" className="text-link" onClick={() => openLink(PRIVACY_HREF)}>
           {t("Privacy policy")}
         </button>
-        <button type="button" className="text-link" onClick={() => openLink("/terms")}>
+        <button type="button" className="text-link" onClick={() => openLink(TERMS_HREF)}>
           {t("Terms of use")}
         </button>
       </p>

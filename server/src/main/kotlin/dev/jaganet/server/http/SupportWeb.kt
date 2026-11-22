@@ -2,14 +2,11 @@ package dev.jaganet.server.http
 
 import dev.jaganet.api.OkRes
 import dev.jaganet.server.services.SupportMessage
-import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receive
-import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondRedirect
-import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -28,38 +25,16 @@ data class SupportReq(
 @Serializable
 data class SupportInfoRes(val available: Boolean)
 
-/** Legal documents (Russian, as published by the owner), served as pages of the site. */
-private object Legal {
-    val docs = mapOf(
-        "privacy" to "Политика конфиденциальности",
-        "terms" to "Пользовательское соглашение",
-    )
-    private val cache = HashMap<String, String>()
-
-    @Synchronized fun page(slug: String): String = cache.getOrPut(slug) {
-        val body = Legal::class.java.getResource("/legal/$slug.html")!!.readText()
-        val title = docs.getValue(slug)
-        """<!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>$title | Boop VPN</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/pages.css"></head>
-<body><header class="top"><div class="top-in"><a class="logo" href="/"><img src="/favicon.svg" alt="">Boop</a>
-<nav class="nav"><a class="btn secondary" href="/#/account">Личный кабинет</a></nav></div></header>
-<main class="narrow"><article class="card legal">
-$body
-</article></main>
-<footer><div class="foot-bottom"><span>© Boop VPN</span><nav class="foot-links"><a href="/">На главную</a><a href="/privacy">Политика конфиденциальности</a><a href="/terms">Пользовательское соглашение</a><a href="/#/support">Написать в поддержку</a></nav></div></footer>
-</body></html>"""
-    }
+/** Published legal documents, served as PDF files under /docs. */
+object LegalDocs {
+    const val TERMS = "/docs/boopvpn-terms.pdf"
+    const val PRIVACY = "/docs/boopvpn-privacy.pdf"
 }
 
 fun Route.legalPages() {
-    for (slug in Legal.docs.keys) get("/$slug") {
-        call.response.header(HttpHeaders.CacheControl, "public, max-age=300")
-        call.respondText(Legal.page(slug), ContentType.Text.Html)
-    }
+    // Keep the old /terms and /privacy addresses working for existing links (bot, mail, bookmarks).
+    get("/terms") { call.respondRedirect(LegalDocs.TERMS) }
+    get("/privacy") { call.respondRedirect(LegalDocs.PRIVACY) }
     get("/support") { call.respondRedirect("/#/support") }
 }
 

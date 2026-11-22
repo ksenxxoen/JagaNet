@@ -58,9 +58,20 @@ class WebUiTest {
         for (f in listOf("/app.js", "/control.js", "/telegram.js", "/invite.js", "/support.js", "/style.css", "/tg/app.js", "/tg/app.css", "/tg/open.js")) {
             assertEquals(HttpStatusCode.NotFound, c.get(f).status, f)
         }
-        // Only the server pages' files stay in resources/web (no scripts, no pages of the old website).
+        // Only the server pages' files and the published legal documents stay in resources/web
+        // (no scripts, no pages of the old website).
         val left = File("src/main/resources/web").walk().filter { it.isFile }.map { it.relativeTo(File("src/main/resources/web")).invariantSeparatorsPath }.toSet()
-        assertEquals(setOf("favicon.svg", "pages.css"), left)
+        assertEquals(
+            setOf(
+                "favicon.svg",
+                "pages.css",
+                "docs/boopvpn-terms.pdf",
+                "docs/boopvpn-privacy.pdf",
+                "docs/boopvpn-terms.docx",
+                "docs/boopvpn-privacy.docx",
+            ),
+            left,
+        )
     }
 
     @Test fun `the preview addresses lead to the main ones, keeping the fragment`() = harness {
@@ -84,7 +95,7 @@ class WebUiTest {
         assertNoRawFiles(c)
     }
 
-    /* ---------------- the server's own pages (/k/…, payment, /privacy, /terms) ---------------- */
+    /* ---------------- the server's own pages (/k/…, payment) ---------------- */
 
     @Test fun `the server's own pages keep their stylesheet and icon`() = harness(mapOf("PUBLIC_URL" to "https://boop.example")) {
         val c = b.createClient {}
@@ -96,7 +107,7 @@ class WebUiTest {
         buy(u.api)
         val key = u.api.createKey().pageUrl.substringAfter("https://boop.example")
         val order = u.api.createOrder(CreateOrderReq(tariff(MONTH)))
-        for (page in listOf("/privacy", "/terms", key, "/pay/test/${order.id}")) {
+        for (page in listOf(key, "/pay/test/${order.id}")) {
             val r = c.get(page)
             assertEquals(HttpStatusCode.OK, r.status, page)
             val html = r.bodyAsText()

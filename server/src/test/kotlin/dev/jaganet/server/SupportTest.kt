@@ -5,6 +5,7 @@ import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.readRawBytes
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
@@ -15,14 +16,28 @@ import kotlin.test.assertTrue
 class SupportTest {
     private data class Sent(val to: String, val subject: String, val text: String, val replyTo: String)
 
-    @Test fun `legal pages are served with the documents' text`() = harness {
-        val c = b.createClient {}
-        val privacy = c.get("/privacy")
-        assertEquals(200, privacy.status.value)
-        assertTrue("Политика конфиденциальности" in privacy.bodyAsText())
-        val terms = c.get("/terms").bodyAsText()
-        assertTrue("1. Общие положения" in terms && "/privacy" in terms)
-        val support = b.createClient { followRedirects = false }.get("/support")
+    @Test fun `legal documents are served as PDF files and old paths redirect to them`() = harness {
+        val follow = b.createClient {}
+        val raw = b.createClient { followRedirects = false }
+
+        suspend fun assertPdf(path: String) {
+            val r = follow.get(path)
+            assertEquals(200, r.status.value, path)
+            assertTrue("pdf" in r.contentType().toString().lowercase(), r.contentType().toString())
+            val bytes = r.readRawBytes()
+            assertTrue(bytes.size > 100 && bytes.copyOf(4).toString(Charsets.US_ASCII) == "%PDF")
+        }
+        assertPdf("/docs/boopvpn-terms.pdf")
+        assertPdf("/docs/boopvpn-privacy.pdf")
+
+        val terms = raw.get("/terms")
+        assertEquals(302, terms.status.value)
+        assertEquals("/docs/boopvpn-terms.pdf", terms.headers[HttpHeaders.Location])
+        val privacy = raw.get("/privacy")
+        assertEquals(302, privacy.status.value)
+        assertEquals("/docs/boopvpn-privacy.pdf", privacy.headers[HttpHeaders.Location])
+
+        val support = raw.get("/support")
         assertEquals("/#/support", support.headers[HttpHeaders.Location])
     }
 
