@@ -32,7 +32,7 @@ export const keys = {
   admin: {
     all: ["admin"] as const,
     dashboard: () => ["admin", "dashboard"] as const,
-    users: (q: string) => ["admin", "users", q] as const,
+    users: (q: string, page = 1) => ["admin", "users", q, page] as const,
     usersAll: ["admin", "users"] as const,
     user: (id: string) => ["admin", "user", id] as const,
     payments: (filter: Record<string, string>) => ["admin", "payments", filter] as const,

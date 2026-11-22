@@ -1261,7 +1261,7 @@ export interface paths {
         };
         /**
          * Find users
-         * @description Owner only: 401 without a session, 403 for other users.
+         * @description Owner only: 401 without a session, 403 for other users. Search covers every user; the answer is one page plus total.
          */
         get: operations["getAdminUsers"];
         put?: never;
@@ -2181,6 +2181,9 @@ export interface components {
             servers: string[];
             traffic: components["schemas"]["TrafficSplit"];
             lastSeenAt?: string;
+            telegramUsername?: string;
+            telegramFirstName?: string;
+            telegramLastName?: string;
         };
         AnalyticsUserRes: {
             period: string;
@@ -2528,6 +2531,14 @@ export interface components {
             /** Format: int32 */
             sharingThreshold: number;
             telegramUsernames: boolean;
+            /** Format: int32 */
+            total: number;
+            /** Format: int32 */
+            page: number;
+            /** Format: int32 */
+            pageSize: number;
+            /** Format: int32 */
+            offset: number;
         };
         DayCount: {
             day: string;
@@ -5418,6 +5429,12 @@ export interface operations {
             query?: {
                 /** @description Search text. */
                 q?: string;
+                /** @description 1-based page. Ignored when offset is set. */
+                page?: number;
+                /** @description 0-based row offset. Takes precedence over page. */
+                offset?: number;
+                /** @description Page size (1–100, default 50). */
+                limit?: number;
             };
             header?: never;
             path?: never;

@@ -147,13 +147,20 @@ describe("users tab", () => {
     const user = userEvent.setup();
     const reqs = mockApi({
       ...owner,
-      "GET /admin/users": (r) => ({
-        users: r.query.q
+      "GET /admin/users": (r) => {
+        const users = r.query.q
           ? [ctlUserRow({ matched: "email" })]
-          : [ctlUserRow(), ctlUserRow({ id: "u9", email: "x@telegram.invalid", telegramUsername: "bob" })],
-        sharingThreshold: 5,
-        telegramUsernames: true,
-      }),
+          : [ctlUserRow(), ctlUserRow({ id: "u9", email: "x@telegram.invalid", telegramUsername: "bob" })];
+        return {
+          users,
+          sharingThreshold: 5,
+          telegramUsernames: true,
+          total: users.length,
+          page: 1,
+          pageSize: 50,
+          offset: 0,
+        };
+      },
       "GET /admin/users/{id}": ctlUserCard(),
     });
     const { router } = renderApp("/admin?tab=users");
@@ -172,6 +179,33 @@ describe("users tab", () => {
     await waitFor(() => expect(router.state.location.search).toMatchObject({ tab: "users", id: "u2" }));
     expect(await screen.findByRole("heading", { name: "anna@example.com" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Breadcrumbs" })).toHaveTextContent("All users");
+  });
+
+  it("pages through users on the server and keeps the page in the address", async () => {
+    const user = userEvent.setup();
+    const reqs = mockApi({
+      ...owner,
+      "GET /admin/users": (r) => {
+        const page = Number(r.query.page ?? "1") || 1;
+        return {
+          users: page === 1 ? [ctlUserRow()] : [ctlUserRow({ id: "u9", email: "zoe@example.com" })],
+          sharingThreshold: 5,
+          telegramUsernames: true,
+          total: 67,
+          page,
+          pageSize: 50,
+          offset: (page - 1) * 50,
+        };
+      },
+    });
+    const { router } = renderApp("/admin?tab=users");
+    expect(await screen.findByText("anna@example.com")).toBeInTheDocument();
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ tab: "users", page: "2" }));
+    await waitFor(() => expect(reqs.some((r) => r.url === "/admin/users" && r.query.page === 2)).toBe(true));
+    expect(await screen.findByText("zoe@example.com")).toBeInTheDocument();
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
   });
 
   it("the card: facts, note, actions with questions before the dangerous ones", async () => {

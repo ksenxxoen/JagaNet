@@ -20,9 +20,23 @@ export const total = (s: Split) => s.down + s.up;
 /** The BitTorrent share in percent, null without traffic. */
 export const torrentShare = (s: Split): number | null => (total(s) ? ((s.torrentDown + s.torrentUp) / total(s)) * 100 : null);
 
-/** "Telegram account" instead of a Telegram-only account's placeholder address. */
-export const userName = (u: { name: string; email: string }) =>
-  u.email.endsWith("@telegram.invalid") && u.name === u.email ? t("Telegram account") : u.name;
+/** A Telegram-only account's @username, then first (and last) name, then "Telegram account". */
+export const userName = (u: {
+  name: string;
+  email: string;
+  telegramUsername?: string | null;
+  telegramFirstName?: string | null;
+  telegramLastName?: string | null;
+}) => {
+  if (!(u.email.endsWith("@telegram.invalid") && u.name === u.email)) return u.name;
+  const at = u.telegramUsername?.trim();
+  if (at) return at.startsWith("@") ? at : `@${at}`;
+  const full = [u.telegramFirstName, u.telegramLastName]
+    .map((s) => s?.trim())
+    .filter(Boolean)
+    .join(" ");
+  return full || t("Telegram account");
+};
 
 /** "2 / 3": active devices of all (never fewer in all than active). */
 export const devCount = (active: number, all: number) => `${active} / ${Math.max(active, all)}`;

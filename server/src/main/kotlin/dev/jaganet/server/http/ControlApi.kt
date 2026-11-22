@@ -41,7 +41,12 @@ fun Route.controlApi(s: Services) {
     get("/admin/control/audit") { call.actor(); call.respond(s.control.auditLog(call.request.queryParameters["user"])) }
 
     // ?q= e-mail, Telegram id or @username, user / device id, VLESS UUID, key link or its token, client IP, note.
-    get("/admin/users") { call.actor(); call.respond(s.control.search(call.request.queryParameters["q"])) }
+    // ?page= / ?offset= / ?limit= : one page of matches (default 50), with total.
+    get("/admin/users") {
+        call.actor()
+        val q = call.request.queryParameters
+        call.respond(s.control.search(q["q"], q["page"], q["offset"], q["limit"]))
+    }
     get("/admin/users/{id}") { call.actor(); call.respond(s.control.card(call.id())) }
     post("/admin/users/{id}/extend") {
         val a = call.actor(); val b = call.receive<CtlDaysReq>()

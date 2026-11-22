@@ -13,6 +13,8 @@ import { store } from "@/lib/storage";
 export interface SetSearchOptions {
   /** true: replace the history entry instead of adding one (typing in a search box). */
   replace?: boolean;
+  /** Other address parameters to drop (a new search starts from page 1). */
+  reset?: string[];
 }
 
 export function usePersistedSearch(
@@ -36,7 +38,11 @@ export function usePersistedSearch(
     (next: string, options?: SetSearchOptions) =>
       void navigate({
         to: ".",
-        search: ((prev: Record<string, unknown>) => ({ ...prev, [param]: next === "" ? undefined : next })) as never,
+        search: ((prev: Record<string, unknown>) => {
+          const nextSearch: Record<string, unknown> = { ...prev, [param]: next === "" ? undefined : next };
+          for (const k of options?.reset ?? []) nextSearch[k] = undefined;
+          return nextSearch;
+        }) as never,
         replace: options?.replace,
       }),
     [navigate, param],

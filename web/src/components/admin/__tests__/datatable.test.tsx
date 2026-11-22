@@ -110,6 +110,19 @@ describe("DataTable", () => {
     await waitFor(() => expect(screen.getByText("Page 1 of 3")).toBeInTheDocument());
   });
 
+  it("with total, rows are one server page and the pager uses the count", async () => {
+    const user = userEvent.setup();
+    const router = renderTable({ inUrl: true, rows: rows.slice(0, 3), total: 7, pageSize: 3 }, "/?page=1");
+    expect(await screen.findByText("Page 1 of 3")).toBeInTheDocument();
+    expect(firstCells()).toEqual(["name g", "name f", "name e"]);
+    // The current page is not the whole list: headings are not sortable.
+    expect(screen.queryByRole("button", { name: "Name" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(router.state.location.search).toEqual({ page: "2" }));
+    // The fixture still has the first page of rows; the address moved.
+    expect(screen.getByText("Page 2 of 3")).toBeInTheDocument();
+  });
+
   it("shows the empty text without pages", async () => {
     renderTable({ rows: [] });
     expect(await screen.findByText("Empty")).toBeInTheDocument();

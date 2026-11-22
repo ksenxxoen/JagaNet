@@ -116,19 +116,27 @@ class Control(
 
     /**
      * By e-mail (part of it), Telegram id or username, user id, device id, VLESS key UUID, key link
-     * token (or the whole link), client IP, or the admin's note. Empty: the newest 50 users.
+     * token (or the whole link), client IP, or the admin's note. Empty: every user, newest first,
+     * one page at a time ([page] / [offset] / [limit]).
      */
-    suspend fun search(query: String?): CtlUsersRes = ctx.db.run { sql ->
+    suspend fun search(query: String?, page: String? = null, offset: String? = null, limit: String? = null): CtlUsersRes = ctx.db.run { sql ->
         val q = query?.trim().orEmpty().take(200)
+        val (pageNo, pageSize, off) = ctlUsersPage(page, offset, limit)
         val threshold = settings(sql).sharingThreshold
         val uname = usernameColumn(sql)
-        val found = linkedMapOf<String, String?>()
-        fun add(kind: String, sqlText: String, vararg args: Any?) {
-            for (r in sql.query(sqlText, *args)) found.putIfAbsent(r.str("id"), kind)
-        }
+        val now = ctx.now()
+        val ids: List<String>
+        val kinds: Map<String, String?>
+        val total: Int
         if (q.isEmpty()) {
-            add("", "SELECT id FROM users ORDER BY created_at DESC, id LIMIT 50")
+            total = sql.one("SELECT count(*)::int AS n FROM users")!!.int("n")
+            ids = sql.query("SELECT id FROM users ORDER BY created_at DESC, id LIMIT ? OFFSET ?", pageSize, off).map { it.str("id") }
+            kinds = emptyMap()
         } else {
+            val found = linkedMapOf<String, String?>()
+            fun add(kind: String, sqlText: String, vararg args: Any?) {
+                for (r in sql.query(sqlText, *args)) found.putIfAbsent(r.str("id"), kind)
+            }
             val token = q.substringAfter("/k/", q).substringBefore('/').substringBefore('?').trim()
             if (UUID_RE.matches(q)) {
                 val u = q.lowercase()
@@ -148,13 +156,25 @@ class Control(
             }
             if (uname != null) {
                 val name = q.removePrefix("@").removePrefix("https://t.me/")
-                if (name.isNotEmpty()) add("telegram", "SELECT id FROM users WHERE $uname ILIKE ? ORDER BY created_at DESC LIMIT 50", like(name))
+                if (name.isNotEmpty()) add("telegram", "SELECT id FROM users WHERE $uname ILIKE ? ORDER BY created_at DESC, id", like(name))
             }
-            add("email", "SELECT id FROM users WHERE email ILIKE ? ORDER BY created_at DESC LIMIT 50", like(q))
-            add("note", "SELECT id FROM users WHERE note ILIKE ? ORDER BY created_at DESC LIMIT 20", like(q))
+            add("email", "SELECT id FROM users WHERE email ILIKE ? ORDER BY created_at DESC, id", like(q))
+            add("note", "SELECT id FROM users WHERE note ILIKE ? ORDER BY created_at DESC, id", like(q))
+            val all = found.entries.toList()
+            total = all.size
+            val slice = all.drop(off).take(pageSize)
+            ids = slice.map { it.key }
+            kinds = slice.associate { it.key to it.value }
         }
-        val now = ctx.now()
-        CtlUsersRes(found.entries.take(50).mapNotNull { (id, kind) -> userRow(sql, id, kind?.ifEmpty { null }, threshold, now) }, threshold, uname != null)
+        CtlUsersRes(
+            ids.mapNotNull { id -> userRow(sql, id, kinds[id]?.ifEmpty { null }, threshold, now) },
+            threshold,
+            uname != null,
+            total = total,
+            page = pageNo,
+            pageSize = pageSize,
+            offset = off,
+        )
     }
 
     private fun userRow(sql: Sql, id: String, matched: String?, threshold: Int, now: Instant): CtlUserRow? {

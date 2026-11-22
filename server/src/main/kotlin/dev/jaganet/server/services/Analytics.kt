@@ -105,7 +105,7 @@ class Analytics(private val ctx: Ctx) {
                  FROM traffic_samples s JOIN devices d ON d.id = s.device_id
                  WHERE s.bucket >= ? AND (?::text IS NULL OR s.server_id = ?) GROUP BY d.user_id
                )
-               SELECT u.id, u.email, u.note,
+               SELECT u.id, u.email, u.note, u.tg_username, u.tg_first_name, u.tg_last_name,
                  (SELECT count(*)::int FROM dev WHERE dev.user_id = u.id) AS devices,
                  (SELECT max(dev.last_seen_at) FROM dev WHERE dev.user_id = u.id) AS last_seen,
                  (SELECT string_agg(DISTINCT v.name, '|') FROM dev JOIN servers v ON v.id = dev.server_id WHERE dev.user_id = u.id) AS server_names,
@@ -126,6 +126,9 @@ class Analytics(private val ctx: Ctx) {
                 devices = r.int("devices"), activeDevices = r.longOrNull("active_devices")?.toInt() ?: 0,
                 servers = r.strOrNull("server_names")?.split('|').orEmpty(),
                 traffic = split(r), lastSeenAt = r.instantOrNull("last_seen")?.toString(),
+                telegramUsername = r.strOrNull("tg_username"),
+                telegramFirstName = r.strOrNull("tg_first_name"),
+                telegramLastName = r.strOrNull("tg_last_name"),
             )
         }
     }
@@ -155,8 +158,14 @@ class Analytics(private val ctx: Ctx) {
         if (runCatching { java.util.UUID.fromString(id) }.isFailure) throw notFound("User not found")
         val p = period(periodKey); val now = ctx.now(); val since = p.start(now)
         val user = users(sql, since, userId = id).firstOrNull()
-            ?: sql.one("SELECT id, email, note FROM users WHERE id = ?::uuid", id)?.let {
-                AnalyticsUser(it.str("id"), it.strOrNull("note")?.takeIf { n -> n.isNotBlank() } ?: it.str("email"), it.str("email"), "free", 0, 0, emptyList(), TrafficSplit())
+            ?: sql.one("SELECT id, email, note, tg_username, tg_first_name, tg_last_name FROM users WHERE id = ?::uuid", id)?.let {
+                AnalyticsUser(
+                    it.str("id"), it.strOrNull("note")?.takeIf { n -> n.isNotBlank() } ?: it.str("email"), it.str("email"),
+                    "free", 0, 0, emptyList(), TrafficSplit(),
+                    telegramUsername = it.strOrNull("tg_username"),
+                    telegramFirstName = it.strOrNull("tg_first_name"),
+                    telegramLastName = it.strOrNull("tg_last_name"),
+                )
             } ?: throw notFound("User not found")
         val servers = sql.query(
             """SELECT v.id, v.name, v.country_code, $SUMS FROM traffic_samples s JOIN devices d ON d.id = s.device_id JOIN servers v ON v.id = s.server_id

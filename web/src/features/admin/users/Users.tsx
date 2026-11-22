@@ -1,6 +1,6 @@
 /**
  * The users tab: a search by e-mail, Telegram, key UUID, key link or IP
- * in ?q= (the newest users without it), and a user's card on ?id=.
+ * in ?q= (the newest users without it), pages in ?page=, and a user's card on ?id=.
  */
 import { useQuery } from "@tanstack/react-query";
 import { useSearch } from "@tanstack/react-router";
@@ -19,8 +19,9 @@ export default function Users() {
 
 function UserList() {
   const { t } = useI18n();
-  const { q = "" } = useSearch({ strict: false }) as { q?: string };
-  const r = useQuery({ ...usersQuery(q), placeholderData: (prev) => prev });
+  const { q = "", page: pageQ } = useSearch({ strict: false }) as { q?: string; page?: string };
+  const page = Math.max(1, Number.parseInt(String(pageQ ?? "1"), 10) || 1);
+  const r = useQuery({ ...usersQuery(q, page), placeholderData: (prev) => prev });
   const placeholder = r.data?.telegramUsernames
     ? t("E-mail, Telegram id or @name, key UUID, key link, IP")
     : t("E-mail, Telegram id, key UUID, key link, IP");
@@ -35,7 +36,14 @@ function UserList() {
       ) : !r.data ? (
         <Spinner />
       ) : (
-        <UserTable users={r.data.users} empty={t("Nobody found")} inUrl label={t("Users")} />
+        <UserTable
+          users={r.data.users}
+          total={r.data.total}
+          pageSize={r.data.pageSize}
+          empty={t("Nobody found")}
+          inUrl
+          label={t("Users")}
+        />
       )}
     </>
   );

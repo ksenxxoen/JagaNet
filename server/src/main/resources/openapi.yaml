@@ -1337,7 +1337,19 @@ paths:
         in: query
         schema: {type: string}
         description: Search text.
-      description: 'Owner only: 401 without a session, 403 for other users.'
+      - name: page
+        in: query
+        schema: {type: integer, format: int32, default: 1, minimum: 1}
+        description: 1-based page. Ignored when offset is set.
+      - name: offset
+        in: query
+        schema: {type: integer, format: int32, minimum: 0}
+        description: 0-based row offset. Takes precedence over page.
+      - name: limit
+        in: query
+        schema: {type: integer, format: int32, default: 50, minimum: 1, maximum: 100}
+        description: Page size (1–100, default 50).
+      description: 'Owner only: 401 without a session, 403 for other users. Search covers every user; the answer is one page plus total.'
       responses:
         '200':
           description: OK
@@ -2370,6 +2382,9 @@ components:
           items: {type: string}
         traffic: {$ref: '#/components/schemas/TrafficSplit'}
         lastSeenAt: {type: string}
+        telegramUsername: {type: string}
+        telegramFirstName: {type: string}
+        telegramLastName: {type: string}
       required: [id, name, email, plan, devices, activeDevices, servers, traffic]
       x-kotlin: dev.jaganet.api.AnalyticsUser
     AnalyticsUserRes:
@@ -2849,7 +2864,11 @@ components:
           items: {$ref: '#/components/schemas/CtlUserRow'}
         sharingThreshold: {type: integer, format: int32}
         telegramUsernames: {type: boolean}
-      required: [users, sharingThreshold, telegramUsernames]
+        total: {type: integer, format: int32}
+        page: {type: integer, format: int32}
+        pageSize: {type: integer, format: int32}
+        offset: {type: integer, format: int32}
+      required: [users, sharingThreshold, telegramUsernames, total, page, pageSize, offset]
       x-kotlin: dev.jaganet.server.services.CtlUsersRes
     DayCount:
       type: object
