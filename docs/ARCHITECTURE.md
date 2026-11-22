@@ -169,14 +169,17 @@ process behind the Wintun adapter (desktop/ARCHITECTURE.md, "VLESS+Reality").
   resolve through the tunnel with DNS over HTTPS (`VLESS_SUB_DNS`, default
   `https://1.1.1.1/dns-query,https://8.8.8.8/dns-query`; Xray also takes the apps' port 53 queries
   into its DNS; mihomo `redir-host` with `respect-rules`; no fake DNS anywhere) and drop UDP 443
-  so apps fall back to TCP (`VLESS_SUB_BLOCK_QUIC`). With `VLESS_SUB_XRAY_JSON=0` Happ and
-  v2RayTun get the base64 list with a `routing` header instead: Happ a routing profile
-  (`happ://routing/onadd/…`, remote DNS, `FakeDNS: false`; it cannot express ports), v2RayTun an
-  Xray routing object (UDP 443 to `block`; it has no DNS header).
+  so apps fall back to TCP (`VLESS_SUB_BLOCK_QUIC`). Happ and v2RayTun also get a `routing`
+  header with the Xray configs, kept consistent with the rules in those configs. With
+  `VLESS_SUB_XRAY_JSON=0` and regional direct routing off they get the base64 list with that
+  header instead: Happ a routing profile (`happ://routing/onadd/…`, remote DNS,
+  `FakeDNS: false`; it cannot express ports), v2RayTun an Xray routing object (UDP 443 to
+  `block`; it has no DNS header).
   Regional direct routing (JAG-7, `VLESS_SUB_REGIONAL_DIRECT`, off by default, `RegionalRouting`):
   with the flag the formats above also route the home region's zones, `geoip:ru`, banks and
   IP-checker pages direct and a short list (`4pda`, `habr`...) through the tunnel; the forced rule
-  comes first. Per-node XHTTP tuning (`Vless.Transport.xhttp`, `Vless.XhttpTuning`) is carried as
+  comes first. Happ (1.63.1+) and v2RayTun then get the Xray configs even if
+  `VLESS_SUB_XRAY_JSON=0`, so each entry carries the rules inline. Per-node XHTTP tuning (`Vless.Transport.xhttp`, `Vless.XhttpTuning`) is carried as
   `xhttpSettings.extra` and the link's `extra=`; unset nodes get exactly what they got before.
   Headers: `profile-title` (base64 "Boop VPN"), `profile-update-interval`
   (`SUBSCRIPTION_UPDATE_INTERVAL_HOURS`, default 3),

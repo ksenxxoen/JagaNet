@@ -44,10 +44,12 @@ data class DohServer(val url: String, val host: String, val port: Int, val path:
  *    (the clients keep their own DNS settings; the sing-box profile keeps its old 1.1.1.1).
  *  - VLESS_SUB_BLOCK_QUIC=0: no UDP 443 (QUIC) block in the clients' routing.
  *  - VLESS_SUB_XRAY_JSON=0: Happ and v2RayTun get the base64 links (with their routing header)
- *    instead of full Xray configs.
+ *    instead of full Xray configs, unless [regionalDirect] is on (see below).
  *  - VLESS_SUB_REGIONAL_DIRECT=1 (off unless set): regional direct routing, see [RegionalRouting]:
  *    the home region's sites, banks and IP checkers go direct, a short list is forced through the
- *    tunnel. VLESS_SUB_REGIONAL_DIRECT_EXTRA / VLESS_SUB_REGIONAL_PROXY_EXTRA: comma-separated
+ *    tunnel. Happ (1.63.1+) and v2RayTun then get the Xray configs even if VLESS_SUB_XRAY_JSON=0,
+ *    so each entry carries the rules inline; the `routing` header stays consistent with them.
+ *    VLESS_SUB_REGIONAL_DIRECT_EXTRA / VLESS_SUB_REGIONAL_PROXY_EXTRA: comma-separated
  *    domains added to the direct / forced lists.
  */
 data class SubscriptionOptions(
@@ -83,7 +85,8 @@ data class SubscriptionOptions(
  *    else; Vision and XHTTP links of every location. Happ and v2RayTun get it too when
  *    VLESS_SUB_XRAY_JSON=0, with their own `routing` header ([happRouting], [v2rayTunRouting]).
  *  - [Format.XRAY_JSON]: an array of full Xray configs (XrayConfigs): Happ and v2RayTun, which
- *    take DNS and routing only this way.
+ *    take DNS and routing this way (and still get their `routing` header, consistent with the
+ *    configs).
  *  - [Format.SINGBOX]: a sing-box (1.12+) profile: TUN, a selector with "Авто (лучший)" (urltest
  *    over every location) first and each location after it.
  *  - [Format.CLASH]: a Clash Meta (mihomo) profile with the same two groups.
@@ -128,7 +131,8 @@ object VlessSubscription {
     /**
      * ?format= wins (json, xray, singbox, sing-box, clash, mihomo, base64, v2ray); else the
      * User-Agent: Happ (1.63.1 and newer) and v2RayTun get Xray configs while VLESS_SUB_XRAY_JSON
-     * is on; the official sing-box apps (SFA, SFI, SFM, SFT, sing-box) the sing-box profile; Clash
+     * is on, or when VLESS_SUB_REGIONAL_DIRECT is on (so each entry carries the regional rules);
+     * the official sing-box apps (SFA, SFI, SFM, SFT, sing-box) the sing-box profile; Clash
      * Meta clients (clash, mihomo, FlClash, Clash Verge, ClashMetaForAndroid) the Clash profile.
      * Hiddify names sing-box and Clash in its User-Agent but builds its own "auto" group from plain
      * links and also reads XHTTP, so it gets the base64 list, as do v2rayNG and anything unknown.
@@ -143,8 +147,8 @@ object VlessSubscription {
         val ua = userAgent?.lowercase().orEmpty()
         if ("hiddify" in ua) return Format.BASE64
         when (client(userAgent)) {
-            Client.HAPP -> return if (options.xrayJson && happReadsJson(ua)) Format.XRAY_JSON else Format.BASE64
-            Client.V2RAYTUN -> return if (options.xrayJson) Format.XRAY_JSON else Format.BASE64
+            Client.HAPP -> return if ((options.xrayJson || options.regionalDirect) && happReadsJson(ua)) Format.XRAY_JSON else Format.BASE64
+            Client.V2RAYTUN -> return if (options.xrayJson || options.regionalDirect) Format.XRAY_JSON else Format.BASE64
             Client.OTHER -> {}
         }
         if (Regex("^(sfa|sfi|sfm|sft)/").containsMatchIn(ua) || "sing-box" in ua || "singbox" in ua) return Format.SINGBOX
@@ -313,12 +317,20 @@ object VlessSubscription {
     }
 
     /**
-     * Happ's routing profile for the base64 list (VLESS_SUB_XRAY_JSON=0 or an old Happ): the
-     * `routing` header with `happ://routing/onadd/<base64 JSON>` (https://www.happ.su/main/dev-docs/routing).
-     * It sets the remote DNS (DoH through the tunnel, the first of VLESS_SUB_DNS) and no fake DNS;
-     * a Happ profile has domain and IP lists only, so the QUIC block needs the Xray configs.
-     * Null without DNS servers.
+     * Happ's routing profile: the `routing` header with `happ://routing/onadd/<base64 JSON>`
+     * (https://www.happ.su/main/dev-docs/routing). Sent with both the base64 list and the Xray
+     * configs, and kept consistent with the regional rules in those configs. It sets the remote
+     * DNS (DoH through the tunnel, the first of VLESS_SUB_DNS) and no fake DNS; a Happ profile
+     * has domain and IP lists only, so the QUIC block lives in the Xray configs.
+     * Null without DNS servers and without regional direct routing.
      */
+    /** The `routing` header for Happ or v2RayTun; null for other clients or when that app has nothing to send. */
+    fun routingHeader(userAgent: String?, options: SubscriptionOptions): String? = when (client(userAgent)) {
+        Client.HAPP -> happRouting(options)
+        Client.V2RAYTUN -> v2rayTunRouting(options)
+        Client.OTHER -> null
+    }
+
     fun happRouting(options: SubscriptionOptions): String? {
         val remote = options.dns.firstOrNull() ?: (if (options.regionalDirect) SINGBOX_FALLBACK_DNS else return null)
         val domestic = options.dns.getOrElse(1) { remote }
@@ -345,9 +357,12 @@ object VlessSubscription {
     }
 
     /**
-     * v2RayTun's routing for the base64 list (VLESS_SUB_XRAY_JSON=0): the `routing` header, base64
-     * of an Xray `routing` object as the app exports it (https://docs.v2raytun.com/overview/supported-headers):
-     * UDP 443 to `block`, private networks direct. v2RayTun has no header for DNS. Null without the QUIC block.
+     * v2RayTun's routing: the `routing` header, base64 of an Xray `routing` object as the app
+     * exports it (https://docs.v2raytun.com/overview/supported-headers). Sent with both the
+     * base64 list and the Xray configs, and kept consistent with the regional rules in those
+     * configs: UDP 443 to `block`, private networks direct, and the regional rules when the
+     * flag is on. v2RayTun has no header for DNS. Null without the QUIC block and without
+     * regional direct routing.
      */
     fun v2rayTunRouting(options: SubscriptionOptions): String? {
         if (!options.blockQuic && !options.regionalDirect) return null
