@@ -77,17 +77,20 @@ object VlessLocations {
         }
     }
 
-    /** A label like "NL #1 ⚡" already includes the country code; the apps draw the flag from the country code. */
-    private val CODED_LABEL = Regex("^[A-Z]{2} #\\d+")
+    /** Happ (and other clients) show a country icon from a leading regional-indicator flag in the remark. */
+    private fun startsWithFlag(label: String): Boolean =
+        label.isNotEmpty() && Character.codePointAt(label, 0) in 0x1F1E6..0x1F1FF
 
     /**
-     * The location name: the owner's display name when it is a coded label ("NL #1 ⚡"),
-     * otherwise the flag and the owner's display name, else the country (the owner's name for it, else the Russian one).
+     * The location name: the country flag plus the owner's display name, else the country
+     * (the owner's name for it, else the Russian one). A coded label such as "NL #1 ⚡" keeps its
+     * text after the flag. If the label already starts with a flag emoji, it is left as-is.
+     * Balancing entries use [entryName] and do not get a country flag.
      */
     fun displayName(server: Row): String {
         val cc = server.str("country_code").trim()
         val label = server.strOrNull("display_name") ?: server.strOrNull("country_name") ?: Countries.ru(cc)
-        if (CODED_LABEL.containsMatchIn(label)) return label
+        if (startsWithFlag(label)) return label
         return listOfNotNull(VlessKeys.flag(cc), label).joinToString(" ")
     }
 
