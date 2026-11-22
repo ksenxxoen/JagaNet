@@ -53,6 +53,9 @@ export const ACTIONS: Record<string, string> = {
   reissue: "Key reissued",
   delete_device: "Device removed",
   settings: "Settings changed",
+  ip_limit: "IP cap changed",
+  ip_reset: "IP reset",
+  ip_reset_all: "All IPs reset",
 };
 export const MATCHES: Record<string, string> = {
   email: "E-mail",

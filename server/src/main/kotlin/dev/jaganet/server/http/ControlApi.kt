@@ -7,6 +7,8 @@ import dev.jaganet.server.services.CtlBlockReq
 import dev.jaganet.server.services.CtlDaysReq
 import dev.jaganet.server.services.CtlNoteReq
 import dev.jaganet.server.services.CtlPlanReq
+import dev.jaganet.server.services.CtlIpLimitReq
+import dev.jaganet.server.services.CtlIpResetReq
 import dev.jaganet.server.services.CtlSettings
 import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
@@ -70,6 +72,18 @@ fun Route.controlApi(s: Services) {
     delete("/admin/users/{id}/devices/{device}") {
         val a = call.actor()
         call.respond(s.control.deleteDevice(a, call.id(), call.parameters["device"]!!.trim()).also { s.bot?.widgetChanged(call.id()) })
+    }
+    put("/admin/users/{id}/devices/{device}/ip-limit") {
+        val a = call.actor()
+        call.respond(s.control.setIpLimit(a, call.id(), call.parameters["device"]!!.trim(), call.receive<CtlIpLimitReq>().ipLimit))
+    }
+    post("/admin/users/{id}/devices/{device}/ips/reset") {
+        val a = call.actor()
+        call.respond(s.control.resetIp(a, call.id(), call.parameters["device"]!!.trim(), call.receive<CtlIpResetReq>().ip))
+    }
+    post("/admin/users/{id}/devices/{device}/ips/reset-all") {
+        val a = call.actor()
+        call.respond(s.control.resetAllIps(a, call.id(), call.parameters["device"]!!.trim()))
     }
 
     // ?from=2026-10-01&to=2026-10-31&status=paid|pending|cancelled&q=e-mail or order id

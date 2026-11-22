@@ -1452,6 +1452,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/users/{id}/devices/{device}/ip-limit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a key's concurrent IP cap
+         * @description Owner only: 401 without a session, 403 for other users. null uses the plan, 0 means no cap, 1 to 100 is the cap.
+         */
+        put: operations["putAdminUsersByIdDevicesByDeviceIpLimit"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{id}/devices/{device}/ips/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset one active IP of a key
+         * @description Owner only: 401 without a session, 403 for other users. Drops this address and frees its slot.
+         */
+        post: operations["postAdminUsersByIdDevicesByDeviceIpsReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/users/{id}/devices/{device}/ips/reset-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset every active IP of a key
+         * @description Owner only: 401 without a session, 403 for other users.
+         */
+        post: operations["postAdminUsersByIdDevicesByDeviceIpsResetAll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/payments": {
         parameters: {
             query?: never;
@@ -2340,6 +2400,9 @@ export interface components {
             newPayersMonth: number;
             /** Format: int32 */
             sharingThreshold: number;
+            ipLimitMode: string;
+            /** Format: int32 */
+            ipLimitWindowSeconds: number;
             sharing: components["schemas"]["CtlUserRow"][];
             expiring: components["schemas"]["CtlUserRow"][];
         };
@@ -2373,6 +2436,13 @@ export interface components {
             tokenHint?: string;
             rekeyPending: boolean;
             suspended: boolean;
+            /** Format: int32 */
+            ipLimit?: number;
+            /** Format: int32 */
+            ipLimitEffective?: number;
+            /** Format: int32 */
+            ipLimitDefault: number;
+            rejectedConnections: components["schemas"]["CtlIp"][];
         };
         CtlIp: {
             ip: string;
@@ -2380,6 +2450,15 @@ export interface components {
             deviceId?: string;
             serverId?: string;
             serverName?: string;
+            rejected: boolean;
+            kicked: boolean;
+        };
+        CtlIpLimitReq: {
+            /** Format: int32 */
+            ipLimit?: number | null;
+        };
+        CtlIpResetReq: {
+            ip: string;
         };
         CtlNoteReq: {
             note?: string | null;
@@ -2441,6 +2520,9 @@ export interface components {
         CtlSettings: {
             /** Format: int32 */
             sharingThreshold?: number;
+            ipLimitMode?: string;
+            /** Format: int32 */
+            ipLimitWindowSeconds?: number;
         };
         CtlSubscription: {
             id: string;
@@ -2496,6 +2578,9 @@ export interface components {
             devicesActive24h: number;
             /** Format: int32 */
             sharingThreshold: number;
+            ipLimitMode: string;
+            /** Format: int32 */
+            ipLimitWindowSeconds: number;
             referrer?: components["schemas"]["CtlReferrer"];
             /** Format: int32 */
             referrals: number;
@@ -2955,6 +3040,8 @@ export interface components {
             limit?: components["schemas"]["NodeLimit"];
             inbounds: components["schemas"]["NodeInbound"][];
             balancer?: string;
+            ipLimitMode?: string;
+            ipBlocks: string[];
         };
         NodePoint: {
             ts: string;
@@ -5660,6 +5747,86 @@ export interface operations {
         };
     };
     deleteAdminUsersByIdDevicesByDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                device: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CtlUserCard"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    putAdminUsersByIdDevicesByDeviceIpLimit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                device: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CtlIpLimitReq"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CtlUserCard"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    postAdminUsersByIdDevicesByDeviceIpsReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                device: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CtlIpResetReq"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CtlUserCard"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    postAdminUsersByIdDevicesByDeviceIpsResetAll: {
         parameters: {
             query?: never;
             header?: never;

@@ -126,7 +126,7 @@ describe("#/admin tabs", () => {
     await user.type(field, "7");
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("Saved")).toBeInTheDocument();
-    expect(reqs.find((r) => r.method === "put")?.body).toEqual({ sharingThreshold: 7 });
+    expect(reqs.find((r) => r.method === "put")?.body).toEqual({ sharingThreshold: 7, ipLimitMode: "observe", ipLimitWindowSeconds: 120 });
   });
 });
 
@@ -314,10 +314,12 @@ describe("users tab", () => {
         devicesActive24h: 2,
         devices: [
           ctlDevice({
-            activeConnections: [{ ip: "198.51.100.10", lastSeen: now, serverId: "at1", serverName: "Austria" }],
+            activeConnections: [
+              { ip: "198.51.100.10", lastSeen: now, serverId: "at1", serverName: "Austria", rejected: false, kicked: false },
+            ],
             ips24h: [
-              { ip: "198.51.100.10", lastSeen: now, serverId: "at1", serverName: "Austria" },
-              { ip: "192.0.2.8", lastSeen: "2026-11-01T10:00:00Z", serverId: "at1", serverName: "Austria" },
+              { ip: "198.51.100.10", lastSeen: now, serverId: "at1", serverName: "Austria", rejected: false, kicked: false },
+              { ip: "192.0.2.8", lastSeen: "2026-11-01T10:00:00Z", serverId: "at1", serverName: "Austria", rejected: false, kicked: false },
             ],
           }),
           ctlDevice({
@@ -330,12 +332,12 @@ describe("users tab", () => {
             lastIpAt: undefined,
             serverName: "Finland",
             activeConnections: [
-              { ip: "203.0.113.50", lastSeen: now, serverId: "fi1", serverName: "Finland" },
-              { ip: "2001:db8::7", lastSeen: now, serverId: "fi1", serverName: "Finland" },
+              { ip: "203.0.113.50", lastSeen: now, serverId: "fi1", serverName: "Finland", rejected: false, kicked: false },
+              { ip: "2001:db8::7", lastSeen: now, serverId: "fi1", serverName: "Finland", rejected: false, kicked: false },
             ],
             ips24h: [
-              { ip: "203.0.113.50", lastSeen: now, serverId: "fi1", serverName: "Finland" },
-              { ip: "2001:db8::7", lastSeen: now, serverId: "fi1", serverName: "Finland" },
+              { ip: "203.0.113.50", lastSeen: now, serverId: "fi1", serverName: "Finland", rejected: false, kicked: false },
+              { ip: "2001:db8::7", lastSeen: now, serverId: "fi1", serverName: "Finland", rejected: false, kicked: false },
             ],
           }),
         ],
@@ -353,6 +355,59 @@ describe("users tab", () => {
     expect(within(table).getAllByText(/Finland/).length).toBeGreaterThan(0);
     expect(within(table).getAllByText("online").length).toBeGreaterThan(0);
     expect(within(table).getAllByText("2 in 24 hours")).toHaveLength(2);
+    expect(within(table).getByText("Active 1 of 5")).toBeInTheDocument();
+    expect(within(table).getByText("Active 2 of 5")).toBeInTheDocument();
+  });
+
+  it("the card lists a refused IP with its status and the active of limit counter", async () => {
+    const now = new Date().toISOString();
+    const reqs = mockApi({
+      ...owner,
+      "GET /admin/users/{id}": ctlUserCard({
+        devices: [
+          ctlDevice({
+            id: "vl1",
+            name: "Boop VPN",
+            kind: "vless",
+            platform: "key",
+            uuid: "1111-2222",
+            ipLimit: 1,
+            ipLimitEffective: 1,
+            ipLimitDefault: 5,
+            activeConnections: [
+              { ip: "198.51.100.8", lastSeen: now, serverId: "fi1", serverName: "Finland", rejected: false, kicked: false },
+              { ip: "203.0.113.50", lastSeen: now, serverId: "fi1", serverName: "Finland", rejected: true, kicked: false },
+            ],
+            rejectedConnections: [
+              { ip: "203.0.113.50", lastSeen: now, serverId: "fi1", serverName: "Finland", rejected: true, kicked: false },
+            ],
+            ips24h: [
+              { ip: "198.51.100.8", lastSeen: now, serverId: "fi1", serverName: "Finland", rejected: false, kicked: false },
+              { ip: "203.0.113.50", lastSeen: now, serverId: "fi1", serverName: "Finland", rejected: true, kicked: false },
+            ],
+          }),
+        ],
+      }),
+      "POST /admin/users/{id}/devices/{device}/ips/reset": ctlUserCard(),
+    });
+    const user = userEvent.setup();
+    renderApp("/admin?tab=users&id=u2");
+    expect(await screen.findByRole("heading", { name: "anna@example.com" })).toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "Devices and keys" });
+    expect(within(table).getByText("Active 2 of 1")).toBeInTheDocument();
+    expect(within(table).getByText("198.51.100.8")).toBeInTheDocument();
+    expect(within(table).getByText("203.0.113.50")).toBeInTheDocument();
+    expect(within(table).getByText("Rejected by the limit")).toBeInTheDocument();
+    expect(within(table).getAllByText(/Finland/).length).toBeGreaterThan(0);
+    await user.click(within(table).getAllByRole("button", { name: "Reset IP" })[1]);
+    await user.click(
+      within(screen.getByRole("dialog", { name: "Reset this IP? It is dropped and the slot is freed." })).getByRole("button", {
+        name: "Reset IP",
+      }),
+    );
+    await waitFor(() =>
+      expect(reqs.find((r) => r.method === "post" && String(r.url).includes("/ips/reset"))?.body).toEqual({ ip: "203.0.113.50" }),
+    );
   });
 });
 

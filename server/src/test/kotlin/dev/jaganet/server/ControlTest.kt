@@ -87,6 +87,9 @@ class ControlTest {
             HttpMethod.Put to "/v1/admin/users/$id/note",
             HttpMethod.Post to "/v1/admin/users/$id/devices/$id/reissue",
             HttpMethod.Delete to "/v1/admin/users/$id/devices/$id",
+            HttpMethod.Put to "/v1/admin/users/$id/devices/$id/ip-limit",
+            HttpMethod.Post to "/v1/admin/users/$id/devices/$id/ips/reset",
+            HttpMethod.Post to "/v1/admin/users/$id/devices/$id/ips/reset-all",
             HttpMethod.Get to "/v1/admin/payments",
             HttpMethod.Get to "/v1/admin/payments.csv",
         )
@@ -364,6 +367,11 @@ class ControlTest {
         assertEquals(vId, vless.serverId)
         assertEquals(setOf("203.0.113.50", "2001:db8::7"), vless.activeConnections.map { it.ip }.toSet())
         assertTrue(vless.activeConnections.all { it.serverId == vId && it.serverName == "Finland" })
+        assertEquals(card.deviceLimit, vless.ipLimitDefault)
+        assertEquals(vless.ipLimitDefault, vless.ipLimitEffective)
+        assertNull(vless.ipLimit)
+        assertEquals("observe", card.ipLimitMode)
+        assertEquals(120, card.ipLimitWindowSeconds)
         assertEquals(setOf("203.0.113.50", "2001:db8::7", "192.0.2.10"), vless.ips24h.map { it.ip }.toSet())
         val stale = vless.ips24h.single { it.ip == "192.0.2.10" }
         assertEquals("Finland", stale.serverName)
@@ -414,6 +422,55 @@ class ControlTest {
         val later = services.control.card(uid)
         assertEquals(0, later.ips24h.size)
         assertTrue(later.devices.all { it.activeConnections.isEmpty() })
+    }
+
+    @Test fun `the IP cap lists live addresses, marks a refused one, and reset frees a slot`() = harness {
+        val (ownerToken, admin) = owner()
+        val (vId, vToken) = vlessNode(ownerToken)
+        val u = signIn("cap@example.com")
+        val uid = u.session.user.id
+        services.vlessKeys.ensureFor(uid)
+        val uuid = ctx.db.run { it.one("SELECT uuid FROM vless_keys WHERE user_id=?::uuid", uid)!!.str("uuid") }
+        services.nodes.report(vToken, NodeReportReq("vless", listOf(NodePeerCounter(uuid, rx = 5, tx = 6, lastHandshake = clock.epochSecond,
+            ips = mapOf("203.0.113.50" to clock.epochSecond, "198.51.100.8" to clock.epochSecond - 20)))))
+        services.traffic.collect()
+
+        val vlessId = services.control.card(uid).devices.single { it.kind == "vless" }.id
+        val before = services.control.setIpLimit(admin, uid, vlessId, 1)
+        val vless = before.devices.single { it.kind == "vless" }
+        assertEquals(1, vless.ipLimit)
+        assertEquals(1, vless.ipLimitEffective)
+        // The earlier address keeps the only slot; the later one is refused.
+        assertEquals("198.51.100.8", vless.activeConnections.single { !it.rejected }.ip)
+        val refused = vless.activeConnections.single { it.rejected }
+        assertEquals("203.0.113.50", refused.ip)
+        assertEquals(vId, refused.serverId)
+        assertEquals("Finland", refused.serverName)
+        assertFalse(refused.kicked)
+        assertEquals(2, vless.activeConnections.size)
+        assertEquals(listOf("203.0.113.50"), vless.rejectedConnections.map { it.ip })
+        // Observe: the panel records the refusal, the nodes are not told to drop it yet.
+        assertTrue(services.nodes.peers(vToken, null).ipBlocks.isEmpty())
+        assertEquals("observe", services.nodes.peers(vToken, null).ipLimitMode)
+
+        val after = services.control.resetIp(admin, uid, vlessId, "203.0.113.50")
+        val reset = after.devices.single { it.kind == "vless" }
+        val kicked = reset.activeConnections.single { it.ip == "203.0.113.50" }
+        assertTrue(kicked.kicked)
+        assertFalse(kicked.rejected)
+        assertEquals("198.51.100.8", reset.activeConnections.single { !it.kicked }.ip)
+
+        services.control.saveSettings(admin, CtlSettings(sharingThreshold = 5, ipLimitMode = "enforce", ipLimitWindowSeconds = 120))
+        val peers = services.nodes.peers(vToken, null)
+        assertEquals("enforce", peers.ipLimitMode)
+        assertEquals(listOf("203.0.113.50"), peers.ipBlocks)
+
+        val open = services.control.setIpLimit(admin, uid, vlessId, 0)
+        assertNull(open.devices.single { it.kind == "vless" }.ipLimitEffective)
+        assertEquals(0, open.devices.single { it.kind == "vless" }.ipLimit)
+
+        val log = services.control.auditLog(uid).entries.map { it.action }
+        assertTrue("ip_limit" in log && "ip_reset" in log)
     }
 
     @Test fun `user search is paginated and covers everyone`() = harness {

@@ -1552,6 +1552,82 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/CtlUserCard'}
         default: {$ref: '#/components/responses/Error'}
+  /v1/admin/users/{id}/devices/{device}/ip-limit:
+    put:
+      tags: [owner]
+      summary: Set a key's concurrent IP cap
+      operationId: putAdminUsersByIdDevicesByDeviceIpLimit
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      - name: device
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users. null uses the plan, 0 means no cap, 1 to 100 is the cap.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CtlIpLimitReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlUserCard'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/users/{id}/devices/{device}/ips/reset:
+    post:
+      tags: [owner]
+      summary: Reset one active IP of a key
+      operationId: postAdminUsersByIdDevicesByDeviceIpsReset
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      - name: device
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users. Drops this address and frees its slot.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CtlIpResetReq'}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlUserCard'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/admin/users/{id}/devices/{device}/ips/reset-all:
+    post:
+      tags: [owner]
+      summary: Reset every active IP of a key
+      operationId: postAdminUsersByIdDevicesByDeviceIpsResetAll
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      - name: device
+        in: path
+        required: true
+        schema: {type: string}
+      description: 'Owner only: 401 without a session, 403 for other users.'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CtlUserCard'}
+        default: {$ref: '#/components/responses/Error'}
   /v1/admin/payments:
     get:
       tags: [owner]
@@ -2615,6 +2691,8 @@ components:
         paidOrdersMonth: {type: integer, format: int32}
         newPayersMonth: {type: integer, format: int32}
         sharingThreshold: {type: integer, format: int32}
+        ipLimitMode: {type: string}
+        ipLimitWindowSeconds: {type: integer, format: int32}
         sharing:
           type: array
           items: {$ref: '#/components/schemas/CtlUserRow'}
@@ -2622,7 +2700,7 @@ components:
           type: array
           items: {$ref: '#/components/schemas/CtlUserRow'}
       required: [usersTotal, usersActive, usersExpiring3d, usersBlocked, newUsers24h, newUsers7d, onlineDevices, onlineUsers,
-        servers, revenueToday, revenueWeek, revenueMonth, paidOrdersMonth, newPayersMonth, sharingThreshold, sharing, expiring]
+        servers, revenueToday, revenueWeek, revenueMonth, paidOrdersMonth, newPayersMonth, sharingThreshold, ipLimitMode, ipLimitWindowSeconds, sharing, expiring]
       x-kotlin: dev.jaganet.server.services.CtlDashboard
     CtlDaysReq:
       type: object
@@ -2660,7 +2738,13 @@ components:
         tokenHint: {type: string}
         rekeyPending: {type: boolean}
         suspended: {type: boolean}
-      required: [id, name, kind, platform, createdAt, online, ips24h, activeConnections, traffic24h, trafficTotal, rekeyPending, suspended]
+        ipLimit: {type: integer, format: int32}
+        ipLimitEffective: {type: integer, format: int32}
+        ipLimitDefault: {type: integer, format: int32}
+        rejectedConnections:
+          type: array
+          items: {$ref: '#/components/schemas/CtlIp'}
+      required: [id, name, kind, platform, createdAt, online, ips24h, activeConnections, traffic24h, trafficTotal, rekeyPending, suspended, ipLimitDefault, rejectedConnections]
       x-kotlin: dev.jaganet.server.services.CtlDevice
     CtlIp:
       type: object
@@ -2670,8 +2754,21 @@ components:
         deviceId: {type: string}
         serverId: {type: string}
         serverName: {type: string}
-      required: [ip, lastSeen]
+        rejected: {type: boolean}
+        kicked: {type: boolean}
+      required: [ip, lastSeen, rejected, kicked]
       x-kotlin: dev.jaganet.server.services.CtlIp
+    CtlIpLimitReq:
+      type: object
+      properties:
+        ipLimit: {type: [integer, 'null'], format: int32}
+      x-kotlin: dev.jaganet.server.services.CtlIpLimitReq
+    CtlIpResetReq:
+      type: object
+      properties:
+        ip: {type: string}
+      required: [ip]
+      x-kotlin: dev.jaganet.server.services.CtlIpResetReq
     CtlNoteReq:
       type: object
       properties:
@@ -2751,6 +2848,8 @@ components:
       type: object
       properties:
         sharingThreshold: {type: integer, format: int32}
+        ipLimitMode: {type: string}
+        ipLimitWindowSeconds: {type: integer, format: int32}
       x-kotlin: dev.jaganet.server.services.CtlSettings
     CtlSubscription:
       type: object
@@ -2822,6 +2921,8 @@ components:
           items: {$ref: '#/components/schemas/CtlIp'}
         devicesActive24h: {type: integer, format: int32}
         sharingThreshold: {type: integer, format: int32}
+        ipLimitMode: {type: string}
+        ipLimitWindowSeconds: {type: integer, format: int32}
         referrer: {$ref: '#/components/schemas/CtlReferrer'}
         referrals: {type: integer, format: int32}
         audit:
@@ -2831,7 +2932,7 @@ components:
           type: array
           items: {$ref: '#/components/schemas/CtlTariff'}
       required: [user, deviceLimit, usageThisMonth, subscriptions, payments, devices, ips24h, devicesActive24h, sharingThreshold,
-        referrals, audit, tariffs]
+        ipLimitMode, ipLimitWindowSeconds, referrals, audit, tariffs]
       x-kotlin: dev.jaganet.server.services.CtlUserCard
     CtlUserRow:
       type: object
@@ -3416,7 +3517,11 @@ components:
           type: array
           items: {$ref: '#/components/schemas/NodeInbound'}
         balancer: {type: string}
-      required: [version, protocol, iface, peers, inbounds]
+        ipLimitMode: {type: string}
+        ipBlocks:
+          type: array
+          items: {type: string}
+      required: [version, protocol, iface, peers, inbounds, ipBlocks]
       x-kotlin: dev.jaganet.server.services.NodePeersRes
     NodePoint:
       type: object
