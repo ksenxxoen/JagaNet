@@ -5,6 +5,11 @@ import dev.jaganet.api.i18n.S
 /** The full Telegram bot and Telegram sign-in on the website (issue #38). */
 internal val telegramBotStrings: List<S> = listOf(
     // Menu and help
+    S("Keys and connections", "Ключи и подключения", "Schlüssel und Verbindungen"),
+    S("Get 14 days free", "Получить 14 дней бесплатно", "14 Tage kostenlos erhalten"),
+    S("Keys, the subscription link and how to connect.", "Ключи, ссылка-подписка и как подключиться.", "Schlüssel, der Abo-Link und wie du dich verbindest."),
+    S("Subscription, payments and account.", "Подписка, оплата и аккаунт.", "Abo, Zahlung und Konto."),
+    S("The Menu button is always at the bottom of the chat.", "Кнопка «Меню» всегда внизу чата.", "Die Taste Menü bleibt immer unten im Chat."),
     S("My keys and connection", "Мои ключи и подключение", "Meine Schlüssel und Verbindung"),
     S("Buy a subscription", "Купить подписку", "Abo kaufen"),
     S("Buy or extend the subscription", "Купить или продлить подписку", "Abo kaufen oder verlängern"),

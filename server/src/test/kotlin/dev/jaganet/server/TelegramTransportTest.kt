@@ -94,7 +94,7 @@ class TelegramTransportTest {
             assertTrue(stub.sent("setMyCommands").isNotEmpty())
             val reply = stub.sent("sendMessage").single()
             assertEquals("33", reply["chat_id"]!!.jsonPrimitive.content)
-            assertTrue("Мои ключи" in reply["reply_markup"].toString())
+            assertTrue("Ключи и подключения" in reply["reply_markup"].toString() && "Меню" in reply["reply_markup"].toString())
             assertTrue(bot.lastPollOk != null)
         }
     }

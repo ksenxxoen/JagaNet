@@ -99,6 +99,8 @@ class KeysAndSalesTest {
         services.bot = bot
 
         bot.handle(message(chat = 42, text = "/start"))
+        assertTrue("Настройки" in tg.sent("sendMessage").last()["reply_markup"].toString())
+        bot.handle(message(chat = 42, text = "⚙️ Настройки"))
         assertTrue("\"pay\"" in tg.sent("sendMessage").last()["reply_markup"].toString())
         bot.handle(callback(chat = 42, data = "pay"))
         val menu = tg.sent("sendMessage").last()
