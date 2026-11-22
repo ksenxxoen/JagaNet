@@ -12,6 +12,7 @@ import { buttonVariants, Button, CodeInput, Field, Form, FormError, Input, Notic
 import { useSaveForm } from "@/hooks/useSaveForm";
 import { useI18n } from "@/i18n";
 import { cn } from "@/lib/cn";
+import { PRIVACY_HREF, TERMS_HREF } from "@/lib/legal";
 import { rich } from "@/lib/rich";
 import { finishSignIn, referralCode } from "./finish";
 import { TelegramWidget, type TelegramUser } from "./TelegramWidget";
@@ -90,8 +91,8 @@ export function SignIn() {
       <FormError>{tgError}</FormError>
       <p className="mb-0 mt-4 text-center text-[13px] leading-[18px] text-muted">
         {rich(t("By continuing you accept the {terms}terms of use{end} and the {privacy}privacy policy{end}"), {
-          terms: external("/terms"),
-          privacy: external("/privacy"),
+          terms: external(TERMS_HREF),
+          privacy: external(PRIVACY_HREF),
         })}
       </p>
     </>
@@ -142,10 +143,10 @@ export function SignIn() {
             )}
           </Field>
           <Check checked={terms} onChange={setTerms}>
-            {rich(t("I accept the {a}terms of use{end}"), { a: external("/terms") })}
+            {rich(t("I accept the {a}terms of use{end}"), { a: external(TERMS_HREF) })}
           </Check>
           <Check checked={privacy} onChange={setPrivacy}>
-            {rich(t("I agree to the {a}privacy policy{end}"), { a: external("/privacy") })}
+            {rich(t("I agree to the {a}privacy policy{end}"), { a: external(PRIVACY_HREF) })}
           </Check>
           <Button type="submit" className="mt-5 h-12 w-full" disabled={!accepted}>
             {t("Email me a code")}

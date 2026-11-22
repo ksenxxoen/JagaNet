@@ -1,7 +1,7 @@
 /*
  * The pages the server renders itself (outside the React frontend, epic #117): the key pages
- * /k/{token}, the test checkout and "payment received" pages (Pages in http/Web.kt) and the legal
- * pages /privacy and /terms (http/SupportWeb.kt). Only the classes those pages use.
+ * /k/{token} and the test checkout and "payment received" pages (Pages in http/Web.kt).
+ * Only the classes those pages use.
  *
  * The colors are the design tokens of the new frontend (web/src/styles/tokens.ts, the Tailwind
  * theme, docs/DESIGN.md), light and dark; PagesCssTest checks that they stay the same. Like the new
