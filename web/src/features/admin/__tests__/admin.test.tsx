@@ -297,7 +297,15 @@ describe("users tab", () => {
   it("the users table has a column for devices seen in 24 hours", async () => {
     mockApi({
       ...owner,
-      "GET /admin/users": { users: [ctlUserRow({ devicesActive24h: 4 })], sharingThreshold: 5, telegramUsernames: true },
+      "GET /admin/users": {
+        users: [ctlUserRow({ devicesActive24h: 4 })],
+        sharingThreshold: 5,
+        telegramUsernames: true,
+        total: 1,
+        page: 1,
+        pageSize: 50,
+        offset: 0,
+      },
     });
     renderApp("/admin?tab=users");
     const table = await screen.findByRole("table", { name: "Users" });
