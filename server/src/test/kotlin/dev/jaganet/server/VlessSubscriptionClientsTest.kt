@@ -124,9 +124,9 @@ class VlessSubscriptionClientsTest {
             if (VlessSubscription.client(ua) == VlessSubscription.Client.OTHER) assertNull(res.headers["routing"])
             else assertNotNull(res.headers["routing"])
             val configs = Json.parseToJsonElement(res.bodyAsText()).jsonArray.map { it.jsonObject }
-            // "Авто (лучший)", then the base64 list's links in its order and names.
+            // "Самый быстрый 🚀", then the base64 list's links in its order and names.
             assertEquals(
-                listOf("Авто (лучший)", "🇫🇮 Финляндия", "🇫🇮 Финляндия XHTTP", "🇳🇱 Нидерланды", "🇳🇱 Нидерланды XHTTP"),
+                listOf("Самый быстрый 🚀", "🇫🇮 Финляндия", "🇫🇮 Финляндия XHTTP", "🇳🇱 Нидерланды", "🇳🇱 Нидерланды XHTTP"),
                 configs.map { it.str("remarks") },
             )
             for (c in configs) {
@@ -229,7 +229,7 @@ class VlessSubscriptionClientsTest {
             assertTrue(res.headers["Content-Type"]!!.startsWith("application/json"), ua)
             assertNotNull(res.headers["routing"], ua)
             val configs = Json.parseToJsonElement(res.bodyAsText()).jsonArray.map { it.jsonObject }
-            assertEquals("Авто (лучший)", configs.first().str("remarks"))
+            assertEquals("Самый быстрый 🚀", configs.first().str("remarks"))
             for (c in configs) {
                 val dns = c["dns"]!!.jsonObject
                 assertEquals("UseIPv4", dns.str("queryStrategy"))

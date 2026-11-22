@@ -151,20 +151,22 @@ process behind the Wintun adapter (desktop/ARCHITECTURE.md, "VLESS+Reality").
   every node). Traffic on a replica counts for the device (`vless_replicas.last_*` keep its
   counters; `traffic_samples.server_id` is the node it went through).
 - **Subscription** `/k/<token>/vless`: every location the UUID is on, active, `in_subscription`, and
-  reporting within a day, ordered by `servers.sort_order`, then name. Names: a coded
-  `display_name` such as "NL #1 ⚡" is used as-is (the apps draw the flag from the country code);
-  otherwise flag + `display_name`, else `country_name`, else the country in Russian ("🇫🇮 Финляндия").
-  An XHTTP backup is "NL #1 ⚡ XHTTP" (the transport name, not translated); other backup
+  reporting within a day, ordered by `servers.sort_order`, then name. Names: the country flag plus `display_name` (a coded label such as "Нидерланды #1 ⚡" stays after
+  the flag, e.g. "🇳🇱 Нидерланды #1 ⚡"), else `country_name`, else the country in Russian ("🇫🇮 Финляндия").
+  Happ uses the leading flag emoji as the list icon; without it it shows a grey globe. A name
+  that already starts with a flag is left as-is. Balancing entries use the owner's display name
+  (or "⚡ Авто") and do not get a country flag.
+  An XHTTP backup is "🇳🇱 Нидерланды #1 ⚡ XHTTP" (the transport name, not translated); other backup
   transports keep "{name} (backup)" (`?lang=de|en` still translates that suffix). Equal names
   get " 2". With one VLESS node the links are those of issue #33 but for the backup's name.
   Happ also reads the `announce` header (`VLESS_SUB_ANNOUNCE`, a base64 legend at the top of the
   list). Formats (`VlessSubscription`): `?format=json|singbox|clash|base64`
   wins, else the `User-Agent`: Happ (`Happ/` 1.63.1 and newer) and v2RayTun (`v2raytun`) get an
-  array of full Xray configs (`XrayConfigs`, issue #59): "Авто (лучший)" first (every Vision link
+  array of full Xray configs (`XrayConfigs`, issue #59): "Самый быстрый 🚀" first (every Vision link
   behind a `leastPing` balancer with the `observatory`), then one config per link of the base64
   list, same order and names; sing-box apps (`SFA/`, `SFI/`, `SFM/`, `SFT/`, `sing-box`) get a
   sing-box 1.12+ profile, Clash Meta clients (`clash`, `mihomo`: Clash Meta for Android, Clash
-  Verge, FlClash) a mihomo profile; both have a selector "Boop VPN" with "Авто (лучший)" (`urltest`
+  Verge, FlClash) a mihomo profile; both have a selector "Boop VPN" with "Самый быстрый 🚀" (`urltest`
   over every location, gstatic generate_204, 3 minutes, tolerance 50 ms) and each location, Vision
   links only (sing-box has no XHTTP, older mihomo refuses it). Everyone else (v2rayNG, Hiddify,
   which makes its own auto group from links and reads XHTTP) gets the base64 list.

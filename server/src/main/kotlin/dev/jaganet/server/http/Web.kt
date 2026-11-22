@@ -189,7 +189,7 @@ fun Route.website(s: Services) {
     /**
      * The VLESS subscription with every location (issue #41). Base64 of the vless:// links for
      * Hiddify, v2rayNG and others; Xray configs with DNS and the QUIC block for Happ and v2RayTun
-     * (issue #59); a sing-box or Clash Meta profile with an "Auto (best)" group for those clients
+     * (issue #59); a sing-box or Clash Meta profile with an "Fastest" group for those clients
      * (User-Agent or ?format=json|singbox|clash), see VlessSubscription. Works with the
      * VLESS key's token and with the user's AmneziaWG key links. ?lang= names the backup links.
      */

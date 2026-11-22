@@ -199,7 +199,7 @@ the panel hands each node's agent all users, so nothing is needed on the node be
 above. A new node gets everyone within seconds of its agent starting; a node switched off or
 hidden in the panel drops them at once. The subscription (`/k/<token>/vless`) lists the nodes in
 the panel's order with their names; v2rayNG and Hiddify get links, Happ and v2RayTun full Xray
-configs, sing-box and Clash Meta clients a profile; all but the links have an "Авто (лучший)"
+configs, sing-box and Clash Meta clients a profile; all but the links have an "Самый быстрый 🚀"
 entry. Optional: `SUPPORT_URL` in `/etc/jaganet/env` for the subscription's `support-url`
 (default: the Telegram bot, else the site). `SUBSCRIPTION_UPDATE_INTERVAL_HOURS` (default 3)
 is the `profile-update-interval` header: how many hours a client waits before refreshing the subscription.
@@ -215,7 +215,7 @@ switch in `/etc/jaganet/env`, all on by default except `VLESS_SUB_REGIONAL_DIREC
 | `VLESS_SUB_REGIONAL_DIRECT` | **off** | `1`/`on`: regional direct routing in the clients (JAG-7): the home region's zones and `geoip:ru`, big portals, banks and payment services, IP-checker pages go direct; `4pda`, `habr` and a few more are forced through the tunnel and win over the direct rules. Xray configs get the rules and `domainStrategy: IPIfNonMatch` (Happ and v2RayTun get those configs even if `VLESS_SUB_XRAY_JSON=0`); the second DoH server is used only for those direct domains and goes direct, the first stays the remote DNS through the tunnel; `dns.hosts` bootstraps DoH names; the Happ/v2RayTun `routing` header stays consistent with the configs; sing-box (domains only, no geo rule) and Clash (`GEOIP,RU`) get them too. Lists: `RegionalRouting.kt`. |
 | `VLESS_SUB_REGIONAL_DIRECT_EXTRA` | empty | Comma-separated domains added to the direct list (a name and its subdomains). |
 | `VLESS_SUB_REGIONAL_PROXY_EXTRA` | empty | Comma-separated domains added to the forced-through-the-tunnel list. |
-| `VLESS_SUB_ANNOUNCE` | empty | Text for Happ's `announce` header (shown at the top of the subscription). Line breaks as `\n`, or a `base64:` value; `off` or empty: no header. Describe only the badges actually used on the entries. An XHTTP backup of a location is named with the suffix ` XHTTP` instead of "(backup)". A `display_name` like `NL #1 ⚡` is used as-is (the apps draw the flag from the country code). |
+| `VLESS_SUB_ANNOUNCE` | empty | Text for Happ's `announce` header (shown at the top of the subscription). Line breaks as `\n`, or a `base64:` value; `off` or empty: no header. Describe only the badges actually used on the entries. An XHTTP backup of a location is named with the suffix ` XHTTP` instead of "(backup)". A `display_name` like `Нидерланды #1 ⚡` is shown with a leading country-flag emoji (`🇳🇱 Нидерланды #1 ⚡`) so Happ can draw the flag; a name that already starts with a flag is left as-is. Balancing entries do not get a country flag. |
 | `VLESS_ENTRY_BLOCK_QUIC` | on | The UDP 443 block in a cascade entry's balancer fragment (below). `0` leaves it out. |
 | `VLESS_ENTRY_TRANSPORT` | `tcp` | How a cascade entry links to its exits: `tcp` (Reality Vision) or `xhttp` (the exit's XHTTP inbound; falls back to Vision if the exit has none). See "Entry → exit link". |
 | `VLESS_ENTRY_MUX` | off | `1`/`on`: Xray mux on the entry's XHTTP outbounds (never on Vision). |

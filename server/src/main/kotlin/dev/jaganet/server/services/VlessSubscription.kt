@@ -104,7 +104,7 @@ data class SubscriptionOptions(
  *  - [Format.XRAY_JSON]: an array of full Xray configs (XrayConfigs): Happ and v2RayTun, which
  *    take DNS and routing this way (and still get their `routing` header, consistent with the
  *    configs).
- *  - [Format.SINGBOX]: a sing-box (1.12+) profile: TUN, a selector with "Авто (лучший)" (urltest
+ *  - [Format.SINGBOX]: a sing-box (1.12+) profile: TUN, a selector with "Самый быстрый 🚀" (urltest
  *    over every location) first and each location after it.
  *  - [Format.CLASH]: a Clash Meta (mihomo) profile with the same two groups.
  * sing-box has no XHTTP and older mihomo builds refuse it, so both profiles carry the Vision
@@ -184,7 +184,8 @@ object VlessSubscription {
     /** False when no location has a Vision (TCP) link: then the profiles would be empty, and the base64 list is sent. */
     fun hasGroups(locations: List<VlessLocation>): Boolean = locations.any { l -> l.params.variants.any { it.transport == Vless.TCP } }
 
-    fun autoName(lang: Lang) = I18n.tr(lang, "Auto (best)")
+    /** The urltest/selector group: translated "Fastest" / "Самый быстрый", then the speed badge. */
+    fun autoName(lang: Lang) = I18n.tr(lang, "Fastest") + " 🚀"
 
     private val pretty = Json { prettyPrint = true }
     private val compact = Json
