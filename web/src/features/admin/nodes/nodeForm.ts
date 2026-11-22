@@ -98,6 +98,8 @@ export function vlessBody(v: VlessValues, was?: Vless): Vless {
       flow: xh?.flow ?? "",
       path: v.xhttpPath.trim(),
       mode: v.xhttpMode,
+      // The XHTTP tuning has no field in the form (set through the API): an edit keeps it.
+      ...(xh?.xhttp ? { xhttp: xh.xhttp } : {}),
     });
   return {
     host: v.host.trim(),

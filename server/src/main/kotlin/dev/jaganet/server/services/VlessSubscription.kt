@@ -45,11 +45,18 @@ data class DohServer(val url: String, val host: String, val port: Int, val path:
  *  - VLESS_SUB_BLOCK_QUIC=0: no UDP 443 (QUIC) block in the clients' routing.
  *  - VLESS_SUB_XRAY_JSON=0: Happ and v2RayTun get the base64 links (with their routing header)
  *    instead of full Xray configs.
+ *  - VLESS_SUB_REGIONAL_DIRECT=1 (off unless set): regional direct routing, see [RegionalRouting]:
+ *    the home region's sites, banks and IP checkers go direct, a short list is forced through the
+ *    tunnel. VLESS_SUB_REGIONAL_DIRECT_EXTRA / VLESS_SUB_REGIONAL_PROXY_EXTRA: comma-separated
+ *    domains added to the direct / forced lists.
  */
 data class SubscriptionOptions(
     val dns: List<DohServer> = DEFAULT_DNS.map { DohServer.parse(it) },
     val blockQuic: Boolean = true,
     val xrayJson: Boolean = true,
+    val regionalDirect: Boolean = false,
+    val regionalDirectExtra: List<String> = emptyList(),
+    val regionalProxyExtra: List<String> = emptyList(),
 ) {
     companion object {
         val DEFAULT_DNS = listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query")
@@ -60,7 +67,12 @@ data class SubscriptionOptions(
                 if (v.lowercase() in setOf("", "0", "off", "false", "none")) emptyList()
                 else v.split(',').map { it.trim() }.filter { it.isNotEmpty() }.map { DohServer.parse(it) }
             } ?: DEFAULT_DNS.map { DohServer.parse(it) }
-            return SubscriptionOptions(dns, on("VLESS_SUB_BLOCK_QUIC"), on("VLESS_SUB_XRAY_JSON"))
+            fun names(k: String) = env[k]?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.map { RegionalRouting.parseName(it, k) }.orEmpty()
+            return SubscriptionOptions(
+                dns, on("VLESS_SUB_BLOCK_QUIC"), on("VLESS_SUB_XRAY_JSON"),
+                regionalDirect = env["VLESS_SUB_REGIONAL_DIRECT"]?.trim()?.lowercase() in setOf("1", "true", "on", "yes"),
+                regionalDirectExtra = names("VLESS_SUB_REGIONAL_DIRECT_EXTRA"), regionalProxyExtra = names("VLESS_SUB_REGIONAL_PROXY_EXTRA"),
+            )
         }
     }
 }
@@ -219,6 +231,11 @@ object VlessSubscription {
                     // QUIC: refused at once, so the apps fall back to TCP (issue #59).
                     if (options.blockQuic) addJsonObject { put("network", "udp"); put("port", 443); put("action", "reject") }
                     addJsonObject { put("ip_is_private", true); put("outbound", "direct") }
+                    // Regional direct routing (VLESS_SUB_REGIONAL_DIRECT): forced sites first. No geoip rule: sing-box needs a downloaded rule set for it.
+                    if (options.regionalDirect) {
+                        addJsonObject { putJsonArray("domain_suffix") { RegionalRouting.proxied(options).forEach { add(it) } }; put("outbound", SELECT) }
+                        addJsonObject { putJsonArray("domain_suffix") { RegionalRouting.direct(options).forEach { add(it) } }; put("outbound", "direct") }
+                    }
                 }
                 put("final", SELECT)
                 put("auto_detect_interface", true)
@@ -285,6 +302,12 @@ object VlessSubscription {
             appendLine("  - ${q("IP-CIDR,10.0.0.0/8,DIRECT,no-resolve")}")
             appendLine("  - ${q("IP-CIDR,172.16.0.0/12,DIRECT,no-resolve")}")
             appendLine("  - ${q("IP-CIDR,192.168.0.0/16,DIRECT,no-resolve")}")
+            if (options.regionalDirect) {
+                // Forced sites first: the first matching rule wins.
+                RegionalRouting.proxied(options).forEach { appendLine("  - ${q("DOMAIN-SUFFIX,$it,$SELECT")}") }
+                RegionalRouting.direct(options).forEach { appendLine("  - ${q("DOMAIN-SUFFIX,$it,DIRECT")}") }
+                appendLine("  - ${q("GEOIP,${RegionalRouting.GEOIP.removePrefix("geoip:").uppercase()},DIRECT,no-resolve")}")
+            }
             appendLine("  - ${q("MATCH,$SELECT")}")
         }
     }
@@ -297,7 +320,7 @@ object VlessSubscription {
      * Null without DNS servers.
      */
     fun happRouting(options: SubscriptionOptions): String? {
-        val remote = options.dns.firstOrNull() ?: return null
+        val remote = options.dns.firstOrNull() ?: (if (options.regionalDirect) SINGBOX_FALLBACK_DNS else return null)
         val domestic = options.dns.getOrElse(1) { remote }
         val profile = buildJsonObject {
             put("Name", SELECT)
@@ -309,13 +332,13 @@ object VlessSubscription {
             put("DomesticDNSDomain", domestic.url)
             put("DomesticDNSIP", if (domestic.isIp) domestic.host else "")
             putJsonObject("DnsHosts") {}
-            putJsonArray("DirectSites") {}
-            putJsonArray("DirectIp") { PRIVATE.forEach { add(it) } }
-            putJsonArray("ProxySites") {}
+            putJsonArray("DirectSites") { if (options.regionalDirect) RegionalRouting.direct(options).forEach { add("domain:$it") } }
+            putJsonArray("DirectIp") { PRIVATE.forEach { add(it) }; if (options.regionalDirect) add(RegionalRouting.GEOIP) }
+            putJsonArray("ProxySites") { if (options.regionalDirect) RegionalRouting.proxied(options).forEach { add("domain:$it") } }
             putJsonArray("ProxyIp") {}
             putJsonArray("BlockSites") {}
             putJsonArray("BlockIp") {}
-            put("DomainStrategy", "AsIs")
+            put("DomainStrategy", if (options.regionalDirect) "IPIfNonMatch" else "AsIs")
             put("FakeDNS", "false")
         }
         return "happ://routing/onadd/" + Base64.getEncoder().encodeToString(compact.encodeToString(JsonElement.serializer(), profile).toByteArray())
@@ -327,22 +350,36 @@ object VlessSubscription {
      * UDP 443 to `block`, private networks direct. v2RayTun has no header for DNS. Null without the QUIC block.
      */
     fun v2rayTunRouting(options: SubscriptionOptions): String? {
-        if (!options.blockQuic) return null
+        if (!options.blockQuic && !options.regionalDirect) return null
         fun id(s: String) = UUID.nameUUIDFromBytes("boop-routing-$s".toByteArray()).toString().uppercase()
         val routing = buildJsonObject {
             put("name", SELECT)
             put("id", id("profile"))
-            put("domainStrategy", "AsIs")
+            put("domainStrategy", if (options.regionalDirect) "IPIfNonMatch" else "AsIs")
             put("domainMatcher", "hybrid")
             putJsonArray("balancers") {}
             putJsonArray("rules") {
-                addJsonObject {
+                if (options.blockQuic) addJsonObject {
                     put("id", id("quic")); put("__name__", "QUIC")
                     put("type", "field"); put("network", "udp"); put("port", "443"); put("outboundTag", "block")
                 }
                 addJsonObject {
                     put("id", id("private")); put("__name__", "LAN")
                     put("type", "field"); putJsonArray("ip") { PRIVATE.forEach { add(it) } }; put("outboundTag", "direct")
+                }
+                if (options.regionalDirect) {
+                    addJsonObject {
+                        put("id", id("regional-proxy")); put("__name__", "Tunnel")
+                        put("type", "field"); putJsonArray("domain") { RegionalRouting.proxied(options).forEach { add("domain:$it") } }; put("outboundTag", "proxy")
+                    }
+                    addJsonObject {
+                        put("id", id("regional-direct")); put("__name__", "Regional")
+                        put("type", "field"); putJsonArray("domain") { RegionalRouting.direct(options).forEach { add("domain:$it") } }; put("outboundTag", "direct")
+                    }
+                    addJsonObject {
+                        put("id", id("regional-geoip")); put("__name__", "Regional IP")
+                        put("type", "field"); putJsonArray("ip") { add(RegionalRouting.GEOIP) }; put("outboundTag", "direct")
+                    }
                 }
             }
         }

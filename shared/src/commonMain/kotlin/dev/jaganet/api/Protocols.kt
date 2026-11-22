@@ -3,9 +3,11 @@ package dev.jaganet.api
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
 
 /**
  * Typed shapes of the protocol-specific JSON objects. Adding a protocol =
@@ -174,7 +176,110 @@ object Vless {
         val path: String? = null,
         val mode: String? = null,
         val host: String? = null,
+        /** XHTTP only: client-side tuning ([XhttpTuning]) the subscriptions carry; null = the clients' defaults, nothing added. */
+        val xhttp: XhttpTuning? = null,
     )
+
+    /** An xmux block of [XhttpTuning]; every part is a number or a `from-to` range, as Xray reads it. */
+    @Serializable
+    data class Xmux(
+        val maxConnections: String? = null,
+        val maxConcurrency: String? = null,
+        val cMaxReuseTimes: String? = null,
+        val hMaxRequestTimes: String? = null,
+        val hMaxReusableSecs: String? = null,
+    ) {
+        internal fun problem(): String? = when {
+            maxConnections != null && maxConcurrency != null -> "xhttp.xmux"
+            !ok(maxConnections, 1, 256) -> "xhttp.xmux.maxConnections"
+            !ok(maxConcurrency, 1, 1024) -> "xhttp.xmux.maxConcurrency"
+            !ok(cMaxReuseTimes, 0, 1_000_000) -> "xhttp.xmux.cMaxReuseTimes"
+            !ok(hMaxRequestTimes, 0, 1_000_000) -> "xhttp.xmux.hMaxRequestTimes"
+            !ok(hMaxReusableSecs, 0, 86_400) -> "xhttp.xmux.hMaxReusableSecs"
+            else -> null
+        }
+
+        internal fun orElse(base: Xmux?) = Xmux(
+            maxConnections ?: base?.maxConnections.takeIf { maxConcurrency == null },
+            maxConcurrency ?: base?.maxConcurrency.takeIf { maxConnections == null },
+            cMaxReuseTimes ?: base?.cMaxReuseTimes, hMaxRequestTimes ?: base?.hMaxRequestTimes, hMaxReusableSecs ?: base?.hMaxReusableSecs,
+        )
+
+        internal fun toJson() = buildJsonObject {
+            maxConnections?.let { put("maxConnections", it) }
+            maxConcurrency?.let { put("maxConcurrency", it) }
+            cMaxReuseTimes?.let { put("cMaxReuseTimes", it) }
+            hMaxRequestTimes?.let { put("hMaxRequestTimes", it) }
+            hMaxReusableSecs?.let { put("hMaxReusableSecs", it) }
+        }
+
+        internal val isEmpty get() = this == Xmux()
+    }
+
+    /**
+     * Client-side XHTTP tuning of one transport (`xhttpSettings.extra` of Xray, `extra=` of a share
+     * link). Nothing set = nothing sent: the clients keep their own defaults, as before.
+     * [preset] `browser` fills what is not set with: padding 50-355 bytes, upload chunks of 150 KB
+     * (`scMaxEachPostBytes`, the node's inbound accepts up to 1 MB by default), xmux over one
+     * connection reused for about ten minutes (`hMaxReusableSecs` 580-666). Every field set here wins over the preset.
+     * Values are numbers or `from-to` ranges in Xray's notation.
+     */
+    @Serializable
+    data class XhttpTuning(
+        val preset: String? = null,
+        val xPaddingBytes: String? = null,
+        val scMaxEachPostBytes: String? = null,
+        val scMinPostsIntervalMs: String? = null,
+        val xmux: Xmux? = null,
+    ) {
+        /** Null when valid, else the name of the first wrong field. */
+        fun problem(): String? = when {
+            preset != null && preset !in XHTTP_PRESETS -> "xhttp.preset"
+            !ok(xPaddingBytes, 1, 4096) -> "xhttp.xPaddingBytes"
+            !ok(scMaxEachPostBytes, 1, 10_000_000) -> "xhttp.scMaxEachPostBytes"
+            !ok(scMinPostsIntervalMs, 0, 10_000) -> "xhttp.scMinPostsIntervalMs"
+            else -> xmux?.problem()
+        }
+
+        /** The preset's values under this tuning's own: what the clients get. */
+        fun resolved(): XhttpTuning {
+            val base = if (preset == "browser") BROWSER else null
+            return XhttpTuning(
+                null,
+                xPaddingBytes ?: base?.xPaddingBytes, scMaxEachPostBytes ?: base?.scMaxEachPostBytes,
+                scMinPostsIntervalMs ?: base?.scMinPostsIntervalMs,
+                (xmux ?: Xmux()).orElse(base?.xmux).takeIf { !it.isEmpty },
+            )
+        }
+
+        /** The `extra` object Xray reads, in a fixed key order; empty when nothing is tuned. */
+        fun extraJson(): JsonObject = buildJsonObject {
+            val r = resolved()
+            r.xPaddingBytes?.let { put("xPaddingBytes", it) }
+            r.scMaxEachPostBytes?.let { put("scMaxEachPostBytes", it) }
+            r.scMinPostsIntervalMs?.let { put("scMinPostsIntervalMs", it) }
+            r.xmux?.let { put("xmux", it.toJson()) }
+        }
+
+        companion object {
+            val BROWSER = XhttpTuning(
+                xPaddingBytes = "50-355", scMaxEachPostBytes = "150000",
+                xmux = Xmux(maxConnections = "1", cMaxReuseTimes = "0", hMaxRequestTimes = "0", hMaxReusableSecs = "580-666"),
+            )
+        }
+    }
+
+    /** A number or a `from-to` range inside [min]..[max] (null is fine: not set). */
+    private fun ok(v: String?, min: Long, max: Long): Boolean {
+        if (v == null) return true
+        val m = RANGE.matchEntire(v) ?: return false
+        val a = m.groupValues[1].toLongOrNull() ?: return false
+        val b = m.groupValues[2].ifEmpty { m.groupValues[1] }.toLongOrNull() ?: return false
+        return a in min..max && b in min..max && a <= b
+    }
+
+    private val RANGE = Regex("^(\\d{1,9})(?:-(\\d{1,9}))?$")
+    val XHTTP_PRESETS = setOf("browser")
 
     /**
      * A VLESS node's settings in the panel (`servers.protocols.vless`). The owner enters them;
@@ -212,6 +317,8 @@ object Vless {
             type == XHTTP && (path == null || !path.startsWith("/") || path.length > 200 || path.any { it.isWhitespace() || it == '#' || it == '?' }) -> "transports.path"
             type == XHTTP && mode != null && mode !in XHTTP_MODES -> "transports.mode"
             type == TCP && (path != null || mode != null) -> "transports.path"
+            type == TCP && xhttp != null -> "transports.xhttp"
+            xhttp != null -> xhttp.problem()?.let { "transports.$it" }
             else -> null
         }
 
@@ -224,6 +331,7 @@ object Vless {
                 transport = t.type, host = t.host ?: host, port = t.port, flow = t.flow,
                 sni = sni, pbk = publicKey, sid = shortId, fp = fingerprint,
                 path = t.path.takeIf { t.type == XHTTP }, mode = if (t.type == XHTTP) t.mode ?: "auto" else null,
+                xhttp = t.xhttp?.resolved()?.takeIf { t.type == XHTTP && it.extraJson().isNotEmpty() },
             )
         })
     }
@@ -249,6 +357,8 @@ object Vless {
         val path: String? = null,
         /** XHTTP only: auto, packet-up, stream-up or stream-one. */
         val mode: String? = null,
+        /** XHTTP only, set only when the node tunes it: tells the clients that read it (Xray configs, `extra=` of the link). Older apps ignore it. */
+        val xhttp: XhttpTuning? = null,
     )
 
     /** Returned in TunnelConfig.params. */
@@ -276,6 +386,8 @@ object Vless {
             if (v.flow.isNotEmpty()) add("flow" to v.flow)
             v.path?.let { add("path" to it) }
             v.mode?.let { add("mode" to it) }
+            // Tuned XHTTP: the share link's `extra` (Xray's XHTTP link format), compact JSON; absent unless the node tunes it.
+            v.xhttp?.extraJson()?.takeIf { it.isNotEmpty() }?.let { add("extra" to it.toString()) }
         }
         append('?').append(q.joinToString("&") { (k, value) -> "$k=${encode(value)}" })
         append('#').append(encode(name))

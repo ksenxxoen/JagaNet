@@ -51,6 +51,17 @@ describe("nodeBody", () => {
     expect(vlessBody(v, was)).toMatchObject({ shortIds: ["a1", "b2"], transports: [{ type: "tcp", port: 443, tag: "vision-in" }] });
   });
 
+  it("editing a node keeps its XHTTP tuning, which the form has no field for", () => {
+    const was = vlessNode().vless!;
+    const xh = was.transports.find((t) => t.type === "xhttp")!;
+    const tuned = { ...was, transports: was.transports.map((t) => (t === xh ? { ...t, xhttp: { preset: "browser" } } : t)) };
+    const body = vlessBody(vlessValues(tuned), tuned);
+    expect(body.transports.find((t) => t.type === "xhttp")).toMatchObject({ xhttp: { preset: "browser" } });
+    expect(body.transports.find((t) => t.type === "tcp")).not.toHaveProperty("xhttp");
+    // Untuned nodes: no key at all, the request stays as before.
+    expect(vlessBody(vlessValues(was), was).transports.every((t) => !("xhttp" in t))).toBe(true);
+  });
+
   it("the main server never sends VLESS settings", () => {
     const main = adminNode({ remote: false });
     expect(nodeBody({ ...nodeValues(main), protocol: "vless" }, { local: true, was: main })).toMatchObject({ protocol: null, vless: null });
