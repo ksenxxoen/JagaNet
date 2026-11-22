@@ -207,6 +207,7 @@ fun Route.website(s: Services) {
         call.response.header("profile-web-page-url", "$base/k/${call.parameters["token"]!!}")
         val ua = call.request.headers[HttpHeaders.UserAgent]
         val options = s.ctx.cfg.vlessSub
+        options.announce?.let { call.response.header("announce", VlessSubscription.announceHeader(it)) }
         var format = VlessSubscription.format(call.request.queryParameters["format"], ua, options)
         if ((format == VlessSubscription.Format.SINGBOX || format == VlessSubscription.Format.CLASH) && !VlessSubscription.hasGroups(v.locations)) format = VlessSubscription.Format.BASE64
         // Happ and v2RayTun get a `routing` header with both the links and the Xray configs, consistent with the rules in those configs.

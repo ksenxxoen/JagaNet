@@ -151,11 +151,14 @@ process behind the Wintun adapter (desktop/ARCHITECTURE.md, "VLESS+Reality").
   every node). Traffic on a replica counts for the device (`vless_replicas.last_*` keep its
   counters; `traffic_samples.server_id` is the node it went through).
 - **Subscription** `/k/<token>/vless`: every location the UUID is on, active, `in_subscription`, and
-  reporting within a day, ordered by `servers.sort_order`, then name. Names: flag + `display_name`,
-  else `country_name`, else the country in Russian ("🇫🇮 Финляндия"); the backup transport is
-  "🇫🇮 Финляндия (запасной)" (a third one "(запасной 2)"; `?lang=de|en` translates the suffix);
-  equal names get " 2". Never a protocol name. With one VLESS node the links are those of issue #33
-  but for the backup's name. Formats (`VlessSubscription`): `?format=json|singbox|clash|base64`
+  reporting within a day, ordered by `servers.sort_order`, then name. Names: a coded
+  `display_name` such as "NL #1 ⚡" is used as-is (the apps draw the flag from the country code);
+  otherwise flag + `display_name`, else `country_name`, else the country in Russian ("🇫🇮 Финляндия").
+  An XHTTP backup is "NL #1 ⚡ XHTTP" (the transport name, not translated); other backup
+  transports keep "{name} (backup)" (`?lang=de|en` still translates that suffix). Equal names
+  get " 2". With one VLESS node the links are those of issue #33 but for the backup's name.
+  Happ also reads the `announce` header (`VLESS_SUB_ANNOUNCE`, a base64 legend at the top of the
+  list). Formats (`VlessSubscription`): `?format=json|singbox|clash|base64`
   wins, else the `User-Agent`: Happ (`Happ/` 1.63.1 and newer) and v2RayTun (`v2raytun`) get an
   array of full Xray configs (`XrayConfigs`, issue #59): "Авто (лучший)" first (every Vision link
   behind a `leastPing` balancer with the `observatory`), then one config per link of the base64
