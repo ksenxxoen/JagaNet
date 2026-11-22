@@ -144,9 +144,16 @@ class TelegramBotTest {
         assertEquals(HttpStatusCode.OK, ok.status, ok.bodyAsText())
         val tokenA = Json.parseToJsonElement(ok.bodyAsText()).jsonObject["token"]!!.jsonPrimitive.content
         assertEquals("tg555@telegram.invalid", client(tokenA).me().user.email)
-        // Again: same account, no duplicate.
-        assertEquals(HttpStatusCode.OK, postWidget(widget(auth)).status)
+        val names = ctx.db.run { it.one("SELECT tg_username, tg_first_name, tg_last_name FROM users WHERE telegram_id=555") }!!
+        assertEquals("ann", names.str("tg_username"))
+        assertEquals("Ann", names.str("tg_first_name"))
+        assertNull(names.strOrNull("tg_last_name"))
+        // Again: same account, no duplicate; an updated name is stored.
+        assertEquals(HttpStatusCode.OK, postWidget(widget(auth + ("first_name" to "Anna") + ("last_name" to "Petrova"))).status)
         assertEquals(1, count("SELECT count(*)::int AS n FROM users WHERE telegram_id=555"))
+        val updated = ctx.db.run { it.one("SELECT tg_first_name, tg_last_name FROM users WHERE telegram_id=555") }!!
+        assertEquals("Anna", updated.str("tg_first_name"))
+        assertEquals("Petrova", updated.str("tg_last_name"))
 
         val forged = postWidget(widget(auth, "999:attacker-bot"))
         assertEquals(HttpStatusCode.BadRequest, forged.status)

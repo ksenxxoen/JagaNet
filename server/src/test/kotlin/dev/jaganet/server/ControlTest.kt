@@ -376,7 +376,12 @@ class ControlTest {
         assertTrue(services.control.search("nobody-like-this").users.isEmpty())
         // With #38's users.tg_username, @username search is on.
         assertTrue(services.control.search(null).telegramUsernames)
-        assertEquals(listOf(uid), services.control.search("@share_tg").users.map { it.id }, "search @username")
+        val byName = services.control.search("@share_tg")
+        assertEquals(listOf(uid), byName.users.map { it.id }, "search @username")
+        assertEquals(1, byName.total)
+        assertEquals(1, byName.page)
+        assertEquals(50, byName.pageSize)
+        assertEquals(0, byName.offset)
 
         // A lower threshold flags the subscription as shared.
         services.control.saveSettings(admin, CtlSettings(2))
@@ -395,6 +400,39 @@ class ControlTest {
         clock = clock.plus(Duration.ofDays(8))
         ctx.db.run { ClientIps.prune(it, clock) }
         assertEquals(0, services.control.card(uid).ips24h.size)
+    }
+
+    @Test fun `user search is paginated and covers everyone`() = harness {
+        val newestFirst = (1..12).map { i ->
+            val id = signIn("page$i@example.com").session.user.id
+            clock = clock.plusSeconds(1)
+            id
+        }.reversed()
+        // These 12, newest first. Page of 5: first page is the five latest sign-ins.
+        val first = services.control.search(null, page = "1", limit = "5")
+        assertEquals(12, first.total)
+        assertEquals(5, first.users.size)
+        assertEquals(1, first.page)
+        assertEquals(5, first.pageSize)
+        assertEquals(0, first.offset)
+        assertEquals(newestFirst.take(5), first.users.map { it.id })
+        val second = services.control.search(null, page = "2", limit = "5")
+        assertEquals(12, second.total)
+        assertEquals(2, second.page)
+        assertEquals(5, second.offset)
+        assertEquals(newestFirst.drop(5).take(5), second.users.map { it.id })
+        val byOffset = services.control.search(null, offset = "10", limit = "5")
+        assertEquals(2, byOffset.users.size)
+        assertEquals(3, byOffset.page)
+        assertEquals(10, byOffset.offset)
+        assertEquals(newestFirst.drop(10), byOffset.users.map { it.id })
+        // A search over all 12, not only the first page.
+        val found = services.control.search("page12@", page = "1", limit = "5")
+        assertEquals(1, found.total)
+        assertEquals(listOf(newestFirst[0]), found.users.map { it.id })
+        val mid = services.control.search("page", page = "2", limit = "5")
+        assertEquals(12, mid.total)
+        assertEquals(5, mid.users.size)
     }
 
     @Test fun `the dashboard counts active, ending soon and blocked users`() = harness {

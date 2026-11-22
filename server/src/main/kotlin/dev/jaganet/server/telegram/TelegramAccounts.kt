@@ -25,7 +25,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 /** The Telegram user as Telegram describes them (message.from, or the Login Widget). */
-data class TgUser(val id: Long, val username: String? = null, val firstName: String? = null)
+data class TgUser(val id: Long, val username: String? = null, val firstName: String? = null, val lastName: String? = null)
 
 /** An account found or made for a Telegram user. */
 data class TgAccount(val userId: String, val email: String, val lang: Lang?, val created: Boolean)
@@ -57,15 +57,27 @@ enum class LinkResult {
 class TelegramAccounts(private val ctx: Ctx, private val auth: AuthService, private val tunnels: Tunnels) {
     private fun hash(v: String) = Crypto.hmac(ctx.cfg.authSecret, v)
 
+    /** Trim first/last name and drop blanks so a later visit is not written as an empty update. */
+    private fun withNames(tg: TgUser) = tg.copy(
+        firstName = tg.firstName?.trim()?.take(128)?.takeIf { it.isNotEmpty() },
+        lastName = tg.lastName?.trim()?.take(128)?.takeIf { it.isNotEmpty() },
+    )
+
     /**
      * The account of [tg], made on first contact. [ref] is the referral code from `/start ref_<code>`:
      * a new account remembers it raw (`users.tg_start_ref`) and, when it is a known link, who invited
      * them (`referred_by`, `referral_link_id`), as on the website. Existing accounts keep their inviter.
      */
     suspend fun findOrCreate(tg: TgUser, ref: String? = null): TgAccount = ctx.db.tx { sql ->
-        sql.one("SELECT id, email, lang, tg_username, tg_blocked_at FROM users WHERE telegram_id=?", tg.id)?.let { r ->
-            if (r.strOrNull("tg_username") != tg.username || r["tg_blocked_at"] != null) {
-                sql.exec("UPDATE users SET tg_username=?, tg_blocked_at=NULL WHERE id=?::uuid", tg.username, r.str("id"))
+        val tg = withNames(tg)
+        sql.one("SELECT id, email, lang, tg_username, tg_first_name, tg_last_name, tg_blocked_at FROM users WHERE telegram_id=?", tg.id)?.let { r ->
+            if (r.strOrNull("tg_username") != tg.username || r.strOrNull("tg_first_name") != tg.firstName
+                || r.strOrNull("tg_last_name") != tg.lastName || r["tg_blocked_at"] != null
+            ) {
+                sql.exec(
+                    "UPDATE users SET tg_username=?, tg_first_name=?, tg_last_name=?, tg_blocked_at=NULL WHERE id=?::uuid",
+                    tg.username, tg.firstName, tg.lastName, r.str("id"),
+                )
             }
             return@tx TgAccount(r.str("id"), r.str("email"), Lang.of(r.strOrNull("lang")), false)
         }
@@ -73,11 +85,12 @@ class TelegramAccounts(private val ctx: Ctx, private val auth: AuthService, priv
         val code = ref?.trim()?.take(64)?.takeIf { it.isNotEmpty() }
         val referrer = Referrals.resolve(sql, code)
         val r = sql.one(
-            """INSERT INTO users (email, referral_code, referred_by, referral_link_id, telegram_id, tg_username, tg_start_ref, created_at)
-               VALUES (?,?,?::uuid,?::uuid,?,?,?,?)
-               ON CONFLICT (email) DO UPDATE SET telegram_id=EXCLUDED.telegram_id, tg_username=EXCLUDED.tg_username
+            """INSERT INTO users (email, referral_code, referred_by, referral_link_id, telegram_id, tg_username, tg_first_name, tg_last_name, tg_start_ref, created_at)
+               VALUES (?,?,?::uuid,?::uuid,?,?,?,?,?,?)
+               ON CONFLICT (email) DO UPDATE SET telegram_id=EXCLUDED.telegram_id, tg_username=EXCLUDED.tg_username,
+                 tg_first_name=EXCLUDED.tg_first_name, tg_last_name=EXCLUDED.tg_last_name
                RETURNING id, email, lang, (xmax = 0) AS inserted""",
-            email, Crypto.referralCode("tg@x"), referrer?.userId, referrer?.linkId, tg.id, tg.username, code?.uppercase(), ctx.now(),
+            email, Crypto.referralCode("tg@x"), referrer?.userId, referrer?.linkId, tg.id, tg.username, tg.firstName, tg.lastName, code?.uppercase(), ctx.now(),
         )!!
         val created = r.bool("inserted")
         if (created) {
@@ -102,6 +115,7 @@ class TelegramAccounts(private val ctx: Ctx, private val auth: AuthService, priv
 
     /** `/start link_<code>`: link [tg] to the account that made the code. The code works once. */
     suspend fun link(code: String, tg: TgUser): Pair<LinkResult, String?> = ctx.db.tx { sql ->
+        val tg = withNames(tg)
         val userId = sql.one(
             "UPDATE telegram_link_codes SET used_at=? WHERE code_hash=? AND used_at IS NULL AND expires_at > ? RETURNING user_id",
             ctx.now(), hash("tglink:$code"), ctx.now(),
@@ -119,7 +133,10 @@ class TelegramAccounts(private val ctx: Ctx, private val auth: AuthService, priv
             if (hasPurchases(sql, other.str("id"))) return@tx LinkResult.TELEGRAM_HAS_PURCHASES to email
             deleteAccount(sql, other.str("id"))
         }
-        sql.exec("UPDATE users SET telegram_id=?, tg_username=?, tg_blocked_at=NULL WHERE id=?::uuid", tg.id, tg.username, userId)
+        sql.exec(
+            "UPDATE users SET telegram_id=?, tg_username=?, tg_first_name=?, tg_last_name=?, tg_blocked_at=NULL WHERE id=?::uuid",
+            tg.id, tg.username, tg.firstName, tg.lastName, userId,
+        )
         LinkResult.LINKED to email
     }
 
@@ -127,7 +144,7 @@ class TelegramAccounts(private val ctx: Ctx, private val auth: AuthService, priv
     suspend fun unlink(userId: String) = ctx.db.run { sql ->
         val r = sql.one("SELECT email FROM users WHERE id=?::uuid", userId) ?: throw AppError(404, ErrorCode.NOT_FOUND, "Account not found")
         if (isPlaceholder(r.str("email"))) throw AppError(400, ErrorCode.BAD_REQUEST, "This account signs in only with Telegram")
-        sql.exec("UPDATE users SET telegram_id=NULL, tg_username=NULL WHERE id=?::uuid", userId)
+        sql.exec("UPDATE users SET telegram_id=NULL, tg_username=NULL, tg_first_name=NULL, tg_last_name=NULL WHERE id=?::uuid", userId)
     }
 
     /** Anything that would be lost by removing the account: payments, keys, invited people. */
@@ -152,7 +169,7 @@ class TelegramAccounts(private val ctx: Ctx, private val auth: AuthService, priv
         val token = ctx.cfg.telegramBotToken ?: throw AppError(404, ErrorCode.NOT_FOUND, "Telegram sign-in is off")
         val tgId = verifyWidget(fields, token, ctx.now())
             ?: throw AppError(400, ErrorCode.INVALID_CODE, "Telegram sign-in failed, try again")
-        val acc = findOrCreate(TgUser(tgId, fields["username"], fields["first_name"]), ref)
+        val acc = findOrCreate(TgUser(tgId, fields["username"], fields["first_name"], fields["last_name"]), ref)
         return ctx.db.tx { sql -> auth.createSession(sql, sql.one("SELECT * FROM users WHERE id=?::uuid", acc.userId)!!, device) }
     }
 
@@ -213,7 +230,7 @@ class TelegramAccounts(private val ctx: Ctx, private val auth: AuthService, priv
             val user = runCatching { Json.parseToJsonElement(userJson) as? JsonObject }.getOrNull() ?: return null
             fun str(k: String) = (user[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
             val id = (user["id"] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toLongOrNull()?.takeIf { it > 0 } ?: return null
-            return TgUser(id, str("username"), str("first_name"))
+            return TgUser(id, str("username"), str("first_name"), str("last_name"))
         }
 
         fun webAppHash(dataCheckString: String, botToken: String): String {

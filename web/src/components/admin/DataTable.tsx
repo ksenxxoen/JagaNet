@@ -91,6 +91,7 @@ export function DataTable<T>({
   error,
   onRetry,
   pageSize = DEFAULT_PAGE_SIZE,
+  total,
   defaultSort = "",
   inUrl = false,
   label,
@@ -107,6 +108,8 @@ export function DataTable<T>({
   onRetry?: () => void;
   /** Rows a page; 0 shows them all. */
   pageSize?: number;
+  /** When set, `rows` is already one server page and the pager uses this count. */
+  total?: number;
   /** "at" or "-at"; "" keeps the server's order. */
   defaultSort?: string;
   /** Keep the sort and the page in ?sort= and ?page= (one such table a screen). */
@@ -123,11 +126,14 @@ export function DataTable<T>({
   if (loading || !rows) return <Spinner className="py-12" />;
 
   const [sortKey, desc] = parseSort(state.sort);
-  const sortCol = columns.find((c) => c.key === sortKey && c.sort);
+  // Client sort is only valid when every matching row is on this page.
+  const allLoaded = total == null || total <= rows.length;
+  const sortCol = allLoaded ? columns.find((c) => c.key === sortKey && c.sort) : undefined;
   const sorted = sortCol?.sort ? sortRows(rows, sortCol.sort, desc) : [...rows];
-  const pages = pageSize > 0 ? Math.max(1, Math.ceil(sorted.length / pageSize)) : 1;
+  const count = total ?? sorted.length;
+  const pages = pageSize > 0 ? Math.max(1, Math.ceil(count / pageSize)) : 1;
   const page = Math.min(state.page, pages);
-  const shown = pageSize > 0 ? sorted.slice((page - 1) * pageSize, page * pageSize) : sorted;
+  const shown = pageSize > 0 && total == null ? sorted.slice((page - 1) * pageSize, page * pageSize) : sorted;
   const opt = "hidden sm:table-cell";
 
   const toggle = (c: Column<T>) => state.setSort(sortCol?.key === c.key && !desc ? `-${c.key}` : c.key);
@@ -146,7 +152,7 @@ export function DataTable<T>({
                   aria-sort={on ? (desc ? "descending" : "ascending") : c.sort ? "none" : undefined}
                   className={cn(c.optional && opt, c.className)}
                 >
-                  {c.sort ? (
+                  {c.sort && allLoaded ? (
                     <button
                       type="button"
                       onClick={() => toggle(c)}

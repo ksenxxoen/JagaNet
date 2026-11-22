@@ -905,6 +905,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         from["id"]!!.jsonPrimitive.long,
         from["username"]?.jsonPrimitive?.content,
         from["first_name"]?.jsonPrimitive?.content,
+        from["last_name"]?.jsonPrimitive?.content,
     )
 
     /** The account for this Telegram user (made on first contact) and their language. */

@@ -5,8 +5,11 @@ import { get } from "@/api/typed";
 
 export const dashboardQuery = queryOptions({ queryKey: keys.admin.dashboard(), queryFn: () => get("/admin/control/dashboard") });
 
-export const usersQuery = (q: string) =>
-  queryOptions({ queryKey: keys.admin.users(q), queryFn: () => get("/admin/users", { query: q ? { q } : {} }) });
+export const usersQuery = (q: string, page = 1) =>
+  queryOptions({
+    queryKey: keys.admin.users(q, page),
+    queryFn: () => get("/admin/users", { query: { ...(q ? { q } : {}), ...(page > 1 ? { page: String(page) } : {}) } }),
+  });
 
 export const userQuery = (id: string) =>
   queryOptions({ queryKey: keys.admin.user(id), queryFn: () => get("/admin/users/{id}", { params: { id } }) });

@@ -77,7 +77,7 @@ class MiniAppTest {
     @Test fun `initData signature matches Telegram's algorithm`() {
         // Signed independently (Python hmac/hashlib) for the same data, values URL-encoded as Telegram sends them.
         val raw = "query_id=AAHdF6IQAAAAAN0XohDhrOrc&user=%7B%22id%22%3A424242%2C%22first_name%22%3A%22%D0%98%D0%B2%D0%B0%D0%BD%22%2C%22last_name%22%3A%22%D0%9F%D0%B5%D1%82%D1%80%D0%BE%D0%B2%22%2C%22username%22%3A%22ivan_tg%22%2C%22language_code%22%3A%22ru%22%7D&auth_date=1792065600&start_param=ref_ABC&hash=92deb23d972d1f4ad0145bbdd89f90647a5d3806122f703222da2956c5af28ce"
-        assertEquals(TgUser(424242, "ivan_tg", "Иван"), TelegramAccounts.verifyWebAppInitData(raw, token, at))
+        assertEquals(TgUser(424242, "ivan_tg", "Иван", "Петров"), TelegramAccounts.verifyWebAppInitData(raw, token, at))
         assertEquals("ref_ABC", TelegramAccounts.webAppField(raw, "start_param"))
         // The same with another bot's token: refused.
         assertNull(TelegramAccounts.verifyWebAppInitData(raw, "654321:OTHER", at))

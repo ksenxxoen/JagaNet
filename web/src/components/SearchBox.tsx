@@ -38,7 +38,7 @@ export function SearchBox({
 
   const send = (v: string) => {
     clearTimeout(timer.current);
-    if (v !== value) setValue(v, { replace: true });
+    if (v !== value) setValue(v, { replace: true, reset: ["page"] });
   };
 
   return (

@@ -141,11 +141,16 @@ export function UserTable({
   empty,
   inUrl,
   label,
+  total,
+  pageSize,
 }: {
   users: Schema<"CtlUserRow">[];
   empty: string;
   inUrl?: boolean;
   label?: string;
+  /** When set, `users` is already one server page and the pager uses this count. */
+  total?: number;
+  pageSize?: number;
 }) {
   const columns: Column<Schema<"CtlUserRow">>[] = [
     {
@@ -203,5 +208,16 @@ export function UserTable({
       cell: (u) => (u.sharing ? <Level tone="danger">{u.ips24h}</Level> : u.ips24h),
     },
   ];
-  return <DataTable columns={columns} rows={users} rowKey={(u) => u.id} empty={empty} inUrl={inUrl} label={label} />;
+  return (
+    <DataTable
+      columns={columns}
+      rows={users}
+      rowKey={(u) => u.id}
+      empty={empty}
+      inUrl={inUrl}
+      label={label}
+      total={total}
+      pageSize={pageSize}
+    />
+  );
 }

@@ -38,7 +38,29 @@ data class CtlUserRow(
 )
 
 @Serializable
-data class CtlUsersRes(val users: List<CtlUserRow>, val sharingThreshold: Int, val telegramUsernames: Boolean)
+data class CtlUsersRes(
+    val users: List<CtlUserRow>,
+    val sharingThreshold: Int,
+    val telegramUsernames: Boolean,
+    /** How many users match the query (all pages). */
+    val total: Int,
+    /** 1-based page that [users] came from. */
+    val page: Int,
+    val pageSize: Int,
+    /** 0-based index of the first row of this page. */
+    val offset: Int,
+)
+
+const val CTL_USERS_PAGE_SIZE = 50
+const val CTL_USERS_PAGE_SIZE_MAX = 100
+
+/** page/offset/limit from the query string: offset wins over page; bad values fall back to page 1 of 50. */
+fun ctlUsersPage(page: String?, offset: String?, limit: String?): Triple<Int, Int, Int> {
+    val pageSize = limit?.toIntOrNull()?.takeIf { it > 0 }?.coerceAtMost(CTL_USERS_PAGE_SIZE_MAX) ?: CTL_USERS_PAGE_SIZE
+    val off = offset?.toIntOrNull()?.takeIf { it >= 0 }
+        ?: (((page?.toIntOrNull() ?: 1).coerceAtLeast(1) - 1) * pageSize)
+    return Triple(off / pageSize + 1, pageSize, off)
+}
 
 @Serializable
 data class CtlSubscription(

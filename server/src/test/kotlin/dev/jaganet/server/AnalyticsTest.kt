@@ -66,6 +66,11 @@ class AnalyticsTest {
         val users = owner.analyticsUsers("7d", q = "B@EX")
         assertEquals(listOf("b@example.com"), users.users.map { it.email })
         assertEquals(0, users.users.single().traffic.torrentDown)
+        ctx.db.run { it.exec("UPDATE users SET tg_username='bee', tg_first_name='Bea', tg_last_name='Bee' WHERE id=?::uuid", b.session.user.id) }
+        val named = owner.analyticsUser(b.session.user.id, "7d").user
+        assertEquals("bee", named.telegramUsername)
+        assertEquals("Bea", named.telegramFirstName)
+        assertEquals("Bee", named.telegramLastName)
 
         val ua = owner.analyticsUser(server.users.first().id, "7d")
         assertEquals(7, ua.points.size)

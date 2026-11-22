@@ -1328,6 +1328,9 @@ data class AnalyticsUser(
     val servers: List<String>,
     val traffic: TrafficSplit,
     val lastSeenAt: String? = null,
+    val telegramUsername: String? = null,
+    val telegramFirstName: String? = null,
+    val telegramLastName: String? = null,
 )
 
 @Serializable
