@@ -3610,6 +3610,21 @@ export interface components {
             path?: string | null;
             mode?: string | null;
             host?: string | null;
+            xhttp?: components["schemas"]["VlessXhttpTuning"] | null;
+        };
+        VlessXhttpTuning: {
+            preset?: string | null;
+            xPaddingBytes?: string | null;
+            scMaxEachPostBytes?: string | null;
+            scMinPostsIntervalMs?: string | null;
+            xmux?: components["schemas"]["VlessXmux"] | null;
+        };
+        VlessXmux: {
+            maxConnections?: string | null;
+            maxConcurrency?: string | null;
+            cMaxReuseTimes?: string | null;
+            hMaxRequestTimes?: string | null;
+            hMaxReusableSecs?: string | null;
         };
     };
     responses: {

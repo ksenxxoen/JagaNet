@@ -86,7 +86,7 @@ process behind the Wintun adapter (desktop/ARCHITECTURE.md, "VLESS+Reality").
   the node both the Xray user's `id` and its `email`. A new provision (rekey) gives a new UUID.
 - **Node settings** (`servers.protocols.vless`, entered in the admin panel, no secrets):
   `{host, publicKey, shortIds[], sni, fingerprint, transports: [{type: "tcp"|"xhttp", port, tag,
-  flow, path?, mode?, host?}]}`. The Reality private key stays in the node's Xray config.
+  flow, path?, mode?, host?, xhttp?}]}`. The Reality private key stays in the node's Xray config.
 - **`TunnelConfig.params`** for `protocol = "vless"` (`Vless.ServerParams`):
 
   ```json
@@ -173,6 +173,11 @@ process behind the Wintun adapter (desktop/ARCHITECTURE.md, "VLESS+Reality").
   v2RayTun get the base64 list with a `routing` header instead: Happ a routing profile
   (`happ://routing/onadd/…`, remote DNS, `FakeDNS: false`; it cannot express ports), v2RayTun an
   Xray routing object (UDP 443 to `block`; it has no DNS header).
+  Regional direct routing (JAG-7, `VLESS_SUB_REGIONAL_DIRECT`, off by default, `RegionalRouting`):
+  with the flag the formats above also route the home region's zones, `geoip:ru`, banks and
+  IP-checker pages direct and a short list (`4pda`, `habr`...) through the tunnel; the forced rule
+  comes first. Per-node XHTTP tuning (`Vless.Transport.xhttp`, `Vless.XhttpTuning`) is carried as
+  `xhttpSettings.extra` and the link's `extra=`; unset nodes get exactly what they got before.
   Headers: `profile-title` (base64 "Boop VPN"), `profile-update-interval`
   (`SUBSCRIPTION_UPDATE_INTERVAL_HOURS`, default 3),
   `subscription-userinfo: upload=…; download=…; total=…; expire=…` (this month's bytes of all the

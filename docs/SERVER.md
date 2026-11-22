@@ -205,17 +205,39 @@ entry. Optional: `SUPPORT_URL` in `/etc/jaganet/env` for the subscription's `sup
 is the `profile-update-interval` header: how many hours a client waits before refreshing the subscription.
 
 The Xray configs and the profiles also carry DNS and a QUIC block (issue #59); each part has a
-switch in `/etc/jaganet/env`, all on by default:
+switch in `/etc/jaganet/env`, all on by default except `VLESS_SUB_REGIONAL_DIRECT`:
 
 | Variable | Default | What it does |
 |---|---|---|
 | `VLESS_SUB_DNS` | `https://1.1.1.1/dns-query,https://8.8.8.8/dns-query` | Remote DNS of the clients: DNS over HTTPS through the tunnel, comma-separated `https://` addresses; `off` leaves DNS to the clients. No fake DNS, so Android's Private DNS check keeps working. |
 | `VLESS_SUB_BLOCK_QUIC` | on | UDP 443 (QUIC) blocked in the clients, so apps use TCP at once. `0` turns it off. |
 | `VLESS_SUB_XRAY_JSON` | on | Happ (1.63.1+) and v2RayTun get Xray configs. `0`: links again, with a `routing` header (Happ: DNS only, v2RayTun: the QUIC block only). |
+| `VLESS_SUB_REGIONAL_DIRECT` | **off** | `1`/`on`: regional direct routing in the clients (JAG-7): the home region's zones and `geoip:ru`, big portals, banks and payment services, IP-checker pages go direct; `4pda`, `habr` and a few more are forced through the tunnel and win over the direct rules. Xray configs get the rules and `domainStrategy: IPIfNonMatch`; Happ/v2RayTun `routing` headers, sing-box (domains only, no geo rule) and Clash (`GEOIP,RU`) get them too. Lists: `RegionalRouting.kt`. |
+| `VLESS_SUB_REGIONAL_DIRECT_EXTRA` | empty | Comma-separated domains added to the direct list (a name and its subdomains). |
+| `VLESS_SUB_REGIONAL_PROXY_EXTRA` | empty | Comma-separated domains added to the forced-through-the-tunnel list. |
 | `VLESS_ENTRY_BLOCK_QUIC` | on | The UDP 443 block in a cascade entry's balancer fragment (below). `0` leaves it out. |
 | `VLESS_ENTRY_TRANSPORT` | `tcp` | How a cascade entry links to its exits: `tcp` (Reality Vision) or `xhttp` (the exit's XHTTP inbound; falls back to Vision if the exit has none). See "Entry → exit link". |
 | `VLESS_ENTRY_MUX` | off | `1`/`on`: Xray mux on the entry's XHTTP outbounds (never on Vision). |
 | `VLESS_ENTRY_PROBE_INTERVAL` | `1m` | The observatory's probe interval (`30s`, `1m`, `5m`...). Probes run one at a time. |
+
+**XHTTP tuning per node (JAG-7).** A node's XHTTP transport may carry `xhttp` (client-side tuning), set
+through the admin API (`PUT /admin/nodes/{id}`, `vless.transports[].xhttp`; the form has no field and
+keeps it on edit). Unset = nothing is added, clients keep their defaults. Values are numbers or
+`from-to` ranges as Xray reads them:
+
+```json
+{"type": "xhttp", "port": 8443, "path": "/<secret>", "mode": "packet-up",
+ "xhttp": {"preset": "browser",
+           "xPaddingBytes": "50-355", "scMaxEachPostBytes": "150000", "scMinPostsIntervalMs": "15",
+           "xmux": {"maxConnections": "1", "cMaxReuseTimes": "0", "hMaxRequestTimes": "0", "hMaxReusableSecs": "580-666"}}}
+```
+
+`preset: "browser"` fills what is not set: padding `50-355`, 150 KB upload chunks, xmux over one
+connection reused for about ten minutes (`580-666` s); any field set next to it wins. The tuning goes
+into the Xray configs (`xhttpSettings.extra`) and into the share link (`extra=<JSON>`, Xray's XHTTP link
+format). sing-box and Clash profiles carry no XHTTP; the Boop apps ignore the field. The node's own
+inbound must accept the chunk: `scMaxEachPostBytes` is the client's upload chunk, the inbound's limit
+is 1000000 by default. Checked with the node settings (400 `transports.xhttp.<field>` on a bad value).
 
 `?format=json`, `?format=base64`, `?format=singbox` or `?format=clash` on the subscription URL
 picks the format whatever the app.

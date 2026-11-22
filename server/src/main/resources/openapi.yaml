@@ -4222,5 +4222,30 @@ components:
         path: {type: [string, 'null']}
         mode: {type: [string, 'null']}
         host: {type: [string, 'null']}
+        xhttp:
+          anyOf:
+          - {$ref: '#/components/schemas/VlessXhttpTuning'}
+          - {type: 'null'}
       required: [type, port]
       x-kotlin: dev.jaganet.api.Vless$Transport
+    VlessXhttpTuning:
+      type: object
+      properties:
+        preset: {type: [string, 'null']}
+        xPaddingBytes: {type: [string, 'null']}
+        scMaxEachPostBytes: {type: [string, 'null']}
+        scMinPostsIntervalMs: {type: [string, 'null']}
+        xmux:
+          anyOf:
+          - {$ref: '#/components/schemas/VlessXmux'}
+          - {type: 'null'}
+      x-kotlin: dev.jaganet.api.Vless$XhttpTuning
+    VlessXmux:
+      type: object
+      properties:
+        maxConnections: {type: [string, 'null']}
+        maxConcurrency: {type: [string, 'null']}
+        cMaxReuseTimes: {type: [string, 'null']}
+        hMaxRequestTimes: {type: [string, 'null']}
+        hMaxReusableSecs: {type: [string, 'null']}
+      x-kotlin: dev.jaganet.api.Vless$Xmux

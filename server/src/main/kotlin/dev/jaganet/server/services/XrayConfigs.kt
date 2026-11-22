@@ -29,7 +29,10 @@ import kotlinx.serialization.json.putJsonObject
  *  - the local `socks` (10808) and `http` (10809) inbounds on 127.0.0.1 the apps connect their TUN to;
  *  - `routing`: UDP 443 (QUIC) to `block` (VLESS_SUB_BLOCK_QUIC), the apps' DNS queries (port 53)
  *    to Xray's DNS (`dns-out`, so they too go over DoH through the tunnel), private networks direct,
- *    everything else through the tunnel.
+ *    with VLESS_SUB_REGIONAL_DIRECT the regional rules ([RegionalRouting]: forced-through-the-tunnel
+ *    sites first, then the direct domains and `geoip:ru`; `domainStrategy` IPIfNonMatch so the
+ *    geo rule sees names too), everything else through the tunnel.
+ *  - XHTTP outbounds of a node that tunes them (`Vless.XhttpTuning`) get `xhttpSettings.extra`.
  */
 object XrayConfigs {
     const val PROXY = "proxy"
@@ -86,6 +89,8 @@ object XrayConfigs {
             if (v.transport == Vless.XHTTP) putJsonObject("xhttpSettings") {
                 put("path", v.path ?: "/")
                 put("mode", v.mode ?: "auto")
+                // Only a node that tunes its XHTTP has it; the default config stays as it was.
+                v.xhttp?.extraJson()?.takeIf { it.isNotEmpty() }?.let { put("extra", it) }
             }
         }
     }
@@ -119,11 +124,25 @@ object XrayConfigs {
             if (options.dns.isNotEmpty()) addJsonObject { put("tag", DNS_OUT); put("protocol", "dns") }
         }
         putJsonObject("routing") {
-            put("domainStrategy", "AsIs")
+            put("domainStrategy", if (options.regionalDirect) "IPIfNonMatch" else "AsIs")
             putJsonArray("rules") {
                 if (options.blockQuic) addJsonObject { put("type", "field"); put("network", "udp"); put("port", "443"); put("outboundTag", BLOCK) }
                 if (options.dns.isNotEmpty()) addJsonObject { put("type", "field"); put("port", "53"); put("outboundTag", DNS_OUT) }
                 addJsonObject { put("type", "field"); putJsonArray("ip") { VlessSubscription.PRIVATE.forEach { add(it) } }; put("outboundTag", DIRECT) }
+                if (options.regionalDirect) {
+                    // The forced sites first: Xray takes the first rule that matches, and most of them sit in a direct zone.
+                    addJsonObject {
+                        put("type", "field")
+                        putJsonArray("domain") { RegionalRouting.proxied(options).forEach { add("domain:$it") } }
+                        if (balanced) put("balancerTag", AUTO) else put("outboundTag", PROXY)
+                    }
+                    addJsonObject {
+                        put("type", "field")
+                        putJsonArray("domain") { RegionalRouting.direct(options).forEach { add("domain:$it") } }
+                        put("outboundTag", DIRECT)
+                    }
+                    addJsonObject { put("type", "field"); putJsonArray("ip") { add(RegionalRouting.GEOIP) }; put("outboundTag", DIRECT) }
+                }
                 if (balanced) addJsonObject { put("type", "field"); put("network", "tcp,udp"); put("balancerTag", AUTO) }
             }
             if (balanced) putJsonArray("balancers") {
