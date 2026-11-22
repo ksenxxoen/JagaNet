@@ -238,9 +238,9 @@ class VlessLocationsTest {
             val outbounds = doc["outbounds"]!!.jsonArray.map { it.jsonObject }
             val select = outbounds.first()
             assertEquals("selector", select["type"]!!.jsonPrimitive.content)
-            assertEquals(listOf("Авто (лучший) 🚀", "🇫🇮 Финляндия", "🇳🇱 Нидерланды"), select["outbounds"]!!.jsonArray.map { it.jsonPrimitive.content })
+            assertEquals(listOf("Самый быстрый 🚀", "🇫🇮 Финляндия", "🇳🇱 Нидерланды"), select["outbounds"]!!.jsonArray.map { it.jsonPrimitive.content })
             val auto = outbounds.single { it["type"]!!.jsonPrimitive.content == "urltest" }
-            assertEquals("Авто (лучший) 🚀", auto["tag"]!!.jsonPrimitive.content)
+            assertEquals("Самый быстрый 🚀", auto["tag"]!!.jsonPrimitive.content)
             assertEquals(listOf("🇫🇮 Финляндия", "🇳🇱 Нидерланды"), auto["outbounds"]!!.jsonArray.map { it.jsonPrimitive.content })
             // Vision only (sing-box has no XHTTP), each with Reality and the user's UUID.
             val vless = outbounds.filter { it["type"]!!.jsonPrimitive.content == "vless" }
@@ -265,8 +265,8 @@ class VlessLocationsTest {
             val y = res.bodyAsText()
             assertTrue("proxies:\n  - name: \"🇫🇮 Финляндия\"\n    type: vless\n    server: \"fi.example.com\"\n    port: 443\n    uuid: \"$uuid\"" in y, y)
             assertTrue("    reality-opts:\n      public-key: \"$pbk\"\n      short-id: \"a1b2c3d4\"" in y, y)
-            assertTrue("  - name: \"Авто (лучший) 🚀\"\n    type: url-test\n    proxies: [\"🇫🇮 Финляндия\", \"🇳🇱 Нидерланды\"]" in y, y)
-            assertTrue("    type: select\n    proxies: [\"Авто (лучший) 🚀\", \"🇫🇮 Финляндия\", \"🇳🇱 Нидерланды\"]" in y, y)
+            assertTrue("  - name: \"Самый быстрый 🚀\"\n    type: url-test\n    proxies: [\"🇫🇮 Финляндия\", \"🇳🇱 Нидерланды\"]" in y, y)
+            assertTrue("    type: select\n    proxies: [\"Самый быстрый 🚀\", \"🇫🇮 Финляндия\", \"🇳🇱 Нидерланды\"]" in y, y)
             assertTrue(y.trimEnd().endsWith("- \"MATCH,Boop VPN\""), y)
             assertFalse("xhttp" in y)
         }
@@ -386,11 +386,11 @@ class VlessLocationsTest {
     }
 
     @Test fun `a coded display name gets a leading country flag in links and Happ JSON`() = harness(mapOf("PUBLIC_URL" to "https://boop.example")) {
-        node("NL", "nl.example.com", displayName = "NL #1 ⚡")
+        node("NL", "nl.example.com", displayName = "Нидерланды #1 ⚡")
         val u = signIn("coded@example.com")
         services.vlessKeys.sync()
         val token = tokenOf(u.session.user.id)
-        val expected = listOf("🇳🇱 NL #1 ⚡", "🇳🇱 NL #1 ⚡ XHTTP")
+        val expected = listOf("🇳🇱 Нидерланды #1 ⚡", "🇳🇱 Нидерланды #1 ⚡ XHTTP")
         assertEquals(expected, names(sub(token, ua = "v2rayNG/1.10.5").bodyAsText()))
         val happ = Json.parseToJsonElement(sub(token, ua = "Happ/1.63.1").bodyAsText()).jsonArray
         assertEquals(expected, happ.drop(1).map { it.jsonObject["remarks"]!!.jsonPrimitive.content })
@@ -398,19 +398,19 @@ class VlessLocationsTest {
     }
 
     @Test fun `a display name that already starts with a flag is not doubled`() = harness(mapOf("PUBLIC_URL" to "https://boop.example")) {
-        node("NL", "nl.example.com", displayName = "🇳🇱 NL #1 ⚡")
+        node("NL", "nl.example.com", displayName = "🇳🇱 Нидерланды #1 ⚡")
         val u = signIn("flagged@example.com")
         services.vlessKeys.sync()
-        assertEquals(listOf("🇳🇱 NL #1 ⚡", "🇳🇱 NL #1 ⚡ XHTTP"), names(sub(tokenOf(u.session.user.id), ua = "v2rayNG/1.10.5").bodyAsText()))
+        assertEquals(listOf("🇳🇱 Нидерланды #1 ⚡", "🇳🇱 Нидерланды #1 ⚡ XHTTP"), names(sub(tokenOf(u.session.user.id), ua = "v2rayNG/1.10.5").bodyAsText()))
     }
 
     @Test fun `a balancing entry keeps its display name without a country flag`() = harness(mapOf("PUBLIC_URL" to "https://boop.example", "VLESS_BALANCER" to "1")) {
-        node("RU", "entry.example.com", displayName = "Авто 🚀", role = "entry", sortOrder = 0)
-        node("NL", "nl.example.com", displayName = "NL #1 ⚡", role = "exit", sortOrder = 1)
+        node("RU", "entry.example.com", displayName = "Самый надёжный 🚀", role = "entry", sortOrder = 0)
+        node("NL", "nl.example.com", displayName = "Нидерланды #1 ⚡", role = "exit", sortOrder = 1)
         val u = signIn("entry-flag@example.com")
         services.vlessKeys.sync()
         val list = names(sub(tokenOf(u.session.user.id), ua = "v2rayNG/1.10.5").bodyAsText())
-        assertEquals(listOf("Авто 🚀", "Авто 🚀 XHTTP", "🇳🇱 NL #1 ⚡", "🇳🇱 NL #1 ⚡ XHTTP"), list)
+        assertEquals(listOf("Самый надёжный 🚀", "Самый надёжный 🚀 XHTTP", "🇳🇱 Нидерланды #1 ⚡", "🇳🇱 Нидерланды #1 ⚡ XHTTP"), list)
         assertTrue(list.none { it.startsWith("🇷🇺") }, list.toString())
     }
 

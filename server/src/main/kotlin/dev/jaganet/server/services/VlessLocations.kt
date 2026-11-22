@@ -83,7 +83,7 @@ object VlessLocations {
 
     /**
      * The location name: the country flag plus the owner's display name, else the country
-     * (the owner's name for it, else the Russian one). A coded label such as "NL #1 ⚡" keeps its
+     * (the owner's name for it, else the Russian one). A coded label such as "Нидерланды #1 ⚡" keeps its
      * text after the flag. If the label already starts with a flag emoji, it is left as-is.
      * Balancing entries use [entryName] and do not get a country flag.
      */

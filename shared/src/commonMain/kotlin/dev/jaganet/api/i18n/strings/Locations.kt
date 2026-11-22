@@ -8,7 +8,7 @@ internal val locationStrings: List<S> = listOf(
     S("{name} (backup)", "{name} (запасной)", "{name} (Reserve)"),
     S("{name} (backup {n})", "{name} (запасной {n})", "{name} (Reserve {n})"),
     S("Auto", "Авто", "Auto"),
-    S("Auto (best)", "Авто (лучший)", "Auto (beste)"),
+    S("Fastest", "Самый быстрый", "Am schnellsten"),
     // Admin panel, nodes
     S("Location name", "Название локации", "Name des Standorts"),
     S("Order in the list", "Порядок в списке", "Reihenfolge in der Liste"),

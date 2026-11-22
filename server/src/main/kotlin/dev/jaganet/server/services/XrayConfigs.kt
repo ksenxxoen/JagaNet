@@ -19,7 +19,7 @@ import kotlinx.serialization.json.putJsonObject
  * import one per server and run as they are: the only way to hand them DNS and routing together
  * (https://www.happ.su/main/dev-docs/examples-of-links-and-parameters, "JSON Arrays").
  *
- * First "Авто (лучший) 🚀": every location's Vision (TCP) link behind an Xray `leastPing` balancer
+ * First "Самый быстрый 🚀": every location's Vision (TCP) link behind an Xray `leastPing` balancer
  * with the `observatory`, as the sing-box and Clash profiles have it; then one config per link of
  * the base64 list, in its order and with its names (XHTTP backups included).
  *
