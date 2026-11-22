@@ -51,6 +51,9 @@ data class DohServer(val url: String, val host: String, val port: Int, val path:
  *    so each entry carries the rules inline; the `routing` header stays consistent with them.
  *    VLESS_SUB_REGIONAL_DIRECT_EXTRA / VLESS_SUB_REGIONAL_PROXY_EXTRA: comma-separated
  *    domains added to the direct / forced lists.
+ *  - VLESS_SUB_ANNOUNCE: text shown at the top of a Happ subscription (the `announce` header,
+ *    base64-encoded). Use `\n` for line breaks, or prefix the value with `base64:`. Empty or
+ *    `off`: no header. Describe only the badges actually used on the entries.
  */
 data class SubscriptionOptions(
     val dns: List<DohServer> = DEFAULT_DNS.map { DohServer.parse(it) },
@@ -59,6 +62,8 @@ data class SubscriptionOptions(
     val regionalDirect: Boolean = false,
     val regionalDirectExtra: List<String> = emptyList(),
     val regionalProxyExtra: List<String> = emptyList(),
+    /** Plain text for Happ's `announce` header; null = do not send the header. */
+    val announce: String? = null,
 ) {
     companion object {
         val DEFAULT_DNS = listOf("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query")
@@ -74,7 +79,19 @@ data class SubscriptionOptions(
                 dns, on("VLESS_SUB_BLOCK_QUIC"), on("VLESS_SUB_XRAY_JSON"),
                 regionalDirect = env["VLESS_SUB_REGIONAL_DIRECT"]?.trim()?.lowercase() in setOf("1", "true", "on", "yes"),
                 regionalDirectExtra = names("VLESS_SUB_REGIONAL_DIRECT_EXTRA"), regionalProxyExtra = names("VLESS_SUB_REGIONAL_PROXY_EXTRA"),
+                announce = parseAnnounce(env["VLESS_SUB_ANNOUNCE"]),
             )
+        }
+
+        /** Reads VLESS_SUB_ANNOUNCE: raw text, `\n` escapes, or a `base64:` value. */
+        fun parseAnnounce(raw: String?): String? {
+            val v = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            if (v.lowercase() in setOf("0", "off", "false", "no", "none")) return null
+            val text = if (v.startsWith("base64:")) {
+                runCatching { String(Base64.getDecoder().decode(v.removePrefix("base64:").trim()), Charsets.UTF_8) }.getOrNull()
+            } else if ('\n' in v || '\r' in v) v
+            else v.replace("\\n", "\n")
+            return text?.trim()?.takeIf { it.isNotEmpty() }
         }
     }
 }
@@ -324,6 +341,10 @@ object VlessSubscription {
      * has domain and IP lists only, so the QUIC block lives in the Xray configs.
      * Null without DNS servers and without regional direct routing.
      */
+    /** Happ's `announce` header value: `base64:` plus the UTF-8 text. */
+    fun announceHeader(text: String): String =
+        "base64:" + Base64.getEncoder().encodeToString(text.toByteArray(Charsets.UTF_8))
+
     /** The `routing` header for Happ or v2RayTun; null for other clients or when that app has nothing to send. */
     fun routingHeader(userAgent: String?, options: SubscriptionOptions): String? = when (client(userAgent)) {
         Client.HAPP -> happRouting(options)

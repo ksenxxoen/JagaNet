@@ -25,6 +25,7 @@ import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Issue #41: one UUID on every VLESS node, a subscription with every location, the balancer. */
@@ -152,7 +153,7 @@ class VlessLocationsTest {
         val token = tokenOf(u.session.user.id)
         val res = sub(token, ua = "v2rayNG/1.10.5")
         assertEquals(HttpStatusCode.OK, res.status)
-        assertEquals(listOf("🇳🇱 Амстердам", "🇳🇱 Амстердам (запасной)", "🇫🇮 Финляндия", "🇫🇮 Финляндия (запасной)"), names(res.bodyAsText()))
+        assertEquals(listOf("🇳🇱 Амстердам", "🇳🇱 Амстердам XHTTP", "🇫🇮 Финляндия", "🇫🇮 Финляндия XHTTP"), names(res.bodyAsText()))
         val links = String(Base64.getDecoder().decode(res.bodyAsText())).split("\n")
         assertTrue(links.all { it.startsWith("vless://$uuid@") }, links.toString())
         assertTrue(links[0].contains("@nl.example.com:443?") && "type=tcp" in links[0] && "flow=xtls-rprx-vision" in links[0])
@@ -177,8 +178,8 @@ class VlessLocationsTest {
         assertEquals(200, b.createClient {}.get("/k/$token/vless/0.png").status.value)
         assertEquals(links, u.api.keys(listOf("vless")).vless!!.links)
         assertEquals("🇳🇱 Амстердам", u.api.keys(listOf("vless")).vless!!.name)
-        // ?lang=de names the backups in German (the country names are the owner's, in Russian).
-        assertEquals("🇫🇮 Финляндия (Reserve)", names(sub(token, "?lang=de").bodyAsText())[3])
+        // XHTTP is the transport name, the same in every language.
+        assertEquals("🇫🇮 Финляндия XHTTP", names(sub(token, "?lang=de").bodyAsText())[3])
         assertTrue(fi.id.isNotEmpty())
     }
 
@@ -286,7 +287,7 @@ class VlessLocationsTest {
         val uuid = uuidOf(u.session.user.id)
         val lines = String(Base64.getDecoder().decode(sub(tokenOf(u.session.user.id)).bodyAsText())).split("\n")
         assertEquals(Vless.links(settings(fi.host).params(uuid), "x").map { it.substringBefore('#') }, lines.map { it.substringBefore('#') })
-        assertEquals(listOf("🇫🇮 Финляндия", "🇫🇮 Финляндия (запасной)"), lines.map { java.net.URLDecoder.decode(it.substringAfter('#'), "UTF-8") })
+        assertEquals(listOf("🇫🇮 Финляндия", "🇫🇮 Финляндия XHTTP"), lines.map { java.net.URLDecoder.decode(it.substringAfter('#'), "UTF-8") })
         assertEquals(0, ctx.db.run { it.one("SELECT count(*)::int AS n FROM vless_replicas")!!.int("n") })
         assertEquals(listOf(uuid), peersOf(fi))
     }
@@ -339,7 +340,7 @@ class VlessLocationsTest {
         // The subscription: "Auto" (the entry) first, then the listed exits; the hidden exit is not there.
         val u = signIn("u@example.com")
         services.vlessKeys.sync()
-        assertEquals(listOf("⚡ Авто", "⚡ Авто (запасной)", "🇫🇮 Финляндия", "🇫🇮 Финляндия (запасной)"), names(sub(tokenOf(u.session.user.id)).bodyAsText()))
+        assertEquals(listOf("⚡ Авто", "⚡ Авто XHTTP", "🇫🇮 Финляндия", "🇫🇮 Финляндия XHTTP"), names(sub(tokenOf(u.session.user.id)).bodyAsText()))
         assertEquals("Авто", u.api.servers(listOf("vless")).servers.first { it.id == entry.id }.countryName)
 
         // An entry no more: its user leaves the exits; a node that is not an entry has no fragment.
@@ -382,5 +383,37 @@ class VlessLocationsTest {
         services.tunnels.moveDevice(u.session.deviceId, fi.id)
         assertEquals(listOf(again), peersOf(fi).filter { it == again })
         assertEquals(listOf(again), peersOf(nl).filter { it == again })
+    }
+
+    @Test fun `a coded display name is used as-is and the XHTTP backup keeps that name`() = harness(mapOf("PUBLIC_URL" to "https://boop.example")) {
+        node("NL", "nl.example.com", displayName = "NL #1 ⚡")
+        val u = signIn("coded@example.com")
+        services.vlessKeys.sync()
+        val token = tokenOf(u.session.user.id)
+        assertEquals(listOf("NL #1 ⚡", "NL #1 ⚡ XHTTP"), names(sub(token, ua = "v2rayNG/1.10.5").bodyAsText()))
+        assertEquals(listOf("NL"), u.api.servers(listOf("amneziawg", "vless")).servers.filter { Protocols.VLESS in it.protocols }.map { it.countryCode })
+    }
+
+    @Test fun `VLESS_SUB_ANNOUNCE is sent as a base64 announce header and omitted when off`() {
+        val text = "⚡ — low ping\nTorrent✅ — only on marked servers"
+        harness(mapOf("PUBLIC_URL" to "https://boop.example", "VLESS_SUB_ANNOUNCE" to "⚡ — low ping\nTorrent✅ — only on marked servers")) {
+            node("FI", "fi.example.com")
+            val u = signIn("announce@example.com")
+            services.vlessKeys.sync()
+            val expected = VlessSubscription.announceHeader(text)
+            assertEquals(expected, sub(tokenOf(u.session.user.id), ua = "Happ/1.63.1").headers["announce"])
+            assertEquals(expected, sub(tokenOf(u.session.user.id), ua = "v2rayNG/1.10.5").headers["announce"])
+        }
+        harness(mapOf("PUBLIC_URL" to "https://boop.example", "VLESS_SUB_ANNOUNCE" to "off")) {
+            node("FI", "fi.example.com")
+            val u = signIn("announce-off@example.com")
+            services.vlessKeys.sync()
+            assertNull(sub(tokenOf(u.session.user.id), ua = "Happ/1.63.1").headers["announce"])
+        }
+        assertEquals(text, dev.jaganet.server.services.SubscriptionOptions.parseAnnounce("⚡ — low ping\\nTorrent✅ — only on marked servers"))
+        assertEquals("hello", dev.jaganet.server.services.SubscriptionOptions.parseAnnounce("base64:" + Base64.getEncoder().encodeToString("hello".toByteArray())))
+        assertNull(dev.jaganet.server.services.SubscriptionOptions.parseAnnounce("off"))
+        assertNull(dev.jaganet.server.services.SubscriptionOptions.parseAnnounce(""))
+        assertNull(dev.jaganet.server.services.SubscriptionOptions.parseAnnounce(null))
     }
 }

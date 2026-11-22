@@ -230,7 +230,7 @@ class VlessKeys(private val ctx: Ctx, private val ent: Entitlements, private val
         /**
          * vless:// links of one location, Vision (TCP) first, then XHTTP, then anything else in the
          * node's order. The first is named after the location, the next ones are its backups
-         * ("🇫🇮 Финляндия (запасной)").
+         * ("🇫🇮 Финляндия XHTTP").
          */
         fun linksOf(p: Vless.ServerParams, name: String, lang: Lang = Lang.DEFAULT): List<String> =
             VlessLocation("", name, null, p).links(lang)

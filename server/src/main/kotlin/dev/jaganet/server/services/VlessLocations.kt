@@ -25,7 +25,7 @@ data class VlessLocation(
 ) {
     /** The location's variants in the apps' order, each with its name: the first is [name], the next are backups. */
     fun named(lang: Lang = Lang.DEFAULT): List<Pair<Vless.Variant, String>> =
-        VlessLocations.ordered(params.variants).mapIndexed { i, v -> v to VlessLocations.variantName(name, i, lang) }
+        VlessLocations.ordered(params.variants).mapIndexed { i, v -> v to VlessLocations.variantName(name, v, i, lang) }
 
     fun links(lang: Lang = Lang.DEFAULT): List<String> = named(lang).map { (v, n) -> Vless.link(params.uuid, v, n) }
 }
@@ -61,17 +61,33 @@ object VlessLocations {
     fun ordered(variants: List<Vless.Variant>): List<Vless.Variant> =
         variants.sortedBy { if (it.transport == Vless.TCP && it.flow == Vless.FLOW_VISION) 0 else if (it.transport == Vless.XHTTP) 1 else 2 }
 
-    /** "🇫🇮 Финляндия", then "🇫🇮 Финляндия (запасной)", "🇫🇮 Финляндия (запасной 2)"… */
-    fun variantName(name: String, index: Int, lang: Lang = Lang.DEFAULT): String = when (index) {
-        0 -> name
-        1 -> I18n.tr(lang, "{name} (backup)", "name" to name)
-        else -> I18n.tr(lang, "{name} (backup {n})", "name" to name, "n" to index)
+    /**
+     * The first variant keeps [name]. An XHTTP backup is "[name] XHTTP" (or "[name] XHTTP 2"…),
+     * the transport name, not translated. Other backup transports keep the older
+     * "{name} (backup)" / "{name} (backup n)" suffix, which `?lang=` still translates.
+     */
+    fun variantName(name: String, variant: Vless.Variant, index: Int, lang: Lang = Lang.DEFAULT): String {
+        if (index == 0) return name
+        if (variant.transport == Vless.XHTTP) {
+            return if (index == 1) "$name XHTTP" else "$name XHTTP $index"
+        }
+        return when (index) {
+            1 -> I18n.tr(lang, "{name} (backup)", "name" to name)
+            else -> I18n.tr(lang, "{name} (backup {n})", "name" to name, "n" to index)
+        }
     }
 
-    /** "🇫🇮 Финляндия": the flag and the owner's display name, else the country (the owner's name for it, else the Russian one). */
+    /** A label like "NL #1 ⚡" already includes the country code; the apps draw the flag from the country code. */
+    private val CODED_LABEL = Regex("^[A-Z]{2} #\\d+")
+
+    /**
+     * The location name: the owner's display name when it is a coded label ("NL #1 ⚡"),
+     * otherwise the flag and the owner's display name, else the country (the owner's name for it, else the Russian one).
+     */
     fun displayName(server: Row): String {
         val cc = server.str("country_code").trim()
         val label = server.strOrNull("display_name") ?: server.strOrNull("country_name") ?: Countries.ru(cc)
+        if (CODED_LABEL.containsMatchIn(label)) return label
         return listOfNotNull(VlessKeys.flag(cc), label).joinToString(" ")
     }
 

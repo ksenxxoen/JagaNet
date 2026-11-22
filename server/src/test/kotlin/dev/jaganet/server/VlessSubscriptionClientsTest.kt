@@ -126,7 +126,7 @@ class VlessSubscriptionClientsTest {
             val configs = Json.parseToJsonElement(res.bodyAsText()).jsonArray.map { it.jsonObject }
             // "Авто (лучший)", then the base64 list's links in its order and names.
             assertEquals(
-                listOf("Авто (лучший)", "🇫🇮 Финляндия", "🇫🇮 Финляндия (запасной)", "🇳🇱 Нидерланды", "🇳🇱 Нидерланды (запасной)"),
+                listOf("Авто (лучший)", "🇫🇮 Финляндия", "🇫🇮 Финляндия XHTTP", "🇳🇱 Нидерланды", "🇳🇱 Нидерланды XHTTP"),
                 configs.map { it.str("remarks") },
             )
             for (c in configs) {
