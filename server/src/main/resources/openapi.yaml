@@ -2636,13 +2636,16 @@ components:
         ips24h:
           type: array
           items: {$ref: '#/components/schemas/CtlIp'}
+        activeConnections:
+          type: array
+          items: {$ref: '#/components/schemas/CtlIp'}
         traffic24h: {type: integer, format: int64}
         trafficTotal: {type: integer, format: int64}
         uuid: {type: string}
         tokenHint: {type: string}
         rekeyPending: {type: boolean}
         suspended: {type: boolean}
-      required: [id, name, kind, platform, createdAt, online, ips24h, traffic24h, trafficTotal, rekeyPending, suspended]
+      required: [id, name, kind, platform, createdAt, online, ips24h, activeConnections, traffic24h, trafficTotal, rekeyPending, suspended]
       x-kotlin: dev.jaganet.server.services.CtlDevice
     CtlIp:
       type: object
@@ -2651,6 +2654,7 @@ components:
         lastSeen: {type: string}
         deviceId: {type: string}
         serverId: {type: string}
+        serverName: {type: string}
       required: [ip, lastSeen]
       x-kotlin: dev.jaganet.server.services.CtlIp
     CtlNoteReq:
@@ -2830,11 +2834,12 @@ components:
         blocked: {type: boolean}
         devices: {type: integer, format: int32}
         online: {type: boolean}
+        devicesActive24h: {type: integer, format: int32}
         ips24h: {type: integer, format: int32}
         sharing: {type: boolean}
         note: {type: string}
         matched: {type: string}
-      required: [id, email, role, createdAt, state, blocked, devices, online, ips24h, sharing]
+      required: [id, email, role, createdAt, state, blocked, devices, online, devicesActive24h, ips24h, sharing]
       x-kotlin: dev.jaganet.server.services.CtlUserRow
     CtlUsersRes:
       type: object

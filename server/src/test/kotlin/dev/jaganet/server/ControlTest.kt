@@ -346,24 +346,36 @@ class ControlTest {
         // A new agent reports the endpoint and the online IPs; an old one neither (still accepted).
         services.nodes.report(awgToken, NodeReportReq("amneziawg", listOf(NodePeerCounter(key(11), rx = 10, tx = 20, lastHandshake = clock.epochSecond, endpoint = "198.51.100.4:51820"))))
         services.nodes.report(vToken, NodeReportReq("vless", listOf(NodePeerCounter(uuid, rx = 5, tx = 6, lastHandshake = clock.epochSecond,
-            ips = mapOf("203.0.113.50" to clock.epochSecond, "2001:db8::7" to clock.epochSecond - 30, "junk" to clock.epochSecond)))))
+            ips = mapOf("203.0.113.50" to clock.epochSecond, "2001:db8::7" to clock.epochSecond - 30,
+                "192.0.2.10" to clock.epochSecond - 600, "junk" to clock.epochSecond)))))
         val old = http(HttpMethod.Post, "/v1/node/report", awgToken, """{"protocol":"amneziawg","peers":[{"publicKey":"${key(11)}","rx":11,"tx":21,"lastHandshake":${clock.epochSecond}}],"system":{"cpu":0.1}}""")
         assertEquals(HttpStatusCode.OK, old.status)
         services.nodes.report(awgToken, NodeReportReq("amneziawg", listOf(NodePeerCounter(key(11), rx = 12, tx = 22, lastHandshake = clock.epochSecond, endpoint = "198.51.100.4:51820")), NodeSystem(agent = "2")))
         services.traffic.collect()
 
         val card = services.control.card(uid)
-        assertEquals(setOf("198.51.100.4", "203.0.113.50", "2001:db8::7"), card.ips24h.map { it.ip }.toSet())
-        assertEquals(3, card.user.ips24h)
+        assertEquals(setOf("198.51.100.4", "203.0.113.50", "2001:db8::7", "192.0.2.10"), card.ips24h.map { it.ip }.toSet())
+        assertEquals(4, card.user.ips24h)
+        assertEquals(2, card.user.devicesActive24h)
+        assertEquals(2, card.devicesActive24h)
         val vless = card.devices.single { it.kind == "vless" }
         assertEquals(uuid, vless.uuid)
         assertEquals("203.0.113.50", vless.lastIp)
         assertEquals(vId, vless.serverId)
+        assertEquals(setOf("203.0.113.50", "2001:db8::7"), vless.activeConnections.map { it.ip }.toSet())
+        assertTrue(vless.activeConnections.all { it.serverId == vId && it.serverName == "Finland" })
+        assertEquals(setOf("203.0.113.50", "2001:db8::7", "192.0.2.10"), vless.ips24h.map { it.ip }.toSet())
+        val stale = vless.ips24h.single { it.ip == "192.0.2.10" }
+        assertEquals("Finland", stale.serverName)
+        assertTrue(stale.ip !in vless.activeConnections.map { it.ip }.toSet())
         val dev = card.devices.single { it.kind == "device" }
         assertEquals("198.51.100.4", dev.lastIp)
         assertEquals(34, dev.trafficTotal)
         assertTrue(dev.online)
-        assertFalse(card.user.sharing) // 3 addresses, threshold 5
+        assertEquals(listOf("198.51.100.4"), dev.activeConnections.map { it.ip })
+        assertEquals("Austria", dev.activeConnections.single().serverName)
+        assertEquals(awgId, dev.activeConnections.single().serverId)
+        assertFalse(card.user.sharing) // 4 addresses, threshold 5
 
         // Search: e-mail, Telegram id, UUID, key link (whole or token), IP, user id.
         val token = ctx.db.run { it.one("SELECT link_token FROM vless_keys WHERE user_id=?::uuid", uid)!!.str("link_token") }
@@ -394,7 +406,9 @@ class ControlTest {
         // A week later the addresses are cleaned up.
         clock = clock.plus(Duration.ofDays(8))
         ctx.db.run { ClientIps.prune(it, clock) }
-        assertEquals(0, services.control.card(uid).ips24h.size)
+        val later = services.control.card(uid)
+        assertEquals(0, later.ips24h.size)
+        assertTrue(later.devices.all { it.activeConnections.isEmpty() })
     }
 
     @Test fun `the dashboard counts active, ending soon and blocked users`() = harness {

@@ -171,9 +171,11 @@ class Control(
             else -> "free"
         }
         val dev = sql.one(
-            """SELECT count(*)::int AS n, count(*) FILTER (WHERE t.last_seen_at > ?)::int AS online
+            """SELECT count(*)::int AS n,
+                      count(*) FILTER (WHERE t.last_seen_at > ?)::int AS online,
+                      count(*) FILTER (WHERE t.last_seen_at > ?)::int AS active24h
                  FROM devices d LEFT JOIN tunnels t ON t.device_id = d.id WHERE d.user_id=?::uuid AND d.removed_at IS NULL AND d.service IS NULL""",
-            now.minus(ONLINE), id,
+            now.minus(ONLINE), now.minus(DAY), id,
         )!!
         val ips = ips24hCount(sql, id, now)
         return CtlUserRow(
@@ -183,6 +185,7 @@ class Control(
             accessUntil = if (owner) null else access?.toString() ?: e.expiresAt,
             paidUntil = paidUntil(sql, id, now)?.toString(),
             blocked = u["blocked_at"] != null, devices = dev.int("n"), online = dev.int("online") > 0,
+            devicesActive24h = dev.int("active24h"),
             ips24h = ips, sharing = ips > threshold, note = u.strOrNull("note"), matched = matched,
         )
     }
@@ -210,10 +213,16 @@ class Control(
             "SELECT o.*, u.email FROM orders o JOIN users u ON u.id = o.user_id WHERE o.user_id=?::uuid ORDER BY o.created_at DESC LIMIT 200", id,
         ).map(::payment)
         val ips = sql.query(
-            """SELECT c.ip, c.device_id, c.server_id, c.last_seen FROM client_ips c JOIN devices d ON d.id = c.device_id
+            """SELECT c.ip, c.device_id, c.server_id, s.name AS server_name, c.last_seen
+                 FROM client_ips c JOIN devices d ON d.id = c.device_id LEFT JOIN servers s ON s.id = c.server_id
                 WHERE d.user_id=?::uuid AND c.last_seen > ? ORDER BY c.last_seen DESC LIMIT 500""",
             id, now.minus(DAY),
-        ).map { CtlIp(it.str("ip"), it.instant("last_seen").toString(), it.str("device_id"), it.strOrNull("server_id")) }
+        ).map {
+            CtlIp(
+                it.str("ip"), it.instant("last_seen").toString(), it.str("device_id"),
+                it.strOrNull("server_id"), it.strOrNull("server_name"),
+            )
+        }
         val devices = devices(sql, id, now, ips, u["blocked_at"] != null)
         val ref = u.strOrNull("referred_by")?.let { rid ->
             sql.one(
@@ -291,12 +300,14 @@ class Control(
             r["key_id"] != null -> "key"
             else -> "device"
         }
+        val deviceIps = ips.filter { it.deviceId == r.str("id") }
         CtlDevice(
             id = r.str("id"), name = r.str("name"), kind = kind, platform = r.str("platform"), createdAt = r.instant("created_at").toString(),
             protocol = r.strOrNull("protocol"), serverId = r.strOrNull("server_id"), serverName = r.strOrNull("server_name"), address = r.strOrNull("address"),
             lastSeenAt = seen?.toString(), online = seen != null && Duration.between(seen, now) < ONLINE && !blocked,
             lastIp = r.strOrNull("last_ip"), lastIpAt = r.instantOrNull("last_ip_at")?.toString(),
-            ips24h = ips.filter { it.deviceId == r.str("id") },
+            ips24h = deviceIps,
+            activeConnections = deviceIps.filter { Instant.parse(it.lastSeen) > now.minus(ONLINE) },
             traffic24h = r.long("day"), trafficTotal = r.long("total"),
             uuid = r.strOrNull("uuid") ?: r.strOrNull("peer_key")?.takeIf { r.strOrNull("protocol") == Protocols.VLESS },
             tokenHint = r.strOrNull("token")?.take(6)?.plus("…"),

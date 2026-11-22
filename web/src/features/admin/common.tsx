@@ -135,7 +135,7 @@ export function UserLink({ id, children }: { id: string; children: React.ReactNo
   );
 }
 
-/** ctlUserRows(): e-mail or Telegram, state, plan, until, devices, addresses in 24 hours. */
+/** ctlUserRows(): e-mail or Telegram, state, plan, until, devices, seen in 24 hours, addresses in 24 hours. */
 export function UserTable({
   users,
   empty,
@@ -194,6 +194,14 @@ export function UserTable({
           {u.online ? <Level tone="ok">{t("online")}</Level> : null}
         </span>
       ),
+    },
+    {
+      key: "active24h",
+      header: t("Seen 24 h"),
+      title: t("Devices and keys seen in 24 hours"),
+      optional: true,
+      sort: (u) => u.devicesActive24h,
+      cell: (u) => u.devicesActive24h,
     },
     {
       key: "ips",
