@@ -343,7 +343,7 @@ object VlessSubscription {
             put("DomesticDNSType", "DoH")
             put("DomesticDNSDomain", domestic.url)
             put("DomesticDNSIP", if (domestic.isIp) domestic.host else "")
-            putJsonObject("DnsHosts") {}
+            putJsonObject("DnsHosts") { XrayConfigs.dnsHosts(options).forEach { (name, ip) -> put(name, ip) } }
             putJsonArray("DirectSites") { if (options.regionalDirect) RegionalRouting.direct(options).forEach { add("domain:$it") } }
             putJsonArray("DirectIp") { PRIVATE.forEach { add(it) }; if (options.regionalDirect) add(RegionalRouting.GEOIP) }
             putJsonArray("ProxySites") { if (options.regionalDirect) RegionalRouting.proxied(options).forEach { add("domain:$it") } }
