@@ -24,11 +24,15 @@ import kotlinx.serialization.json.putJsonObject
  * the base64 list, in its order and with its names (XHTTP backups included).
  *
  * Each config has:
- *  - `dns`: the remote DNS of VLESS_SUB_DNS, DNS over HTTPS; Xray sends it through the tunnel
- *    (the first outbound, or the balancer), real addresses, no fake DNS, IPv4 like the profiles;
+ *  - `dns`: DNS over HTTPS from VLESS_SUB_DNS, `queryStrategy` UseIPv4, no fake DNS. `hosts`
+ *    bootstraps DoH names (cloudflare-dns.com, dns.google) and self-maps the servers' IPs.
+ *    With VLESS_SUB_REGIONAL_DIRECT and at least two servers, the second (domestic) is used
+ *    only for the regional direct domains and goes direct; the first (remote) is the default
+ *    and goes through the tunnel, so other names are not resolved on the direct path;
  *  - the local `socks` (10808) and `http` (10809) inbounds on 127.0.0.1 the apps connect their TUN to;
- *  - `routing`: UDP 443 (QUIC) to `block` (VLESS_SUB_BLOCK_QUIC), the apps' DNS queries (port 53)
- *    to Xray's DNS (`dns-out`, so they too go over DoH through the tunnel), private networks direct,
+ *  - `routing`: UDP 443 (QUIC) to `block` (VLESS_SUB_BLOCK_QUIC), DoH of the remote server to
+ *    the tunnel and (with regional direct) DoH of the domestic server direct, the apps' DNS
+ *    queries (port 53) to Xray's DNS (`dns-out`), private networks direct,
  *    with VLESS_SUB_REGIONAL_DIRECT the regional rules ([RegionalRouting]: forced-through-the-tunnel
  *    sites first, then the direct domains and `geoip:ru`; `domainStrategy` IPIfNonMatch so the
  *    geo rule sees names too), everything else through the tunnel.
@@ -95,11 +99,51 @@ object XrayConfigs {
         }
     }
 
+    /** Bootstrap and self-maps for DoH, as Happ puts in `dns.hosts`. */
+    fun dnsHosts(options: SubscriptionOptions): Map<String, String> {
+        val hosts = linkedMapOf(
+            "1.1.1.1" to "1.1.1.1",
+            "8.8.8.8" to "8.8.8.8",
+            "cloudflare-dns.com" to "1.1.1.1",
+            "dns.google" to "8.8.8.8",
+        )
+        options.dns.filter { it.isIp }.forEach { hosts[it.host] = it.host }
+        return hosts
+    }
+
+    /**
+     * True when regional direct routing can split DNS: the first VLESS_SUB_DNS server is remote
+     * (through the tunnel), the second is domestic (direct, only for the regional domains).
+     */
+    fun splitDns(options: SubscriptionOptions): Boolean =
+        options.regionalDirect && options.dns.size >= 2 && dohRouteIp(options.dns[0]) != null &&
+            dohRouteIp(options.dns[1]) != null && dohRouteIp(options.dns[0]) != dohRouteIp(options.dns[1])
+
+    /** The IPv4/IPv6 a DoH server is reached at, so routing can send it direct or through the tunnel. */
+    fun dohRouteIp(s: DohServer): String? = when {
+        s.isIp -> s.host
+        s.host.equals("cloudflare-dns.com", ignoreCase = true) -> "1.1.1.1"
+        s.host.equals("dns.google", ignoreCase = true) -> "8.8.8.8"
+        else -> null
+    }
+
     private fun config(remarks: String, proxies: List<JsonObject>, balanced: Boolean, options: SubscriptionOptions): JsonObject = buildJsonObject {
         put("remarks", remarks)
         putJsonObject("log") { put("loglevel", "warning") }
         if (options.dns.isNotEmpty()) putJsonObject("dns") {
-            putJsonArray("servers") { options.dns.forEach { add(it.url) } }
+            putJsonObject("hosts") { dnsHosts(options).forEach { (name, ip) -> put(name, ip) } }
+            putJsonArray("servers") {
+                if (splitDns(options)) {
+                    val domestic = options.dns[1]
+                    addJsonObject {
+                        put("address", domestic.url)
+                        putJsonArray("domains") { RegionalRouting.direct(options).forEach { add("domain:$it") } }
+                    }
+                    add(options.dns.first().url)
+                } else {
+                    options.dns.forEach { add(it.url) }
+                }
+            }
             put("queryStrategy", "UseIPv4")
         }
         putJsonArray("inbounds") {
@@ -127,7 +171,20 @@ object XrayConfigs {
             put("domainStrategy", if (options.regionalDirect) "IPIfNonMatch" else "AsIs")
             putJsonArray("rules") {
                 if (options.blockQuic) addJsonObject { put("type", "field"); put("network", "udp"); put("port", "443"); put("outboundTag", BLOCK) }
-                if (options.dns.isNotEmpty()) addJsonObject { put("type", "field"); put("port", "53"); put("outboundTag", DNS_OUT) }
+                if (options.dns.isNotEmpty()) {
+                    if (splitDns(options)) {
+                        val remoteIp = dohRouteIp(options.dns.first())!!
+                        val domesticIp = dohRouteIp(options.dns[1])!!
+                        addJsonObject {
+                            put("type", "field"); putJsonArray("ip") { add(remoteIp) }; put("port", "443")
+                            if (balanced) put("balancerTag", AUTO) else put("outboundTag", PROXY)
+                        }
+                        addJsonObject {
+                            put("type", "field"); putJsonArray("ip") { add(domesticIp) }; put("port", "443"); put("outboundTag", DIRECT)
+                        }
+                    }
+                    addJsonObject { put("type", "field"); put("port", "53"); put("outboundTag", DNS_OUT) }
+                }
                 addJsonObject { put("type", "field"); putJsonArray("ip") { VlessSubscription.PRIVATE.forEach { add(it) } }; put("outboundTag", DIRECT) }
                 if (options.regionalDirect) {
                     // The forced sites first: Xray takes the first rule that matches, and most of them sit in a direct zone.

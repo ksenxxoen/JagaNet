@@ -133,6 +133,10 @@ class VlessSubscriptionClientsTest {
                 val dns = c["dns"]!!.jsonObject
                 assertEquals(SubscriptionOptions.DEFAULT_DNS, dns.strs("servers"))
                 assertEquals("UseIPv4", dns.str("queryStrategy"))
+                assertEquals("1.1.1.1", dns["hosts"]!!.jsonObject.str("cloudflare-dns.com"))
+                assertEquals("8.8.8.8", dns["hosts"]!!.jsonObject.str("dns.google"))
+                assertEquals("1.1.1.1", dns["hosts"]!!.jsonObject.str("1.1.1.1"))
+                assertEquals("8.8.8.8", dns["hosts"]!!.jsonObject.str("8.8.8.8"))
                 assertFalse("fakedns" in c.toString().lowercase())
                 val outbounds = c.arr("outbounds")
                 assertEquals("proxy", outbounds.first().str("tag"))
@@ -227,7 +231,14 @@ class VlessSubscriptionClientsTest {
             val configs = Json.parseToJsonElement(res.bodyAsText()).jsonArray.map { it.jsonObject }
             assertEquals("Авто (лучший)", configs.first().str("remarks"))
             for (c in configs) {
-                assertEquals(SubscriptionOptions.DEFAULT_DNS, c["dns"]!!.jsonObject.strs("servers"))
+                val dns = c["dns"]!!.jsonObject
+                assertEquals("UseIPv4", dns.str("queryStrategy"))
+                assertEquals("1.1.1.1", dns["hosts"]!!.jsonObject.str("cloudflare-dns.com"))
+                val servers = dns["servers"]!!.jsonArray
+                assertEquals("https://8.8.8.8/dns-query", servers[0].jsonObject.str("address"))
+                assertTrue("domain:ru" in servers[0].jsonObject.strs("domains"))
+                assertFalse(servers[0].jsonObject.strs("domains").any { "4pda" in it })
+                assertEquals("https://1.1.1.1/dns-query", servers[1].jsonPrimitive.content)
                 val routing = c["routing"]!!.jsonObject
                 assertEquals("IPIfNonMatch", routing.str("domainStrategy"))
                 val domains = routing.arr("rules").map { it["domain"]?.jsonArray?.map { d -> d.jsonPrimitive.content } ?: emptyList() }
@@ -235,6 +246,8 @@ class VlessSubscriptionClientsTest {
                 assertTrue(domains.any { "domain:4pda.ru" in it })
                 assertTrue(routing.arr("rules").any { "domain:ru" in (it["domain"]?.jsonArray?.map { d -> d.jsonPrimitive.content } ?: emptyList()) && it.str("outboundTag") == "direct" })
                 assertTrue(ips.any { "geoip:ru" in it })
+                assertTrue(routing.arr("rules").any { "1.1.1.1" in (it["ip"]?.jsonArray?.map { d -> d.jsonPrimitive.content } ?: emptyList()) && it["port"]?.jsonPrimitive?.content == "443" })
+                assertTrue(routing.arr("rules").any { "8.8.8.8" in (it["ip"]?.jsonArray?.map { d -> d.jsonPrimitive.content } ?: emptyList()) && it["port"]?.jsonPrimitive?.content == "443" && it.str("outboundTag") == "direct" })
             }
             if (VlessSubscription.client(ua) == VlessSubscription.Client.HAPP) {
                 val profile = Json.parseToJsonElement(String(Base64.getDecoder().decode(res.headers["routing"]!!.removePrefix("happ://routing/onadd/")))).jsonObject
@@ -242,6 +255,7 @@ class VlessSubscriptionClientsTest {
                 assertTrue("domain:4pda.ru" in profile.strs("ProxySites"))
                 assertTrue("domain:ru" in profile.strs("DirectSites"))
                 assertTrue("geoip:ru" in profile.strs("DirectIp"))
+                assertEquals("1.1.1.1", profile["DnsHosts"]!!.jsonObject.str("cloudflare-dns.com"))
             } else {
                 val routing = Json.parseToJsonElement(String(Base64.getDecoder().decode(res.headers["routing"]!!))).jsonObject
                 assertEquals("IPIfNonMatch", routing.str("domainStrategy"))

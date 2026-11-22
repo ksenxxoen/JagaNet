@@ -3,6 +3,7 @@ package dev.jaganet.server
 import dev.jaganet.api.Protocols
 import dev.jaganet.api.Vless
 import dev.jaganet.api.i18n.Lang
+import dev.jaganet.server.services.DohServer
 import dev.jaganet.server.services.RegionalRouting
 import dev.jaganet.server.services.SubscriptionOptions
 import dev.jaganet.server.services.VlessLocation
@@ -145,6 +146,8 @@ class RegionalRoutingTest {
         assertTrue("domain:ru" in happ.strs("DirectSites"))
         assertTrue("geoip:ru" in happ.strs("DirectIp") && "10.0.0.0/8" in happ.strs("DirectIp"))
         assertTrue("domain:4pda.ru" in happ.strs("ProxySites"))
+        assertEquals("1.1.1.1", happ["DnsHosts"]!!.jsonObject["cloudflare-dns.com"]!!.jsonPrimitive.content)
+        assertEquals("8.8.8.8", happ["DnsHosts"]!!.jsonObject["dns.google"]!!.jsonPrimitive.content)
         val off = Json.parseToJsonElement(String(Base64.getDecoder().decode(VlessSubscription.happRouting(SubscriptionOptions())!!.removePrefix("happ://routing/onadd/")))).jsonObject
         assertEquals(emptyList(), off.strs("DirectSites"))
         assertEquals("AsIs", off["DomainStrategy"]!!.jsonPrimitive.content)
@@ -162,6 +165,46 @@ class RegionalRoutingTest {
         assertEquals(VlessSubscription.v2rayTunRouting(on), VlessSubscription.routingHeader("v2RayTun/5.23.74", on))
         assertNull(VlessSubscription.routingHeader("v2rayNG/1.10.5", on))
         assertNull(VlessSubscription.routingHeader(null, on))
+    }
+
+    @Test fun `Xray config - DNS hosts, domestic DoH for regional names, remote DoH through the tunnel`() {
+        val offDns = configs(SubscriptionOptions()).first()["dns"]!!.jsonObject
+        assertEquals(SubscriptionOptions.DEFAULT_DNS, offDns.strs("servers"))
+        assertEquals("UseIPv4", offDns["queryStrategy"]!!.jsonPrimitive.content)
+        val hosts = offDns["hosts"]!!.jsonObject
+        assertEquals("1.1.1.1", hosts["cloudflare-dns.com"]!!.jsonPrimitive.content)
+        assertEquals("8.8.8.8", hosts["dns.google"]!!.jsonPrimitive.content)
+        assertEquals("1.1.1.1", hosts["1.1.1.1"]!!.jsonPrimitive.content)
+        assertEquals("8.8.8.8", hosts["8.8.8.8"]!!.jsonPrimitive.content)
+
+        for (c in configs(on)) {
+            val dns = c["dns"]!!.jsonObject
+            assertEquals("UseIPv4", dns["queryStrategy"]!!.jsonPrimitive.content)
+            assertEquals("1.1.1.1", dns["hosts"]!!.jsonObject["cloudflare-dns.com"]!!.jsonPrimitive.content)
+            val servers = dns["servers"]!!.jsonArray
+            assertEquals(2, servers.size)
+            val domestic = servers[0].jsonObject
+            assertEquals("https://8.8.8.8/dns-query", domestic["address"]!!.jsonPrimitive.content)
+            val names = domestic.strs("domains")
+            assertTrue("domain:ru" in names && "domain:sberbank.com" in names && "domain:ipify.org" in names, names.toString())
+            assertTrue(names.none { "4pda" in it || "habr.com" in it })
+            assertEquals("https://1.1.1.1/dns-query", servers[1].jsonPrimitive.content)
+
+            val rules = c["routing"]!!.jsonObject.arr("rules")
+            val remote = rules.indexOfFirst { r -> r["ip"]?.jsonArray?.any { it.jsonPrimitive.content == "1.1.1.1" } == true && r["port"]?.jsonPrimitive?.content == "443" }
+            val domesticRule = rules.indexOfFirst { r -> r["ip"]?.jsonArray?.any { it.jsonPrimitive.content == "8.8.8.8" } == true && r["port"]?.jsonPrimitive?.content == "443" }
+            assertTrue(remote >= 0 && domesticRule == remote + 1, "DoH routes $remote $domesticRule")
+            assertEquals("direct", rules[domesticRule]["outboundTag"]!!.jsonPrimitive.content)
+            val balanced = c["balancers"] != null || c["routing"]!!.jsonObject["balancers"] != null
+            if (balanced) assertEquals("auto", rules[remote]["balancerTag"]!!.jsonPrimitive.content)
+            else assertEquals("proxy", rules[remote]["outboundTag"]!!.jsonPrimitive.content)
+        }
+
+        val one = on.copy(dns = listOf(DohServer.parse("https://1.1.1.1/dns-query")))
+        assertFalse(XrayConfigs.splitDns(one))
+        val oneServers = configs(one).first()["dns"]!!.jsonObject["servers"]!!.jsonArray
+        assertEquals(1, oneServers.size)
+        assertEquals("https://1.1.1.1/dns-query", oneServers[0].jsonPrimitive.content)
     }
 
     // ---- XHTTP tuning ----
