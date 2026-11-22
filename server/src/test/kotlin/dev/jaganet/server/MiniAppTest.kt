@@ -439,17 +439,17 @@ class MiniAppTest {
         val bot = bot(tg)
         bot.handle(tgMessage(601, "/start"))
         val menu = tg.sent("sendMessage").last()
-        assertEquals(listOf("https://boop.example/tg/app"), menu.webApps())
-        val first = menu["reply_markup"]!!.jsonObject["inline_keyboard"]!!.jsonArray.first().jsonArray.single().jsonObject
-        assertEquals("📱 Открыть Boop", first["text"]!!.jsonPrimitive.content)
+        assertTrue(menu.webApps().isEmpty(), menu.toString())
+        assertTrue("Открыть Boop" !in menu.toString())
+        assertTrue("Меню" in menu.replyButtons())
         bot.prepare()
         val mb = tg.sent("setChatMenuButton").single()["menu_button"]!!.jsonObject
         assertEquals("web_app", mb["type"]!!.jsonPrimitive.content)
         assertEquals("Открыть", mb["text"]!!.jsonPrimitive.content)
         assertEquals("https://boop.example/tg/app", mb["web_app"]!!.jsonObject["url"]!!.jsonPrimitive.content)
-        // Status and the keys message carry it once, the reminder opens the payment screen.
+        // Status and reminders no longer carry an Open Boop button; the mini app stays on the chat menu button.
         bot.handle(tgMessage(601, "/status"))
-        assertEquals(1, tg.sent("sendMessage").last().webApps().size)
+        assertTrue(tg.sent("sendMessage").last().webApps().isEmpty())
         val uid = ctx.db.run { it.one("SELECT id::text AS id FROM users WHERE telegram_id=601") }!!.str("id")
         ctx.db.run {
             it.exec(
@@ -458,7 +458,8 @@ class MiniAppTest {
             )
         }
         assertEquals(1, bot.remind())
-        assertEquals(listOf("https://boop.example/tg/app#/pay"), tg.sent("sendMessage").last().webApps())
+        assertTrue(tg.sent("sendMessage").last().webApps().isEmpty())
+        assertTrue("Продлить" in tg.sent("sendMessage").last()["reply_markup"].toString())
         // /start devices opens the devices screen of the bot.
         bot.handle(tgMessage(601, "/start devices"))
         assertTrue(tg.texts(601).last().startsWith("📱 Устройства"), tg.texts(601).last())
@@ -495,7 +496,8 @@ class MiniAppTest {
         val notes = tg.texts(603).filter { "новое устройство" in it }
         assertEquals(1, notes.size, tg.texts(603).toString())
         assertTrue("Pixel" in notes.single(), notes.single())
-        assertEquals(listOf("https://boop.example/tg/app#/devices"), tg.sent("sendMessage").last().webApps())
+        assertTrue(tg.sent("sendMessage").last().webApps().isEmpty())
+        assertTrue("devices" in tg.sent("sendMessage").last().buttons().map { it.second })
         // Reconnecting (a new key on the same device) says nothing more.
         app.provisionTunnel(TunnelProvisionReq(Protocols.AMNEZIAWG, clientParams = Protocols.encode(WireGuard.ClientParams(key(8)))))
         assertEquals(1, tg.texts(603).count { "новое устройство" in it })
