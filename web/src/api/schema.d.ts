@@ -2361,6 +2361,7 @@ export interface components {
             lastIp?: string;
             lastIpAt?: string;
             ips24h: components["schemas"]["CtlIp"][];
+            activeConnections: components["schemas"]["CtlIp"][];
             /** Format: int64 */
             traffic24h: number;
             /** Format: int64 */
@@ -2375,6 +2376,7 @@ export interface components {
             lastSeen: string;
             deviceId?: string;
             serverId?: string;
+            serverName?: string;
         };
         CtlNoteReq: {
             note?: string | null;
@@ -2513,6 +2515,8 @@ export interface components {
             /** Format: int32 */
             devices: number;
             online: boolean;
+            /** Format: int32 */
+            devicesActive24h: number;
             /** Format: int32 */
             ips24h: number;
             sharing: boolean;

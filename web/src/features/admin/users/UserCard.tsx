@@ -318,7 +318,7 @@ function Actions({ c }: { c: Card }) {
 }
 
 function Devices({ c }: { c: Card }) {
-  const { t, dateTime, bytes } = useI18n();
+  const { t, bytes } = useI18n();
   const id = c.user.id;
   const { confirm, dialog } = useConfirm();
   const reissue = useAction(id, (device: string) => post("/admin/users/{id}/devices/{device}/reissue", { params: { id, device } }));
@@ -385,20 +385,8 @@ function Devices({ c }: { c: Card }) {
           },
           {
             key: "ip",
-            header: t("IP address"),
-            cell: (d) => (
-              <>
-                {d.lastIp ? (
-                  <>
-                    <span className="font-mono">{d.lastIp}</span>
-                    <div className="text-[13px] text-muted">{dateTime(d.lastIpAt)}</div>
-                  </>
-                ) : (
-                  <span className="text-muted">{t("unknown")}</span>
-                )}
-                {d.ips24h.length > 1 ? <div className="text-[13px] text-muted">{t("{n} in 24 hours", { n: d.ips24h.length })}</div> : null}
-              </>
-            ),
+            header: t("Active connections"),
+            cell: (d) => <Connections d={d} />,
           },
           {
             key: "traffic",
@@ -432,6 +420,35 @@ function Devices({ c }: { c: Card }) {
       />
       {dialog}
     </Section>
+  );
+}
+
+function Connections({ d }: { d: Device }) {
+  const { t, dateTime } = useI18n();
+  const active = d.activeConnections;
+  return (
+    <>
+      {active.length ? (
+        <ul className="m-0 list-none p-0">
+          {active.map((c) => (
+            <li key={`${c.ip}:${c.serverId ?? ""}`} className="mb-1 last:mb-0">
+              <span className="font-mono">{c.ip}</span>
+              <div className="text-[13px] text-muted">
+                {c.serverName ?? t("unknown")}, {seen(c.lastSeen)}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : d.lastIp ? (
+        <>
+          <span className="font-mono">{d.lastIp}</span>
+          <div className="text-[13px] text-muted">{dateTime(d.lastIpAt)}</div>
+        </>
+      ) : (
+        <span className="text-muted">{t("No active connections")}</span>
+      )}
+      {d.ips24h.length ? <div className="text-[13px] text-muted">{t("{n} in 24 hours", { n: d.ips24h.length })}</div> : null}
+    </>
   );
 }
 

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { download } from "@/lib/download";
 import { useSession } from "@/store/session";
 import { apiError, mockApi, resetApi } from "@/test/api";
-import { ctlDashboard, ctlPayment, ctlTotals, ctlUserCard, ctlUserRow, finance, me, ownerMe, renderApp, siteInfo } from "@/test/app";
+import { ctlDashboard, ctlDevice, ctlPayment, ctlTotals, ctlUserCard, ctlUserRow, finance, me, ownerMe, renderApp, siteInfo } from "@/test/app";
 
 beforeEach(() => {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
@@ -246,6 +246,67 @@ describe("users tab", () => {
     expect(await screen.findByRole("heading", { name: "anna@example.com" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Block" })).not.toBeInTheDocument();
     expect(screen.getAllByText("no end").length).toBeGreaterThan(0);
+  });
+
+  it("the users table has a column for devices seen in 24 hours", async () => {
+    mockApi({
+      ...owner,
+      "GET /admin/users": { users: [ctlUserRow({ devicesActive24h: 4 })], sharingThreshold: 5, telegramUsernames: true },
+    });
+    renderApp("/admin?tab=users");
+    const table = await screen.findByRole("table", { name: "Users" });
+    expect(within(table).getByRole("columnheader", { name: "Seen 24 h" })).toBeInTheDocument();
+    const row = within(table).getByRole("row", { name: /anna@example.com/ });
+    expect(within(row).getByText("4")).toBeInTheDocument();
+  });
+
+  it("the card lists active connections per key with the IP, the node and last seen", async () => {
+    const now = new Date().toISOString();
+    mockApi({
+      ...owner,
+      "GET /admin/users/{id}": ctlUserCard({
+        devicesActive24h: 2,
+        devices: [
+          ctlDevice({
+            activeConnections: [{ ip: "198.51.100.10", lastSeen: now, serverId: "at1", serverName: "Austria" }],
+            ips24h: [
+              { ip: "198.51.100.10", lastSeen: now, serverId: "at1", serverName: "Austria" },
+              { ip: "192.0.2.8", lastSeen: "2026-11-01T10:00:00Z", serverId: "at1", serverName: "Austria" },
+            ],
+          }),
+          ctlDevice({
+            id: "vl1",
+            name: "Boop VPN",
+            kind: "vless",
+            platform: "key",
+            uuid: "1111-2222",
+            lastIp: undefined,
+            lastIpAt: undefined,
+            serverName: "Finland",
+            activeConnections: [
+              { ip: "203.0.113.50", lastSeen: now, serverId: "fi1", serverName: "Finland" },
+              { ip: "2001:db8::7", lastSeen: now, serverId: "fi1", serverName: "Finland" },
+            ],
+            ips24h: [
+              { ip: "203.0.113.50", lastSeen: now, serverId: "fi1", serverName: "Finland" },
+              { ip: "2001:db8::7", lastSeen: now, serverId: "fi1", serverName: "Finland" },
+            ],
+          }),
+        ],
+      }),
+    });
+    renderApp("/admin?tab=users&id=u2");
+    expect(await screen.findByRole("heading", { name: "anna@example.com" })).toBeInTheDocument();
+    expect(screen.getByText("2 devices, 1 IP addresses")).toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "Devices and keys" });
+    expect(within(table).getByRole("columnheader", { name: "Active connections" })).toBeInTheDocument();
+    expect(within(table).getByText("198.51.100.10")).toBeInTheDocument();
+    expect(within(table).getByText("203.0.113.50")).toBeInTheDocument();
+    expect(within(table).getByText("2001:db8::7")).toBeInTheDocument();
+    expect(within(table).getByText(/Austria/)).toBeInTheDocument();
+    expect(within(table).getAllByText(/Finland/).length).toBeGreaterThan(0);
+    expect(within(table).getAllByText("online").length).toBeGreaterThan(0);
+    expect(within(table).getAllByText("2 in 24 hours")).toHaveLength(2);
   });
 });
 

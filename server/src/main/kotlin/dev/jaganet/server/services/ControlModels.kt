@@ -28,6 +28,8 @@ data class CtlUserRow(
     val blocked: Boolean = false,
     val devices: Int = 0,
     val online: Boolean = false,
+    /** Devices and keys seen in the last 24 hours. */
+    val devicesActive24h: Int = 0,
     /** Different client addresses in the last 24 hours, over all devices and keys. */
     val ips24h: Int = 0,
     /** More addresses than the sharing threshold: maybe the subscription is shared. */
@@ -94,7 +96,14 @@ data class CtlTotals(
 data class CtlPaymentsRes(val payments: List<CtlPayment>, val totals: CtlTotals, val truncated: Boolean = false)
 
 @Serializable
-data class CtlIp(val ip: String, val lastSeen: String, val deviceId: String? = null, val serverId: String? = null)
+data class CtlIp(
+    val ip: String,
+    val lastSeen: String,
+    val deviceId: String? = null,
+    val serverId: String? = null,
+    /** The node's name when [serverId] is known; null for an old row or a missing node. */
+    val serverName: String? = null,
+)
 
 @Serializable
 data class CtlDevice(
@@ -114,6 +123,8 @@ data class CtlDevice(
     val lastIp: String? = null,
     val lastIpAt: String? = null,
     val ips24h: List<CtlIp> = emptyList(),
+    /** Client addresses seen in the last 3 minutes on this key (IP, node, last seen). */
+    val activeConnections: List<CtlIp> = emptyList(),
     val traffic24h: Long = 0,
     val trafficTotal: Long = 0,
     /** The VLESS key's UUID (its credential on the nodes). */
