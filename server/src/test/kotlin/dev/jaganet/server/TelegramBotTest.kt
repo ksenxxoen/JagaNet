@@ -114,6 +114,12 @@ fun JsonObject.replyButtons(): List<String> =
         it.jsonObject["text"]!!.jsonPrimitive.content
     }
 
+/** The last outgoing message that carries inline buttons (the main menu, not the «Меню» keyboard installer). */
+fun List<JsonObject>.lastInline(): JsonObject = last { it.buttons().isNotEmpty() }
+
+/** The last outgoing message that installs the persistent reply keyboard. */
+fun List<JsonObject>.lastReply(): JsonObject = last { it.replyButtons().isNotEmpty() }
+
 class TelegramBotTest {
     private val token = "123456:TEST-token"
     private val web = DeviceInfo("Website", Platform.OTHER)
@@ -485,23 +491,34 @@ class TelegramBotTest {
         assertNull(userIdOfTelegram(999))
     }
 
-    @Test fun `the main menu has the four sections, a Menu command and a reply keyboard`() = harness {
+    @Test fun `the main menu has the four sections as inline buttons and only Menu on the reply keyboard`() = harness {
         val tg = NumberedTelegram()
         val bot = bot(tg)
-        val main = listOf("🔑 Ключи и подключения", "⚙️ Настройки", "🆘 Помощь", "🎁 Получить 14 дней бесплатно", "Меню")
+        val sections = listOf(
+            "🔑 Ключи и подключения" to "section:keys",
+            "⚙️ Настройки" to "section:settings",
+            "🆘 Помощь" to "help",
+            "🎁 Получить 14 дней бесплатно" to "invite",
+        )
+        fun assertMenu() {
+            assertEquals(sections, tg.sent("sendMessage").lastInline().buttons())
+            val kb = tg.sent("sendMessage").lastReply()
+            assertEquals(listOf("Меню"), kb.replyButtons(), kb["reply_markup"].toString())
+            assertTrue(kb["reply_markup"]!!.jsonObject["is_persistent"]!!.jsonPrimitive.content.toBoolean())
+        }
         bot.handle(tgMessage(11, "/start"))
-        val start = tg.sent("sendMessage").last()
-        assertEquals(main, start.replyButtons(), start["reply_markup"].toString())
-        assertTrue(start.buttons().isEmpty(), start.buttons().toString())
+        val start = tg.sent("sendMessage").lastInline()
+        assertTrue("Boop VPN" in start["text"]!!.jsonPrimitive.content)
         assertTrue("Открыть Boop" !in start.toString())
-        assertTrue(start["reply_markup"]!!.jsonObject["is_persistent"]!!.jsonPrimitive.content.toBoolean())
+        assertMenu()
 
         bot.handle(tgMessage(11, "/menu"))
-        assertEquals(main, tg.sent("sendMessage").last().replyButtons())
+        assertMenu()
         bot.handle(tgMessage(11, "Меню"))
-        assertEquals(main, tg.sent("sendMessage").last().replyButtons())
-        assertTrue("Нет активной подписки" in tg.texts(11).last())
+        assertMenu()
+        assertTrue("Нет активной подписки" in tg.sent("sendMessage").lastInline()["text"]!!.jsonPrimitive.content)
 
+        // Labels from the old five-button keyboard still open the same sections.
         bot.handle(tgMessage(11, "🔑 Ключи и подключения"))
         val keys = tg.sent("sendMessage").last().buttons().map { it.second }
         for (d in listOf("keys", "devices", "app", "menu")) assertTrue(d in keys, "$d in $keys")
@@ -599,7 +616,7 @@ class TelegramBotTest {
         bot.handle(tgMessage(601, "/status"))
         bot.handle(tgCallback(601, "menu"))
         assertTrue(tg.sent("sendWidget").isEmpty())
-        assertEquals(3, tg.sent("sendMessage").size)
+        assertEquals(5, tg.sent("sendMessage").size)
         val uid = userIdOfTelegram(601)!!
         services.payments.markPaid(services.payments.create(uid, tariff(MONTH), dev.jaganet.server.services.Channel.WEB).id)
         assertTrue(tg.sent("editMessageWidgetData").isEmpty())
@@ -612,8 +629,16 @@ class TelegramBotTest {
         bot.handle(tgMessage(602, "/start"))
         val card = tg.sent("sendWidget").single()
         assertTrue("Нет активной подписки" in card["caption"]!!.jsonPrimitive.content, card.toString())
-        assertEquals(listOf("💳 Купить подписку" to "pay"), card.buttons())
-        assertEquals(listOf("🔑 Ключи и подключения", "⚙️ Настройки", "🆘 Помощь", "🎁 Получить 14 дней бесплатно", "Меню"), tg.sent("sendMessage").single().replyButtons())
+        assertEquals(
+            listOf(
+                "🔑 Ключи и подключения" to "section:keys",
+                "⚙️ Настройки" to "section:settings",
+                "🆘 Помощь" to "help",
+                "🎁 Получить 14 дней бесплатно" to "invite",
+            ),
+            card.buttons(),
+        )
+        assertEquals(listOf("Меню"), tg.sent("sendMessage").single().replyButtons())
         assertEquals("true", card["allow_queries"]!!.jsonPrimitive.content)
         assertEquals("none", card.data()["st"]!!.jsonPrimitive.content)
         val html = card["html"]!!.jsonPrimitive.content
@@ -624,7 +649,7 @@ class TelegramBotTest {
         bot.handle(tgMessage(602, "/status"))
         val status = tg.sent("sendWidget").last()
         assertTrue("Подписка активна до" in status["caption"]!!.jsonPrimitive.content && "Устройства" in status["caption"]!!.jsonPrimitive.content)
-        assertEquals("💳 Продлить" to "pay", status.buttons().last())
+        assertEquals("🎁 Получить 14 дней бесплатно" to "invite", status.buttons().last())
         val d = status.data()
         assertEquals("active", d["st"]!!.jsonPrimitive.content)
         assertNotNull(d["exp"]); assertNotNull(d["from"])
@@ -642,8 +667,8 @@ class TelegramBotTest {
     @Test fun `without the mini app the card keeps the whole menu under it`() = harness(mapOf("TELEGRAM_WIDGET" to "all")) {
         val tg = NumberedTelegram()
         bot(tg).handle(tgMessage(603, "/start"))
-        assertEquals(listOf("pay"), tg.sent("sendWidget").single().buttons().map { it.second })
-        assertEquals(listOf("🔑 Ключи и подключения", "⚙️ Настройки", "🆘 Помощь", "🎁 Получить 14 дней бесплатно", "Меню"), tg.sent("sendMessage").single().replyButtons())
+        assertEquals(listOf("section:keys", "section:settings", "help", "invite"), tg.sent("sendWidget").single().buttons().map { it.second })
+        assertEquals(listOf("Меню"), tg.sent("sendMessage").single().replyButtons())
     }
 
     @Test fun `TELEGRAM_WIDGET=owner shows the card to the owner only`() = harness(cardOn + ("TELEGRAM_WIDGET" to "owner")) {
@@ -661,9 +686,11 @@ class TelegramBotTest {
         tg.fail["sendWidget"] = TelegramException("sendWidget: Bad Request: method not found", 400)
         bot(tg).handle(tgMessage(605, "/start"))
         assertEquals(1, tg.sent("sendWidget").size)
-        val menu = tg.sent("sendMessage").single()
-        assertEquals(listOf("🔑 Ключи и подключения", "⚙️ Настройки", "🆘 Помощь", "🎁 Получить 14 дней бесплатно", "Меню"), menu.replyButtons())
-        assertTrue("keys" !in menu.buttons().map { it.second })
+        assertEquals(
+            listOf("section:keys", "section:settings", "help", "invite"),
+            tg.sent("sendMessage").lastInline().buttons().map { it.second },
+        )
+        assertEquals(listOf("Меню"), tg.sent("sendMessage").lastReply().replyButtons())
         assertEquals(0, count("SELECT count(*)::int AS n FROM telegram_widgets"))
     }
 

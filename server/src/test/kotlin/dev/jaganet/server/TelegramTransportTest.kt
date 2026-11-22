@@ -92,9 +92,12 @@ class TelegramTransportTest {
             assertEquals("stub_bot", bot.username)
             assertTrue(stub.sent("deleteWebhook").isNotEmpty(), "a webhook left over would block polling")
             assertTrue(stub.sent("setMyCommands").isNotEmpty())
-            val reply = stub.sent("sendMessage").single()
-            assertEquals("33", reply["chat_id"]!!.jsonPrimitive.content)
-            assertTrue("Ключи и подключения" in reply["reply_markup"].toString() && "Меню" in reply["reply_markup"].toString())
+            val replies = stub.sent("sendMessage")
+            assertEquals(2, replies.size)
+            assertTrue(replies.all { it["chat_id"]!!.jsonPrimitive.content == "33" })
+            assertTrue("Меню" in replies[0]["reply_markup"].toString())
+            assertTrue("Ключи и подключения" !in replies[0]["reply_markup"].toString())
+            assertTrue("Ключи и подключения" in replies[1]["reply_markup"].toString())
             assertTrue(bot.lastPollOk != null)
         }
     }

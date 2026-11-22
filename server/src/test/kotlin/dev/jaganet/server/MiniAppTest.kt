@@ -441,7 +441,7 @@ class MiniAppTest {
         val menu = tg.sent("sendMessage").last()
         assertTrue(menu.webApps().isEmpty(), menu.toString())
         assertTrue("Открыть Boop" !in menu.toString())
-        assertTrue("Меню" in menu.replyButtons())
+        assertTrue("Меню" in tg.sent("sendMessage").lastReply().replyButtons())
         bot.prepare()
         val mb = tg.sent("setChatMenuButton").single()["menu_button"]!!.jsonObject
         assertEquals("web_app", mb["type"]!!.jsonPrimitive.content)
