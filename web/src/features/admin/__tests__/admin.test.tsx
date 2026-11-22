@@ -4,7 +4,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { download } from "@/lib/download";
 import { useSession } from "@/store/session";
 import { apiError, mockApi, resetApi } from "@/test/api";
-import { ctlDashboard, ctlDevice, ctlPayment, ctlTotals, ctlUserCard, ctlUserRow, finance, me, ownerMe, renderApp, siteInfo } from "@/test/app";
+import {
+  ctlDashboard,
+  ctlDevice,
+  ctlPayment,
+  ctlTotals,
+  ctlUserCard,
+  ctlUserRow,
+  finance,
+  me,
+  ownerMe,
+  renderApp,
+  siteInfo,
+} from "@/test/app";
 
 beforeEach(() => {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
