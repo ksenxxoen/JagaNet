@@ -191,7 +191,7 @@ describe("users tab", () => {
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Next page" }));
     await waitFor(() => expect(router.state.location.search).toMatchObject({ tab: "users", page: "2" }));
-    await waitFor(() => expect(reqs.some((r) => r.url === "/admin/users" && r.query.page === "2")).toBe(true));
+    await waitFor(() => expect(reqs.some((r) => r.url === "/admin/users" && r.query.page === 2)).toBe(true));
     expect(await screen.findByText("zoe@example.com")).toBeInTheDocument();
     expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
   });

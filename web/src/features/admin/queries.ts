@@ -8,7 +8,7 @@ export const dashboardQuery = queryOptions({ queryKey: keys.admin.dashboard(), q
 export const usersQuery = (q: string, page = 1) =>
   queryOptions({
     queryKey: keys.admin.users(q, page),
-    queryFn: () => get("/admin/users", { query: { ...(q ? { q } : {}), ...(page > 1 ? { page: String(page) } : {}) } }),
+    queryFn: () => get("/admin/users", { query: { ...(q ? { q } : {}), ...(page > 1 ? { page } : {}) } }),
   });
 
 export const userQuery = (id: string) =>

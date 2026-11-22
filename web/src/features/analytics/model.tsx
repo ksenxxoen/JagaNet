@@ -31,7 +31,10 @@ export const userName = (u: {
   if (!(u.email.endsWith("@telegram.invalid") && u.name === u.email)) return u.name;
   const at = u.telegramUsername?.trim();
   if (at) return at.startsWith("@") ? at : `@${at}`;
-  const full = [u.telegramFirstName, u.telegramLastName].map((s) => s?.trim()).filter(Boolean).join(" ");
+  const full = [u.telegramFirstName, u.telegramLastName]
+    .map((s) => s?.trim())
+    .filter(Boolean)
+    .join(" ");
   return full || t("Telegram account");
 };
 

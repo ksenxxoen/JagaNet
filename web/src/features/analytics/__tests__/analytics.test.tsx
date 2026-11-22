@@ -43,8 +43,12 @@ describe("analytics helpers", () => {
     expect(devCount(3, 2)).toBe("3 / 3");
     expect(userName({ name: "x@telegram.invalid", email: "x@telegram.invalid" })).toBe("Telegram account");
     expect(userName({ name: "x@telegram.invalid", email: "x@telegram.invalid", telegramUsername: "ann" })).toBe("@ann");
-    expect(userName({ name: "x@telegram.invalid", email: "x@telegram.invalid", telegramFirstName: "Ann", telegramLastName: "S" })).toBe("Ann S");
-    expect(userName({ name: "x@telegram.invalid", email: "x@telegram.invalid", telegramUsername: "ann", telegramFirstName: "Ann" })).toBe("@ann");
+    expect(userName({ name: "x@telegram.invalid", email: "x@telegram.invalid", telegramFirstName: "Ann", telegramLastName: "S" })).toBe(
+      "Ann S",
+    );
+    expect(userName({ name: "x@telegram.invalid", email: "x@telegram.invalid", telegramUsername: "ann", telegramFirstName: "Ann" })).toBe(
+      "@ann",
+    );
     expect(userName({ name: "Anna", email: "anna@example.test" })).toBe("Anna");
   });
 });
