@@ -160,7 +160,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         // Blocked by the admin (issue #39): only support is left, as on the site (every request gets 403).
         if (isBlocked(who) && !(cmd == "/support" || (cmd == null && (supportMode[tg.id] ?: Instant.MIN) > ctx.now()))) return blockedNotice(who)
 
-        // Persistent reply keyboard: «Меню» and the four main sections. Not forwarded to support.
+        // Persistent reply keyboard «Меню», and stale section labels from the old five-button keyboard. Not forwarded to support.
         val tap = if (cmd == null) replyTap(text) else null
         if (cmd == "/menu" || tap != null) {
             supportMode.remove(tg.id)
@@ -256,37 +256,30 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
             appendLine()
             append(if (until != null) "✅ " + u.t("Subscription active until {date}.", "date" to Format.date(until.toString(), u.lang)) else u.t("No active subscription."))
         }
-        if (sendCard(u, text, until != null)) {
-            // The card cannot carry a reply keyboard; a short follow-up installs «Меню» and the four sections.
-            sendReplyKeyboard(u)
-            return
-        }
-        send(u, text, reply = true)
+        // Re-sent on /start and «Меню» so existing chats replace the old five-button keyboard with only «Меню».
+        // Sent first: the status message with the inline sections stays the last, visible menu.
+        sendReplyKeyboard(u)
+        if (!sendCard(u, text, until != null)) send(u, text, mainButtons(u))
     }
 
-    /** The four main-menu labels, in [u]'s language (reply keyboard and tests). */
-    private fun mainButtonLabels(u: Who) = listOf(
-        "🔑 " + u.t("Keys and connections"),
-        "⚙️ " + u.t("Settings"),
-        "🆘 " + u.t("Help"),
-        "🎁 " + u.t("Get 14 days free"),
-    )
+    /** The four section buttons on the main menu message. The gift entry is only shown while rewards are on (or for referral admins). */
+    private suspend fun mainButtons(u: Who): List<List<Btn>> = buildList {
+        add(listOf(Btn("🔑 " + u.t("Keys and connections"), "section:keys")))
+        add(listOf(Btn("⚙️ " + u.t("Settings"), "section:settings")))
+        add(listOf(Btn("🆘 " + u.t("Help"), "help")))
+        if (invitesFor(u.userId)) add(listOf(Btn("🎁 " + u.t("Get 14 days free"), "invite")))
+    }
 
-    /** Persistent reply keyboard: the four sections plus «Меню», which reopens this screen. */
+    /** Persistent reply keyboard: only «Меню», which reopens the main menu. */
     private fun menuKeyboard(u: Who) = buildJsonObject {
-        put(
-            "keyboard",
-            JsonArray((mainButtonLabels(u) + u.t("Menu")).map { label ->
-                buildJsonArray { addJsonObject { put("text", label) } }
-            }),
-        )
+        put("keyboard", JsonArray(listOf(buildJsonArray { addJsonObject { put("text", u.t("Menu")) } })))
         put("resize_keyboard", true)
         put("is_persistent", true)
     }
 
     private suspend fun sendReplyKeyboard(u: Who) = send(u, u.t("The Menu button is always at the bottom of the chat."), reply = true)
 
-    /** A reply-keyboard tap: "menu" or a section callback, or null if this is ordinary text. */
+    /** A reply-keyboard tap: "menu", a stale section label from the old keyboard, or null if this is ordinary text. */
     private fun replyTap(text: String): String? {
         if (Lang.entries.any { I18n.tr(it, "Menu") == text }) return "menu"
         fun match(en: String, emoji: String) = Lang.entries.any { "$emoji " + I18n.tr(it, en) == text }
@@ -863,10 +856,8 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         }
     }
 
-    /** "Extend" / "Buy" under the card. Other screens are on the persistent reply keyboard. The mini app stays on the chat menu button. */
-    private suspend fun cardButtons(u: Who, active: Boolean): List<List<Btn>> {
-        return listOf(listOf(Btn("💳 " + (if (active) u.t("Extend") else u.t("Buy a subscription")), "pay")))
-    }
+    /** The same four section buttons as the text menu, under the card. The mini app stays on the chat menu button. */
+    private suspend fun cardButtons(u: Who, @Suppress("UNUSED_PARAMETER") active: Boolean) = mainButtons(u)
 
     /**
      * Sends the status card with [caption] (what older Telegram apps show instead) when the card is on
@@ -973,6 +964,9 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
     private suspend fun buyButtons(u: Who, tariffs: List<Tariff>? = null): List<List<Btn>> = (tariffs ?: s.tariffs.onSale(u.lang)).map { t ->
         listOf(Btn(u.t("{product} for {price}", "product" to t.name, "price" to Format.money(t.priceMinor, t.currency, u.lang)), data = "buy:${t.id}"))
     }
+
+    /** Whether this user sees "Get 14 days free": everyone while invite rewards are on, else as [referralsFor]. */
+    private suspend fun invitesFor(userId: String): Boolean = ctx.live.referralRewards.enabled || referralsFor(userId)
 
     /** Whether this user sees the referral program (admins only, unless REFERRALS_PUBLIC=1). */
     private suspend fun referralsFor(userId: String): Boolean = ctx.db.run { sql ->
