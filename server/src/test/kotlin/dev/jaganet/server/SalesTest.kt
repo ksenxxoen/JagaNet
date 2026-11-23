@@ -99,18 +99,17 @@ class KeysAndSalesTest {
         services.bot = bot
 
         bot.handle(message(chat = 42, text = "/start"))
-        assertTrue("Настройки" in tg.sent("sendMessage").last()["reply_markup"].toString())
-        bot.handle(message(chat = 42, text = "⚙️ Настройки"))
-        assertTrue("\"pay\"" in tg.sent("sendMessage").last()["reply_markup"].toString())
-        bot.handle(callback(chat = 42, data = "pay"))
-        val menu = tg.sent("sendMessage").last()
+        assertTrue("\"pay\"" in tg.lastScreen()["reply_markup"].toString(), tg.lastScreen().toString())
+        assertTrue("Настройки" in tg.lastScreen()["reply_markup"].toString())
+        bot.handle(callback(chat = 42, data = "pay", messageId = 100))
+        val menu = tg.lastScreen()
         assertEquals(42L, menu["chat_id"]!!.jsonPrimitive.content.toLong())
         val year = tariff(YEAR)
         assertTrue("buy:$year" in menu["reply_markup"].toString())
         assertTrue("Pro на год, 12 месяцев, 5 устройств, безлимитный трафик" in menu["text"]!!.jsonPrimitive.content)
 
-        bot.handle(callback(chat = 42, data = "buy:$year"))
-        val payUrl = tg.sent("sendMessage").last()["reply_markup"]!!.jsonObject["inline_keyboard"]!!.jsonArray[0].jsonArray[0].jsonObject["url"]!!.jsonPrimitive.content
+        bot.handle(callback(chat = 42, data = "buy:$year", messageId = 100))
+        val payUrl = tg.lastScreen()["reply_markup"]!!.jsonObject["inline_keyboard"]!!.jsonArray[0].jsonArray[0].jsonObject["url"]!!.jsonPrimitive.content
         val orderId = payUrl.substringAfterLast('/').substringBefore('?')
 
         val paid = services.payments.markPaid(orderId)!!
@@ -120,8 +119,8 @@ class KeysAndSalesTest {
         assertTrue("Pro действует до" in tg.sent("sendPhoto").last()["caption"]!!.jsonPrimitive.content)
 
         // "Get the app" hands out a device code that signs the app into the same account.
-        bot.handle(callback(chat = 42, data = "app"))
-        val code = Regex("\\b\\d{6}\\b").find(tg.sent("sendMessage").last()["text"]!!.jsonPrimitive.content)!!.value
+        bot.handle(callback(chat = 42, data = "app", messageId = 100))
+        val code = Regex("\\b\\d{6}\\b").find(tg.lastScreen()["text"]!!.jsonPrimitive.content)!!.value
         val s = client().redeemPairing(PairRedeemReq(code, DeviceInfo("Phone", Platform.ANDROID)))
         assertEquals("tg42@telegram.invalid", s.user.email)
         assertEquals(PlanId.PRO, client(s.token).me().entitlement.plan)
@@ -136,14 +135,15 @@ class KeysAndSalesTest {
         val tg = FakeTelegram()
         val bot = TelegramBot(services, tg)
         bot.handle(message(chat = 9, text = "/pay"))
-        val ruMenu = tg.sent("sendMessage").last()["reply_markup"].toString()
+        val ruMenu = tg.lastScreen()["reply_markup"].toString()
         assertTrue("Pro на год за 2\u00A0500 ₽" in ruMenu, ruMenu)
-        bot.handle(callback(chat = 9, data = "lang:de"))
-        bot.handle(callback(chat = 9, data = "pay"))
-        val deMenu = tg.sent("sendMessage").last()["reply_markup"].toString()
+        bot.handle(callback(chat = 9, data = "lang:de", messageId = 100))
+        val menuId = tg.lastScreen()["message_id"]!!.jsonPrimitive.content.toLong()
+        bot.handle(callback(chat = 9, data = "pay", messageId = menuId))
+        val deMenu = tg.lastScreen()["reply_markup"].toString()
         assertTrue("Pro на год für 48,00 €" in deMenu, deMenu)
         bot.handle(message(chat = 9, text = "/status"))
-        assertEquals("Kein aktives Abo.", tg.sent("sendMessage").last()["text"]!!.jsonPrimitive.content)
+        assertEquals("Kein aktives Abo.", tg.lastScreen()["text"]!!.jsonPrimitive.content)
     }
 
     @Test fun `API errors come in the requested language`() = harness {
@@ -162,7 +162,7 @@ class KeysAndSalesTest {
         val tg = FakeTelegram()
         val bot = TelegramBot(services, tg)
         bot.handle(message(chat = 7, text = "/key"))
-        assertTrue("buy:" in tg.sent("sendMessage").last()["reply_markup"].toString())
+        assertTrue("buy:" in tg.lastScreen()["reply_markup"].toString())
         assertTrue(tg.uploads.isEmpty())
     }
 }
@@ -176,23 +176,29 @@ private fun message(chat: Long, text: String) = buildJsonObject {
     }
 }
 
-private fun callback(chat: Long, data: String) = buildJsonObject {
+private fun callback(chat: Long, data: String, messageId: Long = 2) = buildJsonObject {
     put("update_id", 2)
     putJsonObject("callback_query") {
         put("id", "q1"); put("from", from(chat)); put("data", data)
-        putJsonObject("message") { put("message_id", 2); putJsonObject("chat") { put("id", chat) } }
+        putJsonObject("message") { put("message_id", messageId); putJsonObject("chat") { put("id", chat) } }
     }
 }
 
 class FakeTelegram : TelegramApi {
     val calls = mutableListOf<Pair<String, JsonObject>>()
     val uploads = mutableListOf<Upload>()
+    private var next = 100L
     fun sent(method: String) = calls.filter { it.first == method }.map { it.second }
+    fun lastScreen(): JsonObject = calls.last { it.first == "editMessageText" || (it.first == "sendMessage" && it.second.buttons().isNotEmpty()) }.second
 
     override suspend fun call(method: String, params: JsonObject, upload: Upload?): JsonElement {
         calls += method to params
         upload?.let(uploads::add)
-        return if (method == "getMe") buildJsonObject { put("username", "jaganet_test_bot") } else JsonObject(emptyMap())
+        return when (method) {
+            "getMe" -> buildJsonObject { put("username", "jaganet_test_bot") }
+            "sendMessage", "sendPhoto", "sendDocument", "sendWidget" -> buildJsonObject { put("message_id", next++) }
+            else -> JsonObject(emptyMap())
+        }
     }
 }
 

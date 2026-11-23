@@ -40,9 +40,10 @@ import java.util.concurrent.ConcurrentHashMap
 data class Btn(val text: String, val data: String? = null, val url: String? = null, val webApp: String? = null)
 
 /** Who we are talking to: their account, chat and language. */
-class Who(val userId: String, val chat: Long, val lang: Lang, val tgId: Long = chat) {
+class Who(val userId: String, val chat: Long, val lang: Lang, val tgId: Long = chat, val editMessageId: Long? = null) {
     fun t(en: String, vararg args: Pair<String, Any?>) = I18n.tr(lang, en, *args)
     fun tp(n: Number, forms: String, vararg args: Pair<String, Any?>) = I18n.plural(lang, n.toLong(), forms, *args)
+    fun editing(messageId: Long?) = Who(userId, chat, lang, tgId, messageId)
 }
 
 /**
@@ -67,6 +68,10 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
 
     /** Telegram users who pressed Support: their next messages go to the support chat, until this time. */
     private val supportMode = ConcurrentHashMap<Long, Instant>()
+    /** Last navigation message in each chat, so taps can edit it instead of sending a new one. */
+    private val lastNav = ConcurrentHashMap<Long, Long>()
+    /** Chats that already have the single «Меню» reply keyboard in this process. */
+    private val keyboardReady = ConcurrentHashMap.newKeySet<Long>()
 
     init {
         s.payments.listeners.add(PaidListener { order, key, until -> background { onPaid(order, key, until) } })
@@ -127,10 +132,16 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
     fun supportChat(): Long? = ctx.cfg.telegram.supportChatId ?: ctx.live.alertTelegramChats.firstOrNull()
 
     suspend fun handle(update: JsonObject) {
-        lastPollOk = ctx.now()
-        update["message"]?.jsonObject?.let { onMessage(it) }
-        update["callback_query"]?.jsonObject?.let { onCallback(it) }
-        update["widget_query"]?.jsonObject?.let { onWidgetQuery(it) }
+        val started = System.nanoTime()
+        try {
+            lastPollOk = ctx.now()
+            update["message"]?.jsonObject?.let { onMessage(it) }
+            update["callback_query"]?.jsonObject?.let { onCallback(it) }
+            update["widget_query"]?.jsonObject?.let { onWidgetQuery(it) }
+        } finally {
+            val ms = (System.nanoTime() - started) / 1_000_000L
+            if (ms >= 1_000) log.warn("update handled in {} ms", ms) else log.debug("update handled in {} ms", ms)
+        }
     }
 
     /* ---------------- messages ---------------- */
@@ -181,7 +192,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
                 StartPayload.PAY -> payAction(who)
                 StartPayload.SUPPORT -> supportAction(who)
                 StartPayload.DEVICES -> devicesAction(who)
-                else -> menu(who)
+                else -> menu(who, refreshKeyboard = true)
             }
             "/menu" -> menu(who)
             "/help" -> helpAction(who)
@@ -203,9 +214,10 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
     private suspend fun onCallback(q: JsonObject) {
         runCatching { api.call("answerCallbackQuery", buildJsonObject { put("callback_query_id", q["id"]!!.jsonPrimitive.content) }) }
         val from = q["from"]!!.jsonObject
-        val chat = q["message"]?.jsonObject?.get("chat")?.jsonObject?.get("id")?.jsonPrimitive?.long ?: from["id"]!!.jsonPrimitive.long
+        val msg = q["message"]?.jsonObject
+        val chat = msg?.get("chat")?.jsonObject?.get("id")?.jsonPrimitive?.long ?: from["id"]!!.jsonPrimitive.long
         val tg = tgUser(from)
-        val who = who(tg, chat)
+        val who = who(tg, chat).editing(msg?.get("message_id")?.jsonPrimitive?.longOrNull)
         val data = q["data"]?.jsonPrimitive?.content.orEmpty()
         if (isBlocked(who) && data != "support") return blockedNotice(who)
         if (data != "support") supportMode.remove(tg.id)
@@ -213,7 +225,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
             data.startsWith("lang:") -> {
                 val lang = Lang.of(data.removePrefix("lang:")) ?: Lang.DEFAULT
                 ctx.db.run { it.exec("UPDATE users SET lang=? WHERE id=?::uuid", lang.code, who.userId) }
-                menu(Who(who.userId, chat, lang, tg.id))
+                menu(Who(who.userId, chat, lang, tg.id, who.editMessageId))
             }
             data.startsWith("buy:") -> buyAction(who, data.removePrefix("buy:"))
             data.startsWith("del:") -> deleteAsk(who, data.removePrefix("del:"))
@@ -248,7 +260,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
 
     /* ---------------- menu ---------------- */
 
-    private suspend fun menu(u: Who, head: String? = null) {
+    private suspend fun menu(u: Who, head: String? = null, refreshKeyboard: Boolean = false) {
         val until = proUntil(u.userId)
         val text = buildString {
             head?.let { appendLine(it); appendLine() }
@@ -256,15 +268,20 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
             appendLine()
             append(if (until != null) "✅ " + u.t("Subscription active until {date}.", "date" to Format.date(until.toString(), u.lang)) else u.t("No active subscription."))
         }
-        // Re-sent on /start and «Меню» so existing chats replace the old five-button keyboard with only «Меню».
-        // Sent first: the status message with the inline sections stays the last, visible menu.
-        sendReplyKeyboard(u)
-        if (!sendCard(u, text, until != null)) send(u, text, mainButtons(u, until != null))
+        val active = until != null
+        val needKeyboard = refreshKeyboard || !keyboardReady.contains(u.chat)
+        if (sendCard(u, text, active)) {
+            if (needKeyboard) installReplyKeyboard(u)
+            return
+        }
+        val buttons = mainButtons(u, active)
+        if (needKeyboard) showWithKeyboard(u, text, buttons)
+        else show(u, text, buttons)
     }
 
     /**
-     * The main menu message's buttons: buy / extend (issue #154), then the sections. The gift entry is only
-     * shown while rewards are on (or for referral admins).
+     * The main menu: one buy / extend button, then the sections. That button starts the order flow.
+     * The gift entry is only shown while rewards are on (or for referral admins).
      */
     private suspend fun mainButtons(u: Who, active: Boolean): List<List<Btn>> = buildList {
         add(listOf(Btn("💳 " + (if (active) u.t("Extend") else u.t("Buy a subscription")), "pay")))
@@ -281,7 +298,45 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         put("is_persistent", true)
     }
 
-    private suspend fun sendReplyKeyboard(u: Who) = send(u, u.t("The Menu button is always at the bottom of the chat."), reply = true)
+    /**
+     * Installs the persistent «Меню» keyboard without leaving a hint message in the chat:
+     * the installer message is deleted; the keyboard stays.
+     */
+    private suspend fun installReplyKeyboard(u: Who) {
+        val result = runCatching {
+            api.call("sendMessage", buildJsonObject {
+                put("chat_id", u.chat)
+                put("text", u.t("Menu"))
+                put("reply_markup", menuKeyboard(u))
+            })
+        }.getOrNull()
+        keyboardReady.add(u.chat)
+        val id = result?.let { messageId(it) } ?: return
+        runCatching { api.call("deleteMessage", buildJsonObject { put("chat_id", u.chat); put("message_id", id) }) }
+    }
+
+    /**
+     * Shows [text] with inline buttons and installs the reply keyboard in one visible message:
+     * send with the reply keyboard, then edit the same message to attach the inline buttons.
+     */
+    private suspend fun showWithKeyboard(u: Who, text: String, buttons: List<List<Btn>>) {
+        val previous = lastNav[u.chat]
+        val result = api.call("sendMessage", buildJsonObject {
+            put("chat_id", u.chat); put("text", text)
+            put("link_preview_options", buildJsonObject { put("is_disabled", true) })
+            put("reply_markup", menuKeyboard(u))
+        })
+        keyboardReady.add(u.chat)
+        val id = messageId(result)
+        if (id != null && editMessage(u, id, text, buttons)) {
+            if (previous != null && previous != id) {
+                runCatching { api.call("deleteMessage", buildJsonObject { put("chat_id", u.chat); put("message_id", previous) }) }
+            }
+            return
+        }
+        if (id != null) runCatching { api.call("deleteMessage", buildJsonObject { put("chat_id", u.chat); put("message_id", id) }) }
+        show(u, text, buttons)
+    }
 
     /** A reply-keyboard tap: "menu", a stale section label from the old keyboard, or null if this is ordinary text. */
     private fun replyTap(text: String): String? {
@@ -319,7 +374,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
                 photo,
             )
         } else {
-            send(u, text, buttons)
+            show(u, text, buttons)
         }
     }
 
@@ -333,29 +388,25 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         ) + backButtons(u),
     )
 
-    private suspend fun settingsSection(u: Who) {
-        val active = proUntil(u.userId) != null
-        sendSection(
-            u, "settings",
-            "⚙️ " + u.t("Settings") + "\n\n" + u.t("Subscription, payments and account."),
-            listOf(
-                listOf(Btn("💳 " + (if (active) u.t("Extend") else u.t("Buy a subscription")), "pay")),
-                listOf(Btn("🔔 " + u.t("Notifications"), "notify")),
-                listOf(Btn("🌐 " + u.t("Sign in on the website"), "login")),
-                listOf(Btn(u.t("Language") + " " + u.lang.nativeName, "language")),
-            ) + backButtons(u),
-        )
-    }
+    private suspend fun settingsSection(u: Who) = sendSection(
+        u, "settings",
+        "⚙️ " + u.t("Settings") + "\n\n" + u.t("Notifications, language and sign-in on the website."),
+        listOf(
+            listOf(Btn("🔔 " + u.t("Notifications"), "notify")),
+            listOf(Btn("🌐 " + u.t("Sign in on the website"), "login")),
+            listOf(Btn(u.t("Language") + " " + u.lang.nativeName, "language")),
+        ) + backButtons(u),
+    )
 
     private suspend fun isBlocked(u: Who): Boolean =
         ctx.db.run { it.one("SELECT blocked_at FROM users WHERE id=?::uuid", u.userId) }?.get("blocked_at") != null
 
-    private suspend fun blockedNotice(u: Who) = send(
+    private suspend fun blockedNotice(u: Who) = show(
         u, u.t("This account is blocked. To find out why, write to support."),
         listOf(listOf(Btn("💬 " + u.t("Support"), "support"))),
     )
 
-    private suspend fun hint(u: Who) = send(
+    private suspend fun hint(u: Who) = show(
         u, u.t("Choose what to do in the menu. To write to support, tap Support."),
         listOf(listOf(Btn("💬 " + u.t("Support"), "support"), Btn("⬅️ " + u.t("Menu"), "menu"))),
     )
@@ -380,33 +431,33 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
     )
 
     private suspend fun communityAction(u: Who) =
-        send(u, "👥 " + u.t("Chat with other Boop users and follow the news in our Telegram group."), communityRow(u) + backButtons(u))
+        show(u, "👥 " + u.t("Chat with other Boop users and follow the news in our Telegram group."), communityRow(u) + backButtons(u))
 
     private suspend fun languageAction(u: Who) =
-        send(u, u.t("Choose a language"), listOf(Lang.entries.map { Btn(it.nativeName + (if (it == u.lang) " (" + u.t("current") + ")" else ""), "lang:${it.code}") }) + backButtons(u, "section:settings"))
+        show(u, u.t("Choose a language"), listOf(Lang.entries.map { Btn(it.nativeName + (if (it == u.lang) " (" + u.t("current") + ")" else ""), "lang:${it.code}") }) + backButtons(u, "section:settings"))
 
     /* ---------------- buying ---------------- */
 
     private suspend fun payAction(u: Who) {
-        if (s.payments.provider == null) return send(u, translate(u.lang, "Payments are temporarily unavailable"), backButtons(u))
+        if (s.payments.provider == null) return show(u, translate(u.lang, "Payments are temporarily unavailable"), backButtons(u))
         val tariffs = s.tariffs.onSale(u.lang)
-        if (tariffs.isEmpty()) return send(u, u.t("No plans on sale right now."), backButtons(u))
+        if (tariffs.isEmpty()) return show(u, u.t("No plans on sale right now."), backButtons(u))
         val until = proUntil(u.userId)
         val text = buildString {
             appendLine(u.t("Choose a plan"))
             for (t in tariffs) { appendLine(); append("${t.name}, ${period(t, u.lang)}, ${Format.terms(t.deviceLimit, t.monthlyDataLimitBytes, u.lang)}") }
             if (until != null) { appendLine(); appendLine(); append(u.t("Your subscription is active until {date}. A new payment adds to it.", "date" to Format.date(until.toString(), u.lang))) }
         }
-        send(u, text, buyButtons(u, tariffs) + backButtons(u))
+        show(u, text, buyButtons(u, tariffs) + backButtons(u))
     }
 
     private suspend fun buyAction(u: Who, tariffId: String) {
         val tariff = s.tariffs.onSale(u.lang).firstOrNull { it.id == tariffId }
-            ?: return send(u, translate(u.lang, "This plan is no longer on sale"), buyButtons(u))
+            ?: return show(u, translate(u.lang, "This plan is no longer on sale"), buyButtons(u))
         val order = try {
             s.payments.create(u.userId, tariff.id, Channel.TELEGRAM, u.lang)
         } catch (e: AppError) {
-            return send(u, u.t("Sorry, buying isn't available right now.") + "\n" + translate(u.lang, e.message ?: "", e.args))
+            return show(u, u.t("Sorry, buying isn't available right now.") + "\n" + translate(u.lang, e.message ?: "", e.args))
         }
         val price = Format.money(tariff.priceMinor, tariff.currency, u.lang)
         val text = buildString {
@@ -415,7 +466,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
             append(u.t("Tap the button to pay. Your VPN key arrives here right after."))
         }
         val url = order.checkoutUrl?.let { withLang(it, u.lang) }
-        send(u, text, listOf(listOf(Btn(u.t("Pay {price}", "price" to price), url = url))) + backButtons(u))
+        show(u, text, listOf(listOf(Btn(u.t("Pay {price}", "price" to price), url = url))) + backButtons(u))
     }
 
     /** A paid order: the date, and for orders from the bot the keys right away. Runs in the background. */
@@ -428,7 +479,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         runCatching { refreshWidget(order.userId) }.onFailure { log.warn("telegram: status card after payment: ${it.message}") }
         try {
             when {
-                order.channel == Channel.TELEGRAM -> keysAction(u, head, key)
+                order.channel == Channel.TELEGRAM -> keysAction(u, head, key, asNotice = true)
                 row.bool("tg_notify") -> send(u, "✅ $head", listOf(listOf(Btn("🔑 " + u.t("My keys and connection"), "keys"))))
             }
         } catch (e: TelegramException) {
@@ -443,25 +494,28 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
      * The subscription link (/k/<token>/vless) with its QR code and the key page (/k/<token>), with
      * short app instructions. No server or protocol names. Without VLESS nodes: the AmneziaWG key as before.
      */
-    private suspend fun keysAction(u: Who, head: String? = null, paidKey: AccessKey? = null) {
+    private suspend fun keysAction(u: Who, head: String? = null, paidKey: AccessKey? = null, asNotice: Boolean = false) {
         runCatching { s.vlessKeys.ensureFor(u.userId) }.onFailure { log.warn("VLESS key for ${u.userId}: ${it.message}") }
         val v = s.vlessKeys.links(u.userId)
-        if (v != null && v.links.isNotEmpty()) return sendSubscription(u, v, head)
+        if (v != null && v.links.isNotEmpty()) return sendSubscription(u, v, head, asNotice)
         val active = proUntil(u.userId) != null
         val existing = paidKey ?: s.keys.list(u.userId).firstOrNull()
         if (existing == null && !active) {
             val text = if (v != null) u.t("Your key is off until the subscription is renewed.") else u.t("You don't have an active subscription yet. Choose a plan.")
-            return send(u, listOfNotNull(head, text).joinToString("\n\n"), buyButtons(u) + backButtons(u, "section:keys"))
+            val out = listOfNotNull(head, text).joinToString("\n\n")
+            val buttons = buyButtons(u) + backButtons(u, "section:keys")
+            return if (asNotice) send(u, out, buttons) else show(u, out, buttons)
         }
         val key = existing ?: try {
             s.keys.create(u.userId)
         } catch (e: AppError) {
-            return send(u, u.t("Couldn't make a key.") + "\n" + translate(u.lang, e.message ?: "", e.args), backButtons(u))
+            val out = u.t("Couldn't make a key.") + "\n" + translate(u.lang, e.message ?: "", e.args)
+            return if (asNotice) send(u, out, backButtons(u)) else show(u, out, backButtons(u))
         }
         sendKey(u, key, head ?: u.t("Your VPN key"))
     }
 
-    private suspend fun sendSubscription(u: Who, v: VlessLinks, head: String?) {
+    private suspend fun sendSubscription(u: Who, v: VlessLinks, head: String?, asNotice: Boolean = false) {
         val base = "${ctx.cfg.publicUrl.trimEnd('/')}/k/${v.token}"
         val sub = "$base/vless"
         api.call(
@@ -489,12 +543,12 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
             add(listOf(Btn(u.t("Open key page"), url = withLang(base, u.lang))))
             add(listOf(Btn("📱 " + u.t("Devices"), "devices"), Btn("⬅️ " + u.t("Keys and connections"), "section:keys")))
         }
-        send(u, text, buttons)
+        if (asNotice) send(u, text, buttons) else show(u, text, buttons)
     }
 
     /** AmneziaWG key: QR code photo with setup steps, then the .conf file. */
     private suspend fun sendKey(u: Who, key: AccessKey, head: String) {
-        val cfg = s.keys.config(u.userId, key.id) ?: return send(u, u.t("That key was deleted. Tap /key for a new one."))
+        val cfg = s.keys.config(u.userId, key.id) ?: return show(u, u.t("That key was deleted. Tap /key for a new one."))
         val caption = buildString {
             appendLine(head)
             appendLine()
@@ -543,15 +597,16 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
                 appendLine("${i + 1}. ${keyName(d.name, u.lang)}, $status")
             }
             appendLine()
-            append(u.t("The subscription link from My keys is not counted. Delete a device to free a place."))
+            append(u.t("The subscription link from My keys is not counted."))
+            if (list.isNotEmpty()) append(" " + u.t("Delete a device to free a place."))
         }
         val buttons = list.map { d -> listOf(Btn("🗑 " + keyName(d.name, u.lang).take(40), "del:${d.id}")) } + backButtons(u)
-        send(u, text, buttons)
+        show(u, text, buttons)
     }
 
     private suspend fun deleteAsk(u: Who, id: String) {
         val d = devicesOf(u.userId).first.firstOrNull { it.id == id } ?: return devicesAction(u, u.t("Device not found"))
-        send(
+        show(
             u, u.t("Delete {name}? It stops connecting.", "name" to keyName(d.name, u.lang)),
             listOf(listOf(Btn(u.t("Delete"), "delok:${d.id}"), Btn(u.t("Cancel"), "devices"))),
         )
@@ -576,7 +631,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         val text = if (on) u.t("Notifications are on. We remind you 3 days and 1 day before the subscription ends, when it ends, and confirm payments.")
         else u.t("Notifications are off. You won't get reminders before the subscription ends.")
         val toggle = if (on) Btn("🔕 " + u.t("Turn off"), "notify:off") else Btn("🔔 " + u.t("Turn on"), "notify:on")
-        send(u, text, listOf(listOf(toggle)) + backButtons(u, "section:settings"))
+        show(u, text, listOf(listOf(toggle)) + backButtons(u, "section:settings"))
     }
 
     /**
@@ -670,9 +725,9 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
     /* ---------------- support ---------------- */
 
     private suspend fun supportAction(u: Who) {
-        if (supportChat() == null) return send(u, u.t("Support chat isn't set up yet. Please try later."), backButtons(u))
+        if (supportChat() == null) return show(u, u.t("Support chat isn't set up yet. Please try later."), backButtons(u))
         supportMode[u.tgId] = ctx.now().plus(SUPPORT_WINDOW)
-        send(u, "💬 " + u.t("Write your question in one message. You can attach a screenshot. We answer here."), communityRow(u).let { c -> if (c.isEmpty()) listOf(listOf(Btn(u.t("Cancel"), "menu"))) else listOf(listOf(Btn(u.t("Cancel"), "menu"), c[0][0])) })
+        show(u, "💬 " + u.t("Write your question in one message. You can attach a screenshot. We answer here."), communityRow(u).let { c -> if (c.isEmpty()) listOf(listOf(Btn(u.t("Cancel"), "menu"))) else listOf(listOf(Btn(u.t("Cancel"), "menu"), c[0][0])) })
     }
 
     /** The user's message to the support chat: a header with who it is, then the message itself. */
@@ -740,7 +795,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
     /** A one-time link that signs this Telegram account in on the website (no e-mail needed). */
     private suspend fun loginAction(u: Who) {
         val link = s.auth.createLoginLink(u.userId, LOGIN_LINK_TTL).replace("/#/", "/?lang=${u.lang.code}#/")
-        send(u, u.t("Open this link to sign in on the website. It works once, within 10 minutes."), listOf(listOf(Btn(u.t("Sign in on the website"), url = link))) + backButtons(u, "section:settings"))
+        show(u, u.t("Open this link to sign in on the website. It works once, within 10 minutes."), listOf(listOf(Btn(u.t("Sign in on the website"), url = link))) + backButtons(u, "section:settings"))
     }
 
     /** /start link_<code> from the website's account page. */
@@ -767,7 +822,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
             s.site.androidAppUrl()?.let { add(listOf(Btn(u.t("Boop for Android"), url = it))) }
             s.site.iosAppUrl()?.let { add(listOf(Btn(u.t("Boop for iPhone"), url = it))) }
         }
-        send(
+        show(
             u,
             buildString {
                 appendLine(u.t("Install the Boop app, tap Sign in with a device code and enter this code"))
@@ -825,12 +880,12 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         val pro = proUntil(u.userId)
         if (pro == null) {
             if (sendCard(u, u.t("No active subscription."), false)) return
-            return send(u, u.t("No active subscription."), buyButtons(u) + backButtons(u))
+            return show(u, u.t("No active subscription."), buyButtons(u) + backButtons(u))
         }
         val (devices, limit) = devicesOf(u.userId)
         val text = u.t("Subscription active until {date}.", "date" to Format.date(pro.toString(), u.lang)) + "\n" + u.t("Devices {used} of {limit}", "used" to devices.size, "limit" to limit)
         if (sendCard(u, text, true)) return
-        send(
+        show(
             u, text,
             listOf(listOf(Btn("🔑 " + u.t("My keys and connection"), "keys")), listOf(Btn("💳 " + u.t("Extend"), "pay"), Btn("⬅️ " + u.t("Menu"), "menu"))),
         )
@@ -1021,14 +1076,48 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         api.call("sendMessage", buildJsonObject { put("chat_id", chat); put("text", text); put("link_preview_options", buildJsonObject { put("is_disabled", true) }) })
     }
 
-    private suspend fun send(u: Who, text: String, buttons: List<List<Btn>> = emptyList(), reply: Boolean = false) {
+    /**
+     * Navigation reply: edits the message the user tapped, or the last menu message in this chat.
+     * Falls back to a new message when there is nothing to edit.
+     */
+    private suspend fun show(u: Who, text: String, buttons: List<List<Btn>> = emptyList()) {
+        val editId = u.editMessageId ?: lastNav[u.chat]
+        if (editId != null && editMessage(u, editId, text, buttons)) return
+        val result = api.call("sendMessage", buildJsonObject {
+            put("chat_id", u.chat); put("text", text)
+            put("link_preview_options", buildJsonObject { put("is_disabled", true) })
+            if (buttons.isNotEmpty()) put("reply_markup", keyboard(buttons))
+        })
+        messageId(result)?.let { lastNav[u.chat] = it }
+    }
+
+    private suspend fun editMessage(u: Who, messageId: Long, text: String, buttons: List<List<Btn>>): Boolean {
+        try {
+            api.call("editMessageText", buildJsonObject {
+                put("chat_id", u.chat); put("message_id", messageId); put("text", text)
+                put("link_preview_options", buildJsonObject { put("is_disabled", true) })
+                put("reply_markup", keyboard(buttons))
+            })
+            lastNav[u.chat] = messageId
+            return true
+        } catch (e: TelegramException) {
+            val msg = e.message.orEmpty()
+            if ("message is not modified" in msg) {
+                lastNav[u.chat] = messageId
+                return true
+            }
+            if (e.chatGone) throw e
+            if (e.code == 400) return false
+            throw e
+        }
+    }
+
+    /** A new message (payments, reminders, support). Does not replace the last menu message. */
+    private suspend fun send(u: Who, text: String, buttons: List<List<Btn>> = emptyList()) {
         api.call("sendMessage", buildJsonObject {
             put("chat_id", u.chat); put("text", text)
             put("link_preview_options", buildJsonObject { put("is_disabled", true) })
-            when {
-                reply -> put("reply_markup", menuKeyboard(u))
-                buttons.isNotEmpty() -> put("reply_markup", keyboard(buttons))
-            }
+            if (buttons.isNotEmpty()) put("reply_markup", keyboard(buttons))
         })
     }
 

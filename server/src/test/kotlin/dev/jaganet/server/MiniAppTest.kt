@@ -438,7 +438,7 @@ class MiniAppTest {
         val tg = NumberedTelegram()
         val bot = bot(tg)
         bot.handle(tgMessage(601, "/start"))
-        val menu = tg.sent("sendMessage").last()
+        val menu = tg.lastScreen()
         assertTrue(menu.webApps().isEmpty(), menu.toString())
         assertTrue("Открыть Boop" !in menu.toString())
         assertTrue("Меню" in tg.sent("sendMessage").lastReply().replyButtons())
@@ -449,7 +449,7 @@ class MiniAppTest {
         assertEquals("https://boop.example/tg/app", mb["web_app"]!!.jsonObject["url"]!!.jsonPrimitive.content)
         // Status and reminders no longer carry an Open Boop button; the mini app stays on the chat menu button.
         bot.handle(tgMessage(601, "/status"))
-        assertTrue(tg.sent("sendMessage").last().webApps().isEmpty())
+        assertTrue(tg.lastScreen().webApps().isEmpty())
         val uid = ctx.db.run { it.one("SELECT id::text AS id FROM users WHERE telegram_id=601") }!!.str("id")
         ctx.db.run {
             it.exec(
@@ -469,8 +469,8 @@ class MiniAppTest {
         val tg = NumberedTelegram()
         val bot = bot(tg)
         bot.handle(tgMessage(602, "/start"))
-        assertTrue(tg.sent("sendMessage").last().webApps().isEmpty())
-        assertTrue("Открыть Boop" !in tg.sent("sendMessage").last().toString())
+        assertTrue(tg.lastScreen().webApps().isEmpty())
+        assertTrue("Открыть Boop" !in tg.lastScreen().toString())
         bot.prepare()
         assertEquals("default", tg.sent("setChatMenuButton").single()["menu_button"]!!.jsonObject["type"]!!.jsonPrimitive.content)
         // A plain-http address can't be a web_app button: the bot keeps its usual buttons.
@@ -489,7 +489,7 @@ class MiniAppTest {
         tg.calls.clear()
         // A phone with the Boop app, signed in through the bot's login link, connects.
         bot.handle(tgMessage(603, "/login"))
-        val s = client().redeemLoginLink(LinkLoginReq(tg.sent("sendMessage").last()["reply_markup"].toString().substringAfter("token=").substringBefore("\""), DeviceInfo("Pixel", Platform.ANDROID)))
+        val s = client().redeemLoginLink(LinkLoginReq(tg.lastScreen()["reply_markup"].toString().substringAfter("token=").substringBefore("\""), DeviceInfo("Pixel", Platform.ANDROID)))
         tg.calls.clear()
         val app = client(s.token)
         app.provisionTunnel(TunnelProvisionReq(Protocols.AMNEZIAWG, clientParams = Protocols.encode(WireGuard.ClientParams(key(7)))))
@@ -506,7 +506,7 @@ class MiniAppTest {
         // Notifications off: a second phone connects silently.
         ctx.db.run { it.exec("UPDATE users SET tg_notify=false WHERE telegram_id=603") }
         bot.handle(tgMessage(603, "/login"))
-        val s2 = client().redeemLoginLink(LinkLoginReq(tg.sent("sendMessage").last()["reply_markup"].toString().substringAfter("token=").substringBefore("\""), DeviceInfo("iPad", Platform.IOS)))
+        val s2 = client().redeemLoginLink(LinkLoginReq(tg.lastScreen()["reply_markup"].toString().substringAfter("token=").substringBefore("\""), DeviceInfo("iPad", Platform.IOS)))
         tg.calls.clear()
         client(s2.token).provisionTunnel(TunnelProvisionReq(Protocols.AMNEZIAWG, clientParams = Protocols.encode(WireGuard.ClientParams(key(9)))))
         assertTrue(tg.texts(603).none { "новое устройство" in it }, tg.texts(603).toString())
