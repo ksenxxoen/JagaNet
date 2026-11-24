@@ -4,6 +4,7 @@ import dev.jaganet.api.NodeReq
 import dev.jaganet.api.Vless
 import dev.jaganet.server.services.DohServer
 import dev.jaganet.server.services.NodeRegisterReq
+import dev.jaganet.server.services.SubscriptionLayout
 import dev.jaganet.server.services.SubscriptionOptions
 import dev.jaganet.server.services.VlessSubscription
 import dev.jaganet.server.services.VlessSubscription.Format
@@ -124,12 +125,13 @@ class VlessSubscriptionClientsTest {
             if (VlessSubscription.client(ua) == VlessSubscription.Client.OTHER) assertNull(res.headers["routing"])
             else assertNotNull(res.headers["routing"])
             val configs = Json.parseToJsonElement(res.bodyAsText()).jsonArray.map { it.jsonObject }
-            // "Самый быстрый 🚀", then the base64 list's links in its order and names.
+            // "🚀 Самый быстрый", then the placeholders, then the base64 list's links in its order and names.
             assertEquals(
-                listOf("Самый быстрый 🚀", "🇫🇮 Финляндия", "🇫🇮 Финляндия XHTTP", "🇳🇱 Нидерланды", "🇳🇱 Нидерланды XHTTP"),
+                listOf("🚀 Самый быстрый", "💬 Наш ТГ @boop_vpn", "⬇️ Резервные сервера ⬇️", "🇫🇮 Финляндия", "🇫🇮 Финляндия XHTTP", "🇳🇱 Нидерланды", "🇳🇱 Нидерланды XHTTP"),
                 configs.map { it.str("remarks") },
             )
-            for (c in configs) {
+            val real = configs.filter { it.str("remarks") !in SubscriptionLayout.PLACEHOLDERS }
+            for (c in real) {
                 val dns = c["dns"]!!.jsonObject
                 assertEquals(SubscriptionOptions.DEFAULT_DNS, dns.strs("servers"))
                 assertEquals("UseIPv4", dns.str("queryStrategy"))
@@ -165,17 +167,27 @@ class VlessSubscriptionClientsTest {
             assertEquals(listOf("proxy"), balancer.strs("selector"))
             assertEquals("auto", routing.arr("rules").last().str("balancerTag"))
             assertEquals(listOf("proxy"), auto["observatory"]!!.jsonObject.strs("subjectSelector"))
-            // A backup is the XHTTP link.
-            val backup = configs[2].arr("outbounds").first()
+            // A backup is the XHTTP link (after the auto group and the two placeholders).
+            val backup = configs[4].arr("outbounds").first()
             assertEquals("xhttp", backup["streamSettings"]!!.jsonObject.str("network"))
             assertEquals("/p", backup["streamSettings"]!!.jsonObject["xhttpSettings"]!!.jsonObject.str("path"))
             assertEquals(8443, backup["settings"]!!.jsonObject.arr("vnext").single()["port"]!!.jsonPrimitive.content.toInt())
-            assertFalse("balancers" in configs[2]["routing"]!!.jsonObject)
+            assertFalse("balancers" in configs[4]["routing"]!!.jsonObject)
+            // Placeholders never carry the user's UUID or Reality keys and are not in the auto balancer.
+            for (c in configs.filter { it.str("remarks") in SubscriptionLayout.PLACEHOLDERS }) {
+                val vnext = c.arr("outbounds").first()["settings"]!!.jsonObject.arr("vnext").single()
+                assertEquals(SubscriptionLayout.DUMMY_HOST, vnext.str("address"))
+                assertEquals(SubscriptionLayout.DUMMY_PORT, vnext["port"]!!.jsonPrimitive.content.toInt())
+                assertEquals(SubscriptionLayout.DUMMY_UUID, vnext.arr("users").single().str("id"))
+                assertEquals("none", c.arr("outbounds").first()["streamSettings"]!!.jsonObject.str("security"))
+                assertFalse("balancers" in c["routing"]!!.jsonObject)
+                assertFalse("observatory" in c)
+            }
         }
         // Everyone else keeps the plain links, without a routing header.
         val plain = sub(token, ua = "v2rayNG/1.10.5")
         assertTrue(plain.headers["Content-Type"]!!.startsWith("text/plain"))
-        assertEquals(4, String(Base64.getDecoder().decode(plain.bodyAsText())).split("\n").size)
+        assertEquals(6, String(Base64.getDecoder().decode(plain.bodyAsText())).split("\n").size)
         assertNull(plain.headers["routing"])
     }
 
@@ -194,7 +206,7 @@ class VlessSubscriptionClientsTest {
         // Happ: a routing profile with the remote DNS, no fake DNS.
         val happ = sub(token, ua = "Happ/3.7.0")
         assertTrue(happ.headers["Content-Type"]!!.startsWith("text/plain"))
-        assertEquals(4, String(Base64.getDecoder().decode(happ.bodyAsText())).split("\n").size)
+        assertEquals(6, String(Base64.getDecoder().decode(happ.bodyAsText())).split("\n").size)
         val link = happ.headers["routing"]!!
         assertTrue(link.startsWith("happ://routing/onadd/"), link)
         val profile = Json.parseToJsonElement(String(Base64.getDecoder().decode(link.removePrefix("happ://routing/onadd/")))).jsonObject
@@ -229,7 +241,7 @@ class VlessSubscriptionClientsTest {
             assertTrue(res.headers["Content-Type"]!!.startsWith("application/json"), ua)
             assertNotNull(res.headers["routing"], ua)
             val configs = Json.parseToJsonElement(res.bodyAsText()).jsonArray.map { it.jsonObject }
-            assertEquals("Самый быстрый 🚀", configs.first().str("remarks"))
+            assertEquals("🚀 Самый быстрый", configs.first().str("remarks"))
             for (c in configs) {
                 val dns = c["dns"]!!.jsonObject
                 assertEquals("UseIPv4", dns.str("queryStrategy"))
@@ -296,7 +308,7 @@ class VlessSubscriptionClientsTest {
         val y2 = VlessSubscription.clash(locations, options = named)
         assertTrue("  default-nameserver: " in y2)
         assertFalse("REJECT" in y2)
-        assertEquals(1 + 4, XrayConfigs.configs(locations, options = named).size)
+        assertEquals(1 + 4 + SubscriptionLayout.PLACEHOLDERS.size, XrayConfigs.configs(locations, options = named).size)
     }
 
     @Test fun `the entry fragment blocks UDP 443 unless VLESS_ENTRY_BLOCK_QUIC=0`() {

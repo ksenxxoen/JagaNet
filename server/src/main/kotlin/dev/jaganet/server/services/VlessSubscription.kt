@@ -1,7 +1,6 @@
 package dev.jaganet.server.services
 
 import dev.jaganet.api.Vless
-import dev.jaganet.api.i18n.I18n
 import dev.jaganet.api.i18n.Lang
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -104,8 +103,8 @@ data class SubscriptionOptions(
  *  - [Format.XRAY_JSON]: an array of full Xray configs (XrayConfigs): Happ and v2RayTun, which
  *    take DNS and routing this way (and still get their `routing` header, consistent with the
  *    configs).
- *  - [Format.SINGBOX]: a sing-box (1.12+) profile: TUN, a selector with "Самый быстрый 🚀" (urltest
- *    over every location) first and each location after it.
+ *  - [Format.SINGBOX]: a sing-box (1.12+) profile: TUN, a selector with "🚀 Самый быстрый" (urltest
+ *    over every real location) first, then the locations and the two placeholder rows.
  *  - [Format.CLASH]: a Clash Meta (mihomo) profile with the same two groups.
  * sing-box has no XHTTP and older mihomo builds refuse it, so both profiles carry the Vision
  * (TCP) links only; XHTTP stays in the base64 list and the Xray configs.
@@ -184,8 +183,8 @@ object VlessSubscription {
     /** False when no location has a Vision (TCP) link: then the profiles would be empty, and the base64 list is sent. */
     fun hasGroups(locations: List<VlessLocation>): Boolean = locations.any { l -> l.params.variants.any { it.transport == Vless.TCP } }
 
-    /** The urltest/selector group: translated "Fastest" / "Самый быстрый", then the speed badge. */
-    fun autoName(lang: Lang) = I18n.tr(lang, "Fastest") + " 🚀"
+    /** The urltest/selector group: a leading speed icon, then the translated "Fastest". */
+    fun autoName(lang: Lang) = SubscriptionLayout.autoName(lang)
 
     private val pretty = Json { prettyPrint = true }
     private val compact = Json
@@ -195,9 +194,17 @@ object VlessSubscription {
 
     /** A sing-box profile (sing-box 1.12 and newer). */
     fun singBox(locations: List<VlessLocation>, lang: Lang = Lang.DEFAULT, options: SubscriptionOptions = SubscriptionOptions()): String {
-        val proxies = tcp(locations, lang)
         val auto = autoName(lang)
-        val names = proxies.map { it.second }
+        val entryTcp = tcp(locations.filter { it.entry }, lang)
+        val restTcp = tcp(locations.filter { !it.entry }, lang)
+        val named = (entryTcp + restTcp).let { list ->
+            val uniq = VlessLocations.unique(list.map { it.second })
+            list.zip(uniq) { t, n -> t.copy(second = n) }
+        }
+        val entryNames = named.take(entryTcp.size).map { it.second }
+        val restNames = named.drop(entryTcp.size).map { it.second }
+        val selectNames = entryNames + SubscriptionLayout.PLACEHOLDERS + restNames
+        val testNames = entryNames + restNames
         // sing-box asks one server (the route's final); the first of VLESS_SUB_DNS.
         val doh = options.dns.firstOrNull() ?: SINGBOX_FALLBACK_DNS
         val doc = buildJsonObject {
@@ -226,15 +233,15 @@ object VlessSubscription {
             putJsonArray("outbounds") {
                 addJsonObject {
                     put("type", "selector"); put("tag", SELECT)
-                    putJsonArray("outbounds") { add(auto); names.forEach { add(it) } }
+                    putJsonArray("outbounds") { add(auto); selectNames.forEach { add(it) } }
                     put("default", auto)
                 }
                 addJsonObject {
                     put("type", "urltest"); put("tag", auto)
-                    putJsonArray("outbounds") { names.forEach { add(it) } }
+                    putJsonArray("outbounds") { testNames.forEach { add(it) } }
                     put("url", PROBE_URL); put("interval", "3m"); put("tolerance", 50)
                 }
-                for ((uuid, name, v) in proxies) addJsonObject {
+                for ((uuid, name, v) in named) addJsonObject {
                     put("type", "vless"); put("tag", name)
                     put("server", v.host); put("server_port", v.port); put("uuid", uuid)
                     if (v.flow.isNotEmpty()) put("flow", v.flow)
@@ -243,6 +250,11 @@ object VlessSubscription {
                         putJsonObject("utls") { put("enabled", true); put("fingerprint", v.fp) }
                         putJsonObject("reality") { put("enabled", true); put("public_key", v.pbk); put("short_id", v.sid) }
                     }
+                }
+                for (name in SubscriptionLayout.PLACEHOLDERS) addJsonObject {
+                    put("type", "vless"); put("tag", name)
+                    put("server", SubscriptionLayout.DUMMY_HOST); put("server_port", SubscriptionLayout.DUMMY_PORT)
+                    put("uuid", SubscriptionLayout.DUMMY_UUID)
                 }
                 addJsonObject { put("type", "direct"); put("tag", "direct") }
             }
@@ -269,8 +281,17 @@ object VlessSubscription {
 
     /** A Clash Meta (mihomo) profile. Strings are written JSON-quoted, which YAML reads as they are. */
     fun clash(locations: List<VlessLocation>, lang: Lang = Lang.DEFAULT, options: SubscriptionOptions = SubscriptionOptions()): String {
-        val proxies = tcp(locations, lang)
         val auto = autoName(lang)
+        val entryTcp = tcp(locations.filter { it.entry }, lang)
+        val restTcp = tcp(locations.filter { !it.entry }, lang)
+        val proxies = (entryTcp + restTcp).let { list ->
+            val uniq = VlessLocations.unique(list.map { it.second })
+            list.zip(uniq) { t, n -> t.copy(second = n) }
+        }
+        val entryNames = proxies.take(entryTcp.size).map { it.second }
+        val restNames = proxies.drop(entryTcp.size).map { it.second }
+        val selectNames = entryNames + SubscriptionLayout.PLACEHOLDERS + restNames
+        val testNames = entryNames + restNames
         fun q(s: String) = JsonPrimitive(s).toString()
         fun list(items: List<String>) = items.joinToString(", ", "[", "]") { q(it) }
         return buildString {
@@ -309,13 +330,23 @@ object VlessSubscription {
                 appendLine("      public-key: ${q(v.pbk)}")
                 appendLine("      short-id: ${q(v.sid)}")
             }
+            for (name in SubscriptionLayout.PLACEHOLDERS) {
+                appendLine("  - name: ${q(name)}")
+                appendLine("    type: vless")
+                appendLine("    server: ${q(SubscriptionLayout.DUMMY_HOST)}")
+                appendLine("    port: ${SubscriptionLayout.DUMMY_PORT}")
+                appendLine("    uuid: ${q(SubscriptionLayout.DUMMY_UUID)}")
+                appendLine("    network: tcp")
+                appendLine("    udp: false")
+                appendLine("    tls: false")
+            }
             appendLine("proxy-groups:")
             appendLine("  - name: ${q(SELECT)}")
             appendLine("    type: select")
-            appendLine("    proxies: ${list(listOf(auto) + proxies.map { it.second })}")
+            appendLine("    proxies: ${list(listOf(auto) + selectNames)}")
             appendLine("  - name: ${q(auto)}")
             appendLine("    type: url-test")
-            appendLine("    proxies: ${list(proxies.map { it.second })}")
+            appendLine("    proxies: ${list(testNames)}")
             appendLine("    url: ${q(PROBE_URL)}")
             appendLine("    interval: 180")
             appendLine("    tolerance: 50")
