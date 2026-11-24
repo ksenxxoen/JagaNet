@@ -6,7 +6,7 @@ import dev.jaganet.api.i18n.Lang
 
 /**
  * How the subscription list is presented in Happ, v2RayTun and in the profiles (sing-box, Clash):
- * "Fastest" and a balancing entry keep their plain names, then two placeholder rows, then the
+ * "Fastest" and a balancing entry get a leading check mark, then two placeholder rows, then the
  * other locations.
  *
  * Placeholders are valid entries the apps can list, but they do not carry a user's UUID or Reality
@@ -24,11 +24,16 @@ object SubscriptionLayout {
 
     val PLACEHOLDERS = listOf(TELEGRAM, RESERVE)
 
-    /** The urltest / leastPing group: the translated "Fastest", with no leading icon. */
-    fun autoName(lang: Lang) = I18n.tr(lang, "Fastest")
+    const val HIGHLIGHT = "✅"
 
-    /** A balancing entry's name in the subscription: the owner's label as-is, no added icon. */
-    fun entryName(name: String): String = name
+    /** The urltest / leastPing group: a leading check mark, then the translated "Fastest". */
+    fun autoName(lang: Lang) = prefix(I18n.tr(lang, "Fastest"))
+
+    /** A balancing entry's name in the subscription, with a leading check mark unless it already has one. */
+    fun entryName(name: String): String = prefix(name)
+
+    private fun prefix(name: String): String =
+        if (name.startsWith(HIGHLIGHT)) name else "$HIGHLIGHT $name"
 
     /** One row of the subscription after the auto group, in the order the apps show it. */
     sealed class Item {
