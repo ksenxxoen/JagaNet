@@ -244,9 +244,9 @@ class VlessLocationsTest {
             val outbounds = doc["outbounds"]!!.jsonArray.map { it.jsonObject }
             val select = outbounds.first()
             assertEquals("selector", select["type"]!!.jsonPrimitive.content)
-            assertEquals(listOf("🚀 Самый быстрый", "💬 Наш ТГ @boop_vpn", "⬇️ Резервные сервера ⬇️", "🇫🇮 Финляндия", "🇳🇱 Нидерланды"), select["outbounds"]!!.jsonArray.map { it.jsonPrimitive.content })
+            assertEquals(listOf("Самый быстрый", "💬 Наш ТГ @boop_vpn", "⬇️ Резервные сервера ⬇️", "🇫🇮 Финляндия", "🇳🇱 Нидерланды"), select["outbounds"]!!.jsonArray.map { it.jsonPrimitive.content })
             val auto = outbounds.single { it["type"]!!.jsonPrimitive.content == "urltest" }
-            assertEquals("🚀 Самый быстрый", auto["tag"]!!.jsonPrimitive.content)
+            assertEquals("Самый быстрый", auto["tag"]!!.jsonPrimitive.content)
             assertEquals(listOf("🇫🇮 Финляндия", "🇳🇱 Нидерланды"), auto["outbounds"]!!.jsonArray.map { it.jsonPrimitive.content })
             assertTrue(auto["outbounds"]!!.jsonArray.map { it.jsonPrimitive.content }.none { it in SubscriptionLayout.PLACEHOLDERS })
             // Vision only (sing-box has no XHTTP), each with Reality and the user's UUID; placeholders are a separate dummy outbound.
@@ -274,8 +274,8 @@ class VlessLocationsTest {
             val y = res.bodyAsText()
             assertTrue("proxies:\n  - name: \"🇫🇮 Финляндия\"\n    type: vless\n    server: \"fi.example.com\"\n    port: 443\n    uuid: \"$uuid\"" in y, y)
             assertTrue("    reality-opts:\n      public-key: \"$pbk\"\n      short-id: \"a1b2c3d4\"" in y, y)
-            assertTrue("  - name: \"🚀 Самый быстрый\"\n    type: url-test\n    proxies: [\"🇫🇮 Финляндия\", \"🇳🇱 Нидерланды\"]" in y, y)
-            assertTrue("    type: select\n    proxies: [\"🚀 Самый быстрый\", \"💬 Наш ТГ @boop_vpn\", \"⬇️ Резервные сервера ⬇️\", \"🇫🇮 Финляндия\", \"🇳🇱 Нидерланды\"]" in y, y)
+            assertTrue("  - name: \"Самый быстрый\"\n    type: url-test\n    proxies: [\"🇫🇮 Финляндия\", \"🇳🇱 Нидерланды\"]" in y, y)
+            assertTrue("    type: select\n    proxies: [\"Самый быстрый\", \"💬 Наш ТГ @boop_vpn\", \"⬇️ Резервные сервера ⬇️\", \"🇫🇮 Финляндия\", \"🇳🇱 Нидерланды\"]" in y, y)
             assertTrue(y.trimEnd().endsWith("- \"MATCH,Boop VPN\""), y)
             assertFalse("xhttp" in y)
         }
@@ -403,7 +403,7 @@ class VlessLocationsTest {
         val expected = listOf("🇳🇱 Нидерланды #1 ⚡", "🇳🇱 Нидерланды #1 ⚡ XHTTP")
         assertEquals(SubscriptionLayout.PLACEHOLDERS + expected, names(sub(token, ua = "v2rayNG/1.10.5").bodyAsText()))
         val happ = Json.parseToJsonElement(sub(token, ua = "Happ/1.63.1").bodyAsText()).jsonArray
-        assertEquals("🚀 Самый быстрый", happ[0].jsonObject["remarks"]!!.jsonPrimitive.content)
+        assertEquals("Самый быстрый", happ[0].jsonObject["remarks"]!!.jsonPrimitive.content)
         assertEquals(SubscriptionLayout.PLACEHOLDERS + expected, happ.drop(1).map { it.jsonObject["remarks"]!!.jsonPrimitive.content })
         assertEquals(listOf("NL"), u.api.servers(listOf("amneziawg", "vless")).servers.filter { Protocols.VLESS in it.protocols }.map { it.countryCode })
     }
@@ -422,7 +422,7 @@ class VlessLocationsTest {
         services.vlessKeys.sync()
         val list = names(sub(tokenOf(u.session.user.id), ua = "v2rayNG/1.10.5").bodyAsText())
         assertEquals(
-            listOf("🛡 Самый надёжный 🚀", "🛡 Самый надёжный 🚀 XHTTP") + SubscriptionLayout.PLACEHOLDERS + listOf("🇳🇱 Нидерланды #1 ⚡", "🇳🇱 Нидерланды #1 ⚡ XHTTP"),
+            listOf("Самый надёжный 🚀", "Самый надёжный 🚀 XHTTP") + SubscriptionLayout.PLACEHOLDERS + listOf("🇳🇱 Нидерланды #1 ⚡", "🇳🇱 Нидерланды #1 ⚡ XHTTP"),
             list,
         )
         assertTrue(list.none { it.startsWith("🇷🇺") }, list.toString())

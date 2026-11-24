@@ -6,8 +6,7 @@ import dev.jaganet.api.i18n.Lang
 
 /**
  * How the subscription list is presented in Happ, v2RayTun and in the profiles (sing-box, Clash):
- * a leading icon on "Fastest" and on a balancing entry (Happ draws the list icon from the start of
- * the remark; a name with no leading icon shows a globe), then two placeholder rows, then the
+ * "Fastest" and a balancing entry keep their plain names, then two placeholder rows, then the
  * other locations.
  *
  * Placeholders are valid entries the apps can list, but they do not carry a user's UUID or Reality
@@ -19,32 +18,17 @@ object SubscriptionLayout {
     /** Leading speech-balloon so Happ draws a chat icon instead of a globe; the text itself is unchanged. */
     const val TELEGRAM = "💬 $TELEGRAM_TEXT"
     const val RESERVE = "⬇️ Резервные сервера ⬇️"
-    const val FASTEST_ICON = "🚀"
-    const val ENTRY_ICON = "🛡"
     const val DUMMY_HOST = "127.0.0.1"
     const val DUMMY_PORT = 1
     const val DUMMY_UUID = "00000000-0000-0000-0000-000000000000"
 
     val PLACEHOLDERS = listOf(TELEGRAM, RESERVE)
 
-    /** The urltest / leastPing group: leading speed icon, then the translated "Fastest". */
-    fun autoName(lang: Lang) = "$FASTEST_ICON " + I18n.tr(lang, "Fastest")
+    /** The urltest / leastPing group: the translated "Fastest", with no leading icon. */
+    fun autoName(lang: Lang) = I18n.tr(lang, "Fastest")
 
-    /**
-     * A balancing entry's name in the subscription. A leading shield so Happ does not show a globe;
-     * a name that already starts with a flag or another icon is left as-is.
-     */
-    fun entryName(name: String): String = if (startsWithIcon(name)) name else "$ENTRY_ICON $name"
-
-    /** True when [label] already starts with a flag or another emoji the apps can use as an icon. */
-    fun startsWithIcon(label: String): Boolean {
-        if (label.isEmpty()) return false
-        val cp = Character.codePointAt(label, 0)
-        return cp in 0x1F1E6..0x1F1FF ||
-            cp in 0x1F300..0x1FAFF ||
-            cp in 0x2600..0x27BF ||
-            cp in 0x2B00..0x2BFF
-    }
+    /** A balancing entry's name in the subscription: the owner's label as-is, no added icon. */
+    fun entryName(name: String): String = name
 
     /** One row of the subscription after the auto group, in the order the apps show it. */
     sealed class Item {

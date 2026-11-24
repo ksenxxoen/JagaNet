@@ -94,7 +94,7 @@ object VlessLocations {
         return listOfNotNull(VlessKeys.flag(cc), label).joinToString(" ")
     }
 
-    /** The name of a balancing entry: the owner's display name, else "⚡ Авто", with a leading shield unless it already starts with an icon. */
+    /** The name of a balancing entry: the owner's display name, else "⚡ Авто". */
     fun entryName(server: Row, lang: Lang = Lang.DEFAULT): String =
         SubscriptionLayout.entryName(server.strOrNull("display_name") ?: ("⚡ " + I18n.tr(lang, "Auto")))
 
