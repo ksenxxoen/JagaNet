@@ -70,6 +70,13 @@ data class ProviderUpdate(
     /** Our order id, as sent when the payment was made. */
     val payload: String?,
     val body: kotlinx.serialization.json.JsonObject? = null,
+    /**
+     * The provider's fee in minor units, when [fromTransaction]. 0 when the transaction has no fee.
+     * Null on a callback (Platega's callback has no fee) or when the fee is not an amount.
+     */
+    val feeMinor: Long? = null,
+    /** True when this update is the provider's own transaction (Platega `GET /transaction/{id}`), so [feeMinor] is known. */
+    val fromTransaction: Boolean = false,
 )
 
 /** What [Payments.providerUpdate] did. */
@@ -172,6 +179,8 @@ class Payments(
     /**
      * The fallback when the provider's callback didn't arrive: a pending order with a provider payment is
      * checked at the provider, at most every [CHECK_EVERY] per order (the account and the mini app keep asking).
+     * `provider_status` is not consulted: an order left pending with `AMOUNT_MISMATCH` is checked again,
+     * and a later transaction that covers the order confirms it through [markPaid].
      */
     suspend fun refresh(o: Order): Order {
         if (o.status != OrderStatus.PENDING) return o
@@ -197,8 +206,10 @@ class Payments(
     /**
      * What the provider said about one of its payments (a verified callback, or a status check). Idempotent by
      * the provider's payment id: a repeat changes nothing, and the order is paid at most once.
-     * - CONFIRMED: the only status that gives access, and only when amount and currency match the order;
-     *   also for an order cancelled earlier (callbacks may arrive out of order).
+     * - CONFIRMED: the only status that gives access. The currency must be the order's. The amount must equal
+     *   the order (the merchant pays the fee, or there is none), or the provider's transaction must show
+     *   amount minus fee equal to the order, within one minor unit (the buyer pays the fee). A callback carries
+     *   no fee, so that case reads the transaction. Also for an order cancelled earlier.
      * - CANCELED: a pending order is cancelled; a paid one stays paid.
      * - CHARGEBACKED, PARTIALLY_REFUNDED, DISPUTED (and anything else): stored and shown in the admin panel, access unchanged.
      */
@@ -217,12 +228,19 @@ class Payments(
             event(providerId, u, null, UpdateOutcome.UNKNOWN_ORDER)
             return UpdateOutcome.UNKNOWN_ORDER
         }
-        val matches = u.amountMinor == order.amountMinor && u.currency?.uppercase() == order.currency.uppercase()
+        var recorded = u
         val outcome = when (u.status) {
-            "CONFIRMED" -> if (!matches) {
-                log.error("$providerId: payment ${u.externalId} of order ${order.id} is ${u.amountMinor} ${u.currency}, the order is ${order.amountMinor} ${order.currency}; no access given")
-                UpdateOutcome.MISMATCH
-            } else if (markPaid(order.id, u.externalId, evenIfCancelled = true) != null) UpdateOutcome.PAID else UpdateOutcome.ALREADY_PAID
+            "CONFIRMED" -> {
+                val money = confirmedMoney(providerId, order, u)
+                recorded = rememberFee(money?.update ?: u).copy(externalId = u.externalId)
+                if (money?.ok != true) {
+                    log.error(
+                        "$providerId: payment ${u.externalId} of order ${order.id} is ${recorded.amountMinor} ${recorded.currency} " +
+                            "(fee ${recorded.feeMinor}), the order is ${order.amountMinor} ${order.currency}; no access given",
+                    )
+                    UpdateOutcome.MISMATCH
+                } else if (markPaid(order.id, u.externalId, evenIfCancelled = true) != null) UpdateOutcome.PAID else UpdateOutcome.ALREADY_PAID
+            }
             "CANCELED", "CANCELLED" -> {
                 val n = ctx.db.run { it.exec("UPDATE orders SET status='cancelled' WHERE id=?::uuid AND status='pending'", order.id) }
                 if (n > 0) UpdateOutcome.CANCELLED else UpdateOutcome.RECORDED
@@ -241,9 +259,44 @@ class Payments(
                 shown, now, u.externalId, order.id, u.status,
             )
         }
-        event(providerId, u, order.id, outcome)
+        event(providerId, recorded, order.id, outcome)
         return outcome
     }
+
+    /**
+     * Whether a CONFIRMED update pays [order]. An amount equal to the order is accepted as it stands.
+     * Anything else is judged from the provider's transaction (a callback is not one: it has no fee, so the
+     * transaction is read). The transaction pays when its amount minus its fee is the order, within one minor unit.
+     * Null when the transaction could not be read.
+     */
+    private suspend fun confirmedMoney(providerId: String, order: Order, u: ProviderUpdate): MoneyCheck? {
+        if (sameAmount(order, u)) return MoneyCheck(u, true)
+        val tx = if (u.fromTransaction) u else {
+            val fetched = runCatching { providers[providerId]?.check(order, u.externalId) }
+                .onFailure { log.warn("$providerId: could not read transaction ${u.externalId}: ${it.message}") }
+                .getOrNull()
+            if (fetched == null || !fetched.fromTransaction) return null
+            fetched
+        }
+        if (tx.status != "CONFIRMED") return MoneyCheck(tx, false)
+        if (sameAmount(order, tx)) return MoneyCheck(tx, true)
+        val fee = tx.feeMinor ?: return MoneyCheck(tx, false)
+        val ok = PlategaProvider.netMatches(order.amountMinor, order.currency, tx.amountMinor, tx.currency, fee)
+        return MoneyCheck(tx, ok)
+    }
+
+    /** Currency and amount equal the order. No fee and no rounding: this is the price the shop asked for. */
+    private fun sameAmount(order: Order, u: ProviderUpdate) =
+        u.amountMinor == order.amountMinor && u.currency?.equals(order.currency, ignoreCase = true) == true
+
+    /** Keeps the fee on the event body. The order's provider status stays the short status name. */
+    private fun rememberFee(u: ProviderUpdate): ProviderUpdate {
+        val fee = u.feeMinor ?: return u
+        val body = u.body ?: return u
+        return u.copy(body = PlategaProvider.withFee(body, fee))
+    }
+
+    private data class MoneyCheck(val update: ProviderUpdate, val ok: Boolean)
 
     private suspend fun event(providerId: String, u: ProviderUpdate, orderId: String?, outcome: UpdateOutcome) = ctx.db.run {
         it.exec(

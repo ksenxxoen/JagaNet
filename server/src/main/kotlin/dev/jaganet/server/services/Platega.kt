@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -12,6 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import org.slf4j.LoggerFactory
 import java.math.BigDecimal
 import java.net.URI
 import java.net.http.HttpClient
@@ -83,6 +85,8 @@ class PlategaProvider(
 ) : PaymentProvider {
     override val id = ID
 
+    private val log = LoggerFactory.getLogger("platega")
+
     private fun auth() = mapOf("X-MerchantId" to cfg.merchantId, "X-Secret" to cfg.secret)
 
     override suspend fun start(order: Order, buyer: Buyer): Started {
@@ -121,13 +125,18 @@ class PlategaProvider(
         if (code !in 200..299) throw ProviderError("Platega answered $code")
         val o = runCatching { Json.parseToJsonElement(text).jsonObject }.getOrNull() ?: throw ProviderError("Platega sent no JSON")
         val details = o["paymentDetails"] as? JsonObject
+        val status = o.str("status")?.uppercase() ?: return null
+        // Logged only. The value is not used to decide whether the payment covers the order.
+        if (status == "CONFIRMED") log.info("transaction $externalId comission=${o["comission"] ?: "absent"} comissionType=${o["comissionType"] ?: "absent"}")
         return ProviderUpdate(
             externalId = o.str("id") ?: externalId,
-            status = o.str("status")?.uppercase() ?: return null,
-            amountMinor = details?.get("amount")?.let(::minor),
-            currency = details?.str("currency"),
+            status = status,
+            amountMinor = (details?.get("amount") ?: o["amount"])?.let(::minor),
+            currency = details?.str("currency") ?: o.str("currency"),
             payload = o.str("payload"),
             body = o,
+            feeMinor = feeOf(o),
+            fromTransaction = true,
         )
     }
 
@@ -159,6 +168,33 @@ class PlategaProvider(
         fun minor(e: JsonElement): Long? = runCatching {
             BigDecimal(e.jsonPrimitive.content).movePointRight(2).longValueExact()
         }.getOrNull()
+
+        /**
+         * Platega's `comission` (their spelling) in minor units.
+         * The field is absent or JSON null → 0. Present but not an amount → null.
+         */
+        fun feeOf(o: JsonObject): Long? {
+            if ("comission" !in o) return 0L
+            val el = o["comission"] ?: return 0L
+            if (el is JsonNull) return 0L
+            return minor(el)
+        }
+
+        /**
+         * True when [amountMinor] minus [feeMinor] is [orderAmountMinor], in [orderCurrency],
+         * within one minor unit. A negative fee does not match.
+         */
+        fun netMatches(orderAmountMinor: Long, orderCurrency: String, amountMinor: Long?, currency: String?, feeMinor: Long): Boolean {
+            if (amountMinor == null || currency == null || !currency.equals(orderCurrency, ignoreCase = true) || feeMinor < 0) return false
+            val diff = amountMinor - feeMinor - orderAmountMinor
+            return diff in -1L..1L
+        }
+
+        /** The event body, plus the fee in minor units. Platega's `comission` is kept as they sent it. */
+        fun withFee(body: JsonObject, feeMinor: Long): JsonObject = buildJsonObject {
+            body.forEach { (k, v) -> put(k, v) }
+            put("feeMinor", feeMinor)
+        }
     }
 }
 

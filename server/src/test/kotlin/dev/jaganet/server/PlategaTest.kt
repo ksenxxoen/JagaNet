@@ -5,6 +5,7 @@ import dev.jaganet.api.CreateOrderReq
 import dev.jaganet.api.OrderStatus
 import dev.jaganet.api.PlanId
 import dev.jaganet.server.services.Channel
+import dev.jaganet.server.services.PaidListener
 import dev.jaganet.server.services.PlategaConfig
 import dev.jaganet.server.services.PlategaHttp
 import dev.jaganet.server.services.PlategaProvider
@@ -46,13 +47,21 @@ class PlategaTest {
         var createCode = 200
         /** The answer of GET /transaction/{id}: status, amount, currency. */
         var status: Triple<String, Double, String>? = null
+        /** Replaces the amount in [status]. A string, so 108.01 is not a Double. */
+        var amountText: String? = null
+        /** Platega's `comission` as a JSON number. Null omits the field. */
+        var comission: String? = null
+        /** Sent with [comission]. Not used to accept or reject a payment. */
+        var comissionType: Int? = 0
         val http = PlategaHttp { method, url, headers, body ->
             requests += Req(method, url, headers, body?.let { Json.parseToJsonElement(it).jsonObject })
             when {
                 method == "POST" && createCode != 200 -> createCode to """{"message":"bad"}"""
                 method == "POST" -> 200 to """{"paymentMethod":"SBPQR","transactionId":"$nextTx","redirect":"https://pay.platega.io?id=$nextTx","status":"PENDING","expiresIn":"00:15:00"}"""
                 else -> status?.let { (st, amount, cur) ->
-                    200 to """{"id":"${url.substringAfterLast('/')}","status":"$st","paymentDetails":{"amount":$amount,"currency":"$cur"},"payload":"x"}"""
+                    val shown = amountText ?: amount.toString()
+                    val fee = comission?.let { ""","comission":$it,"comissionType":${comissionType ?: 0}""" } ?: ""
+                    200 to """{"id":"${url.substringAfterLast('/')}","status":"$st","paymentDetails":{"amount":$shown,"currency":"$cur"},"paidAmount":$shown$fee,"paymentMethod":"SBPQR","payload":"x"}"""
                 } ?: (404 to "")
             }
         }
@@ -197,6 +206,123 @@ class PlategaTest {
         assertEquals("platega", p.provider)
     }
 
+    @Test fun `a confirmed payment of 108 with a fee of 8 pays an order of 100 once`() = harness(env) {
+        val fake = platega()
+        val (a, order) = orderFor("fee@example.com", 10_000)
+        assertEquals(10_000L, amountMinor(order.id))
+        fake.comission = "8.0"
+        fake.comissionType = 1
+        fake.status = Triple("CONFIRMED", 108.0, "RUB")
+        val before = fake.requests.size
+        assertEquals(HttpStatusCode.OK, callback(confirmed(fake.nextTx, amount = "108.00", payload = order.id)).status)
+        assertTrue(fake.requests.drop(before).any { it.method == "GET" && it.url.endsWith("/transaction/${fake.nextTx}") })
+        assertEquals(OrderStatus.PAID, a.api.order(order.id).status)
+        assertEquals(PlanId.PRO, a.api.me().entitlement.plan)
+        assertEquals(1, paidCount(a.session.user.id))
+        assertEquals(1, a.api.keys().keys.size)
+        assertEquals("CONFIRMED", providerStatus(order.id))
+        assertEquals(800L, feeMinor(order.id, "paid"))
+
+        // The same callback again pays nothing more.
+        assertEquals(HttpStatusCode.OK, callback(confirmed(fake.nextTx, amount = "108.00", payload = order.id)).status)
+        assertEquals(1, paidCount(a.session.user.id))
+        assertEquals(1, a.api.keys().keys.size)
+        assertEquals(listOf("CONFIRMED:paid", "CONFIRMED:already_paid"), eventOutcomes(order.id))
+
+        // One minor unit of rounding still covers the order. Two do not.
+        fake.nextTx = UUID.randomUUID().toString()
+        val (b, close) = orderFor("round@example.com", 10_000)
+        fake.amountText = "108.01"
+        fake.comission = "8.00"
+        callback(confirmed(fake.nextTx, amount = "108.01", payload = close.id))
+        assertEquals(OrderStatus.PAID, b.api.order(close.id).status)
+        assertEquals(1, paidCount(b.session.user.id))
+
+        fake.nextTx = UUID.randomUUID().toString()
+        val (c, over) = orderFor("over@example.com", 10_000)
+        fake.amountText = "108.02"
+        callback(confirmed(fake.nextTx, amount = "108.02", payload = over.id))
+        assertEquals(OrderStatus.PENDING, c.api.order(over.id).status)
+        assertEquals(PlanId.FREE, c.api.me().entitlement.plan)
+        assertEquals("AMOUNT_MISMATCH", providerStatus(over.id))
+        assertEquals(0, paidCount(c.session.user.id))
+    }
+
+    @Test fun `a confirmed payment of the order amount is accepted with a zero fee`() = harness(env) {
+        val fake = platega()
+        val (a, order) = orderFor("exact@example.com", 10_000)
+        val before = fake.requests.size
+        assertEquals(HttpStatusCode.OK, callback(confirmed(fake.nextTx, amount = "100.00", payload = order.id)).status)
+        assertEquals(before, fake.requests.size, "the callback amount is the order, so the fee is not read")
+        assertEquals(OrderStatus.PAID, a.api.order(order.id).status)
+        assertEquals(1, paidCount(a.session.user.id))
+        assertEquals(1, a.api.keys().keys.size)
+
+        // The status check says the same thing, with an explicit zero fee.
+        fake.nextTx = UUID.randomUUID().toString()
+        val (b, polled) = orderFor("zero@example.com", 10_000)
+        fake.comission = "0"
+        fake.status = Triple("CONFIRMED", 100.0, "RUB")
+        assertEquals(OrderStatus.PAID, b.api.order(polled.id).status)
+        assertEquals(PlanId.PRO, b.api.me().entitlement.plan)
+        assertEquals(0L, feeMinor(polled.id, "paid"))
+        assertEquals(1, paidCount(b.session.user.id))
+    }
+
+    @Test fun `a confirmed payment that does not cover the order gives no access`() = harness(env) {
+        val fake = platega()
+        val (a, order) = orderFor("nofee@example.com", 10_000)
+        fake.status = Triple("CONFIRMED", 108.0, "RUB")
+        assertEquals(HttpStatusCode.OK, callback(confirmed(fake.nextTx, amount = "108.00", payload = order.id)).status)
+        assertEquals(OrderStatus.PENDING, a.api.order(order.id).status)
+        assertEquals(PlanId.FREE, a.api.me().entitlement.plan)
+        assertEquals("AMOUNT_MISMATCH", providerStatus(order.id))
+        assertEquals(0, a.api.keys().keys.size)
+        assertEquals(0, paidCount(a.session.user.id))
+
+        fake.nextTx = UUID.randomUUID().toString()
+        val (b, other) = orderFor("usd@example.com", 10_000)
+        fake.comission = "8.0"
+        fake.status = Triple("CONFIRMED", 108.0, "EUR")
+        callback(confirmed(fake.nextTx, amount = "108.00", currency = "EUR", payload = other.id))
+        assertEquals(OrderStatus.PENDING, b.api.order(other.id).status)
+        assertEquals(PlanId.FREE, b.api.me().entitlement.plan)
+        assertEquals("AMOUNT_MISMATCH", providerStatus(other.id))
+        assertEquals(0, paidCount(b.session.user.id))
+    }
+
+    @Test fun `a pending order already marked amount mismatch is paid when a later check shows the fee`() = harness(env) {
+        val fake = platega()
+        val (a, order) = orderFor("stuck@example.com", 10_000)
+        val notified = mutableListOf<String>()
+        var notifiedWithKey = false
+        services.payments.listeners.add(PaidListener { o, key, _ ->
+            notified += o.id
+            notifiedWithKey = key != null
+        })
+        fake.status = Triple("CONFIRMED", 108.0, "RUB")
+        callback(confirmed(fake.nextTx, amount = "108.00", payload = order.id))
+        assertEquals(OrderStatus.PENDING, a.api.order(order.id).status)
+        assertEquals("AMOUNT_MISMATCH", providerStatus(order.id))
+        assertEquals(0, a.api.keys().keys.size)
+        assertTrue(notified.isEmpty())
+
+        fake.comission = "8.0"
+        clock = clock.plusSeconds(20)
+        assertEquals(OrderStatus.PAID, a.api.order(order.id).status)
+        assertEquals(PlanId.PRO, a.api.me().entitlement.plan)
+        assertEquals("CONFIRMED", providerStatus(order.id))
+        assertEquals(1, a.api.keys().keys.size)
+        assertEquals(1, paidCount(a.session.user.id))
+        assertEquals(listOf(order.id), notified)
+        assertTrue(notifiedWithKey)
+        assertEquals(800L, feeMinor(order.id, "paid"))
+
+        assertEquals(HttpStatusCode.OK, callback(confirmed(fake.nextTx, amount = "108.00", payload = order.id)).status)
+        assertEquals(1, paidCount(a.session.user.id))
+        assertEquals(listOf(order.id), notified)
+    }
+
     @Test fun `CANCELED and provider errors give no access`() = harness(env) {
         val fake = platega()
         val a = signIn("cancel@example.com")
@@ -290,8 +416,30 @@ class PlategaTest {
         assertTrue(PlategaConfig.load(env - "PLATEGA_MERCHANT_ID") == null)
     }
 
+    /** An order whose frozen price is [rubMinor] (the monthly tariff is 300 RUB). The tariff price is put back. */
+    private suspend fun Harness.orderFor(email: String, rubMinor: Long): Pair<Harness.Signed, dev.jaganet.api.OrderRes> {
+        val a = signIn(email)
+        val id = tariff(MONTH)
+        val prev = ctx.db.run { it.one("SELECT price_rub_minor FROM tariffs WHERE id=?::uuid", id)!!.long("price_rub_minor") }
+        ctx.db.run { it.exec("UPDATE tariffs SET price_rub_minor=? WHERE id=?::uuid", rubMinor, id) }
+        try {
+            return a to a.api.createOrder(CreateOrderReq(id))
+        } finally {
+            ctx.db.run { it.exec("UPDATE tariffs SET price_rub_minor=? WHERE id=?::uuid", prev, id) }
+        }
+    }
+
     private suspend fun Harness.providerStatus(orderId: String) =
         ctx.db.run { it.one("SELECT provider_status FROM orders WHERE id=?::uuid", orderId)!!.strOrNull("provider_status") }
+
+    private suspend fun Harness.amountMinor(orderId: String) =
+        ctx.db.run { it.one("SELECT amount_minor FROM orders WHERE id=?::uuid", orderId)!!.long("amount_minor") }
+
+    private suspend fun Harness.feeMinor(orderId: String, outcome: String) =
+        ctx.db.run { it.one("SELECT (body->>'feeMinor')::bigint AS f FROM payment_events WHERE order_id=?::uuid AND outcome=?", orderId, outcome)!!.long("f") }
+
+    private suspend fun Harness.eventOutcomes(orderId: String) =
+        ctx.db.run { it.query("SELECT status, outcome FROM payment_events WHERE order_id=?::uuid ORDER BY id", orderId).map { r -> r.str("status") + ":" + r.str("outcome") } }
 
     private suspend fun Harness.adminPayments() = services.control.payments(services.control.filter(null, null, null, null)).payments
 

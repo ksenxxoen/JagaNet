@@ -21,7 +21,7 @@ buyer ──► POST /v1/orders  (bot: payAction/buyAction; mini app: Pay.tsx; a
         OrderRes.checkoutUrl = redirect ──► the buyer pays on Platega's page
                                                 │
      Platega ── POST PUBLIC_URL/pay/platega/callback ──► Payments.providerUpdate
-                                                │          CONFIRMED + amount/currency match → markPaid
+                                                │          CONFIRMED + (amount = order, or amount − fee = order) → markPaid
                                                 │          (the same idempotent call the test checkout uses:
                                                 │           extends access on the frozen terms, makes the key,
                                                 │           the bot sends the key / new date)
@@ -32,7 +32,9 @@ buyer ──► POST /v1/orders  (bot: payAction/buyAction; mini app: Pay.tsx; a
 
 Fallback when the callback did not arrive: `GET /v1/orders/{id}` (the account and the mini app
 already poll it while an order is pending) asks Platega `GET {api}/transaction/{transactionId}`,
-at most every 15 seconds per order, and applies the answer exactly like a callback.
+at most every 15 seconds per order, and applies the answer with the same amount rule as a callback.
+`provider_status` is not a stop: an order still `pending` with `AMOUNT_MISMATCH` is checked again,
+and a transaction that covers the order confirms it through `markPaid` (key and bot notification).
 
 ### What is sent when a payment is created
 
@@ -57,8 +59,9 @@ is agreed with Platega; nothing in the code assumes a particular one.
 
 | Platega status | Order | Access | Notes |
 | --- | --- | --- | --- |
-| `CONFIRMED`, amount and currency equal the order | `paid` (also from `cancelled`, since delivery order is not guaranteed) | extended once, through `markPaid` | a repeated `CONFIRMED` (a retry, or after a `DISPUTED` was lifted) changes nothing |
-| `CONFIRMED`, amount or currency differ | stays `pending` | none | `provider_status = AMOUNT_MISMATCH`, logged as an error; the owner sorts it out |
+| `CONFIRMED`, currency matches and the amount equals the order | `paid` (also from `cancelled`, since delivery order is not guaranteed) | extended once, through `markPaid` | merchant pays the fee, or there is no fee. A repeated `CONFIRMED` changes nothing |
+| `CONFIRMED`, currency matches and `paymentDetails.amount` minus `comission` equals the order (within 1 minor unit) | `paid` | extended once, through `markPaid` | buyer pays the fee. The callback has no fee, so this is read from `GET /transaction/{id}` (missing `comission` is 0; `comissionType` is only logged). The same rule is used when an order is polled. The fee is stored on the payment event as `feeMinor` |
+| `CONFIRMED`, otherwise | stays `pending` | none | `provider_status = AMOUNT_MISMATCH`, logged as an error; the owner sorts it out. A later poll can still confirm it |
 | `CANCELED` | `pending` → `cancelled`; a paid order stays paid | none | |
 | `DISPUTED` | unchanged | unchanged | money is held by Platega until the check ends |
 | `PARTIALLY_REFUNDED` | unchanged | unchanged | part of the money went back |
@@ -80,8 +83,10 @@ and no access is given. The error is logged without the secret.
   **`PUBLIC_URL/pay/platega/callback`**, e.g. `https://boop.example/pay/platega/callback`.
   It is set there, not per payment. It must be public HTTPS with a valid certificate (Caddy in
   front of the server already does this for `PUBLIC_URL`).
-- Platega sends `POST` with JSON (`id`, `amount`, `currency`, `status`, `paymentMethod`, `payload`)
-  and the headers `X-MerchantId`, `X-Secret`, `User-Agent: Platega Payment`.
+- Platega sends `POST` with JSON (`id`, `amount`, `currency`, `status`, `paymentMethod`, `payload`;
+  no fee) and the headers `X-MerchantId`, `X-Secret`, `User-Agent: Platega Payment`.
+  When that amount is not the order's, the server reads `GET /transaction/{id}` and uses
+  `paymentDetails.amount` and `comission` from there.
 - Both headers are compared with `PLATEGA_MERCHANT_ID` / `PLATEGA_SECRET` in constant time
   (`Crypto.safeEqual`). Missing or wrong → `401`, nothing is read or stored.
 - Answers: `200 OK` when handled (also for repeats and for statuses that change nothing);
