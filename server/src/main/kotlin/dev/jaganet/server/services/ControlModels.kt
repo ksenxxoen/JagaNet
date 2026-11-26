@@ -127,6 +127,10 @@ data class CtlIp(
     val serverId: String? = null,
     /** The node's name when [serverId] is known; null for an old row or a missing node. */
     val serverName: String? = null,
+    /** True when this address was refused because the concurrent-IP cap was already full. */
+    val rejected: Boolean = false,
+    /** True when the admin reset this address and it is still being dropped. */
+    val kicked: Boolean = false,
 )
 
 @Serializable
@@ -147,7 +151,7 @@ data class CtlDevice(
     val lastIp: String? = null,
     val lastIpAt: String? = null,
     val ips24h: List<CtlIp> = emptyList(),
-    /** Client addresses seen in the last 3 minutes on this key (IP, node, last seen). */
+    /** Client addresses still inside the IP-cap activity window on this key (IP, node, last seen). */
     val activeConnections: List<CtlIp> = emptyList(),
     val traffic24h: Long = 0,
     val trafficTotal: Long = 0,
@@ -158,6 +162,14 @@ data class CtlDevice(
     val rekeyPending: Boolean = false,
     /** Off its node: the user is blocked or has no access. */
     val suspended: Boolean = false,
+    /** Override for the concurrent-IP cap: null = the plan, 0 = no cap, 1..100 = that many. */
+    val ipLimit: Int? = null,
+    /** The cap that applies now; null means no cap. */
+    val ipLimitEffective: Int? = null,
+    /** The plan's cap used when [ipLimit] is null. */
+    val ipLimitDefault: Int = 0,
+    /** Addresses refused while the cap was full, still inside the activity window. */
+    val rejectedConnections: List<CtlIp> = emptyList(),
 )
 
 @Serializable
@@ -196,6 +208,8 @@ data class CtlUserCard(
     /** Devices and keys seen in 24 hours. */
     val devicesActive24h: Int,
     val sharingThreshold: Int,
+    val ipLimitMode: String = IP_LIMIT_MODE_OBSERVE,
+    val ipLimitWindowSeconds: Int = DEFAULT_IP_LIMIT_WINDOW_SECONDS,
     /** Who invited them; null until invites are tied to users (issue #40) or when nobody did. */
     val referrer: CtlReferrer? = null,
     val referrals: Int = 0,
@@ -243,6 +257,8 @@ data class CtlDashboard(
     val paidOrdersMonth: Int,
     val newPayersMonth: Int,
     val sharingThreshold: Int,
+    val ipLimitMode: String = IP_LIMIT_MODE_OBSERVE,
+    val ipLimitWindowSeconds: Int = DEFAULT_IP_LIMIT_WINDOW_SECONDS,
     /** Users over the sharing threshold in the last 24 hours, most addresses first. */
     val sharing: List<CtlUserRow>,
     val expiring: List<CtlUserRow>,
@@ -252,7 +268,13 @@ data class CtlDashboard(
 data class CtlAuditRes(val entries: List<CtlAudit>)
 
 @Serializable
-data class CtlSettings(val sharingThreshold: Int = DEFAULT_SHARING_THRESHOLD)
+data class CtlSettings(
+    val sharingThreshold: Int = DEFAULT_SHARING_THRESHOLD,
+    /** off (no tracking of refusals), observe (record only), enforce (drop new IPs on the nodes). Default observe. */
+    val ipLimitMode: String = IP_LIMIT_MODE_OBSERVE,
+    /** How long an IP stays "active" after it was last seen, in seconds. Default 120. */
+    val ipLimitWindowSeconds: Int = DEFAULT_IP_LIMIT_WINDOW_SECONDS,
+)
 
 const val DEFAULT_SHARING_THRESHOLD = 5
 
@@ -263,3 +285,6 @@ const val DEFAULT_SHARING_THRESHOLD = 5
 @Serializable data class CtlBlockReq(val reason: String? = null)
 @Serializable data class CtlNoteReq(val note: String? = null)
 @Serializable data class CtlReissueRes(val mode: String, val uuid: String? = null)
+
+@Serializable data class CtlIpLimitReq(val ipLimit: Int? = null)
+@Serializable data class CtlIpResetReq(val ip: String)

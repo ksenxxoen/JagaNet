@@ -11,7 +11,7 @@ data class CollectResult(val samples: Int, val suspended: Int)
  * per-device samples and enforces the free plan's data limit. Runs on a timer;
  * a later multi-node setup can push counters instead.
  */
-class Traffic(private val ctx: Ctx, private val ent: Entitlements, private val tunnels: Tunnels, private val speedLimits: SpeedLimits) {
+class Traffic(private val ctx: Ctx, private val ent: Entitlements, private val tunnels: Tunnels, private val speedLimits: SpeedLimits, private val ipLimits: IpLimits? = null) {
     suspend fun collect(): CollectResult {
         val bucket = ctx.now().truncatedTo(ChronoUnit.HOURS)
         var samples = 0
@@ -105,6 +105,7 @@ class Traffic(private val ctx: Ctx, private val ent: Entitlements, private val t
             suspended++
         }
         speedLimits.publish()
+        runCatching { ctx.db.tx { sql -> ipLimits?.recompute(sql) } }
         return CollectResult(samples, suspended)
     }
 }

@@ -10,7 +10,7 @@ import { put, type Schema } from "@/api/typed";
 import { DataTable } from "@/components/admin/DataTable";
 import { SettingsForm } from "@/components/admin/SettingsForm";
 import { Section } from "@/components/layout";
-import { buttonVariants, ErrorState, Field, Input, KpiGrid, Spinner } from "@/components/ui";
+import { buttonVariants, ErrorState, Field, Input, KpiGrid, Select, Spinner } from "@/components/ui";
 import { useI18n } from "@/i18n";
 import { revenueText } from "@/lib/funnel";
 import { NODE_STATES, StateBadge, UserTable } from "../common";
@@ -57,7 +57,7 @@ export default function Dashboard() {
       <Section title={t("Access ends in 3 days")}>
         <UserTable users={d.expiring} empty={t("Nobody")} label={t("Access ends in 3 days")} />
       </Section>
-      <Threshold value={d.sharingThreshold} />
+      <ControlSettings sharingThreshold={d.sharingThreshold} ipLimitMode={d.ipLimitMode} ipLimitWindowSeconds={d.ipLimitWindowSeconds} />
     </>
   );
 }
@@ -126,20 +126,47 @@ function Servers({ servers }: { servers: Schema<"CtlServer">[] }) {
   );
 }
 
-function Threshold({ value }: { value: number }) {
+function ControlSettings({
+  sharingThreshold,
+  ipLimitMode,
+  ipLimitWindowSeconds,
+}: {
+  sharingThreshold: number;
+  ipLimitMode: string;
+  ipLimitWindowSeconds: number;
+}) {
   const { t } = useI18n();
-  const [v, setV] = useState(String(value));
+  const [v, setV] = useState(String(sharingThreshold));
+  const [mode, setMode] = useState(ipLimitMode || "observe");
+  const [windowSec, setWindowSec] = useState(String(ipLimitWindowSeconds || 120));
   return (
     <SettingsForm
       title={t("Sharing threshold")}
-      inline
       mutationFn={(body: Schema<"CtlSettings">) => put("/admin/control/settings", { body })}
-      build={() => ({ sharingThreshold: Number(v) })}
+      build={() => ({
+        sharingThreshold: Number(v),
+        ipLimitMode: mode,
+        ipLimitWindowSeconds: Number(windowSec),
+      })}
       invalidate={[keys.admin.dashboard(), keys.admin.usersAll]}
       className="mt-8"
     >
-      <Field label={t("Different IP addresses in 24 hours")} className="mb-0">
+      <Field label={t("Different IP addresses in 24 hours")}>
         {(id) => <Input id={id} type="number" min={1} max={100} required value={v} onChange={(e) => setV(e.target.value)} />}
+      </Field>
+      <Field label={t("Concurrent IP cap")}>
+        {(id) => (
+          <Select id={id} value={mode} onChange={(e) => setMode(e.target.value)}>
+            <option value="off">{t("Off")}</option>
+            <option value="observe">{t("Observe (no blocking)")}</option>
+            <option value="enforce">{t("Enforce (block new IPs)")}</option>
+          </Select>
+        )}
+      </Field>
+      <Field label={t("Activity window, seconds")} className="mb-0">
+        {(id) => (
+          <Input id={id} type="number" min={30} max={3600} required value={windowSec} onChange={(e) => setWindowSec(e.target.value)} />
+        )}
       </Field>
     </SettingsForm>
   );

@@ -13,7 +13,7 @@ import { DataTable } from "@/components/admin/DataTable";
 import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { KeyValueList } from "@/components/KeyValueList";
 import { Section } from "@/components/layout";
-import { Button, Card, CardHeader, ErrorState, Field, Input, Notice, Select, Spinner, Textarea } from "@/components/ui";
+import { Button, Card, CardHeader, ErrorState, Field, Input, Level, Notice, Select, Spinner, Textarea } from "@/components/ui";
 import { useApiMutation } from "@/hooks/useApiMutation";
 import { useConfirm } from "@/hooks/useConfirm";
 import { localDay, useI18n } from "@/i18n";
@@ -323,6 +323,13 @@ function Devices({ c }: { c: Card }) {
   const { confirm, dialog } = useConfirm();
   const reissue = useAction(id, (device: string) => post("/admin/users/{id}/devices/{device}/reissue", { params: { id, device } }));
   const remove = useAction(id, (device: string) => del("/admin/users/{id}/devices/{device}", { params: { id, device } }));
+  const setLimit = useAction(id, (vars: { device: string; ipLimit: number | null }) =>
+    put("/admin/users/{id}/devices/{device}/ip-limit", { params: { id, device: vars.device }, body: { ipLimit: vars.ipLimit } }),
+  );
+  const resetIp = useAction(id, (vars: { device: string; ip: string }) =>
+    post("/admin/users/{id}/devices/{device}/ips/reset", { params: { id, device: vars.device }, body: { ip: vars.ip } }),
+  );
+  const resetAll = useAction(id, (device: string) => post("/admin/users/{id}/devices/{device}/ips/reset-all", { params: { id, device } }));
 
   const onReissue = async (d: Device) => {
     if (await confirm({ title: t("Make a new key? The old one stops working at once."), confirm: t("Reissue key"), danger: true }))
@@ -330,6 +337,13 @@ function Devices({ c }: { c: Card }) {
   };
   const onRemove = async (d: Device) => {
     if (await confirm({ title: t("Remove this device? Its key stops working."), confirm: t("Remove"), danger: true })) remove.mutate(d.id);
+  };
+  const onResetIp = async (d: Device, ip: string) => {
+    if (await confirm({ title: t("Reset this IP? It is dropped and the slot is freed."), confirm: t("Reset IP"), danger: true }))
+      resetIp.mutate({ device: d.id, ip });
+  };
+  const onResetAll = async (d: Device) => {
+    if (await confirm({ title: t("Reset every active IP of this key?"), confirm: t("Reset all IPs"), danger: true })) resetAll.mutate(d.id);
   };
 
   return (
@@ -386,7 +400,14 @@ function Devices({ c }: { c: Card }) {
           {
             key: "ip",
             header: t("Active connections"),
-            cell: (d) => <Connections d={d} />,
+            cell: (d) => (
+              <Connections
+                d={d}
+                onResetIp={(ip) => void onResetIp(d, ip)}
+                onResetAll={() => void onResetAll(d)}
+                onSaveLimit={(ipLimit) => setLimit.mutate({ device: d.id, ipLimit })}
+              />
+            ),
           },
           {
             key: "traffic",
@@ -423,19 +444,43 @@ function Devices({ c }: { c: Card }) {
   );
 }
 
-function Connections({ d }: { d: Device }) {
+function Connections({
+  d,
+  onResetIp,
+  onResetAll,
+  onSaveLimit,
+}: {
+  d: Device;
+  onResetIp: (ip: string) => void;
+  onResetAll: () => void;
+  onSaveLimit: (ipLimit: number | null) => void;
+}) {
   const { t, dateTime } = useI18n();
   const active = d.activeConnections;
+  const cap = d.ipLimitEffective;
+  const counter = cap == null ? t("Active {x}, no cap", { x: active.length }) : t("Active {x} of {y}", { x: active.length, y: cap });
   return (
-    <>
+    <div className="min-w-[16rem]">
+      <div className="mb-1 font-medium">{counter}</div>
       {active.length ? (
         <ul className="m-0 list-none p-0">
           {active.map((c) => (
-            <li key={`${c.ip}:${c.serverId ?? ""}`} className="mb-1 last:mb-0">
-              <span className="font-mono">{c.ip}</span>
+            <li key={`${c.ip}:${c.serverId ?? ""}`} className="mb-2 last:mb-0">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="font-mono">{c.ip}</span>
+                <Button size="sm" variant="secondary" onClick={() => onResetIp(c.ip)}>
+                  {t("Reset IP")}
+                </Button>
+              </div>
               <div className="text-[13px] text-muted">
                 {c.serverName ?? t("unknown")}, {seen(c.lastSeen)}
               </div>
+              {c.rejected ? (
+                <div className="mt-0.5">
+                  <Level tone="danger">{t("Rejected by the limit")}</Level>
+                </div>
+              ) : null}
+              {c.kicked ? <div className="text-[13px] text-muted">{t("Reset, being dropped")}</div> : null}
             </li>
           ))}
         </ul>
@@ -447,8 +492,49 @@ function Connections({ d }: { d: Device }) {
       ) : (
         <span className="text-muted">{t("No active connections")}</span>
       )}
-      {d.ips24h.length ? <div className="text-[13px] text-muted">{t("{n} in 24 hours", { n: d.ips24h.length })}</div> : null}
-    </>
+      {d.ips24h.length ? <div className="mt-1 text-[13px] text-muted">{t("{n} in 24 hours", { n: d.ips24h.length })}</div> : null}
+      {active.length ? (
+        <div className="mt-2">
+          <Button size="sm" variant="secondary" onClick={onResetAll}>
+            {t("Reset all IPs")}
+          </Button>
+        </div>
+      ) : null}
+      <IpLimitField d={d} onSave={onSaveLimit} />
+    </div>
+  );
+}
+
+function IpLimitField({ d, onSave }: { d: Device; onSave: (ipLimit: number | null) => void }) {
+  const { t } = useI18n();
+  const [v, setV] = useState(d.ipLimit == null ? "" : String(d.ipLimit));
+  return (
+    <form
+      className="mt-2 flex flex-wrap items-end gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const raw = v.trim();
+        onSave(raw === "" ? null : Number(raw));
+      }}
+    >
+      <Field label={t("IP cap")} className="mb-0">
+        {(id) => (
+          <Input
+            id={id}
+            type="number"
+            min={0}
+            max={100}
+            value={v}
+            placeholder={String(d.ipLimitDefault)}
+            onChange={(e) => setV(e.target.value)}
+          />
+        )}
+      </Field>
+      <Button type="submit" size="sm" variant="secondary">
+        {t("Set cap")}
+      </Button>
+      <div className="text-[13px] text-muted">{t("Empty means the plan's limit, 0 means no cap.")}</div>
+    </form>
   );
 }
 
