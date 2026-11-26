@@ -98,6 +98,8 @@ data class CtlPayment(
     /** pending, paid, cancelled. */
     val status: String,
     val externalId: String? = null,
+    /** The provider's own status (Platega: CONFIRMED, CANCELED, CHARGEBACKED, PARTIALLY_REFUNDED, DISPUTED, AMOUNT_MISMATCH, CREATE_FAILED). */
+    val providerStatus: String? = null,
 )
 
 @Serializable

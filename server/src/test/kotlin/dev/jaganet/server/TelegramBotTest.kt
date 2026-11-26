@@ -491,10 +491,11 @@ class TelegramBotTest {
         assertNull(userIdOfTelegram(999))
     }
 
-    @Test fun `the main menu has the four sections as inline buttons and only Menu on the reply keyboard`() = harness {
+    @Test fun `the main menu has buy and the four sections as inline buttons and only Menu on the reply keyboard`() = harness {
         val tg = NumberedTelegram()
         val bot = bot(tg)
         val sections = listOf(
+            "💳 Купить подписку" to "pay",
             "🔑 Ключи и подключения" to "section:keys",
             "⚙️ Настройки" to "section:settings",
             "🆘 Помощь" to "help",
@@ -631,6 +632,7 @@ class TelegramBotTest {
         assertTrue("Нет активной подписки" in card["caption"]!!.jsonPrimitive.content, card.toString())
         assertEquals(
             listOf(
+                "💳 Купить подписку" to "pay",
                 "🔑 Ключи и подключения" to "section:keys",
                 "⚙️ Настройки" to "section:settings",
                 "🆘 Помощь" to "help",
@@ -650,6 +652,8 @@ class TelegramBotTest {
         val status = tg.sent("sendWidget").last()
         assertTrue("Подписка активна до" in status["caption"]!!.jsonPrimitive.content && "Устройства" in status["caption"]!!.jsonPrimitive.content)
         assertEquals("🎁 Получить 14 дней бесплатно" to "invite", status.buttons().last())
+        // With a subscription the first button extends it (issue #154).
+        assertEquals("💳 Продлить" to "pay", status.buttons().first())
         val d = status.data()
         assertEquals("active", d["st"]!!.jsonPrimitive.content)
         assertNotNull(d["exp"]); assertNotNull(d["from"])
@@ -667,7 +671,7 @@ class TelegramBotTest {
     @Test fun `without the mini app the card keeps the whole menu under it`() = harness(mapOf("TELEGRAM_WIDGET" to "all")) {
         val tg = NumberedTelegram()
         bot(tg).handle(tgMessage(603, "/start"))
-        assertEquals(listOf("section:keys", "section:settings", "help", "invite"), tg.sent("sendWidget").single().buttons().map { it.second })
+        assertEquals(listOf("pay", "section:keys", "section:settings", "help", "invite"), tg.sent("sendWidget").single().buttons().map { it.second })
         assertEquals(listOf("Меню"), tg.sent("sendMessage").single().replyButtons())
     }
 
@@ -687,7 +691,7 @@ class TelegramBotTest {
         bot(tg).handle(tgMessage(605, "/start"))
         assertEquals(1, tg.sent("sendWidget").size)
         assertEquals(
-            listOf("section:keys", "section:settings", "help", "invite"),
+            listOf("pay", "section:keys", "section:settings", "help", "invite"),
             tg.sent("sendMessage").lastInline().buttons().map { it.second },
         )
         assertEquals(listOf("Меню"), tg.sent("sendMessage").lastReply().replyButtons())

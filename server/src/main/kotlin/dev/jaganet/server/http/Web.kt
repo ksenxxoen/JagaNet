@@ -44,6 +44,11 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.request.header
+import io.ktor.server.request.receiveText
+import dev.jaganet.server.services.PlategaProvider
+import dev.jaganet.server.services.UpdateOutcome
 
 /** /v1 endpoints the website uses for buying and VPN keys. */
 fun Route.salesApi(s: Services) {
@@ -113,6 +118,7 @@ fun Route.salesApi(s: Services) {
  */
 fun Route.website(s: Services) {
     webPages()
+    plategaRoutes(s)
     staticResources("/", "web")
     referralRedirect(s)
 
@@ -264,6 +270,36 @@ fun Route.website(s: Services) {
             Channel.WEB -> call.respondRedirect("/#/account?order=${o.id}")
             Channel.TELEGRAM -> call.respondText(Pages(call.pageLang()).paidInTelegram(s.bot?.username), ContentType.Text.Html)
             Channel.APP -> call.respondText(Pages(call.pageLang()).paidInApp(), ContentType.Text.Html)
+        }
+    }
+}
+
+/**
+ * Platega (issue #154): the callback set in Platega's dashboard (Settings → Callback URLs) as
+ * PUBLIC_URL + [PlategaProvider.CALLBACK_PATH], and the page the buyer comes back to.
+ */
+fun Route.plategaRoutes(s: Services) {
+    post(PlategaProvider.CALLBACK_PATH) {
+        val p = s.payments.platega ?: throw notFound()
+        // Only Platega knows the merchant id and the secret; anything else is refused before the body is read.
+        if (!p.authentic(call.request.header("X-MerchantId"), call.request.header("X-Secret"))) {
+            return@post call.respondText("Unauthorized", status = HttpStatusCode.Unauthorized)
+        }
+        val update = p.parseCallback(call.receiveText().take(64 * 1024))
+            ?: return@post call.respondText("Bad callback", status = HttpStatusCode.BadRequest)
+        when (s.payments.providerUpdate(PlategaProvider.ID, update)) {
+            // Not ours yet (or never): an error, so Platega delivers it again later.
+            UpdateOutcome.UNKNOWN_ORDER -> call.respondText("Unknown payment", status = HttpStatusCode.NotFound)
+            else -> call.respondText("OK")
+        }
+    }
+    // Platega's return and failedUrl: back to where the order was made; the account and the mini app show whether it was paid.
+    get("/pay/return/{id}") {
+        val o = s.payments.get(call.parameters["id"]!!) ?: return@get call.respondRedirect("/#/account")
+        val bot = s.bot?.username
+        when {
+            o.channel == Channel.TELEGRAM && bot != null -> call.respondRedirect("https://t.me/$bot")
+            else -> call.respondRedirect("/#/account?order=${o.id}")
         }
     }
 }

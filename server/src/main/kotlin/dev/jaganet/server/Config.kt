@@ -39,6 +39,8 @@ data class Config(
     val plans: Plans,
     /** Website / Telegram checkout: "test" (built-in fake checkout) or a real provider id; null = selling off. */
     val paymentProvider: String? = null,
+    /** PLATEGA_MERCHANT_ID / PLATEGA_SECRET / PLATEGA_PAYMENT_METHOD (issue #154); null = Platega not set up. */
+    val platega: dev.jaganet.server.services.PlategaConfig? = null,
     /** From @BotFather. Unset = no Telegram bot. */
     val telegramBotToken: String? = null,
     /** The bot's mode, support chat, login widget… (TELEGRAM_* variables, issue #38). */
@@ -85,6 +87,8 @@ data class Config(
                 require(!env["DATABASE_URL"].isNullOrBlank()) { "DATABASE_URL is required" }
             }
             fun num(k: String, d: Long) = env[k]?.takeIf { it.isNotBlank() }?.toLong() ?: d
+            val platega = dev.jaganet.server.services.PlategaConfig.load(env)
+            val provider = env["PAYMENT_PROVIDER"]?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
             return Config(
                 mode = mode,
                 port = num("PORT", 4000).toInt(),
@@ -125,7 +129,13 @@ data class Config(
                     inviteeDays = num("REFERRAL_INVITEE_DAYS", 0).toInt().coerceIn(0, 3650),
                     monthlyCap = num("REFERRAL_MONTHLY_CAP", 10).toInt().coerceIn(0, 10_000),
                 ),
-                paymentProvider = env["PAYMENT_PROVIDER"]?.takeIf { it.isNotBlank() } ?: "test".takeIf { mode != Mode.PRODUCTION },
+                // Platega only with its merchant id and secret; without them selling stays off (never a fallback to test).
+                paymentProvider = when {
+                    provider == dev.jaganet.server.services.PlategaProvider.ID -> provider.takeIf { platega != null }
+                    provider != null -> provider
+                    else -> "test".takeIf { mode != Mode.PRODUCTION }
+                },
+                platega = platega,
                 telegramBotToken = env["TELEGRAM_BOT_TOKEN"]?.takeIf { it.isNotBlank() },
                 telegram = dev.jaganet.server.telegram.TelegramConfig.load(env),
                 androidAppUrl = env["ANDROID_APP_URL"]?.takeIf { it.isNotBlank() },

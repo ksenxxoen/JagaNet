@@ -112,14 +112,20 @@ describe("#/signin", () => {
       "GET /site": siteInfo(),
       "POST /auth/email/start": { ok: true },
       "POST /auth/email/verify": session(),
-      "POST /orders": { id: "o1", tariffName: "Pro 12", status: "pending", amount: "2 880 ₽", checkoutUrl: "https://pay.example/c?x=1" },
+      "POST /orders": {
+        id: "o1",
+        tariffName: "Pro 12",
+        status: "pending",
+        amount: "2 880 ₽",
+        checkoutUrl: "https://pay.example/pay/test/c?x=1",
+      },
     });
     renderApp("/signin");
     const user = userEvent.setup();
     await fillEmail(user);
     await user.type(await screen.findByLabelText("Code"), "111111");
     await user.click(screen.getByRole("button", { name: "Sign in" }));
-    await waitFor(() => expect(open).toHaveBeenCalledWith("https://pay.example/c?x=1&lang=ru"));
+    await waitFor(() => expect(open).toHaveBeenCalledWith("https://pay.example/pay/test/c?x=1&lang=ru"));
     expect(seen.find((r) => r.url === "/orders")!.body).toEqual({ tariffId: "m12" });
     expect(localStorage.getItem("afterSignIn")).toBeNull();
   });

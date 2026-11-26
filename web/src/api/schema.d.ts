@@ -2396,6 +2396,7 @@ export interface components {
             provider: string;
             status: string;
             externalId?: string;
+            providerStatus?: string;
         };
         CtlPaymentsRes: {
             payments: components["schemas"]["CtlPayment"][];

@@ -298,7 +298,7 @@ class Control(
             id = r.str("id"), createdAt = r.instant("created_at").toString(), paidAt = r.instantOrNull("paid_at")?.toString(),
             userId = r.str("user_id"), email = r.str("email"), product = terms ?: legacyProduct(r.str("product_id")),
             amount = MoneyAmount(r.long("amount_minor"), r.str("currency")), channel = r.str("channel"), provider = r.str("provider"),
-            status = r.str("status"), externalId = r.strOrNull("external_id"),
+            status = r.str("status"), externalId = r.strOrNull("external_id"), providerStatus = r.strOrNull("provider_status"),
         )
     }
 
@@ -617,10 +617,10 @@ class Control(
     /** The same rows as CSV (UTF-8, comma separated, amounts in major units with a dot), at most 50 000. */
     suspend fun paymentsCsv(f: PaymentFilter): String {
         val list = payments(f, 50_000).payments
-        val sb = StringBuilder("id,created_at,paid_at,user_id,email,product,amount,currency,channel,provider,status,external_id\n")
+        val sb = StringBuilder("id,created_at,paid_at,user_id,email,product,amount,currency,channel,provider,status,external_id,provider_status\n")
         for (p in list) {
             val amount = "%d.%02d".format(p.amount.minor / 100, p.amount.minor % 100)
-            sb.append(listOf(p.id, p.createdAt, p.paidAt.orEmpty(), p.userId, p.email, p.product, amount, p.amount.currency, p.channel, p.provider, p.status, p.externalId.orEmpty())
+            sb.append(listOf(p.id, p.createdAt, p.paidAt.orEmpty(), p.userId, p.email, p.product, amount, p.amount.currency, p.channel, p.provider, p.status, p.externalId.orEmpty(), p.providerStatus.orEmpty())
                 .joinToString(",") { csv(it) }).append('\n')
         }
         return sb.toString()

@@ -9,8 +9,10 @@ import { store } from "@/lib/storage";
 import { useSession } from "@/store/session";
 import { page } from "./navigate";
 
-/** The payment page with ?lang= (or &lang=) added. */
-export const checkoutUrl = (url: string, lang: string) => url + (url.includes("?") ? "&" : "?") + "lang=" + lang;
+/** Our own pages (this site, the test checkout) get ?lang= (or &lang=); a payment service's link (Platega) is left as it was given. */
+const ours = (url: string) => url.startsWith("/") || url.startsWith(window.location.origin + "/") || url.includes("/pay/test/");
+
+export const checkoutUrl = (url: string, lang: string) => (ours(url) ? url + (url.includes("?") ? "&" : "?") + "lang=" + lang : url);
 
 /** Returns "signin" when the person has to sign in first (the caller opens #/signin), else opens the payment page. */
 export async function startCheckout(tariffId: string): Promise<"signin" | "paying"> {

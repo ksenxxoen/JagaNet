@@ -35,9 +35,13 @@ describe("rich", () => {
 });
 
 describe("checkout", () => {
-  it("adds the language to the payment page", () => {
-    expect(checkoutUrl("https://pay/x", "de")).toBe("https://pay/x?lang=de");
-    expect(checkoutUrl("https://pay/x?a=1", "en")).toBe("https://pay/x?a=1&lang=en");
+  it("adds the language to our own payment page", () => {
+    expect(checkoutUrl("https://boop.example/pay/test/x", "de")).toBe("https://boop.example/pay/test/x?lang=de");
+    expect(checkoutUrl(`${window.location.origin}/pay/x?a=1`, "en")).toBe(`${window.location.origin}/pay/x?a=1&lang=en`);
+  });
+
+  it("leaves a payment service's link as it was given", () => {
+    expect(checkoutUrl("https://pay.platega.io/?id=1&mh=2", "de")).toBe("https://pay.platega.io/?id=1&mh=2");
   });
 
   it("a guest is asked to sign in and the plan is remembered", async () => {
