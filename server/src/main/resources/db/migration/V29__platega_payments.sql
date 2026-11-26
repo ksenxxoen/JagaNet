@@ -1,5 +1,5 @@
 -- Platega payments (issue #154). Additive only: existing orders keep working as before.
--- V29 is taken by the open per-key IP limit change (#153), so this takes the next free number.
+-- V29: the last migration on the base branch is V28, so Flyway sees no gap.
 
 -- The payment link the provider gave when the order was made (Platega's "redirect"),
 -- and the provider's own status of the payment (CONFIRMED, CANCELED, CHARGEBACKED, PARTIALLY_REFUNDED, DISPUTED…).

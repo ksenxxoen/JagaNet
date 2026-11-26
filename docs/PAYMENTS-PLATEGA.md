@@ -89,7 +89,7 @@ and no access is given. The error is logged without the secret.
   delivers it again (it retries right away, then after 5, 10 and 15 minutes, with a 30 s timeout;
   after that it can be re-sent from the dashboard). When Platega is not configured the path is `404`.
 
-## Data model (migration V30, additive)
+## Data model (migration V29, additive)
 
 - `orders.checkout_url`: Platega's payment link, returned as `checkoutUrl` while the order is pending.
 - `orders.external_id`: Platega's transaction id (already existed); unique for `provider = 'platega'`.
@@ -100,8 +100,7 @@ and no access is given. The error is logged without the secret.
   and the body (callbacks carry no secrets; those are in headers). Repeats of the same result are
   stored once.
 
-V29 is used by the open per-key IP limit change (#153), so this migration is V30. If V30 reaches
-production before V29, Flyway refuses the later V29 (out of order): merge #153 first, or renumber.
+This is V29. The last migration on `claude/adoring-brown-s8fqex` is V28, so Flyway sees no gap.
 
 ## API changes (backwards compatible)
 
@@ -132,8 +131,8 @@ Without both `PLATEGA_MERCHANT_ID` and `PLATEGA_SECRET`, Platega is not enabled 
 `PAYMENT_PROVIDER=platega` leaves selling off (never falls back to `test`). `PAYMENT_PROVIDER=test`
 stays for development and CI.
 
-Note: `scripts/server/install.sh` writes `PAYMENT_PROVIDER=""` on every run, so re-running the
-installer switches sales off again; set `PAYMENT_PROVIDER=platega` again after it.
+`scripts/server/install.sh` writes `PAYMENT_PROVIDER` and the `PLATEGA_*` keys only when they
+are absent, so re-running the installer keeps an existing Platega setup.
 
 ## Switching it on (after the owner's approval)
 
@@ -145,5 +144,5 @@ installer switches sales off again; set `PAYMENT_PROVIDER=platega` again after i
 4. Buy the cheapest tariff once and check: the bot / account shows the payment, the admin panel's
    Payments tab shows the order as paid with `CONFIRMED`.
 
-Rollback: set `PAYMENT_PROVIDER=test` (or empty) and restart. Orders already paid stay paid; V30 only
+Rollback: set `PAYMENT_PROVIDER=test` (or empty) and restart. Orders already paid stay paid; V29 only
 adds columns and a table.

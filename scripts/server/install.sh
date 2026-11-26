@@ -308,10 +308,15 @@ env_set PROTOCOLS "$PROTOCOL"
 if [ -n "${JAGANET_DOMAIN:-}" ] || grep -qE '^PUBLIC_URL=https://[0-9-]+\.sslip\.io/?$' "$ENV_FILE"; then
   env_set PUBLIC_URL "https://$DOMAIN"
 fi
-# Real mode by default: no sign-in codes on screen, no test checkout. The admin panel can turn
+# Real mode by default: no sign-in codes on screen. The admin panel can turn
 # test modes on deliberately (its choice is stored in the database and wins over this file).
+# Payment settings already in this file stay. A reinstall must not switch sales off
+# or drop Platega credentials: write a default only when the key is absent.
 env_set TEST_SHOW_SIGNIN_CODES 0
-env_set PAYMENT_PROVIDER ""
+env_default PAYMENT_PROVIDER ""
+for k in PLATEGA_MERCHANT_ID PLATEGA_SECRET PLATEGA_PAYMENT_METHOD PLATEGA_API_URL; do
+  env_default "$k" ""
+done
 for k in SMTP_HOST SMTP_PORT SMTP_USER SMTP_PASSWORD SMTP_FROM SMTP_SECURITY ALERT_EMAILS ALERT_TELEGRAM_CHAT_IDS CHANNEL_MBPS HOST_TRAFFIC_LIMIT_GB; do
   if [ -n "${!k:-}" ]; then env_set "$k" "${!k}"; fi
 done
