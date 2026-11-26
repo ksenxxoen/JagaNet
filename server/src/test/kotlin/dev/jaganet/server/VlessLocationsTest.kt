@@ -7,6 +7,7 @@ import dev.jaganet.api.Vless
 import dev.jaganet.server.services.NodePeerCounter
 import dev.jaganet.server.services.NodeRegisterReq
 import dev.jaganet.server.services.NodeReportReq
+import dev.jaganet.server.services.SubscriptionLayout
 import dev.jaganet.server.services.VlessSubscription
 import dev.jaganet.server.services.XrayBalancer
 import io.ktor.client.request.get
@@ -80,7 +81,7 @@ class VlessLocationsTest {
         // A third node: everyone is on it as soon as the owner creates it, before the next timer run.
         val de = node("DE", "de.example.com")
         assertEquals(listOf(ua, ub).sorted(), peersOf(de))
-        assertEquals(3, names(sub(tokenOf(a.session.user.id)).bodyAsText()).size / 2)
+        assertEquals(3, (names(sub(tokenOf(a.session.user.id)).bodyAsText()).size - SubscriptionLayout.PLACEHOLDERS.size) / 2)
 
         // Switched off: its agent drops the replicas at once (only keys whose home it is stay until
         // the timer moves them), and it leaves the subscription.
@@ -94,7 +95,7 @@ class VlessLocationsTest {
         assertEquals(listOf(ua, ub).sorted(), peersOf(de))
         val list = names(sub(tokenOf(a.session.user.id)).bodyAsText())
         assertTrue(list.none { "Нидерланды" in it }, list.toString())
-        assertEquals(4, list.size)
+        assertEquals(4 + SubscriptionLayout.PLACEHOLDERS.size, list.size)
         // Same UUID everywhere, still.
         assertEquals(ua, uuidOf(a.session.user.id))
 
@@ -153,11 +154,16 @@ class VlessLocationsTest {
         val token = tokenOf(u.session.user.id)
         val res = sub(token, ua = "v2rayNG/1.10.5")
         assertEquals(HttpStatusCode.OK, res.status)
-        assertEquals(listOf("🇳🇱 Амстердам", "🇳🇱 Амстердам XHTTP", "🇫🇮 Финляндия", "🇫🇮 Финляндия XHTTP"), names(res.bodyAsText()))
+        assertEquals(
+            SubscriptionLayout.PLACEHOLDERS + listOf("🇳🇱 Амстердам", "🇳🇱 Амстердам XHTTP", "🇫🇮 Финляндия", "🇫🇮 Финляндия XHTTP"),
+            names(res.bodyAsText()),
+        )
         val links = String(Base64.getDecoder().decode(res.bodyAsText())).split("\n")
-        assertTrue(links.all { it.startsWith("vless://$uuid@") }, links.toString())
-        assertTrue(links[0].contains("@nl.example.com:443?") && "type=tcp" in links[0] && "flow=xtls-rprx-vision" in links[0])
-        assertTrue(links[1].contains("@nl.example.com:8443?") && "type=xhttp" in links[1])
+        val real = links.filter { it.startsWith("vless://$uuid@") }
+        assertEquals(4, real.size, links.toString())
+        assertTrue(real[0].contains("@nl.example.com:443?") && "type=tcp" in real[0] && "flow=xtls-rprx-vision" in real[0])
+        assertTrue(real[1].contains("@nl.example.com:8443?") && "type=xhttp" in real[1])
+        assertTrue(links.take(2).all { it.startsWith("vless://${SubscriptionLayout.DUMMY_UUID}@127.0.0.1:1?") }, links.toString())
         // Hidden: not in the subscription and not in the apps' list, but still gets the full user list (issue #112).
         assertEquals(listOf(uuid), peersOf(hidden))
         assertTrue(u.api.servers(listOf("amneziawg", "vless")).servers.none { it.id == hidden.id })
@@ -176,10 +182,10 @@ class VlessLocationsTest {
         val page = b.createClient {}.get("/k/$token").bodyAsText()
         assertTrue("/k/$token/vless/sub.png" in page && "vless://" !in page, page)
         assertEquals(200, b.createClient {}.get("/k/$token/vless/0.png").status.value)
-        assertEquals(links, u.api.keys(listOf("vless")).vless!!.links)
+        assertEquals(real, u.api.keys(listOf("vless")).vless!!.links)
         assertEquals("🇳🇱 Амстердам", u.api.keys(listOf("vless")).vless!!.name)
         // XHTTP is the transport name, the same in every language.
-        assertEquals("🇫🇮 Финляндия XHTTP", names(sub(token, "?lang=de").bodyAsText())[3])
+        assertEquals("🇫🇮 Финляндия XHTTP", names(sub(token, "?lang=de").bodyAsText())[5])
         assertTrue(fi.id.isNotEmpty())
     }
 
@@ -238,14 +244,17 @@ class VlessLocationsTest {
             val outbounds = doc["outbounds"]!!.jsonArray.map { it.jsonObject }
             val select = outbounds.first()
             assertEquals("selector", select["type"]!!.jsonPrimitive.content)
-            assertEquals(listOf("Самый быстрый 🚀", "🇫🇮 Финляндия", "🇳🇱 Нидерланды"), select["outbounds"]!!.jsonArray.map { it.jsonPrimitive.content })
+            assertEquals(listOf("✅ Самый быстрый", "💬 Наш ТГ @boop_vpn", "⬇️ Резервные сервера ⬇️", "🇫🇮 Финляндия", "🇳🇱 Нидерланды"), select["outbounds"]!!.jsonArray.map { it.jsonPrimitive.content })
             val auto = outbounds.single { it["type"]!!.jsonPrimitive.content == "urltest" }
-            assertEquals("Самый быстрый 🚀", auto["tag"]!!.jsonPrimitive.content)
+            assertEquals("✅ Самый быстрый", auto["tag"]!!.jsonPrimitive.content)
             assertEquals(listOf("🇫🇮 Финляндия", "🇳🇱 Нидерланды"), auto["outbounds"]!!.jsonArray.map { it.jsonPrimitive.content })
-            // Vision only (sing-box has no XHTTP), each with Reality and the user's UUID.
+            assertTrue(auto["outbounds"]!!.jsonArray.map { it.jsonPrimitive.content }.none { it in SubscriptionLayout.PLACEHOLDERS })
+            // Vision only (sing-box has no XHTTP), each with Reality and the user's UUID; placeholders are a separate dummy outbound.
             val vless = outbounds.filter { it["type"]!!.jsonPrimitive.content == "vless" }
-            assertEquals(2, vless.size)
-            for (o in vless) {
+            val realVless = vless.filter { it["server"]!!.jsonPrimitive.content != SubscriptionLayout.DUMMY_HOST }
+            assertEquals(2, realVless.size)
+            assertEquals(SubscriptionLayout.PLACEHOLDERS.toSet(), vless.filter { it["server"]!!.jsonPrimitive.content == SubscriptionLayout.DUMMY_HOST }.map { it["tag"]!!.jsonPrimitive.content }.toSet())
+            for (o in realVless) {
                 assertEquals(uuid, o["uuid"]!!.jsonPrimitive.content)
                 assertEquals("xtls-rprx-vision", o["flow"]!!.jsonPrimitive.content)
                 assertEquals(443, o["server_port"]!!.jsonPrimitive.content.toInt())
@@ -265,8 +274,8 @@ class VlessLocationsTest {
             val y = res.bodyAsText()
             assertTrue("proxies:\n  - name: \"🇫🇮 Финляндия\"\n    type: vless\n    server: \"fi.example.com\"\n    port: 443\n    uuid: \"$uuid\"" in y, y)
             assertTrue("    reality-opts:\n      public-key: \"$pbk\"\n      short-id: \"a1b2c3d4\"" in y, y)
-            assertTrue("  - name: \"Самый быстрый 🚀\"\n    type: url-test\n    proxies: [\"🇫🇮 Финляндия\", \"🇳🇱 Нидерланды\"]" in y, y)
-            assertTrue("    type: select\n    proxies: [\"Самый быстрый 🚀\", \"🇫🇮 Финляндия\", \"🇳🇱 Нидерланды\"]" in y, y)
+            assertTrue("  - name: \"✅ Самый быстрый\"\n    type: url-test\n    proxies: [\"🇫🇮 Финляндия\", \"🇳🇱 Нидерланды\"]" in y, y)
+            assertTrue("    type: select\n    proxies: [\"✅ Самый быстрый\", \"💬 Наш ТГ @boop_vpn\", \"⬇️ Резервные сервера ⬇️\", \"🇫🇮 Финляндия\", \"🇳🇱 Нидерланды\"]" in y, y)
             assertTrue(y.trimEnd().endsWith("- \"MATCH,Boop VPN\""), y)
             assertFalse("xhttp" in y)
         }
@@ -274,7 +283,7 @@ class VlessLocationsTest {
         // v2rayNG, Hiddify and unknown clients: base64 with XHTTP too; ?format=base64 wins over the User-Agent (Happ and v2RayTun: VlessSubscriptionClientsTest).
         for (res in listOf(sub(token, "?format=base64", ua = "Happ/3.1"), sub(token, ua = "v2rayNG/1.9"), sub(token, "?format=links", ua = "v2RayTun/5"), sub(token, ua = "HiddifyNext/2.5.7 (android) like ClashMeta v2ray sing-box"), sub(token), sub(token, "?format=base64", ua = "mihomo/1.19"))) {
             assertTrue(res.headers["Content-Type"]!!.startsWith("text/plain"))
-            assertEquals(4, String(Base64.getDecoder().decode(res.bodyAsText())).split("\n").size)
+            assertEquals(6, String(Base64.getDecoder().decode(res.bodyAsText())).split("\n").size)
         }
         assertEquals(VlessSubscription.Format.SINGBOX, VlessSubscription.format("sing-box", "Happ"))
         assertEquals(VlessSubscription.Format.BASE64, VlessSubscription.format(null, null))
@@ -286,8 +295,9 @@ class VlessLocationsTest {
         services.vlessKeys.sync()
         val uuid = uuidOf(u.session.user.id)
         val lines = String(Base64.getDecoder().decode(sub(tokenOf(u.session.user.id)).bodyAsText())).split("\n")
-        assertEquals(Vless.links(settings(fi.host).params(uuid), "x").map { it.substringBefore('#') }, lines.map { it.substringBefore('#') })
-        assertEquals(listOf("🇫🇮 Финляндия", "🇫🇮 Финляндия XHTTP"), lines.map { java.net.URLDecoder.decode(it.substringAfter('#'), "UTF-8") })
+        val real = lines.filter { it.startsWith("vless://$uuid@") }
+        assertEquals(Vless.links(settings(fi.host).params(uuid), "x").map { it.substringBefore('#') }, real.map { it.substringBefore('#') })
+        assertEquals(SubscriptionLayout.PLACEHOLDERS + listOf("🇫🇮 Финляндия", "🇫🇮 Финляндия XHTTP"), lines.map { java.net.URLDecoder.decode(it.substringAfter('#'), "UTF-8") })
         assertEquals(0, ctx.db.run { it.one("SELECT count(*)::int AS n FROM vless_replicas")!!.int("n") })
         assertEquals(listOf(uuid), peersOf(fi))
     }
@@ -340,7 +350,7 @@ class VlessLocationsTest {
         // The subscription: "Auto" (the entry) first, then the listed exits; the hidden exit is not there.
         val u = signIn("u@example.com")
         services.vlessKeys.sync()
-        assertEquals(listOf("⚡ Авто", "⚡ Авто XHTTP", "🇫🇮 Финляндия", "🇫🇮 Финляндия XHTTP"), names(sub(tokenOf(u.session.user.id)).bodyAsText()))
+        assertEquals(listOf("✅ ⚡ Авто", "✅ ⚡ Авто XHTTP") + SubscriptionLayout.PLACEHOLDERS + listOf("🇫🇮 Финляндия", "🇫🇮 Финляндия XHTTP"), names(sub(tokenOf(u.session.user.id)).bodyAsText()))
         assertEquals("Авто", u.api.servers(listOf("vless")).servers.first { it.id == entry.id }.countryName)
 
         // An entry no more: its user leaves the exits; a node that is not an entry has no fragment.
@@ -391,9 +401,10 @@ class VlessLocationsTest {
         services.vlessKeys.sync()
         val token = tokenOf(u.session.user.id)
         val expected = listOf("🇳🇱 Нидерланды #1 ⚡", "🇳🇱 Нидерланды #1 ⚡ XHTTP")
-        assertEquals(expected, names(sub(token, ua = "v2rayNG/1.10.5").bodyAsText()))
+        assertEquals(SubscriptionLayout.PLACEHOLDERS + expected, names(sub(token, ua = "v2rayNG/1.10.5").bodyAsText()))
         val happ = Json.parseToJsonElement(sub(token, ua = "Happ/1.63.1").bodyAsText()).jsonArray
-        assertEquals(expected, happ.drop(1).map { it.jsonObject["remarks"]!!.jsonPrimitive.content })
+        assertEquals("✅ Самый быстрый", happ[0].jsonObject["remarks"]!!.jsonPrimitive.content)
+        assertEquals(SubscriptionLayout.PLACEHOLDERS + expected, happ.drop(1).map { it.jsonObject["remarks"]!!.jsonPrimitive.content })
         assertEquals(listOf("NL"), u.api.servers(listOf("amneziawg", "vless")).servers.filter { Protocols.VLESS in it.protocols }.map { it.countryCode })
     }
 
@@ -401,7 +412,7 @@ class VlessLocationsTest {
         node("NL", "nl.example.com", displayName = "🇳🇱 Нидерланды #1 ⚡")
         val u = signIn("flagged@example.com")
         services.vlessKeys.sync()
-        assertEquals(listOf("🇳🇱 Нидерланды #1 ⚡", "🇳🇱 Нидерланды #1 ⚡ XHTTP"), names(sub(tokenOf(u.session.user.id), ua = "v2rayNG/1.10.5").bodyAsText()))
+        assertEquals(SubscriptionLayout.PLACEHOLDERS + listOf("🇳🇱 Нидерланды #1 ⚡", "🇳🇱 Нидерланды #1 ⚡ XHTTP"), names(sub(tokenOf(u.session.user.id), ua = "v2rayNG/1.10.5").bodyAsText()))
     }
 
     @Test fun `a balancing entry keeps its display name without a country flag`() = harness(mapOf("PUBLIC_URL" to "https://boop.example", "VLESS_BALANCER" to "1")) {
@@ -410,7 +421,10 @@ class VlessLocationsTest {
         val u = signIn("entry-flag@example.com")
         services.vlessKeys.sync()
         val list = names(sub(tokenOf(u.session.user.id), ua = "v2rayNG/1.10.5").bodyAsText())
-        assertEquals(listOf("Самый надёжный 🚀", "Самый надёжный 🚀 XHTTP", "🇳🇱 Нидерланды #1 ⚡", "🇳🇱 Нидерланды #1 ⚡ XHTTP"), list)
+        assertEquals(
+            listOf("✅ Самый надёжный 🚀", "✅ Самый надёжный 🚀 XHTTP") + SubscriptionLayout.PLACEHOLDERS + listOf("🇳🇱 Нидерланды #1 ⚡", "🇳🇱 Нидерланды #1 ⚡ XHTTP"),
+            list,
+        )
         assertTrue(list.none { it.startsWith("🇷🇺") }, list.toString())
     }
 

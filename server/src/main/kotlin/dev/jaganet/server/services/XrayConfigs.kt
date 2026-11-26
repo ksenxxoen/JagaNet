@@ -19,9 +19,10 @@ import kotlinx.serialization.json.putJsonObject
  * import one per server and run as they are: the only way to hand them DNS and routing together
  * (https://www.happ.su/main/dev-docs/examples-of-links-and-parameters, "JSON Arrays").
  *
- * First "Самый быстрый 🚀": every location's Vision (TCP) link behind an Xray `leastPing` balancer
+ * First "✅ Самый быстрый": every location's Vision (TCP) link behind an Xray `leastPing` balancer
  * with the `observatory`, as the sing-box and Clash profiles have it; then one config per link of
- * the base64 list, in its order and with its names (XHTTP backups included).
+ * the base64 list, in its order and with its names (XHTTP backups included, placeholders after a
+ * balancing entry and before the other locations). Placeholders are not in the balancer.
  *
  * Each config has:
  *  - `dns`: DNS over HTTPS from VLESS_SUB_DNS, `queryStrategy` UseIPv4, no fake DNS. `hosts`
@@ -58,8 +59,34 @@ object XrayConfigs {
             val outbounds = tcp.mapIndexed { i, (uuid, _, v) -> outbound(if (i == 0) PROXY else "$PROXY-${i + 1}", uuid, v) }
             add(config(VlessSubscription.autoName(lang), outbounds, balanced = true, options))
         }
-        val named = locations.flatMap { l -> l.named(lang).map { (v, n) -> Triple(l.params.uuid, n, v) } }
-        for ((uuid, name, v) in named) add(config(name, listOf(outbound(PROXY, uuid, v)), balanced = false, options))
+        for (item in SubscriptionLayout.items(locations, lang)) when (item) {
+            is SubscriptionLayout.Item.Location -> add(config(item.name, listOf(outbound(PROXY, item.uuid, item.variant)), balanced = false, options))
+            is SubscriptionLayout.Item.Placeholder -> add(config(item.name, listOf(dummyOutbound()), balanced = false, options))
+        }
+    }
+
+    /** A placeholder outbound: listed by the apps, no user UUID, no Reality keys, no route off the box. */
+    fun dummyOutbound(): JsonObject = buildJsonObject {
+        put("tag", PROXY)
+        put("protocol", "vless")
+        putJsonObject("settings") {
+            putJsonArray("vnext") {
+                addJsonObject {
+                    put("address", SubscriptionLayout.DUMMY_HOST)
+                    put("port", SubscriptionLayout.DUMMY_PORT)
+                    putJsonArray("users") {
+                        addJsonObject {
+                            put("id", SubscriptionLayout.DUMMY_UUID)
+                            put("encryption", "none")
+                        }
+                    }
+                }
+            }
+        }
+        putJsonObject("streamSettings") {
+            put("network", "tcp")
+            put("security", "none")
+        }
     }
 
     /** One VLESS+Reality outbound for a variant of a location. */

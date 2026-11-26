@@ -87,9 +87,10 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
     val ent = Entitlements(ctx)
     val tunnels = Tunnels(ctx, ent)
     val diagnostics = dev.jaganet.server.services.Diagnostics(ctx)
-    val traffic = Traffic(ctx, ent, tunnels, SpeedLimits(ctx))
     val stats = Stats(ctx)
     val nodes = Nodes(ctx).also { kotlinx.coroutines.runBlocking { it.failInterrupted() } }
+    val ipLimits = dev.jaganet.server.services.IpLimits(ctx, ent, nodes).also { nodes.ipLimits = it }
+    val traffic = Traffic(ctx, ent, tunnels, SpeedLimits(ctx), ipLimits)
     val tariffs = Tariffs(ctx).also { kotlinx.coroutines.runBlocking { it.seedIfEmpty() } }
     val billing = Billing(ctx, tariffs)
     val referrals = Referrals(ctx) { bot?.username }
@@ -99,7 +100,7 @@ class Services(val ctx: Ctx, probe: SystemProbe = LinuxProbe()) {
     /** One VLESS key per user, outside the device limit (issue #33). */
     val vlessKeys = dev.jaganet.server.services.VlessKeys(ctx, ent, tunnels)
     /** Admin control over users, payments and connections (issue #39). */
-    val control by lazy { dev.jaganet.server.services.Control(ctx, ent, tunnels, keys, vlessKeys, nodes) }
+    val control by lazy { dev.jaganet.server.services.Control(ctx, ent, tunnels, keys, vlessKeys, nodes, ipLimits) }
     val testAccounts = dev.jaganet.server.services.TestAccounts(ctx, keys, tunnels)
     val settings = Settings(ctx)
     val finance = Finance(ctx)

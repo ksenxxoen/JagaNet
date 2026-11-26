@@ -15,6 +15,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
@@ -23,6 +26,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import org.slf4j.LoggerFactory
@@ -63,7 +67,7 @@ fun Application.startTelegramBot(s: Services) {
             }
         }
     }
-    scope.launch { TelegramRunner(bot, api, cfg, s).run(webhookSecret(s)) }
+    scope.launch { TelegramRunner(bot, api, cfg, s, scope).run(webhookSecret(s)) }
     scope.launch {
         delay(60_000)
         while (true) {
@@ -76,7 +80,8 @@ fun Application.startTelegramBot(s: Services) {
 }
 
 /** Connects to Telegram and keeps receiving updates. Split out so tests can run it against a fake Bot API. */
-class TelegramRunner(private val bot: TelegramBot, private val api: TelegramApi, private val cfg: TelegramConfig, private val s: Services) {
+class TelegramRunner(private val bot: TelegramBot, private val api: TelegramApi, private val cfg: TelegramConfig, private val s: Services, private val scope: CoroutineScope? = null) {
+    private val chatLocks = ConcurrentHashMap<Long, Mutex>()
     /** Pause after the n-th failure in a row: 5 s, 10 s, 20 s… up to 2 minutes. */
     private fun backoff(failures: Int) = (5_000L shl (failures - 1).coerceIn(0, 5)).coerceAtMost(120_000L)
 
@@ -118,16 +123,37 @@ class TelegramRunner(private val bot: TelegramBot, private val api: TelegramApi,
                 return@repeat
             }
             for (u in updates) {
-                offset = u.jsonObject["update_id"]!!.jsonPrimitive.long + 1
-                try {
-                    bot.handle(u.jsonObject)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    log.error("update failed", e)
+                val update = u.jsonObject
+                offset = update["update_id"]!!.jsonPrimitive.long + 1
+                val run = suspend {
+                    try {
+                        bot.handle(update)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        log.error("update failed", e)
+                    }
+                }
+                val sc = scope
+                if (sc == null) {
+                    run()
+                } else {
+                    val chat = updateChatId(update)
+                    sc.launch {
+                        if (chat == null) run()
+                        else chatLocks.getOrPut(chat) { Mutex() }.withLock { run() }
+                    }
                 }
             }
         }
+    }
+
+    private fun updateChatId(u: JsonObject): Long? {
+        val msg = u["message"]?.jsonObject ?: u["callback_query"]?.jsonObject?.get("message")?.jsonObject
+        msg?.get("chat")?.jsonObject?.get("id")?.jsonPrimitive?.longOrNull?.let { return it }
+        u["callback_query"]?.jsonObject?.get("from")?.jsonObject?.get("id")?.jsonPrimitive?.longOrNull?.let { return it }
+        u["widget_query"]?.jsonObject?.get("from")?.jsonObject?.get("id")?.jsonPrimitive?.longOrNull?.let { return it }
+        return null
     }
 
     /** Registers the webhook (again after failures) and checks it every minute for the monitoring page. */

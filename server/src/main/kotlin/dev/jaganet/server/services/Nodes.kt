@@ -105,6 +105,10 @@ data class NodePeersRes(
      * version 3 reports what the balancer selects (`xray api bi`); older agents ignore the field.
      */
     val balancer: String? = null,
+    /** off / observe / enforce. Older agents ignore this and [ipBlocks]. */
+    val ipLimitMode: String? = null,
+    /** Source IPs to drop on this node's Xray ports when [ipLimitMode] is enforce. */
+    val ipBlocks: List<String> = emptyList(),
 )
 
 @Serializable
@@ -209,6 +213,8 @@ private val IPV4 = Regex("^(25[0-5]|2[0-4]\\d|1?\\d?\\d)(\\.(25[0-5]|2[0-4]\\d|1
  * The node needs no database and opens no port but the VPN one.
  */
 class Nodes(private val ctx: Ctx) {
+    /** Set after construction: the concurrent-IP cap, used in the peer list for VLESS agents. */
+    var ipLimits: IpLimits? = null
     private val speedLimits = SpeedLimits(ctx)
     private val box by lazy { SecretBox("node-keys:${ctx.cfg.authSecret}") }
     /** How installs reach new machines: SSH, or a stand-in in the simulator and tests. */
@@ -709,13 +715,15 @@ class Nodes(private val ctx: Ctx) {
         val inbounds = if (!vless) emptyList()
         else (s.json("protocols")[protocol] as? JsonObject)?.let { runCatching { Protocols.decode<Vless.NodeSettings>(it) }.getOrNull() }
             ?.transports?.map { NodeInbound(it.tag, it.flow) }.orEmpty()
+        val ipMode = loadControlSettings(sql).ipLimitMode
+        val ipBlocks = if (vless) ipLimits?.blocksForAgents(sql).orEmpty() else emptyList()
         val version = MessageDigest.getInstance("SHA-256")
             .digest((peers.joinToString("\n") { "${it.publicKey} ${it.address}" } + "|" + limit?.let { "${it.mbps} ${it.addresses}" } +
-                inbounds.joinToString("") { "|${it.tag}:${it.flow}" }).toByteArray())
+                inbounds.joinToString("") { "|${it.tag}:${it.flow}" } + "|ip:$ipMode:" + ipBlocks.joinToString(",")).toByteArray())
             .take(12).joinToString("") { "%02x".format(it) }
         val iface = when (protocol) { Protocols.AMNEZIAWG -> IFACE_AWG; Protocols.VLESS -> IFACE_XRAY; else -> IFACE_WG }
         val balancer = if (vless && VlessLocations.isBalancingEntry(ctx, s)) XrayBalancer.BALANCER else null
-        NodePeersRes(version, protocol, iface, peers, limit, inbounds, balancer)
+        NodePeersRes(version, protocol, iface, peers, limit, inbounds, balancer, ipMode, ipBlocks)
     }
 
     /**

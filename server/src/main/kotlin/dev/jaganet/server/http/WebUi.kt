@@ -22,7 +22,7 @@ import io.ktor.server.routing.get
  *
  * The addresses of the preview before the switch (W-10) stay for saved links and the bot's old buttons:
  * /next/, /tg/app-next and /tg/open-next lead to the main ones (to-main.js, keeping ?query and #fragment).
- * The server's own pages (/k/…, payment, /privacy, /terms) use resources/web: favicon.svg and pages.css.
+ * The server's own pages (/k/…, payment) and the legal PDFs under /docs use resources/web: favicon.svg, pages.css and docs/.
  */
 fun Route.webPages() {
     get("/") { call.siteIndex() }

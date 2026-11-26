@@ -266,7 +266,7 @@ class VlessAgentTest(unittest.TestCase):
     def test_report_says_the_agent_version(self):
         with mock.patch.object(self.agent, "system", return_value=({"cpu": 0.1}, (1, 1))), mock.patch.object(self.agent, "api") as api:
             self.agent.report_once(None)
-        self.assertEqual("3", api.call_args[0][2]["system"]["agent"])
+        self.assertEqual("4", api.call_args[0][2]["system"]["agent"])
         self.assertNotIn("balancer", api.call_args[0][2], "no balancer named: nothing about it in the report")
         self.assertFalse(any(c[0] == "bi" for c in self.xray.calls))
 
@@ -312,7 +312,7 @@ class VlessAgentTest(unittest.TestCase):
             self.assertEqual({"ok": True}, self.agent.api("GET", "/v1/node/peers"))
         req = seen["req"]
         self.assertEqual("https://panel.example.com/v1/node/peers", req.full_url)
-        self.assertEqual("BoopNodeAgent/3", req.get_header("User-agent"))
+        self.assertEqual("BoopNodeAgent/4", req.get_header("User-agent"))
         self.assertEqual("Bearer " + "t" * 30, req.get_header("Authorization"))
 
 
@@ -352,7 +352,7 @@ class AwgAgentTest(unittest.TestCase):
         self.assertEqual("amneziawg", body["protocol"])
         self.assertEqual([{"publicKey": "KEY1=", "rx": 10, "tx": 20, "lastHandshake": 1700000000, "torrentRx": 0, "torrentTx": 0,
                            "endpoint": "1.2.3.4"}], body["peers"])
-        self.assertEqual("3", body["system"]["agent"])
+        self.assertEqual("4", body["system"]["agent"])
         self.assertNotIn("balancer", body)
 
     def test_endpoint_ip(self):
@@ -364,3 +364,84 @@ class AwgAgentTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class IpBlocksTest(unittest.TestCase):
+    """The concurrent-IP cap touches only chain BOOP-IP-LIMIT and jumps to it on Xray ports."""
+
+    def setUp(self):
+        self.agent = load_agent({"JAGANET_URL": "https://panel.example.com", "NODE_TOKEN": "t" * 30,
+                                 "PROTOCOL": "vless", "XRAY_BIN": "/usr/local/bin/xray"})
+        self.cmds = []
+        self.chains = {("iptables",): False, ("ip6tables",): False}
+        self.jumps = set()
+        self.rules = {("iptables",): [], ("ip6tables",): []}
+
+        def run(cmd, capture_output=True, text=True, timeout=None, **kw):
+            self.cmds.append(cmd)
+            bin, args = cmd[0], cmd[1:]
+            key = (bin,)
+            if args[:2] == ["-N", "BOOP-IP-LIMIT"]:
+                self.chains[key] = True
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            if args[:3] == ["-n", "-L", "BOOP-IP-LIMIT"]:
+                return subprocess.CompletedProcess(cmd, 0 if self.chains[key] else 1, "", "")
+            if args[:2] == ["-F", "BOOP-IP-LIMIT"]:
+                self.rules[key] = []
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            if args[:2] == ["-X", "BOOP-IP-LIMIT"]:
+                self.chains[key] = False
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            if args[0] == "-C" and args[1] == "INPUT":
+                return subprocess.CompletedProcess(cmd, 0 if tuple(cmd) in self.jumps else 1, "", "")
+            if args[0] == "-I" and args[1] == "INPUT":
+                self.jumps.add(tuple(cmd[0:1] + ["-C"] + args[1:]))
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            if args[0] == "-D" and args[1] == "INPUT":
+                self.jumps.discard(tuple(cmd[0:1] + ["-C"] + args[1:]))
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            if args[0] == "-A" and args[1] == "BOOP-IP-LIMIT":
+                self.rules[key].append(args)
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        self.blocks = self.agent.IpBlocks(run=run)
+
+    def test_enforce_drops_only_on_xray_ports_and_ignores_junk(self):
+        self.blocks.apply("enforce", ["203.0.113.9", "junk", "-I", "INPUT", "2001:db8::1"], ports=[443, 8443])
+        v4 = [r for r in self.rules[("iptables",)] if r[0] == "-A"]
+        v6 = [r for r in self.rules[("ip6tables",)] if r[0] == "-A"]
+        self.assertEqual([["-A", "BOOP-IP-LIMIT", "-s", "203.0.113.9", "-j", "DROP"]], v4)
+        self.assertEqual([["-A", "BOOP-IP-LIMIT", "-s", "2001:db8::1", "-j", "DROP"]], v6)
+        self.assertTrue(any("443" in " ".join(c) and c[0] == "iptables" and "-j" in c and "BOOP-IP-LIMIT" in c for c in self.cmds if c[1] == "-I"))
+        self.assertTrue(any("8443" in " ".join(c) and c[0] == "iptables" for c in self.cmds if c[1] == "-I"))
+        self.assertFalse(any(c[1] == "-F" and c[2] == "INPUT" for c in self.cmds))
+        self.assertFalse(any("DOCKER" in c or "nginx" in " ".join(c) for c in self.cmds))
+
+    def test_observe_and_off_flush_the_chain(self):
+        self.blocks.apply("enforce", ["198.51.100.7"], ports=[443])
+        self.assertTrue(self.chains[("iptables",)])
+        self.blocks.apply("observe", ["198.51.100.7"], ports=[443])
+        self.assertFalse(self.chains[("iptables",)])
+        self.blocks.apply("enforce", ["198.51.100.7"], ports=[443])
+        self.blocks.apply("off", [], ports=[443])
+        self.assertFalse(self.chains[("iptables",)])
+
+    def test_xray_tcp_ports_reads_only_vless_inbounds(self):
+        d = tempfile.mkdtemp()
+        path = os.path.join(d, "config.json")
+        with open(path, "w") as f:
+            json.dump({"inbounds": [
+                {"tag": "vless-vision", "protocol": "vless", "port": 443},
+                {"tag": "vless-xhttp", "protocol": "vless", "port": 8443},
+                {"tag": "api", "protocol": "dokodemo-door", "port": 10085},
+            ]}, f)
+        self.assertEqual([443, 8443], self.agent.xray_tcp_ports(path))
+
+    def test_sync_applies_blocks_from_the_peer_list(self):
+        res = {"version": "v1", "peers": [], "inbounds": [], "ipLimitMode": "enforce", "ipBlocks": ["203.0.113.8"]}
+        with mock.patch.object(self.agent, "apply_vless"), mock.patch.object(self.agent, "api", return_value=res), \
+                mock.patch.object(self.agent.IP_BLOCKS, "apply") as apply:
+            self.agent.sync_once(None)
+        apply.assert_called_once_with("enforce", ["203.0.113.8"])

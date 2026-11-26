@@ -268,6 +268,8 @@ export const ctlDashboard = (over: Partial<Schema<"CtlDashboard">> = {}): Schema
   paidOrdersMonth: 15,
   newPayersMonth: 6,
   sharingThreshold: 5,
+  ipLimitMode: "observe",
+  ipLimitWindowSeconds: 120,
   sharing: [ctlUserRow({ id: "u3", email: "share@example.com", ips24h: 9, sharing: true })],
   expiring: [],
   ...over,
@@ -292,6 +294,9 @@ export const ctlDevice = (over: Partial<Schema<"CtlDevice">> = {}): Schema<"CtlD
   trafficTotal: 9_000_000,
   rekeyPending: false,
   suspended: false,
+  ipLimitDefault: 5,
+  ipLimitEffective: 5,
+  rejectedConnections: [],
   ...over,
 });
 
@@ -333,9 +338,11 @@ export const ctlUserCard = (
   ],
   payments: [ctlPayment()],
   devices: [ctlDevice(), ctlDevice({ id: "vl1", name: "Boop VPN", kind: "vless", platform: "key", uuid: "1111-2222" })],
-  ips24h: [{ ip: "203.0.113.5", lastSeen: "2026-11-01T10:00:00Z" }],
+  ips24h: [{ ip: "203.0.113.5", lastSeen: "2026-11-01T10:00:00Z", rejected: false, kicked: false }],
   devicesActive24h: 1,
   sharingThreshold: 5,
+  ipLimitMode: "observe",
+  ipLimitWindowSeconds: 120,
   referrals: 0,
   audit: [],
   tariffs: [

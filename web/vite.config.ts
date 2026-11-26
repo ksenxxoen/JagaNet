@@ -64,7 +64,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: Object.fromEntries(
-      ["/v1", "/favicon.svg", "/pages.css", "/privacy", "/terms", "/k", "/r", "/download", "/pay"].map((p) => [
+      ["/v1", "/favicon.svg", "/pages.css", "/docs", "/privacy", "/terms", "/k", "/r", "/download", "/pay"].map((p) => [
         p,
         { target: backend, changeOrigin: true },
       ]),

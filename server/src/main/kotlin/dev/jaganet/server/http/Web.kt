@@ -26,6 +26,7 @@ import dev.jaganet.server.services.Keys
 import dev.jaganet.server.services.VlessKeys
 import dev.jaganet.server.services.VlessLinks
 import dev.jaganet.server.services.VlessSubscription
+import dev.jaganet.server.services.SubscriptionLayout
 import dev.jaganet.server.services.XrayConfigs
 import io.ktor.http.withCharset
 import io.ktor.http.ContentDisposition
@@ -222,7 +223,7 @@ fun Route.website(s: Services) {
         }
         when (format) {
             VlessSubscription.Format.BASE64 -> {
-                call.respondText(VlessKeys.subscription(v.links), ContentType.Text.Plain)
+                call.respondText(VlessKeys.subscription(SubscriptionLayout.links(v.locations, lang)), ContentType.Text.Plain)
             }
             VlessSubscription.Format.XRAY_JSON -> call.respondText(XrayConfigs.subscription(v.locations, lang, options), ContentType.Application.Json)
             VlessSubscription.Format.SINGBOX -> call.respondText(VlessSubscription.singBox(v.locations, lang, options), ContentType.Application.Json)

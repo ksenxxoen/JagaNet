@@ -50,6 +50,7 @@ class Control(
     private val keys: Keys,
     private val vlessKeys: VlessKeys,
     private val nodes: Nodes,
+    private val ipLimits: IpLimits,
 ) {
     /* ---------------- settings ---------------- */
 
@@ -60,14 +61,22 @@ class Control(
             ?: CtlSettings()
 
     suspend fun saveSettings(actor: Actor, s: CtlSettings): CtlSettings {
-        if (s.sharingThreshold !in 1..100) throw badRequest("Some values are out of range")
+        if (s.sharingThreshold !in 1..100 || s.ipLimitMode !in IP_LIMIT_MODES || s.ipLimitWindowSeconds !in 30..3600) {
+            throw badRequest("Some values are out of range")
+        }
         ctx.db.tx { sql ->
             val old = settings(sql)
             sql.exec(
                 "INSERT INTO settings (key, value, updated_at) VALUES (?,?,?) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=EXCLUDED.updated_at",
                 SETTINGS_KEY, Jsonb(Protocols.encode(s).toString()), ctx.now(),
             )
-            audit(sql, actor, null, "settings", "sharingThreshold" to JsonPrimitive(old.sharingThreshold), "to" to JsonPrimitive(s.sharingThreshold))
+            audit(
+                sql, actor, null, "settings",
+                "sharingThreshold" to JsonPrimitive(old.sharingThreshold), "to" to JsonPrimitive(s.sharingThreshold),
+                "ipLimitMode" to JsonPrimitive(old.ipLimitMode), "ipLimitModeTo" to JsonPrimitive(s.ipLimitMode),
+                "ipLimitWindowSeconds" to JsonPrimitive(old.ipLimitWindowSeconds), "ipLimitWindowSecondsTo" to JsonPrimitive(s.ipLimitWindowSeconds),
+            )
+            ipLimits.recompute(sql)
         }
         return s
     }
@@ -220,7 +229,8 @@ class Control(
     suspend fun card(id: String): CtlUserCard = ctx.db.run { sql ->
         checkId(id)
         val now = ctx.now()
-        val threshold = settings(sql).sharingThreshold
+        val cfg = settings(sql)
+        val threshold = cfg.sharingThreshold
         val row = userRow(sql, id, null, threshold, now) ?: throw notFound("User not found")
         val u = sql.one("SELECT * FROM users WHERE id=?::uuid", id)!!
         val e = ent.entitlement(sql, id)
@@ -243,7 +253,7 @@ class Control(
                 it.strOrNull("server_id"), it.strOrNull("server_name"),
             )
         }
-        val devices = devices(sql, id, now, ips, u["blocked_at"] != null)
+        val devices = devices(sql, id, now, ips, u["blocked_at"] != null, cfg, e.deviceLimit)
         val ref = u.strOrNull("referred_by")?.let { rid ->
             sql.one(
                 "SELECT u.id, u.email, l.name AS link, l.main FROM users u LEFT JOIN referral_links l ON l.id = ?::uuid WHERE u.id=?::uuid",
@@ -256,7 +266,7 @@ class Control(
             blockedAt = u.instantOrNull("blocked_at")?.toString(), blockedReason = u.strOrNull("blocked_reason"),
             subscriptions = subs, payments = payments, devices = devices, ips24h = ips,
             devicesActive24h = devices.count { d -> d.lastSeenAt?.let { Instant.parse(it) > now.minus(DAY) } == true },
-            sharingThreshold = threshold, referrer = ref,
+            sharingThreshold = threshold, ipLimitMode = cfg.ipLimitMode, ipLimitWindowSeconds = cfg.ipLimitWindowSeconds, referrer = ref,
             referrals = sql.one("SELECT count(*)::int AS n FROM users WHERE referred_by=?::uuid", id)!!.int("n"),
             audit = auditRows(sql, id, 100),
             tariffs = sql.query("SELECT id, name, status FROM tariffs WHERE status <> 'archived' ORDER BY sort, created_at").map { CtlTariff(it.str("id"), it.str("name"), it.str("status")) },
@@ -304,7 +314,7 @@ class Control(
 
     private fun legacyProduct(p: String) = if (p == "pro_yearly") "Pro, 12" else "Pro"
 
-    private fun devices(sql: Sql, userId: String, now: Instant, ips: List<CtlIp>, blocked: Boolean): List<CtlDevice> = sql.query(
+    private fun devices(sql: Sql, userId: String, now: Instant, ips: List<CtlIp>, blocked: Boolean, cfg: CtlSettings, planLimit: Int): List<CtlDevice> = sql.query(
         """SELECT d.*, t.protocol, t.server_id, t.address, t.last_seen_at AS seen, t.last_ip, t.last_ip_at, t.rekey, t.peer_key,
                   s.name AS server_name, v.uuid, coalesce(v.link_token, k.link_token) AS token, k.device_id AS key_id,
                   (SELECT coalesce(sum(ts.rx_bytes + ts.tx_bytes), 0)::bigint FROM traffic_samples ts WHERE ts.device_id = d.id AND ts.bucket >= ?) AS day,
@@ -321,18 +331,30 @@ class Control(
             else -> "device"
         }
         val deviceIps = ips.filter { it.deviceId == r.str("id") }
+        val override = r.longOrNull("ip_limit")?.toInt()
+        val effective = IpLimitLogic.effectiveLimit(override, planLimit)
+        val window = ipLimits.window(cfg)
+        val kicked = ipLimits.kickedIps(sql, r.str("id"))
+        val rejectedNow = ipLimits.rejectedIps(sql, r.str("id"), now, window).map { it.ip }.toSet()
+        val active = deviceIps.filter { Instant.parse(it.lastSeen) > now.minus(window) }.map {
+            it.copy(rejected = it.ip in rejectedNow, kicked = it.ip in kicked)
+        }
         CtlDevice(
             id = r.str("id"), name = r.str("name"), kind = kind, platform = r.str("platform"), createdAt = r.instant("created_at").toString(),
             protocol = r.strOrNull("protocol"), serverId = r.strOrNull("server_id"), serverName = r.strOrNull("server_name"), address = r.strOrNull("address"),
             lastSeenAt = seen?.toString(), online = seen != null && Duration.between(seen, now) < ONLINE && !blocked,
             lastIp = r.strOrNull("last_ip"), lastIpAt = r.instantOrNull("last_ip_at")?.toString(),
             ips24h = deviceIps,
-            activeConnections = deviceIps.filter { Instant.parse(it.lastSeen) > now.minus(ONLINE) },
+            activeConnections = active,
             traffic24h = r.long("day"), trafficTotal = r.long("total"),
             uuid = r.strOrNull("uuid") ?: r.strOrNull("peer_key")?.takeIf { r.strOrNull("protocol") == Protocols.VLESS },
             tokenHint = r.strOrNull("token")?.take(6)?.plus("…"),
             rekeyPending = r["rekey"] == true,
             suspended = blocked || r.strOrNull("protocol") == null,
+            ipLimit = override,
+            ipLimitEffective = effective,
+            ipLimitDefault = planLimit,
+            rejectedConnections = active.filter { it.rejected || it.kicked },
         )
     }
 
@@ -504,6 +526,37 @@ class Control(
         return card(userId)
     }
 
+    suspend fun setIpLimit(actor: Actor, userId: String, deviceId: String, ipLimit: Int?): CtlUserCard {
+        val d = device(userId, deviceId)
+        ctx.db.tx { sql ->
+            val u = userFor(sql, userId)
+            ipLimits.setOverrideIn(sql, deviceId, ipLimit)
+            audit(sql, actor, u, "ip_limit", "device" to JsonPrimitive(d.str("name")), "deviceId" to JsonPrimitive(deviceId), "ipLimit" to (ipLimit?.let(::JsonPrimitive) ?: JsonNull))
+        }
+        return card(userId)
+    }
+
+    suspend fun resetIp(actor: Actor, userId: String, deviceId: String, ip: String): CtlUserCard {
+        val d = device(userId, deviceId)
+        val host = ClientIps.hostOf(ip) ?: throw badRequest("Enter an IP address")
+        ctx.db.tx { sql ->
+            val u = userFor(sql, userId)
+            ipLimits.kickIp(sql, deviceId, host)
+            audit(sql, actor, u, "ip_reset", "device" to JsonPrimitive(d.str("name")), "deviceId" to JsonPrimitive(deviceId), "ip" to JsonPrimitive(host))
+        }
+        return card(userId)
+    }
+
+    suspend fun resetAllIps(actor: Actor, userId: String, deviceId: String): CtlUserCard {
+        val d = device(userId, deviceId)
+        ctx.db.tx { sql ->
+            val u = userFor(sql, userId)
+            ipLimits.kickAll(sql, deviceId)
+            audit(sql, actor, u, "ip_reset_all", "device" to JsonPrimitive(d.str("name")), "deviceId" to JsonPrimitive(deviceId))
+        }
+        return card(userId)
+    }
+
     /**
      * A new key: VLESS key: new UUID and link; key for other apps: new key pair and link; both
      * replace the old one on the node at once. A Boop app makes its own keys: it is asked for a new
@@ -632,7 +685,8 @@ class Control(
         val nodeList = nodes.list()
         return ctx.db.run { sql ->
             val now = ctx.now()
-            val threshold = settings(sql).sharingThreshold
+            val cfgDash = settings(sql)
+            val threshold = cfgDash.sharingThreshold
             val users = sql.one(
                 """SELECT count(*)::int AS total, count(*) FILTER (WHERE blocked_at IS NOT NULL)::int AS blocked,
                           count(*) FILTER (WHERE created_at > ?)::int AS d1, count(*) FILTER (WHERE created_at > ?)::int AS d7
@@ -685,6 +739,8 @@ class Control(
                     "SELECT count(*)::int AS n FROM (SELECT user_id FROM orders WHERE status='paid' GROUP BY user_id HAVING min(paid_at) >= ?) x", monthAgo,
                 )!!.int("n"),
                 sharingThreshold = threshold,
+                ipLimitMode = cfgDash.ipLimitMode,
+                ipLimitWindowSeconds = cfgDash.ipLimitWindowSeconds,
                 sharing = sharingIds.mapNotNull { userRow(sql, it, null, threshold, now) },
                 expiring = expiringIds.take(20).mapNotNull { userRow(sql, it, null, threshold, now) },
             )

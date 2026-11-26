@@ -24,6 +24,12 @@ Version 3 (status page): on a cascade entry that balances over exit nodes (the p
 balancer in the peer list, or XRAY_BALANCER in the env file), the report also says which exit the
 balancer selects now (`xray api bi -json <tag>`, plain text on builds without -json). Xray answers
 only with "RoutingService" in its api services; without it the report simply goes without it.
+
+Version 4 (concurrent IP cap): the peer list may include ipLimitMode and ipBlocks. In enforce mode
+the agent drops those source IPs on the Xray inbound ports only, in a dedicated iptables chain
+(BOOP-IP-LIMIT). It never edits Xray's config, never restarts Xray, and does not touch other
+chains (docker, nginx, AmneziaWG). Observe and off flush that chain. Older panels omit the fields
+and the agent stays idle.
 """
 import json
 import os
@@ -36,7 +42,7 @@ import time
 import urllib.error
 import urllib.request
 
-AGENT_VERSION = "3"
+AGENT_VERSION = "4"
 USER_AGENT = "BoopNodeAgent/" + AGENT_VERSION
 
 
@@ -59,7 +65,9 @@ LIMITS_FILE = ENV.get("LIMITS_FILE", "/run/boop/limits.json")
 XRAY = ENV.get("XRAY_BIN", "xray")
 XRAY_API = ENV.get("XRAY_API", "127.0.0.1:10085")
 XRAY_INBOUNDS = ENV.get("XRAY_INBOUNDS", "vision,xhttp")
+XRAY_CONFIG = ENV.get("XRAY_CONFIG", "/usr/local/etc/xray/config.json")
 VLESS = PROTOCOL == "vless"
+IP_LIMIT_CHAIN = "BOOP-IP-LIMIT"
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
@@ -388,6 +396,127 @@ def vless_peers(now=None):
     return peers
 
 
+
+# ---------- concurrent IP cap (version 4) ----------
+
+_IP4 = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
+
+
+def _valid_ip(ip):
+    s = (ip or "").strip()
+    if not s or s.startswith("-"):
+        return False
+    if ":" in s:
+        return bool(re.match(r"^[0-9a-fA-F:.]{2,45}$", s))
+    return bool(_IP4.match(s)) and all(0 <= int(p) <= 255 for p in s.split("."))
+
+
+def xray_tcp_ports(path=None):
+    """TCP listen ports of VLESS inbounds in the live Xray config. Never reads backup files."""
+    path = path or XRAY_CONFIG
+    try:
+        with open(path) as f:
+            doc = json.load(f)
+    except (OSError, ValueError):
+        return []
+    ports = []
+    for ib in doc.get("inbounds") or []:
+        if ib.get("protocol") != "vless":
+            continue
+        port = ib.get("port")
+        if isinstance(port, int) and 1 <= port <= 65535:
+            ports.append(port)
+    return sorted(set(ports))
+
+
+class IpBlocks:
+    """Applies the panel's refused source IPs on Xray ports, in chain BOOP-IP-LIMIT only."""
+
+    def __init__(self, run=None):
+        self.run = run or subprocess.run
+        self.warned = False
+
+    def _ipt(self, args, ipv6=False):
+        bin = "ip6tables" if ipv6 else "iptables"
+        try:
+            r = self.run([bin] + args, capture_output=True, text=True, timeout=8)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            if not self.warned:
+                log("IP limit iptables is not available (%s); blocks are not applied" % e)
+                self.warned = True
+            return None
+        return r
+
+    def _has_chain(self, ipv6=False):
+        r = self._ipt(["-n", "-L", IP_LIMIT_CHAIN], ipv6)
+        return r is not None and r.returncode == 0
+
+    def _ensure_chain(self, ipv6=False):
+        if not self._has_chain(ipv6):
+            r = self._ipt(["-N", IP_LIMIT_CHAIN], ipv6)
+            if r is None or r.returncode != 0:
+                return False
+        return True
+
+    def _jump_args(self, port):
+        return ["-p", "tcp", "--dport", str(port), "-j", IP_LIMIT_CHAIN]
+
+    def _has_jump(self, port, ipv6=False):
+        r = self._ipt(["-C", "INPUT"] + self._jump_args(port), ipv6)
+        return r is not None and r.returncode == 0
+
+    def _ensure_jump(self, port, ipv6=False):
+        if not self._has_jump(port, ipv6):
+            r = self._ipt(["-I", "INPUT"] + self._jump_args(port), ipv6)
+            return r is not None and r.returncode == 0
+        return True
+
+    def _drop_jumps(self, ports, ipv6=False):
+        for port in ports or []:
+            while self._has_jump(port, ipv6):
+                if self._ipt(["-D", "INPUT"] + self._jump_args(port), ipv6) is None:
+                    break
+
+    def clear(self, ports=None):
+        ports = ports if ports is not None else xray_tcp_ports()
+        for ipv6 in (False, True):
+            self._drop_jumps(ports, ipv6)
+            if self._has_chain(ipv6):
+                self._ipt(["-F", IP_LIMIT_CHAIN], ipv6)
+                self._ipt(["-X", IP_LIMIT_CHAIN], ipv6)
+
+    def apply(self, mode, blocks, ports=None):
+        ports = ports if ports is not None else xray_tcp_ports()
+        blocks = [b.strip() for b in (blocks or []) if _valid_ip(b)]
+        if mode != "enforce" or not ports:
+            self.clear(ports)
+            return
+        v4 = [b for b in blocks if ":" not in b]
+        v6 = [b for b in blocks if ":" in b]
+        for ipv6, ips in ((False, v4), (True, v6)):
+            if ipv6 and not ips:
+                # Still ensure v4 path; drop stale v6 jumps/chain when unused
+                self._drop_jumps(ports, True)
+                if self._has_chain(True):
+                    self._ipt(["-F", IP_LIMIT_CHAIN], True)
+                    self._ipt(["-X", IP_LIMIT_CHAIN], True)
+                continue
+            if not self._ensure_chain(ipv6):
+                return
+            self._ipt(["-F", IP_LIMIT_CHAIN], ipv6)
+            for ip in ips:
+                r = self._ipt(["-A", IP_LIMIT_CHAIN, "-s", ip, "-j", "DROP"], ipv6)
+                if r is None or r.returncode != 0:
+                    if not self.warned:
+                        log("IP limit could not add a drop rule; blocks may be incomplete")
+                        self.warned = True
+            for port in ports:
+                self._ensure_jump(port, ipv6)
+
+
+IP_BLOCKS = IpBlocks()
+
+
 # ---------- both ----------
 
 def sync_once(version):
@@ -398,6 +527,7 @@ def sync_once(version):
         if res.get("balancer") and not ENV.get("XRAY_BALANCER"):
             BALANCER.tag = res["balancer"]
         apply_vless(res["peers"], res.get("inbounds"))
+        IP_BLOCKS.apply(res.get("ipLimitMode") or "off", res.get("ipBlocks") or [])
     elif res["version"] != version:
         apply(res["peers"])
         write_limits(res.get("limit"))

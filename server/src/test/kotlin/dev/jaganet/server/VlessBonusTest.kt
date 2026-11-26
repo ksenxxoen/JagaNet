@@ -6,6 +6,7 @@ import dev.jaganet.api.Vless
 import dev.jaganet.api.WireGuard
 import dev.jaganet.server.db.Jsonb
 import dev.jaganet.server.services.Keys
+import dev.jaganet.server.services.SubscriptionLayout
 import dev.jaganet.server.services.VlessKeys
 import dev.jaganet.server.services.VlessSyncResult
 import io.ktor.client.request.get
@@ -169,13 +170,11 @@ class VlessBonusTest {
         assertTrue(res.headers["subscription-userinfo"]!!.startsWith("upload=0; download=0; total=0; expire="))
         val lines = String(Base64.getDecoder().decode(res.bodyAsText())).split("\n")
         val name = Vless.encode("🇫🇮 Финляндия")
-        assertEquals(
-            listOf(
-                "vless://$uuid@ru1.vpn.example.com:443?encryption=none&security=reality&pbk=$pbk&sid=a1b2c3d4&sni=ru1.vpn.example.com&fp=firefox&type=tcp&flow=xtls-rprx-vision#$name",
-                "vless://$uuid@ru1.vpn.example.com:8443?encryption=none&security=reality&pbk=$pbk&sid=a1b2c3d4&sni=ru1.vpn.example.com&fp=firefox&type=xhttp&path=%2Fs3cr3t&mode=auto#${Vless.encode("🇫🇮 Финляндия XHTTP")}",
-            ),
-            lines,
+        val real = listOf(
+            "vless://$uuid@ru1.vpn.example.com:443?encryption=none&security=reality&pbk=$pbk&sid=a1b2c3d4&sni=ru1.vpn.example.com&fp=firefox&type=tcp&flow=xtls-rprx-vision#$name",
+            "vless://$uuid@ru1.vpn.example.com:8443?encryption=none&security=reality&pbk=$pbk&sid=a1b2c3d4&sni=ru1.vpn.example.com&fp=firefox&type=xhttp&path=%2Fs3cr3t&mode=auto#${Vless.encode("🇫🇮 Финляндия XHTTP")}",
         )
+        assertEquals(SubscriptionLayout.PLACEHOLDERS.map { SubscriptionLayout.dummyLink(it) } + real, lines)
         // The VLESS key's own token: the same subscription, its page and QR codes.
         assertEquals(res.bodyAsText(), raw.get("/k/$vt/vless").bodyAsText())
         val page = raw.get("/k/$vt").bodyAsText()
@@ -187,7 +186,7 @@ class VlessBonusTest {
         assertEquals(HttpStatusCode.NotFound, raw.get("/k/nope/vless").status)
         val key = u.api.keys(listOf("vless")).vless!!
         assertEquals("https://boop.example/k/$vt/vless", key.subscriptionUrl)
-        assertEquals(lines, key.links)
-        assertEquals(lines, VlessKeys.linksOf(Vless.ServerParams(uuid, settings.params(uuid).variants), "🇫🇮 Финляндия"))
+        assertEquals(real, key.links)
+        assertEquals(real, VlessKeys.linksOf(Vless.ServerParams(uuid, settings.params(uuid).variants), "🇫🇮 Финляндия"))
     }
 }

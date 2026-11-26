@@ -51,8 +51,11 @@ class NumberedTelegram : TelegramApi {
     val fail = mutableMapOf<String, TelegramException>()
     private var next = 100L
     fun sent(method: String) = calls.filter { it.first == method }.map { it.second }
-    fun texts(chat: Long) = calls.filter { it.first == "sendMessage" && it.second["chat_id"]!!.jsonPrimitive.content == chat.toString() }
+    fun texts(chat: Long) = calls.filter { it.first in setOf("sendMessage", "editMessageText") && it.second["chat_id"]!!.jsonPrimitive.content == chat.toString() }
         .map { it.second["text"]!!.jsonPrimitive.content }
+
+    /** The last visible navigation screen (an edit, or a new message with inline buttons). */
+    fun lastScreen(): JsonObject = calls.last { it.first == "editMessageText" || (it.first == "sendMessage" && it.second.buttons().isNotEmpty()) }.second
 
     /** Message id the fake API would have returned for the last [method] call. */
     fun lastMessageId(method: String): Long {
@@ -93,11 +96,11 @@ fun tgMessage(chat: Long, text: String, fromId: Long = chat, messageId: Long = 1
     }
 }
 
-fun tgCallback(chat: Long, data: String) = buildJsonObject {
+fun tgCallback(chat: Long, data: String, messageId: Long = 2) = buildJsonObject {
     put("update_id", updateId++)
     putJsonObject("callback_query") {
         put("id", "q$updateId"); put("from", from(chat)); put("data", data)
-        putJsonObject("message") { put("message_id", 2); putJsonObject("chat") { put("id", chat); put("type", "private") } }
+        putJsonObject("message") { put("message_id", messageId); putJsonObject("chat") { put("id", chat); put("type", "private") } }
     }
 }
 
@@ -200,14 +203,14 @@ class TelegramBotTest {
         val tg = NumberedTelegram()
         val bot = bot(tg)
         bot.handle(tgMessage(31, "/start login"))
-        val url = tg.sent("sendMessage").last().buttons().first().second
+        val url = tg.lastScreen().buttons().first().second
         assertTrue("#/login?token=" in url, url)
         val tokenA = url.substringAfter("token=")
         assertEquals("tg31@telegram.invalid", client().redeemLoginLink(LinkLoginReq(tokenA, web)).user.email)
         assertEquals("INVALID_CODE", code { client().redeemLoginLink(LinkLoginReq(tokenA, web)) })
 
-        bot.handle(tgCallback(31, "login"))
-        val tokenB = tg.sent("sendMessage").last().buttons().first().second.substringAfter("token=")
+        bot.handle(tgCallback(31, "login", messageId = tg.lastMessageId("sendMessage")))
+        val tokenB = tg.lastScreen().buttons().first().second.substringAfter("token=")
         clock = clock.plus(Duration.ofMinutes(11))
         assertEquals("INVALID_CODE", code { client().redeemLoginLink(LinkLoginReq(tokenB, web)) })
     }
@@ -238,7 +241,7 @@ class TelegramBotTest {
 
         // The bot and the Login Widget now open the e-mail account.
         bot.handle(tgMessage(77, "/login"))
-        val t = tg.sent("sendMessage").last().buttons().first().second.substringAfter("token=")
+        val t = tg.lastScreen().buttons().first().second.substringAfter("token=")
         assertEquals("ivan@example.com", client().redeemLoginLink(LinkLoginReq(t, web)).user.email)
         val w = postWidget(widget(mapOf("id" to "77", "auth_date" to clock.epochSecond.toString())))
         assertTrue("ivan@example.com" in w.bodyAsText())
@@ -271,7 +274,7 @@ class TelegramBotTest {
 
         // A Telegram-only account can't unlink: it has nothing else to sign in with.
         bot.handle(tgMessage(88, "/login"))
-        val s = client().redeemLoginLink(LinkLoginReq(tg.sent("sendMessage").last().buttons().first().second.substringAfter("token="), web))
+        val s = client().redeemLoginLink(LinkLoginReq(tg.lastScreen().buttons().first().second.substringAfter("token="), web))
         assertEquals(HttpStatusCode.BadRequest, b.createClient {}.delete("/v1/telegram/link") { header("Authorization", "Bearer ${s.token}") }.status)
     }
 
@@ -370,19 +373,19 @@ class TelegramBotTest {
         services.vlessKeys.ensureFor(uid)
         // A phone with the Boop app, signed in through the bot's login link.
         bot.handle(tgMessage(51, "/login"))
-        val s = client().redeemLoginLink(LinkLoginReq(tg.sent("sendMessage").last().buttons().first().second.substringAfter("token="), DeviceInfo("Pixel", Platform.ANDROID)))
+        val s = client().redeemLoginLink(LinkLoginReq(tg.lastScreen().buttons().first().second.substringAfter("token="), DeviceInfo("Pixel", Platform.ANDROID)))
         client(s.token).provisionTunnel(TunnelProvisionReq(Protocols.AMNEZIAWG, clientParams = Protocols.encode(WireGuard.ClientParams(key(3)))))
 
         bot.handle(tgMessage(51, "/devices"))
-        val msg = tg.sent("sendMessage").last()
+        val msg = tg.lastScreen()
         val text = msg["text"]!!.jsonPrimitive.content
         // The paid key from markPaid and the phone; the VLESS key is not in the list.
         assertTrue("Устройства 2 из 5" in text, text)
         assertTrue("Pixel" in text, text)
         assertFalse("VLESS" in text, text)
         val del = msg.buttons().first { "Pixel" in it.first }.second
-        bot.handle(tgCallback(51, del))
-        assertEquals("delok:" + del.removePrefix("del:"), tg.sent("sendMessage").last().buttons().first().second)
+        bot.handle(tgCallback(51, del, messageId = tg.lastMessageId("sendMessage")))
+        assertEquals("delok:" + del.removePrefix("del:"), tg.lastScreen().buttons().first().second)
         bot.handle(tgCallback(51, "delok:" + del.removePrefix("del:")))
         assertTrue("Устройство удалено" in tg.texts(51).last(), tg.texts(51).last())
         assertTrue("Устройства 1 из 5" in tg.texts(51).last())
@@ -502,32 +505,38 @@ class TelegramBotTest {
             "🎁 Получить 14 дней бесплатно" to "invite",
         )
         fun assertMenu() {
-            assertEquals(sections, tg.sent("sendMessage").lastInline().buttons())
+            assertEquals(sections, tg.lastScreen().buttons())
             val kb = tg.sent("sendMessage").lastReply()
             assertEquals(listOf("Меню"), kb.replyButtons(), kb["reply_markup"].toString())
             assertTrue(kb["reply_markup"]!!.jsonObject["is_persistent"]!!.jsonPrimitive.content.toBoolean())
+            assertTrue(tg.texts(11).none { "всегда внизу" in it || "always at the bottom" in it }, tg.texts(11).toString())
         }
         bot.handle(tgMessage(11, "/start"))
-        val start = tg.sent("sendMessage").lastInline()
+        val start = tg.lastScreen()
         assertTrue("Boop VPN" in start["text"]!!.jsonPrimitive.content)
         assertTrue("Открыть Boop" !in start.toString())
         assertMenu()
+        assertTrue(tg.sent("editMessageText").isNotEmpty())
 
         bot.handle(tgMessage(11, "/menu"))
         assertMenu()
+        val afterStart = tg.sent("sendMessage").size
         bot.handle(tgMessage(11, "Меню"))
         assertMenu()
-        assertTrue("Нет активной подписки" in tg.sent("sendMessage").lastInline()["text"]!!.jsonPrimitive.content)
+        // Later «Меню» taps edit the existing menu instead of sending another one.
+        assertEquals(afterStart, tg.sent("sendMessage").size)
+        assertTrue("Нет активной подписки" in tg.lastScreen()["text"]!!.jsonPrimitive.content)
 
         // Labels from the old five-button keyboard still open the same sections.
         bot.handle(tgMessage(11, "🔑 Ключи и подключения"))
-        val keys = tg.sent("sendMessage").last().buttons().map { it.second }
+        val keys = tg.lastScreen().buttons().map { it.second }
         for (d in listOf("keys", "devices", "app", "menu")) assertTrue(d in keys, "$d in $keys")
         bot.handle(tgMessage(11, "⚙️ Настройки"))
-        val settings = tg.sent("sendMessage").last().buttons().map { it.second }
-        for (d in listOf("pay", "notify", "login", "language", "menu")) assertTrue(d in settings, "$d in $settings")
+        val settings = tg.lastScreen().buttons().map { it.second }
+        assertTrue("pay" !in settings, settings.toString())
+        for (d in listOf("notify", "login", "language", "menu")) assertTrue(d in settings, "$d in $settings")
         bot.handle(tgMessage(11, "🆘 Помощь"))
-        val help = tg.sent("sendMessage").last()
+        val help = tg.lastScreen()
         assertTrue("support" in help.buttons().map { it.second }, help.buttons().toString())
         for (c in listOf("/start", "/menu", "/keys", "/pay", "/support")) assertTrue(c in help["text"]!!.jsonPrimitive.content, help["text"].toString())
         bot.handle(tgMessage(11, "🎁 Получить 14 дней бесплатно"))
@@ -542,6 +551,32 @@ class TelegramBotTest {
         assertTrue(commands.containsAll(listOf("start", "menu", "help", "keys", "pay", "support")), commands.toString())
     }
 
+    @Test fun `a devices list with no devices does not ask to delete one`() = harness {
+        val tg = NumberedTelegram()
+        val bot = bot(tg)
+        bot.handle(tgMessage(12, "/start"))
+        bot.handle(tgCallback(12, "devices", messageId = tg.lastMessageId("sendMessage")))
+        val text = tg.lastScreen()["text"]!!.jsonPrimitive.content
+        assertTrue("Подключённых устройств пока нет" in text, text)
+        assertTrue("Ссылка-подписка из «Мои ключи» не входит в лимит" in text, text)
+        assertTrue("Удалите устройство" !in text, text)
+    }
+
+    @Test fun `inline taps edit the existing message`() = harness {
+        val tg = NumberedTelegram()
+        val bot = bot(tg)
+        bot.handle(tgMessage(13, "/start"))
+        val menuId = tg.lastMessageId("sendMessage")
+        val sent = tg.sent("sendMessage").size
+        bot.handle(tgCallback(13, "section:settings", messageId = menuId))
+        assertEquals(sent, tg.sent("sendMessage").size)
+        assertEquals(menuId.toString(), tg.sent("editMessageText").last()["message_id"]!!.jsonPrimitive.content)
+        assertTrue("pay" !in tg.lastScreen().buttons().map { it.second })
+        bot.handle(tgCallback(13, "pay", messageId = menuId))
+        assertEquals(sent, tg.sent("sendMessage").size)
+        assertTrue(tg.lastScreen().buttons().any { it.second.startsWith("buy:") || it.second == "menu" }, tg.lastScreen().buttons().toString())
+    }
+
     /* ---- the community link (issue #91) ---- */
 
     private val community = "https://t.me/example"
@@ -551,17 +586,17 @@ class TelegramBotTest {
         val bot = bot(tg)
         val group = "👥 Наша группа в Telegram" to community
         bot.handle(tgMessage(31, "/start"))
-        assertTrue(tg.sent("sendMessage").last().buttons().none { it == group }, tg.sent("sendMessage").last().toString())
-        assertTrue(tg.sent("sendMessage").last().replyButtons().none { "группа" in it })
-        bot.handle(tgCallback(31, "menu"))
-        assertTrue(tg.sent("sendMessage").last().replyButtons().none { "группа" in it })
+        assertTrue(tg.lastScreen().buttons().none { it == group }, tg.lastScreen().toString())
+        assertTrue(tg.sent("sendMessage").lastReply().replyButtons().none { "группа" in it })
+        bot.handle(tgCallback(31, "menu", messageId = tg.lastMessageId("sendMessage")))
+        assertTrue(tg.sent("sendMessage").lastReply().replyButtons().none { "группа" in it })
         bot.handle(tgMessage(31, "/help"))
         assertTrue("/community" in tg.texts(31).last() && community in tg.texts(31).last(), tg.texts(31).last())
-        assertTrue(group in tg.sent("sendMessage").last().buttons())
+        assertTrue(group in tg.lastScreen().buttons())
         bot.handle(tgMessage(31, "/community"))
-        assertTrue(group in tg.sent("sendMessage").last().buttons())
-        bot.handle(tgCallback(31, "support"))
-        val b = tg.sent("sendMessage").last().buttons()
+        assertTrue(group in tg.lastScreen().buttons())
+        bot.handle(tgCallback(31, "support", messageId = tg.sent("editMessageText").last()["message_id"]!!.jsonPrimitive.content.toLong()))
+        val b = tg.lastScreen().buttons()
         assertTrue(group in b && "menu" in b.map { it.second }, b.toString())
         bot.prepare()
         for (call in tg.sent("setMyCommands")) {
@@ -573,11 +608,11 @@ class TelegramBotTest {
         val tg = NumberedTelegram()
         val bot = bot(tg)
         bot.handle(tgMessage(32, "/start"))
-        assertTrue(tg.sent("sendMessage").last().buttons().none { "t.me/example" in it.second || "группа" in it.first })
+        assertTrue(tg.lastScreen().buttons().none { "t.me/example" in it.second || "группа" in it.first })
         bot.handle(tgMessage(32, "/help"))
         assertFalse("/community" in tg.texts(32).last())
         bot.handle(tgMessage(32, "/community"))
-        assertTrue(tg.sent("sendMessage").last().buttons().none { "группа" in it.first })
+        assertTrue(tg.lastScreen().buttons().none { "группа" in it.first })
         bot.prepare()
         for (call in tg.sent("setMyCommands")) {
             assertFalse("community" in call["commands"]!!.jsonArray.map { it.jsonObject["command"]!!.jsonPrimitive.content })
@@ -615,9 +650,10 @@ class TelegramBotTest {
         val bot = bot(tg)
         bot.handle(tgMessage(601, "/start"))
         bot.handle(tgMessage(601, "/status"))
-        bot.handle(tgCallback(601, "menu"))
+        bot.handle(tgCallback(601, "menu", messageId = tg.lastMessageId("sendMessage")))
         assertTrue(tg.sent("sendWidget").isEmpty())
-        assertEquals(5, tg.sent("sendMessage").size)
+        assertEquals(1, tg.sent("sendMessage").size)
+        assertTrue(tg.sent("editMessageText").size >= 2)
         val uid = userIdOfTelegram(601)!!
         services.payments.markPaid(services.payments.create(uid, tariff(MONTH), dev.jaganet.server.services.Channel.WEB).id)
         assertTrue(tg.sent("editMessageWidgetData").isEmpty())
@@ -692,7 +728,7 @@ class TelegramBotTest {
         assertEquals(1, tg.sent("sendWidget").size)
         assertEquals(
             listOf("pay", "section:keys", "section:settings", "help", "invite"),
-            tg.sent("sendMessage").lastInline().buttons().map { it.second },
+            tg.lastScreen().buttons().map { it.second },
         )
         assertEquals(listOf("Меню"), tg.sent("sendMessage").lastReply().replyButtons())
         assertEquals(0, count("SELECT count(*)::int AS n FROM telegram_widgets"))

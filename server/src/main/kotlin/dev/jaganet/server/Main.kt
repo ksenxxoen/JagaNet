@@ -86,6 +86,7 @@ fun serve(ctx: Ctx, collectEveryMs: Long, wait: Boolean = true, background: (sus
                 runCatching { services.diagnostics.prune() }.onFailure { log.error("problem report cleanup failed", it) }
                 // Client addresses (admin panel, issue #39) are kept 7 days.
                 runCatching { ctx.db.run { dev.jaganet.server.services.ClientIps.prune(it, ctx.now()) } }.onFailure { log.error("client address cleanup failed", it) }
+                runCatching { ctx.db.run { services.ipLimits.prune(it, ctx.now()) } }.onFailure { log.error("IP limit cleanup failed", it) }
                 // Node health samples for the status page are kept 30 days.
                 runCatching { services.nodes.pruneMetrics() }.onFailure { log.error("node metrics cleanup failed", it) }
                 delay(3_600_000L)
