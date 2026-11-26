@@ -91,11 +91,11 @@ describe("#/account", () => {
     const open = vi.spyOn(page, "open").mockImplementation(() => {});
     const seen = mockApi({
       ...accountRoutes(),
-      "POST /orders": { id: "o1", tariffName: "Pro 12", status: "pending", amount: "2700", checkoutUrl: "https://pay.example/o1" },
+      "POST /orders": { id: "o1", tariffName: "Pro 12", status: "pending", amount: "2700", checkoutUrl: "https://pay.example/pay/test/o1" },
     });
     renderApp("/account");
     await userEvent.setup().click(await screen.findByRole("button", { name: "Buy: Pro 12" }));
-    await waitFor(() => expect(open).toHaveBeenCalledWith("https://pay.example/o1?lang=ru"));
+    await waitFor(() => expect(open).toHaveBeenCalledWith("https://pay.example/pay/test/o1?lang=ru"));
     expect(seen.find((r) => r.url === "/orders")!.body).toEqual({ tariffId: "m12" });
   });
 
@@ -119,13 +119,13 @@ describe("#/account?order=", () => {
     let status: "pending" | "paid" = "pending";
     const seen = mockApi({
       ...accountRoutes(),
-      "GET /orders/{id}": () => ({ id: "o1", tariffName: "Pro", status, amount: "300", checkoutUrl: "https://pay.example/o1" }),
+      "GET /orders/{id}": () => ({ id: "o1", tariffName: "Pro", status, amount: "300", checkoutUrl: "https://pay.example/pay/test/o1" }),
     });
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       renderApp("/account?order=o1");
       expect(await screen.findByText("Not paid yet")).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Try again" })).toHaveAttribute("href", "https://pay.example/o1?lang=ru");
+      expect(screen.getByRole("link", { name: "Try again" })).toHaveAttribute("href", "https://pay.example/pay/test/o1?lang=ru");
       status = "paid";
       await act(() => vi.advanceTimersByTimeAsync(ORDER_POLL_MS + 100));
       expect(await screen.findByText("Payment received")).toBeInTheDocument();

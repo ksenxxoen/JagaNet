@@ -190,12 +190,21 @@ additive; the manual SQL rollback is in `V25__telegram_miniapp.sql`.
 "Pay (test)" button: **no money moves, and anyone can mark an order paid.** Switch it off
 before real customers arrive.
 
-Adding the real service (`server/.../services/Payments.kt`):
+The real service is Platega (`PAYMENT_PROVIDER=platega` with `PLATEGA_MERCHANT_ID` and
+`PLATEGA_SECRET`): the flow, statuses, callback URL (`PUBLIC_URL/pay/platega/callback`, set in
+Platega's dashboard) and configuration are in [PAYMENTS-PLATEGA.md](PAYMENTS-PLATEGA.md).
+In the bot, "Buy a subscription" / "Extend" is on the main menu (and in Settings, and `/pay`).
 
-1. Implement `PaymentProvider` (`checkoutUrl(order)` → the provider's payment page).
+Adding another service (`server/.../services/Payments.kt`):
+
+1. Implement `PaymentProvider`: either `checkoutUrl(order)` (a page worked out from the order,
+   like `test`), or `start(order, buyer)` that creates the payment at the provider and returns
+   its id and link (stored in `orders.external_id` / `orders.checkout_url`). `check(order, id)`
+   optionally asks the provider about a payment whose callback did not arrive.
 2. Add it to `Payments.providers` and set `PAYMENT_PROVIDER=<its id>`.
-3. Add a webhook route that verifies the provider's signature and calls
-   `payments.markPaid(orderId, providerPaymentId)`. That call is idempotent and does the rest:
+3. Add a webhook route that verifies the sender and calls `payments.providerUpdate(...)`
+   (statuses, amount check, idempotency) or, for a provider without statuses,
+   `payments.markPaid(orderId, providerPaymentId)`. `markPaid` is idempotent and does the rest:
    extends Pro, makes the VPN key, notifies the Telegram bot.
 
 ## Android download

@@ -17,6 +17,8 @@ import { PAY_STATUS, payChannel, StateBadge, UserLink } from "../common";
 import { paymentsQuery, type PaymentFilter } from "../queries";
 
 const STATUSES = ["paid", "pending", "cancelled"] as const;
+/** The payment service's statuses the owner should look at (docs/PAYMENTS-PLATEGA.md): money returned, disputed or not matching. */
+const PROVIDER_ATTENTION = new Set(["CHARGEBACKED", "PARTIALLY_REFUNDED", "DISPUTED", "AMOUNT_MISMATCH"]);
 const DAY = /^\d{4}-\d\d-\d\d$/;
 
 /** The filter from the address; values the server would refuse are dropped. */
@@ -172,7 +174,16 @@ function PaymentTable({ payments }: { payments: Schema<"CtlPayment">[] }) {
           key: "status",
           header: t("Status"),
           sort: (p) => p.status,
-          cell: (p) => <StateBadge pair={PAY_STATUS[p.status]} fallback={p.status} />,
+          cell: (p) => (
+            <>
+              <StateBadge pair={PAY_STATUS[p.status]} fallback={p.status} />
+              {p.providerStatus ? (
+                <div className={`text-[13px] ${PROVIDER_ATTENTION.has(p.providerStatus) ? "text-danger" : "text-muted"}`}>
+                  {p.providerStatus}
+                </div>
+              ) : null}
+            </>
+          ),
         },
       ]}
     />

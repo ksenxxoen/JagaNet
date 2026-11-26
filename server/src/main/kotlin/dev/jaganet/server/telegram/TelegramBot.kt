@@ -259,11 +259,15 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         // Re-sent on /start and «Меню» so existing chats replace the old five-button keyboard with only «Меню».
         // Sent first: the status message with the inline sections stays the last, visible menu.
         sendReplyKeyboard(u)
-        if (!sendCard(u, text, until != null)) send(u, text, mainButtons(u))
+        if (!sendCard(u, text, until != null)) send(u, text, mainButtons(u, until != null))
     }
 
-    /** The four section buttons on the main menu message. The gift entry is only shown while rewards are on (or for referral admins). */
-    private suspend fun mainButtons(u: Who): List<List<Btn>> = buildList {
+    /**
+     * The main menu message's buttons: buy / extend (issue #154), then the sections. The gift entry is only
+     * shown while rewards are on (or for referral admins).
+     */
+    private suspend fun mainButtons(u: Who, active: Boolean): List<List<Btn>> = buildList {
+        add(listOf(Btn("💳 " + (if (active) u.t("Extend") else u.t("Buy a subscription")), "pay")))
         add(listOf(Btn("🔑 " + u.t("Keys and connections"), "section:keys")))
         add(listOf(Btn("⚙️ " + u.t("Settings"), "section:settings")))
         add(listOf(Btn("🆘 " + u.t("Help"), "help")))
@@ -393,7 +397,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
             for (t in tariffs) { appendLine(); append("${t.name}, ${period(t, u.lang)}, ${Format.terms(t.deviceLimit, t.monthlyDataLimitBytes, u.lang)}") }
             if (until != null) { appendLine(); appendLine(); append(u.t("Your subscription is active until {date}. A new payment adds to it.", "date" to Format.date(until.toString(), u.lang))) }
         }
-        send(u, text, buyButtons(u, tariffs) + backButtons(u, "section:settings"))
+        send(u, text, buyButtons(u, tariffs) + backButtons(u))
     }
 
     private suspend fun buyAction(u: Who, tariffId: String) {
@@ -411,7 +415,7 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
             append(u.t("Tap the button to pay. Your VPN key arrives here right after."))
         }
         val url = order.checkoutUrl?.let { withLang(it, u.lang) }
-        send(u, text, listOf(listOf(Btn(u.t("Pay {price}", "price" to price), url = url))) + backButtons(u, "section:settings"))
+        send(u, text, listOf(listOf(Btn(u.t("Pay {price}", "price" to price), url = url))) + backButtons(u))
     }
 
     /** A paid order: the date, and for orders from the bot the keys right away. Runs in the background. */
@@ -856,8 +860,8 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         }
     }
 
-    /** The same four section buttons as the text menu, under the card. The mini app stays on the chat menu button. */
-    private suspend fun cardButtons(u: Who, @Suppress("UNUSED_PARAMETER") active: Boolean) = mainButtons(u)
+    /** The same buttons as the text menu (buy / extend and the sections), under the card. The mini app stays on the chat menu button. */
+    private suspend fun cardButtons(u: Who, active: Boolean) = mainButtons(u, active)
 
     /**
      * Sends the status card with [caption] (what older Telegram apps show instead) when the card is on
@@ -991,7 +995,9 @@ class TelegramBot(private val s: Services, private val api: TelegramApi, private
         return Who(acc.userId, chat, acc.lang ?: Lang.DEFAULT, tg.id)
     }
 
-    private fun withLang(url: String, lang: Lang) = url + (if ('?' in url) "&" else "?") + "lang=" + lang.code
+    /** Our own pages get ?lang=; a payment service's link (Platega) is left exactly as it was given. */
+    private fun withLang(url: String, lang: Lang) =
+        if (!url.startsWith(ctx.cfg.publicUrl.trimEnd('/') + "/")) url else url + (if ('?' in url) "&" else "?") + "lang=" + lang.code
 
     private fun messageId(result: JsonElement): Long? = (result as? JsonObject)?.get("message_id")?.jsonPrimitive?.longOrNull
 

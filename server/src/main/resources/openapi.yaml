@@ -2691,6 +2691,7 @@ components:
         provider: {type: string}
         status: {type: string}
         externalId: {type: string}
+        providerStatus: {type: string}
       required: [id, createdAt, userId, email, product, amount, channel, provider, status]
       x-kotlin: dev.jaganet.server.services.CtlPayment
     CtlPaymentsRes:

@@ -189,7 +189,7 @@ class ControlTest {
         assertEquals(HttpStatusCode.OK, res.status)
         assertTrue(res.headers[HttpHeaders.ContentDisposition]!!.contains("payments.csv"))
         val lines = res.bodyAsText().removePrefix("﻿").trim().lines()
-        assertEquals("id,created_at,paid_at,user_id,email,product,amount,currency,channel,provider,status,external_id", lines[0])
+        assertEquals("id,created_at,paid_at,user_id,email,product,amount,currency,channel,provider,status,external_id,provider_status", lines[0])
         assertEquals(3, lines.size)
         assertTrue(lines.all { it == lines[0] || ",paid," in it })
         assertEquals("%d.%02d".format(year / 100, year % 100), lines[1].split(',')[6])
