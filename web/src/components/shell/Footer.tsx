@@ -84,11 +84,7 @@ export function Footer() {
         />
       </div>
       <div className="mx-auto flex max-w-page flex-wrap justify-between gap-2 border-t border-line px-4 py-4 text-xs text-faint sm:px-6">
-        <span>
-          © {new Date().getFullYear()} Boop VPN
-          <span className="mx-2">·</span>
-          platega test
-        </span>
+        <span>© {new Date().getFullYear()} Boop VPN</span>
         <span>{t("We don't keep browsing history")}</span>
       </div>
     </footer>
